@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Password Reset - CBC Portal</title>
+<link rel="stylesheet" href="css/reset.css" />
+<meta name="theme-color" content="#0f766e" />
+</head>
+<body>
+
+<main class="reset-wrap">
+  <section class="card">
+
+    <!-- Header -->
+    <header class="card-head">
+      <h1>Password Reset</h1>
+      <p class="lead">
+        Admins, Teachers, and Class Teachers only.
+      </p>
+    </header>
+
+    <!-- Step Form -->
+    <form id="resetForm" class="reset-form" autocomplete="off" novalidate>
+
+      <!-- Step 1: User info -->
+      <section id="stepEmail" class="step active" aria-labelledby="stepEmailTitle">
+        <h2 id="stepEmailTitle" class="sr-only">User Verification</h2>
+
+        <label for="role">Role</label>
+        <select id="role" name="role" required aria-required="true">
+          <option value="">-- Select role --</option>
+          <option value="admin">Admin</option>
+          <option value="teacher">Teacher</option>
+          <option value="classteacher">Class Teacher</option>
+        </select><br><br>
+
+        <label for="fullname">Full Name</label>
+        <input id="fullname" name="fullname" type="text" placeholder="Emmanuel Mutegi" required>
+
+        <label for="email">Registered email</label>
+        <input id="email" name="email" type="email" placeholder="emmanuel@example.com" required /><br><br>
+
+        <div class="row">
+          <button id="sendCodeBtn" type="button" class="btn primary" aria-live="polite">
+            <span class="btn-label">Send Reset Code</span>
+            <span class="btn-spinner" aria-hidden="true"></span>
+          </button>
+
+          <button id="clearBtn" type="button" class="btn ghost" title="Clear form">Clear</button>
+        </div>
+
+        <div id="feedback-email" class="feedback" role="status" aria-live="polite"></div>
+      </section>
+
+      <!-- Step 2: OTP -->
+      <section id="stepCode" class="step" aria-labelledby="stepCodeTitle">
+        <h2 id="stepCodeTitle" class="sr-only">Verify OTP</h2>
+
+        <p class="muted">Enter the 6-digit code sent to your email. (Check spam if you don't see it.)</p>
+
+        <!-- OTP boxes (progressive enhancement) -->
+        <div id="otpBoxes" class="otp-boxes" aria-hidden="false">
+          <input inputmode="numeric" pattern="[0-9]*" maxlength="1" class="otp" aria-label="Digit 1" />
+          <input inputmode="numeric" pattern="[0-9]*" maxlength="1" class="otp" aria-label="Digit 2" />
+          <input inputmode="numeric" pattern="[0-9]*" maxlength="1" class="otp" aria-label="Digit 3" />
+          <input inputmode="numeric" pattern="[0-9]*" maxlength="1" class="otp" aria-label="Digit 4" />
+          <input inputmode="numeric" pattern="[0-9]*" maxlength="1" class="otp" aria-label="Digit 5" />
+          <input inputmode="numeric" pattern="[0-9]*" maxlength="1" class="otp" aria-label="Digit 6" />
+        </div>
+
+        <!-- Single fallback input (kept for compatibility) -->
+        <label for="code" class="sr-only">OTP code</label>
+        <input id="code" name="code" type="text" inputmode="numeric" pattern="[0-9]*" placeholder="123456" class="hidden-fallback" />
+
+        <div class="row">
+          <button id="verifyCodeBtn" type="button" class="btn primary">
+            <span class="btn-label">Verify OTP</span>
+            <span class="btn-spinner" aria-hidden="true"></span>
+          </button>
+
+          <button id="resendBtn" type="button" class="btn ghost" disabled>
+            <span id="resendText">Resend code</span>
+            <span id="resendTimer" class="muted small"> (60s)</span>
+          </button>
+        </div>
+
+        <div id="feedback-code" class="feedback" role="status" aria-live="polite"></div>
+      </section>
+
+      <!-- Step 3: New Password -->
+      <section id="stepPassword" class="step" aria-labelledby="stepPasswordTitle">
+        <h2 id="stepPasswordTitle" class="sr-only">Reset Password</h2>
+
+        <label for="newPassword">New Password</label>
+        <div class="password-row">
+          <input id="newPassword" name="newPassword" type="password" placeholder="Enter new password" required minlength="8" />
+          <button id="togglePwdBtn" type="button" class="btn ghost small" aria-label="Show password">Show</button>
+        </div>
+
+        <div class="pw-meter">
+          <div id="pwStrengthBar" class="pw-bar"></div>
+          <div id="pwStrengthText" class="pw-text muted small">Enter a strong password</div>
+        </div>
+
+        <div class="row">
+          <button id="resetPasswordBtn" type="button" class="btn primary">
+            <span class="btn-label">Reset Password</span>
+            <span class="btn-spinner" aria-hidden="true"></span>
+          </button>
+
+          <button id="cancelBtn" type="button" class="btn ghost">Cancel</button>
+        </div>
+
+        <div id="feedback-password" class="feedback" role="status" aria-live="polite"></div>
+      </section>
+
+      <!-- Step 4: Success -->
+      <section id="stepSuccess" class="step" aria-live="polite" aria-labelledby="stepSuccessTitle">
+        <h2 id="stepSuccessTitle" class="sr-only">Success</h2>
+        <div class="success-wrap">
+          <div class="success-check" aria-hidden="true">✔</div>
+          <h3>Password reset successful</h3>
+          <p class="muted">You will be redirected to the login page shortly.</p>
+          <div class="small muted">If not redirected, <a href="login.html">click here</a>.</div>
+        </div>
+      </section>
+
+    </form>
+
+    <!-- Footer -->
+    <p class="hint">
+      If you don't receive the email, check spam or contact your school admin.
+    </p>
+    <div class="card-foot">
+      <a href="login.html" class="btn link">Back to Login</a>
+    </div>
+
+  </section>
+</main>
+
+<footer>
+  <p style="text-align: center;">&copy; Muts Tech <script>document.write(new Date().getFullYear());</script>. All rights reserved.</p>
+</footer>
+
+<script src="js/reset.js"></script>
+</body>
+</html>

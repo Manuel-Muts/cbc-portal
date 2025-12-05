@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CBC Student Portal</title>
+  <link rel="stylesheet" href="css/style.css" />
+  <link rel="icon" type="image/png" href="images/child-head.png"/>  
+</head>
+<body>
+  
+  <!-- Header -->
+  <header>
+    <div class="logo">CBC Portal</div>
+    <nav>
+      <ul>
+         <li><a href="index.html" class="active">Home</a></li>
+        <li><a href="login.html">Login</a></li>
+        <!--<li><a href="signup.html">Sign Up</a></li>-->
+        <!--WIP: Add a link to the contact page-->
+        <li><a href="contact.html">Contact</a></li>
+      </ul>
+    </nav>
+    <div class="menu-toggle">&#9776;</div>
+  </header>
+
+  <!-- Hero Section -->
+  <section class="hero">
+    <div class="hero-content">
+      <h1>Empowering CBC Learning with Smart Insights</h1>
+      <p>Track progress, get AI-powered feedback, and learn better every day.</p>
+      <a href="login.html" class="btn">Get Started</a>
+    </div>
+  </section>
+</section>
+  <!-- Features -->
+  <section class="features">
+    <h2>Key Features</h2>
+    <div class="feature-grid">
+      <div class="feature-card">
+        <h3>📊 Progress Tracking</h3>
+        <p>Monitor your learning milestones and CBC competencies in real time.</p>
+      </div>
+      <div class="feature-card">
+        <h3>🧠 AI Recommendations</h3>
+        <p>Receive personalized feedback and study suggestions based on your performance.</p>
+      </div>
+      <div class="feature-card">
+        <h3>👩‍🏫 Teacher Dashboard</h3>
+        <p>Teachers can record marks, analyze performance, and generate reports.</p>
+      </div>
+      <div class="feature-card">
+        <h3>👨‍🎓 Student-Friendly Interface</h3>
+        <p>Simple, clear, and responsive design for all devices.</p>
+      </div>
+    </div>
+  </section>
+  <!-- Footer -->
+  <footer>
+  <p>&copy; Muts Tech <script>document.write(new Date().getFullYear());</script>. All rights reserved.</p>
+</footer>
+
+  <!-- JS for mobile menu -->
+  <script>
+    const menuToggle = document.querySelector('.menu-toggle');
+    const nav = document.querySelector('nav ul');
+    menuToggle.addEventListener('click', () => {
+      nav.classList.toggle('active');
+    });
+  </script>
+</body>
+</html>

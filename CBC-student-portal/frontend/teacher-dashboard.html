@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Teacher Dashboard</title>
+  <link rel="stylesheet" href="css/teachers.css" />
+  <link rel="icon" href="https://cdn-icons-png.flaticon.com/512/1077/1077012.png" />
+  
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.28/jspdf.plugin.autotable.min.js"></script>
+  <!-- Google Font -->
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600&display=swap" rel="stylesheet">
+</head>
+<body>
+  <div id="toastContainer"></div>
+
+  <header>
+    <h1>Welcome, <span id="teacherName"></span></h1>
+    <button id="logoutBtn">Logout</button>
+  
+  </header>
+
+  <main>
+    <!-- =================== MARKS ENTRY =================== -->
+    <section class="marks-section">
+      <h2>Enter Student Marks</h2>
+      <form id="marks-form">
+        <div class="form-group">
+          <label>Grade Range</label>
+          <select id="gradeRange" required>
+            <option value="">-- Select Range --</option>
+            <option value="1-3">Grade 1 - 3</option>
+            <option value="4-6">Grade 4 - 6</option>
+            <option value="7-9">Grade 7 - 9</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label>Actual Grade</label>
+          <select id="actualGrade" required>
+            <option value="">-- Select Grade --</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label>Student Admission No</label>
+          <input type="text" id="admissionNo" placeholder="ADM001" required />
+        </div>
+        <div class="form-group">
+          <label>Student Name</label>
+          <input type="text" id="studentName" placeholder="Auto-filled" readonly />
+        </div>
+
+        <div class="form-group">
+          <label>Subject</label>
+          <select id="subject" required>
+            <option value="">-- Select Subject --</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label>Score (%)</label>
+          <input type="number" id="score" placeholder="78" min="0" max="100" required />
+        </div>
+
+        <div class="form-group">
+          <label>Term</label>
+          <select id="term" required>
+  <option value="">-- Select Term --</option>
+  <option value="1">Term 1</option>
+  <option value="2">Term 2</option>
+  <option value="3">Term 3</option>
+</select>
+
+        </div>
+
+        <div class="form-group">
+          <label>Year</label>
+          <input type="number" id="year" value="2025" min="2025" max="2090" required />
+        </div>
+
+        <div class="form-group">
+          <label>Assessment</label>
+          <select id="assessmentSelect" required></select>
+        </div>
+
+
+        <button type="submit" class="btn">Submit Marks</button>
+      </form>
+    
+    </section>
+    <button id="smartRefreshBtn" class="smart-refresh">⟳ Refresh</button>
+    <!-- =================== SUBMITTED MARKS TABLES =================== -->
+     
+    <section class="marks-table">
+      <input 
+  type="text" 
+  id="marksSearchBox" 
+  placeholder="Search by name, admission, subject, grade, term..."
+  class="search-input"
+/>
+      <h2>Submitted Marks</h2>
+      <div id="submittedMarksContainer"></div>
+    </section>
+
+    <!-- =================== STUDY MATERIALS =================== -->
+    <section class="materials-section">
+      <h2>Upload Study Materials/Assignments</h2>
+      <form id="materials-form">
+        
+        <div class="form-group">
+          <label>Grade Level</label>
+          <select id="materialGrade" required>
+            <option value="">-- Select Grade --</option>
+            <option value="1">Grade 1</option>
+            <option value="2">Grade 2</option>
+            <option value="3">Grade 3</option>
+            <option value="4">Grade 4</option>
+            <option value="5">Grade 5</option>
+            <option value="6">Grade 6</option>
+            <option value="7">Grade 7</option>
+            <option value="8">Grade 8</option>
+            <option value="9">Grade 9</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label>Subject</label>
+          <select id="materialSubject" required>
+            <option value="">-- Select Subject --</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label>Title</label>
+          <input type="text" id="materialTitle" placeholder="Chapter 1 Notes" required />
+        </div>
+
+        <div class="form-group">
+          <label>Description</label>
+          <textarea id="materialDescription" rows="3" placeholder="Brief description" required></textarea>
+        </div>
+
+        <div class="form-group">
+          <label>PDF/Word</label>
+          <input type="file" id="materialLink" accept=".pdf,.doc,.docx" required />
+        </div>
+
+        <button type="submit" class="btn">Upload Material</button>
+      </form>
+
+      <div class="materials-list">
+        <h3>Uploaded Materials</h3>
+        <table>
+          <thead>
+            <tr>
+              <th>Grade</th>
+              <th>Subject</th>
+              <th>Title</th>
+              <th>Description</th>
+              <th>File</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="materialsList"></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <script src="js/teachers.js"></script>
+</body>
+</html>

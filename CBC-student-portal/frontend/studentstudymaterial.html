@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Study Materials</title>
+
+  <!-- Teacher table styling -->
+  <link rel="stylesheet" href="css/teachers.css" />
+  <!-- Google Font -->
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600&display=swap" rel="stylesheet">
+  <!-- Optional student-specific styles -->
+  <link rel="stylesheet" href="css/studentstudymaterial.css" />
+</head>
+<body>
+  <section class="study-materials">
+   <h3><a href="student-dashboard.html" class="back-link">Back</a></h3>
+    <h2>📚 Study Materials/Assignments</h2>
+
+    <!-- Filters -->
+    <div class="materials-filter">
+      <select id="materialGradeFilter">
+        <option value="">All Grades</option>
+        <option value="1">Grade 1</option>
+        <option value="2">Grade 2</option>
+        <option value="3">Grade 3</option>
+        <option value="4">Grade 4</option>
+        <option value="5">Grade 5</option>
+        <option value="6">Grade 6</option>
+        <option value="7">Grade 7</option>
+        <option value="8">Grade 8</option>
+        <option value="9">Grade 9</option>
+      </select>
+
+      <select id="materialSubjectFilter">
+        <option value="">All Subjects</option>
+      </select>
+    </div>
+
+    <!-- Materials Table Container -->
+    <div class="materials-table-container" id="studyMaterialsList">
+      <!-- The table will be dynamically injected here by JS -->
+    </div>
+  </section>
+
+  <!-- JS -->
+  <script src="js/studentstudymaterial.js"></script>
+</body>
+</html>

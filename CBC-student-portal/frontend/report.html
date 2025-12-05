@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Student Report Form</title>
+  <link rel="stylesheet" href="css/report.css">
+  <!-- Include html2pdf.js library -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+</head>
+<body>
+
+  <div class="report-container">
+
+    <!-- Header -->
+    <header class="report-header">
+      <img src="images\example.png" alt="School Logo" class="school-logo">
+      <div class="school-info">
+        <h1 id="schoolName">CBC Academy</h1>
+        <p>P.O. Box 12345 – Nairobi</p>
+      </div>
+    </header>
+
+    <hr>
+
+    <!-- Student Info -->
+    <section class="student-info">
+      <p><strong>Name:</strong> <span id="studentName">Loading...</span></p>
+      <p><strong>Admission No:</strong> <span id="admissionNo">Loading...</span></p>
+      <p><strong>Grade/Class:</strong> <span id="studentGrade">Loading...</span></p>
+      <p><strong>Term:</strong> <span id="studentTerm">Loading...</span></p>
+      <p><strong>Year:</strong> <span id="studentYear">Loading...</span></p>
+    </section>
+
+    <!-- Marks Table -->
+    <section class="marks-section">
+      <h2>Academic Performance</h2>
+      <table id="marksTable">
+        <thead>
+          <tr>
+            <th>Subject</th>
+            <th>Marks</th>
+            <th>CBC Level</th>
+            <th>Remarks</th>
+            <th>Term</th>
+            <th>Year</th>
+          </tr>
+        </thead>
+        <tbody>
+          <!-- JS inserts subjects dynamically -->
+        </tbody>
+      </table>
+
+      <div class="summary">
+        <p><strong>Total Marks:</strong> <span id="totalMarks">0</span></p>
+        <p><strong>Mean Score:</strong> <span id="meanScore">0</span></p>
+      </div>
+    </section>
+
+    <!-- Remarks -->
+    <section class="remarks-section">
+      <h2>Remarks</h2>
+      <p><strong>Class Teacher’s Comment:</strong> <span id="teacherComment">Loading...</span></p>
+      <p><strong>Headteacher’s Comment:</strong> <span id="headComment">Loading...</span></p>
+    </section>
+
+    <!-- Signatures -->
+    <section class="signatures">
+      <div class="signature-line">
+        <span>__________________________</span>
+        <p>Class Teacher</p>
+      </div>
+      <div class="signature-line">
+        <span>__________________________</span>
+        <p>Head Teacher</p>
+      </div>
+      <p class="date-line">Date: <span id="reportDate">Loading...</span></p>
+    </section>
+
+      </div> <!-- End of report-container -->
+
+  <!-- BUTTONS OUTSIDE REPORT -->
+  <div class="report-controls">
+    <button id="refreshBtn" class="refresh-btn">🔄 Refresh</button>
+    <button id="printBtn" class="print-btn">🖨️ Print Report</button>
+    <button id="downloadBtn" class="download-btn">⬇️ Download PDF</button>
+  </div>
+
+  <!-- SCRIPTS -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"
+  integrity="sha512-G0n8P9i1YliD0rk0Ckz6zGL0bAInNvJqKD52r6bqS+oxluI8DZwxvLxktDP6H8fS1qRQj3KJROa5bbU5QnS8gg=="
+  crossorigin="anonymous"
+  referrerpolicy="no-referrer"></script>
+  <script src="js/report.js"></script>
+</body>
+</html>
+

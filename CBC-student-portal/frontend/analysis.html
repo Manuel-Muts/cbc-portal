@@ -1,0 +1,164 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Class Analysis - CBC Portal</title>
+  <link rel="stylesheet" href="css/analysis.css" />
+  <link rel="icon" href="https://cdn-icons-png.flaticon.com/512/1077/1077012.png" />
+  <style>
+    .ai-feedback {
+      background: #f8f9fa;
+      padding: 10px;
+      border-left: 4px solid #007bff;
+      margin-top: 15px;
+      font-size: 0.9rem;
+      border-radius: 5px;
+    }
+    .highlight-box {
+      background: #eef6ff;
+      padding: 10px;
+      border-radius: 8px;
+      margin-top: 10px;
+    }
+    .highlight-box strong {
+      color: #004a99;
+    }
+    .spacer {
+      margin: 8px 0;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>Class Analysis (Ranking & Subject Performance)</h1>
+      <div class="toolbar">
+  <button id="exportPdf" class="btn small">Export PDF</button>
+  <button id="refreshBtn" class="btn small">Refresh</button>
+  <button id="logoutBtn" class="btn danger small">Logout</button>
+</div>
+
+    </header>
+
+    <div id="teacherInfo" class="teacher-info"></div>
+
+    <div id="notAllowed" class="card muted-center hidden">
+      <div class="small">Only class teachers may view class analysis.</div>
+    </div>
+
+    <div id="analysisWrap" class="hidden">
+      <div class="card">
+        <div class="analysis-controls">
+          <div class="control-block">
+            <label for="gradeFilter">Grade (Your Class):</label>
+            <select id="gradeFilter" class="small" disabled>
+              <option value="">Loading...</option>
+            </select>
+
+            <label for="termFilter">Select Term:</label>
+            <select id="termFilter" class="small">
+              <option value="">All Terms</option>
+              <option value="1">Term 1</option>
+              <option value="2">Term 2</option>
+              <option value="3">Term 3</option>
+            </select>
+
+            <label for="yearFilter">Select Year:</label>
+            <input type="number" id="yearFilter" class="small" min="2025" max="2090" value="2025" />
+
+            <label for="assessmentFilter">Assessment:</label>
+            <select id="assessmentFilter" class="small">
+              <option value="all">All</option>
+              <option value="1">Assessment 1</option>
+              <option value="2">Assessment 2</option>
+              <option value="3">Assessment 3</option>
+              <option value="4">Assessment 4</option>
+              <option value="5">End Term</option>
+            </select>
+
+           <!-- <button id="applyFiltersBtn" class="btn small">Select</button> -->
+          </div>
+
+          <div class="button-block">
+            <button id="generateReport" class="btn small">Generate Report</button>
+          </div>
+        </div>
+
+        <div class="control-block">
+          <label>Analysis Type:</label>
+          <select id="analysisType">
+            <option value="overview">Overview (ranking + subject means)</option>
+            <option value="detailed">Detailed (student subject breakdown)</option>
+          </select>
+        </div>
+
+        <div class="control-block">
+          <label>Include only subjects taught by me?</label>
+          <select id="onlyMySubjects">
+            <option value="yes">Yes</option>
+            <option value="no">No</option>
+          </select>
+        </div>
+
+        <div class="grid">
+          <div>
+            <div class="card" id="rankingCard">
+              <h3>Class Ranking</h3>
+              <div id="rankingTableWrap"></div>
+            </div>
+
+            <div class="card" id="subjectCard">
+              <h3>Subject Performance (Means)</h3>
+              <div id="subjectTableWrap"></div>
+            </div>
+
+            <div class="card hidden" id="detailsCard">
+              <h3>Student Details</h3>
+              <div id="detailsTableWrap"></div>
+            </div>
+          </div>
+
+          <aside>
+            <div class="card">
+              <h4>Quick Stats</h4>
+              <div class="small">Class average: <strong id="classMean">-</strong></div>
+              <div class="small">Highest mean: <strong id="topMean">-</strong></div>
+              <div class="small">Lowest mean: <strong id="lowMean">-</strong></div>
+              <div class="spacer"></div>
+              <div class="small">Top subject: <strong id="topSubject">-</strong></div>
+              <div class="small">Weakest subject: <strong id="lowSubject">-</strong></div>
+              <div class="spacer"></div>
+              <div class="small">Records analysed: <strong id="recordsCount">0</strong></div>
+              <div class="highlight-box">
+            
+              </div>
+            </div>
+          </aside>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h4>Class Mean Trend (Across Assessments)</h4>
+    <canvas id="classTrendChart" height="120"></canvas>
+  </div>
+
+  <!-- Libraries (CDN) - Correct order for PDF export -->
+  <!-- html2canvas must come BEFORE jspdf when using doc.html() -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+
+  <!-- jsPDF (UMD build) -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+
+  <!-- jsPDF AutoTable (after jsPDF) -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.28/jspdf.plugin.autotable.min.js"></script>
+
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+  <!-- Your script -->
+  <script src="js/analysis.js"></script>
+</body>
+</html>

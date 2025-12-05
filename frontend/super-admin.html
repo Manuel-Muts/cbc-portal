@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Super Admin Dashboard</title>
+  <link rel="stylesheet" href="css/super-admin.css">
+</head>
+
+<body>
+   
+  <div class="container">
+
+    <!-- SIDEBAR -->
+    <aside class="sidebar">
+      <h2 class="logo">SUPER ADMIN</h2>
+
+      <ul class="menu">
+        <li class="active" data-page="overview">Overview</li>
+        <li data-page="schools">Schools</li>
+        <li data-page="admins">Admins</li>
+        <li data-page="users">Users</li>
+        <li data-page="analytics">Analytics</li>
+        <li data-page="logs">Logs</li>
+        <li data-page="backups">Backups</li>
+        <li data-page="settings">Settings</li>
+      </ul>
+
+      <button id="logoutBtn" class="logout-btn">Logout</button><br><br>
+      <button id="refreshBtn" class="refresh-btn">Refresh</button>
+    </aside>
+
+    <!-- MAIN CONTENT -->
+    <main class="main">
+      <header class="topbar">
+        <h1 id="pageTitle">Overview</h1>
+      </header>
+
+      <section id="contentArea">
+        <!-- Dynamic pages will load here -->
+        <div class="card">
+          <h2>Welcome Super Admin</h2>
+          <p>Select a menu option to begin.</p>
+        </div>
+      </section>
+
+    </main>
+
+  </div>
+
+  <script src="js/super-admin.js"></script>
+</body>
+</html>
