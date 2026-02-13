@@ -1,4 +1,15 @@
 /* Reset */
+:root {
+  --primary: #2563eb;     /* modern blue */
+  --primary-dark: #1e40af;
+  --bg: #f6f8fb;
+  --card: #ffffff;
+  --text: #1f2937;
+  --muted: #6b7280;
+  --border: #e5e7eb;
+  --radius: 14px;
+}
+
 * {
   margin: 0;
   padding: 0;
@@ -8,13 +19,17 @@
 
 /* Body */
 body {
-  color: #333;
-  background-color: #f8f8f8;
+  font-family: "Inter", "Poppins", system-ui, sans-serif;
+  color: var(--text);
+  background-color: var(--bg);
+  line-height: 1.6;
 }
+
 
 /* Header */
 header {
-  background: #004aad;
+ background: linear-gradient(90deg, var(--primary), var(--primary-dark));
+  box-shadow: 0 4px 20px rgba(0,0,0,0.08);
   color: #fff;
   display: flex;
   justify-content: space-between;
@@ -56,27 +71,89 @@ nav ul li a.active {
 
 /* Hero Section */
 .hero {
-  background: linear-gradient(rgba(0,0,0,0.6), rgba(0,0,0,0.6)),
-              url('https://images.unsplash.com/photo-1588072432836-e10032774350') center/cover no-repeat;
-  color: #fff;
   height: 90vh;
   display: flex;
   align-items: center;
   justify-content: center;
   text-align: center;
   padding: 0 20px;
+  color: #fff;
+  position: relative;
+  overflow: hidden;
+
+  animation: heroSlider 24s infinite;
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
 }
 
+.hero::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: rgba(0,0,0,0.6);
+  z-index: 1;
+}
+
+.hero-content {
+  position: relative;
+  z-index: 2;
+  animation: contentZoom 24s infinite;
+}
+
+/* HERO IMAGE SLIDER */
+@keyframes heroSlider {
+  0% {
+    background-image: linear-gradient(rgba(0,0,0,.6), rgba(0,0,0,.6)),
+      url("https://images.unsplash.com/photo-1588072432836-e10032774350");
+  }
+  33% {
+    background-image: linear-gradient(rgba(0,0,0,.6), rgba(0,0,0,.6)),
+      url("https://images.unsplash.com/photo-1524995997946-a1c2e315a42f");
+  }
+  66% {
+    background-image: linear-gradient(rgba(0,0,0,.6), rgba(0,0,0,.6)),
+      url("https://images.unsplash.com/photo-1509062522246-3755977927d7");
+  }
+  100% {
+    background-image: linear-gradient(rgba(0,0,0,.6), rgba(0,0,0,.6)),
+      url("https://images.unsplash.com/photo-1588072432836-e10032774350");
+  }
+}
+
+/* CONTENT ZOOM EFFECT */
+@keyframes contentZoom {
+  0%, 33% {
+    transform: scale(1);
+  }
+  16% {
+    transform: scale(1.03);
+  }
+  50%, 66% {
+    transform: scale(1);
+  }
+  83% {
+    transform: scale(1.03);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+/* HERO TEXT */
 .hero h1 {
   font-size: 2.2em;
   margin-bottom: 10px;
+  transition: all 0.5s ease;
 }
 
 .hero p {
   font-size: 1.1em;
   margin-bottom: 20px;
+  transition: all 0.5s ease;
 }
 
+/* CTA BUTTON ANIMATION */
 .btn {
   display: inline-block;
   background: #ffdd57;
@@ -85,12 +162,43 @@ nav ul li a.active {
   border-radius: 25px;
   text-decoration: none;
   font-weight: bold;
-  transition: 0.3s;
+  transition: all 0.3s ease;
+  position: relative;
+  overflow: hidden;
+}
+
+/* Subtle glow effect */
+.btn::after {
+  content: "";
+  position: absolute;
+  top: -50%;
+  left: -50%;
+  width: 200%;
+  height: 200%;
+  background: rgba(255, 255, 255, 0.15);
+  transform: rotate(45deg) translateX(-100%);
+  transition: transform 0.5s ease;
+}
+
+.btn:hover::after {
+  transform: rotate(45deg) translateX(100%);
 }
 
 .btn:hover {
   background: #ffc107;
+  transform: scale(1.05);
 }
+
+/* Optional pulse effect (slightly expand periodically) */
+@keyframes pulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.03); }
+}
+
+.btn {
+  animation: pulse 3s infinite ease-in-out;
+}
+
 
 /* Features */
 .features {
@@ -298,7 +406,7 @@ footer {
   background: #004aad;
   color: white;
   width: 240px;
-  padding: 63px;
+   padding: 24px 18px;
   display: flex;
   flex-direction: column;
   justify-content: space-between;

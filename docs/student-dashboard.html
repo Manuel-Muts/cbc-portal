@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Student Dashboard - CBC Portal</title>
+  <title>Learner - COMPETENCE HUB</title>
   <link rel="stylesheet" href="css/style.css" />
   <link rel="stylesheet" href="css/student.css" />
   <link rel="icon" href="https://cdn-icons-png.flaticon.com/512/1077/1077012.png" />
@@ -25,7 +25,7 @@
   transition: opacity 0.6s ease;
 "></div>
   <aside class="sidebar">
-    <h2>CBC Portal</h2>
+    <h2>LEARNER'S Portal</h2>
     <ul>
       <li class="active"><a href="#">🏠 Dashboard</a></li>
       <li><a href="#">📈 My Performance</a></li>
@@ -36,9 +36,10 @@
 
   <main class="dashboard-main">
     <header class="dashboard-header">
-      <div class="welcome-banner">Welcome, <span id="welcomeName">Student</span></div>
+      <div class="welcome-banner">Welcome, <span id="welcomeName">Learner</span></div>
       <div class="toolbar">
         <button id="refreshBtn" class="btn small primary">Refresh</button>
+        <button id="viewFeeBtn" class="btn small" style="margin-right:8px;">View Fee Structure</button>
         <button id="logoutBtn" class="btn small danger">Logout</button>
       </div>
     </header>
@@ -53,15 +54,17 @@
   Loading marks...
 </div>
 
-    <section id="cbcReportForm">
-      
-      <div class="school-header">
-        <img src="images\example.png" alt="School Logo" class="school-logo" />
-        <div class="school-info">
-          <h2>School Name Here</h2>
-          <p>Motto: <em>Learning for Excellence</em></p>
-        </div>
-      </div>
+<!-- Learner Info Display -->
+<div id="learnerInfoDisplay" style="
+  margin-bottom: 20px;
+  padding: 15px;
+  background: #f9f9f9;
+  border-radius: 8px;
+  border-left: 4px solid #3498db;
+">
+  <p style="margin: 5px 0;"><strong>Grade:</strong> <span id="learnerGradeDisplay">Loading...</span></p>
+  <p style="margin: 5px 0;"><strong>Stream:</strong> <span id="learnerStreamDisplay">N/A</span></p>
+</div>
 
       <div class="filter-bar">
   <label for="termFilter">
@@ -97,7 +100,7 @@
   <button id="applyFiltersBtn" class="btn small primary">Apply Filters</button>
 </div>
 
-      <div id="studentMarks">Loading...</div>
+      <div id="learnerMarks">Loading...</div>
 
       <div class="report-actions">
         <button class="btn primary" onclick="window.location.href='report.html'">View Report Form</button>
@@ -105,7 +108,32 @@
     </section>
   </main>
 
+  <!-- Fee modal -->
+  <div id="feeModal" class="modal hidden">
+    <div class="modal-backdrop"></div>
+    <div class="modal-content" style="width:90%; max-width:800px; max-height:80vh; overflow-y:auto;">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem;">
+        <h3 style="margin:0;">My Fee Structure</h3>
+        <div>
+          <button id="downloadFeeStructurePDF" class="btn small" style="margin-right: 10px;">📄 Fee Structure PDF</button>
+          <button id="downloadFeeStatementPDF" class="btn small" style="margin-right: 10px;">📄 Fee Statement PDF</button>
+          <button class="cancel-btn" onclick="document.getElementById('feeModal').classList.add('hidden')">Close</button>
+        </div>
+      </div>
+      <div style="margin-bottom: 15px;">
+        <label for="feeYearFilter" style="font-weight: bold;">Academic Year:</label>
+        <select id="feeYearFilter" style="margin-left: 10px; padding: 5px;">
+          <!-- Populated dynamically via JS -->
+        </select>
+        <button id="feeFilterBtn" class="btn small" style="margin-left: 10px;">Filter</button>
+      </div>
+      <div id="feeModalBody">Loading...</div>
+    </div>
+  </div>
+
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
   <script src="js/student.js"></script>
 </body>
 </html>

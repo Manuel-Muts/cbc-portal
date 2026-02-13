@@ -1,9 +1,10 @@
+<!--ANALYSIS.HTML(CLASSTEACHERS)-->
 <!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Class Analysis - CBC Portal</title>
+  <title>CLASS ANALYSIS</title>
   <link rel="stylesheet" href="css/analysis.css" />
   <link rel="icon" href="https://cdn-icons-png.flaticon.com/512/1077/1077012.png" />
   <style>
@@ -32,7 +33,14 @@
 <body>
   <div class="container">
     <header>
-      <h1>Class Analysis (Ranking & Subject Performance)</h1>
+          <div id="schoolHeader" class="school-header">
+          <img id="schoolLogo" class="school-logo hidden" alt="School Logo" />
+          <div>
+            <h1 id="schoolName">Class Analysis (Ranking & Subject Performance)</h1>
+            <div id="schoolAddress" class="school-address"></div>
+          </div>
+        </div>
+
       <div class="toolbar">
   <button id="exportPdf" class="btn small">Export PDF</button>
   <button id="refreshBtn" class="btn small">Refresh</button>
@@ -42,6 +50,10 @@
     </header>
 
     <div id="teacherInfo" class="teacher-info"></div>
+
+    <div id="classStreamInfo" class="card" style="background: #f0f8ff; border-left: 4px solid #2196F3; margin-bottom: 15px;">
+      <strong>Class Stream:</strong> <span id="streamDisplay">Loading...</span>
+    </div>
 
     <div id="notAllowed" class="card muted-center hidden">
       <div class="small">Only class teachers may view class analysis.</div>
@@ -55,7 +67,17 @@
             <select id="gradeFilter" class="small" disabled>
               <option value="">Loading...</option>
             </select>
+          </div>
 
+          <div class="control-block">
+            <label for="streamFilterSelect">Stream (if applicable):</label>
+            <select id="streamFilterSelect" class="small">
+              <option value="">All Leaners (Whole Class)</option>
+              <option value="assigned">My Stream Only</option>
+            </select>
+          </div>
+
+          <div class="control-block">
             <label for="termFilter">Select Term:</label>
             <select id="termFilter" class="small">
               <option value="">All Terms</option>
@@ -63,10 +85,14 @@
               <option value="2">Term 2</option>
               <option value="3">Term 3</option>
             </select>
+          </div>
 
+          <div class="control-block">
             <label for="yearFilter">Select Year:</label>
-            <input type="number" id="yearFilter" class="small" min="2025" max="2090" value="2025" />
+            <input type="number" id="yearFilter" class="small" min="2025" max="2090" />
+          </div>
 
+          <div class="control-block">
             <label for="assessmentFilter">Assessment:</label>
             <select id="assessmentFilter" class="small">
               <option value="all">All</option>
@@ -76,29 +102,10 @@
               <option value="4">Assessment 4</option>
               <option value="5">End Term</option>
             </select>
-
-           <!-- <button id="applyFiltersBtn" class="btn small">Select</button> -->
-          </div>
-
-          <div class="button-block">
-            <button id="generateReport" class="btn small">Generate Report</button>
           </div>
         </div>
 
-        <div class="control-block">
-          <label>Analysis Type:</label>
-          <select id="analysisType">
-            <option value="overview">Overview (ranking + subject means)</option>
-            <option value="detailed">Detailed (student subject breakdown)</option>
-          </select>
-        </div>
-
-        <div class="control-block">
-          <label>Include only subjects taught by me?</label>
-          <select id="onlyMySubjects">
-            <option value="yes">Yes</option>
-            <option value="no">No</option>
-          </select>
+          <button id="generateReport" class="btn primary">Generate Report</button>
         </div>
 
         <div class="grid">

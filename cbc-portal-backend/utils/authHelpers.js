@@ -53,8 +53,13 @@ export const generateRawPassword = (role, admissionNumber) => {
       return 'CT-' + Math.random().toString(36).slice(-8).toUpperCase();
     case 'admin':
       return 'ADMIN-' + Math.random().toString(36).slice(-8).toUpperCase();
+    case 'accounts':
+      return 'ACCT-' + Math.random().toString(36).slice(-8).toUpperCase();
+    case 'super_admin':
+      return 'SUPER-' + Math.random().toString(36).slice(-8).toUpperCase();
     default:
-      throw new Error('Invalid role');
+      // fallback: generate a short random password
+      return Math.random().toString(36).slice(-10).toUpperCase();
   }
 };
 

@@ -111,7 +111,7 @@ export const requestReset = async (req, res) => {
 // ============================================================
 // 2️⃣ VERIFY RESET CODE
 // ============================================================
-export const verifyResetCode = async (req, res) => {
+   export const verifyResetCode = async (req, res) => {
   const { email, code } = req.body;
 
   if (!email || !code)

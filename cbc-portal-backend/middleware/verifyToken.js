@@ -1,61 +1,75 @@
-// middleware/verifyToken.js
-import jwt from 'jsonwebtoken';
-import { User } from '../models/User.js';
-
-// Normalize roles for hierarchy checks
-const ROLE_HIERARCHY = {
-  super_admin: 3,
-  admin: 2,
-  teacher: 1,
-  classteacher: 1,
-  student: 0
-};
+//middleware/verifyToken
+import jwt from "jsonwebtoken";
+import { User } from "../models/User.js";
+import { School } from "../models/school.js";
 
 const verifyToken = async (req, res, next) => {
-  const authHeader = req.headers.authorization;
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    return res.status(401).json({ msg: 'No token provided' });
-  }
-
-  const token = authHeader.split(' ')[1];
-
   try {
+    const header = req.headers.authorization;
+    if (!header || !header.startsWith("Bearer ")) {
+      return res.status(401).json({ message: "No token provided" });
+    }
+
+    const token = header.split(" ")[1];
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
-    const user = await User.findById(decoded.id).select('-password');
-    if (!user) return res.status(401).json({ msg: 'User not found' });
+    const user = await User.findById(decoded.id);
+    if (!user) return res.status(401).json({ message: "Invalid token" });
 
-    const roles = decoded.roles || [user.role];
-    const role = decoded.role || user.role;
-    const schoolId = decoded.schoolId ?? (user.schoolId ? String(user.schoolId) : null);
+    const rolesNeedingSchool = ["admin", "accounts", "teacher", "student", "learner", "parent", "classteacher"];
+    if (rolesNeedingSchool.includes(user.role) && !user.schoolId) {
+      return res.status(403).json({ message: "Your account is not assigned to a school" });
+    }
+
+    let school = null;
+    if (user.schoolId) {
+      school = await School.findById(user.schoolId).select("status version");
+      if (!school) {
+        return res.status(403).json({ message: "Your school does not exist. Contact admin." });
+      }
+
+     // Only enforce version check if token contains schoolVersion
+          if (
+            decoded.schoolVersion !== undefined &&
+            decoded.schoolVersion !== school.version
+          ) {
+            return res.status(403).json({
+              message: "Your session has expired due to school status change. Please log in again."
+            });
+          }
+
+
+      if (school.status === "Suspended") {
+        return res.status(403).json({ message: "Your school is suspended. Contact admin." });
+      }
+    }
 
     req.user = {
       id: user._id.toString(),
       name: user.name,
-      email: user.email,
-      admission: user.admission,
-      role, // canonical role
-      roles,
-      isClassTeacher: !!user.isClassTeacher,
-      passwordMustChange: !!user.passwordMustChange,
-      classGrade: decoded.classGrade ?? (user.assignedClass ? String(user.assignedClass) : null),
-      schoolId,
-      // convenience function for hierarchy checks
+      role: user.role,
+      roles: [user.role].concat(
+        user.isClassTeacher && user.role !== "classteacher" ? ["classteacher"] : []
+      ),
+      schoolId: user.schoolId ? String(user.schoolId) : null,
+      isClassTeacher: user.isClassTeacher || false,
+      classGrade: user.classGrade || null, // ✅ 
+      isSuperAdmin: user.role === "super_admin",
+      isSchoolAdmin: user.role === "admin",
+      admission: user.admission || null,
       canCreate: (targetRole) => {
-        return ROLE_HIERARCHY[role] > ROLE_HIERARCHY[targetRole];
-      },
-      isSuperAdmin: role === 'super_admin',
-      isSchoolAdmin: role === 'admin'
-    };
-
-    if (process.env.DEBUG === "true") {
-      console.log("🔑 verifyToken attached user:", req.user);
+      if (user.role === "super_admin") return true;
+      if (user.role === "admin") {
+        return ["teacher", "student", "learner", "classteacher", "accounts"].includes(targetRole);
+      }
+      return false;
     }
+    };
 
     next();
   } catch (err) {
-    console.error('VerifyToken Error:', err);
-    res.status(401).json({ msg: 'Invalid or expired token' });
+    console.error("Verify Token Error:", err);
+    return res.status(401).json({ message: "Token invalid or expired" });
   }
 };
 

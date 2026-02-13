@@ -1,4 +1,5 @@
-import express from 'express';
+// routes/userRoutes.js
+import express from "express";
 import {
   registerUser,
   loginUser,
@@ -9,109 +10,88 @@ import {
   assignSubjects,
   assignClassTeacher,
   getSubjectAllocations,
+  getMyAllocations,
   getUser,
   removeSubjectAllocation,
   removeClassTeacher,
   getClassTeacherAllocations,
   getStudentByAdmission,
   changePassword
-} from '../controllers/userController.js';
+} from "../controllers/userController.js";
 
-import verifyToken from '../middleware/verifyToken.js';
+import verifyToken from "../middleware/verifyToken.js";
+import { getMySchool } from '../controllers/schoolController.js';
+import { recordPayment, getStudentLedger, reversePayment, getMyFeeStructure, getMyBalance, getMyPayments } from "../controllers/paymentController.js";
+import { initiateSTK } from "../controllers/mpesaController.js";
+import { accountsOnly } from "../middleware/roleChecks.js";
 
 const router = express.Router();
 
-// 🔓 Public routes
-router.post('/login', loginUser);
-
-// 👤 User profile route (protected)
-router.get('/user', verifyToken, getUser);
-router.put('/change-password', verifyToken, changePassword);
 // ---------------------------
-// Admin-only / Super-admin routes
+// Helper middleware
 // ---------------------------
-
-// Register users (super_admin can create anyone, school admin can create teachers/students)
-router.post('/register', verifyToken, (req, res, next) => {
-  if (!req.user || (!req.user.isSuperAdmin && !req.user.isSchoolAdmin)) {
-    return res.status(403).json({ msg: 'Only admins can register users' });
+const requireAdmin = (req, res, next) => {
+  if (!['admin', 'super_admin'].includes(req.user.role)) {
+    return res.status(403).json({ msg: "Only admins can perform this action" });
   }
   next();
-}, registerUser);
-
-// Resend credentials (admin only)
-router.post('/resend-credentials', verifyToken, (req, res, next) => {
-  if (!req.user || (!req.user.isSuperAdmin && !req.user.isSchoolAdmin)) {
-    return res.status(403).json({ msg: 'Only admins can resend credentials' });
-  }
-  next();
-}, resendCredentials);
+};
 
 // ---------------------------
-// All routes below require authentication
+// PUBLIC ROUTES
+// ---------------------------
+router.post("/login", loginUser);
+
+// ---------------------------
+// AUTHENTICATED ROUTES
 // ---------------------------
 router.use(verifyToken);
 
-// 👤 Student route
-router.get('/student/:admission', getStudentByAdmission);
+router.get("/user", getUser);
+router.put("/change-password", changePassword);
 
+// ---------------------------
+// STUDENT ROUTES
+// ---------------------------
+// Only authenticated users can fetch students
+router.get("/student/:admission", getStudentByAdmission);
 
-// 🧑‍🏫 Class teacher management (admin only)
-router.post('/classes/assign-teacher', (req, res, next) => {
-  if (!req.user.canCreate('classteacher') && !req.user.isSuperAdmin) {
-    return res.status(403).json({ msg: 'Only admins can assign class teachers' });
-  }
-  next();
-}, assignClassTeacher);
+// after router initialization
+router.get('/my-school', getMySchool);
 
-router.post('/classes/remove', (req, res, next) => {
-  if (!req.user.canCreate('classteacher') && !req.user.isSuperAdmin) {
-    return res.status(403).json({ msg: 'Only admins can remove class teachers' });
-  }
-  next();
-}, removeClassTeacher);
+// ---------------------------
+// USER MANAGEMENT
+// ---------------------------
+router.post("/register", requireAdmin, registerUser);
+router.post("/resend-credentials", requireAdmin, resendCredentials);
+router.get("/", requireAdmin, getAllUsers);
+router.put("/:id", requireAdmin, updateUser);
+router.delete("/:id", requireAdmin, deleteUser);
 
-// 👥 User management (admin only)
-router.get('/', (req, res, next) => {
-  if (!req.user.isSuperAdmin && !req.user.isSchoolAdmin) {
-    return res.status(403).json({ msg: 'Only admins can view users' });
-  }
-  next();
-}, getAllUsers);
+// ---------------------------
+// CLASS TEACHER MANAGEMENT
+// ---------------------------
+router.post("/classes/assign-teacher", requireAdmin, assignClassTeacher);
+router.post("/classes/remove", requireAdmin, removeClassTeacher);
+router.get("/allocations", getClassTeacherAllocations);
 
-router.put('/:id', (req, res, next) => {
-  if (!req.user.isSuperAdmin && !req.user.isSchoolAdmin) {
-    return res.status(403).json({ msg: 'Only admins can update users' });
-  }
-  next();
-}, updateUser);
+// ---------------------------
+// ACCOUNTS ROUTES
+// ---------------------------
+router.post("/record", accountsOnly, recordPayment);
+router.get("/ledger/:admission", accountsOnly, getStudentLedger);
+router.get('/my-fees', getMyFeeStructure);
+router.get('/my-balance', getMyBalance);
+router.get('/my-payments', getMyPayments);
+router.post("/reverse", accountsOnly, reversePayment);
+router.post("/stk-push", initiateSTK);
 
-router.delete('/:id', (req, res, next) => {
-  if (!req.user.isSuperAdmin && !req.user.isSchoolAdmin) {
-    return res.status(403).json({ msg: 'Only admins can delete users' });
-  }
-  next();
-}, deleteUser);
-
-// 📚 Academic allocations (admin only)
-router.post('/subjects/assign', (req, res, next) => {
-  if (!req.user.canCreate('teacher') && !req.user.isSuperAdmin) {
-    return res.status(403).json({ msg: 'Only admins can assign subjects' });
-  }
-  next();
-}, assignSubjects);
-
-router.post('/subjects/remove', (req, res, next) => {
-  if (!req.user.canCreate('teacher') && !req.user.isSuperAdmin) {
-    return res.status(403).json({ msg: 'Only admins can remove subject allocations' });
-  }
-  next();
-}, removeSubjectAllocation);
-
-// View subject allocations (any authenticated user)
-router.get('/subjects/allocations', getSubjectAllocations);
-
-// ✅ Class teacher allocations
-router.get('/allocations', getClassTeacherAllocations);
+// ---------------------------
+// SUBJECT MANAGEMENT
+// ---------------------------
+router.post("/subjects/assign", requireAdmin, assignSubjects);
+router.post("/subjects/remove", requireAdmin, removeSubjectAllocation);
+router.get("/subjects/allocations", getSubjectAllocations);
+router.get("/subjects/my-allocations", getMyAllocations);
 
 export default router;

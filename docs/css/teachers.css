@@ -582,3 +582,30 @@ form {
   font-size: 12px;
   margin-left: 10px;
 }
+/* ==============================
+   SCHOOL NAME - PROFESSIONAL GLOW
+============================== */
+#schoolName {
+  display: block;
+  text-align: center;
+  font-size: 2rem;
+  font-weight: 700;
+  color: #2b6cb0; /* matching header blue */
+  text-shadow: 0 0 4px rgba(43, 108, 176, 0.6); /* subtle glow */
+  margin: 20px auto 30px auto; /* space above & below */
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  #schoolName {
+    font-size: 1.8rem;
+    margin-bottom: 25px;
+  }
+}
+
+@media (max-width: 480px) {
+  #schoolName {
+    font-size: 1.6rem;
+    margin-bottom: 20px;
+  }
+}

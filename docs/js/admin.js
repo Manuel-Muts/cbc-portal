@@ -1,3 +1,4 @@
+//admin.js
 (function () {
   // ---------------------------
   // CONFIG + DOM SHORTCUTS
@@ -12,6 +13,12 @@
   }
   console.log("Stored token:", token);
 
+  // DOM shortcuts
+  const schoolNameDisplay = document.getElementById("schoolNameDisplay");
+
+  let schoolInfo = null;
+
+
   // DOM elements
   const registerForm = document.getElementById("registerForm");
   const registerFeedback = document.getElementById("registerFeedback");
@@ -21,6 +28,8 @@
   const gradeRangeSelect = document.getElementById("gradeRange");
   const gradesSelect = document.getElementById("gradesSelect");
   const subjectsSelect = document.getElementById("subjectsSelect");
+  const streamInput = document.getElementById("streamInput"); // 🆕 Stream for subjects
+  const classStreamSelect = document.getElementById("classStreamSelect"); // 🆕 Stream for class teacher
   const subjectAllocTableBody = document.querySelector("#subjectAllocTable tbody");
   const classAllocTableBody = document.querySelector("#classAllocTable tbody");
   const refreshBtn = document.getElementById("refreshBtn");
@@ -37,8 +46,64 @@
   const subjectAllocTable = document.getElementById("subjectAllocTable");
   const classAllocTable = document.getElementById("classAllocTable");
   const usersTable = document.getElementById("usersTable");
+  const fromAcademicYearInput = document.getElementById("fromAcademicYear");
+  const toAcademicYearInput = document.getElementById("toAcademicYear");
+  const previewPromotionBtn = document.getElementById("previewPromotionBtn");
+  const confirmPromotionBtn = document.getElementById("confirmPromotionBtn");
+  const promotionPreviewBody = document.querySelector("#promotionPreviewTable tbody");
+  const studentSearchInput = document.getElementById("studentSearchInput");
+  const studentSearchBtn = document.getElementById("studentSearchBtn");
+   const studentSearchBody = document.getElementById("studentSearchBody");
+
 
   let isRefreshing = false;
+// ---------------------------
+// FETCH SCHOOL INFO
+// ---------------------------
+const BACKEND_URL = "http://localhost:5000";
+
+async function loadSchoolInfo() {
+  try {
+    const res = await fetch(`${API_BASE}/school-info`, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+
+    if (!res.ok) throw new Error("Failed to fetch school info");
+
+    schoolInfo = await res.json();
+    window.schoolInfo = schoolInfo;
+    renderSchoolInfo();
+
+  } catch (err) {
+    console.error("School info error:", err);
+    showToast("Failed to load school info", "error");
+  }
+}
+
+function renderSchoolInfo() {
+  if (!schoolNameDisplay || !schoolInfo) return;
+
+  const logoURL = schoolInfo.logo
+    ? `${BACKEND_URL}${schoolInfo.logo}`   // ✅ ONE PLACE ONLY
+    : "";
+
+  schoolNameDisplay.innerHTML = `
+  <div class="school-header">
+    ${logoURL ? `<img src="${logoURL}" class="school-logo" crossorigin="anonymous">` : ""}
+    <h1 class="school-name">${schoolInfo.name || "School Name"}</h1>
+    <p class="school-address">${schoolInfo.address || ""}</p>
+  </div>
+`;
+
+
+  // For PDF export
+  if (window.schoolLogoElem && logoURL) {
+    schoolLogoElem.crossOrigin = "anonymous";
+    schoolLogoElem.src = logoURL;
+  }
+}
+
+
 
   // ---------------------------
   // SMALL UI HELPERS
@@ -166,6 +231,117 @@
     `;
     document.head.appendChild(style);
   })();
+  const getNextGrade = (currentGrade) => {
+  const normalized = normalizeGrade(currentGrade);
+  const index = GRADE_ORDER.indexOf(normalized);
+
+  if (index === -1 || index === GRADE_ORDER.length - 1) return null;
+  return GRADE_ORDER[index + 1];
+};
+
+// ---------------------------
+// PROMOTION PREVIEW RENDERER (UPDATED)
+// ---------------------------
+function renderPromotionPreview(data = []) {
+  promotionPreviewBody.innerHTML = "";
+
+  if (!data.length) {
+    promotionPreviewBody.innerHTML =
+      `<tr><td colspan="5" style="text-align:center">No students found</td></tr>`;
+    confirmPromotionBtn.disabled = true;
+    return;
+  }
+
+  data.forEach(s => {
+    const tr = document.createElement("tr");
+    tr.dataset.studentId = s.studentId;
+
+    const disabled = s.status !== "active";
+
+    const actionSelect = disabled
+      ? `<select disabled>
+           <option>${s.status.toUpperCase()}</option>
+         </select>`
+      : `<select class="promotion-action">
+           <option value="promote" selected>Promote</option>
+           <option value="repeat">Repeat</option>
+           <option value="transfer">Transfer</option>
+         </select>`;
+
+    tr.innerHTML = `
+      <td>${s.name}</td>
+      <td>${s.admission}</td>
+      <td>${s.currentGrade}</td>
+      <td>${s.nextGrade || "Completed"}</td>
+      <td>${actionSelect}</td>
+    `;
+
+    promotionPreviewBody.appendChild(tr);
+  });
+
+  // Enable confirm if at least one active student exists
+  confirmPromotionBtn.disabled = !data.some(s => s.status === "active");
+}
+
+
+previewPromotionBtn.addEventListener("click", async () => {
+  const year = fromAcademicYearInput.value.trim();
+  if (!year) {
+    showToast("Enter academic year", "error");
+    return;
+  }
+
+  const res = await secureFetch(
+    `${API_BASE}/promotions/preview?academicYear=${year}`
+  );
+
+  if (res) renderPromotionPreview(res.preview);
+});
+
+confirmPromotionBtn.addEventListener("click", async () => {
+  const fromYear = Number(fromAcademicYearInput.value);
+  const toYear = Number(toAcademicYearInput.value);
+
+  const decisions = [];
+
+  document.querySelectorAll("#promotionPreviewTable tbody tr").forEach(tr => {
+    const select = tr.querySelector(".promotion-action");
+    if (!select || select.disabled) return;
+
+    decisions.push({
+      studentId: tr.dataset.studentId,
+      action: select.value
+    });
+  });
+
+  if (!decisions.length) {
+    showToast("No eligible students", "info");
+    return;
+  }
+
+  const ok = await showConfirm({
+    title: "Confirm Promotion",
+    message: `Apply promotion for ${toYear}?`
+  });
+
+  if (!ok) return;
+
+  const res = await secureFetch(`${API_BASE}/promotions/promote`, {
+    method: "POST",
+    body: JSON.stringify({
+      fromAcademicYear: fromYear,
+      toAcademicYear: toYear,
+      decisions
+    })
+  });
+
+  if (res) {
+    showToast("Promotion completed", "success");
+    promotionPreviewBody.innerHTML = "";
+    confirmPromotionBtn.disabled = true;
+  }
+});
+
 
   // ---------------------------
   // API HELPER
@@ -195,9 +371,72 @@
   // GRADE SUBJECTS
   // ---------------------------
   const gradeSubjects = {
-    "1-3": ["Mathematics", "Kiswahili", "English", "Environmental Activities", "Social Studies", "CRE", "Creative Arts and Sports"],
-    "4-6": ["Mathematics", "English", "Kiswahili", "Integrated Science", "Social Studies", "CRE", "Creative Arts and Sports"],
-    "7-9": ["Mathematics", "English", "Kiswahili", "Integrated Science", "Social Studies", "Pre-Technical Studies", "Agriculture", "CRE", "Creative Arts and Sports"]
+    "1-3": ["Mathematics", "Kiswahili", "English", "Environmental Activities", "Social Studies", "Christian Religious Education", "Creative Arts and Sports"],
+    "4-6": ["Mathematics", "English", "Kiswahili", "Integrated Science", "Social Studies", "Christian Religious Education", "Creative Arts and Sports"],
+    "7-9": ["Mathematics", "English", "Kiswahili", "Integrated Science", "Social Studies", "Pre-Technical Studies", "Agriculture", "Christian Religious Education", "Creative Arts and Sports"]
+  };
+
+  // SENIOR SCHOOL PATHWAYS & COURSES (Grade 10-12)
+  const seniorSchoolPathways = {
+    STEM: [
+      "Mathematics",
+      "Biology",
+      "Chemistry",
+      "Physics",
+      "Business Studies",
+      "Computer Studies",
+      "Environmental Science",
+      "Engineering Technology",
+      "Applied Sciences",
+      "Electricity",
+      "Aviation",
+      "Agriculture",
+      "Marine and Fisheries",
+      "Building and Construction",
+      "Woodwork",
+      "Metalwork",
+      "Power Mechanics",
+      "General Science",
+      "Home Science",
+      "Media Technology"
+    ],
+    "Social Sciences": [
+      "History & Citizenship",
+      "Geography",
+      "Mathematics",
+      "Business Studies",
+      "Political Studies",
+      "Christian Religious Education",
+      "Kenya Sign Language",
+      "Literature in English",
+      "Fasihi ya Kiswahili",
+      "Indigenous Language",
+      "Hindu Religious Education",
+      "French",
+      "German",
+      "Islamic Religious Education"
+    ],
+    "Arts & Sports Science": [
+      "French",
+      "Hindu Religious Education",
+      "Mathematics",
+      "Computer Studies",
+      "Literature in English",
+      "Islamic Religious Education",
+      "German",
+      "Fasihi ya Kiswahili",
+      "Kiswahili",
+      "History & Citizenship",
+      "Geography",
+      "Biology",
+      "General Science",
+      "Fine Art",
+      "Film & Media Studies",
+      "Fashion & Design",
+      "Music and Dance",
+      "Theatre and Film",
+      "Sports and Recreation"
+    ]
   };
 
   // ---------------------------
@@ -205,24 +444,43 @@
   // ---------------------------
   function clearElement(el) { if (el) el.innerHTML = ""; }
 
-  function renderUsers(data = []) {
-    if (!usersTableBody) return;
-    const frag = document.createDocumentFragment();
-    data.forEach(u => {
-      const tr = document.createElement("tr");
-      tr.innerHTML = `
-        <td>${u.name}</td>
-        <td>${u.role}</td>
-        <td>${u.role === 'student' ? (u.admission || "") : (u.email || "")}</td>
-        <td class="action-col">
-          <button data-id="${u._id}" class="delete-user-btn">🗑️ Delete</button>
-          ${u.role !== 'student' ? `<button data-id="${u._id}" class="resend-creds-btn">📧 Resend</button>` : ''}
-        </td>
-      `;
-      frag.appendChild(tr);
-    });
-    clearElement(usersTableBody);
-    usersTableBody.appendChild(frag);
+ function renderUsers(data = []) {
+  if (!usersTableBody) return;
+
+  usersTableBody.innerHTML = "";
+  const frag = document.createDocumentFragment();
+
+  data.forEach(u => {
+
+    // ================
+    // EXEMPT SUPER ADMIN
+    // ================
+    if (
+      u.role === "super_admin" ||                   // by role
+      u.email === "admin@admin.com" ||             // by email (adjust if needed)
+      u.isSuperAdmin === true                      // optional backend flag
+    ) {
+      return; // skip rendering this user
+    }
+
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td>${u.name}</td>
+      <td>${u.role}</td>
+      <td>${u.role === "student" ? (u.admission || "") : (u.email || "")}</td>
+      <td class="action-col">
+        <button data-id="${u._id}" class="delete-user-btn">🗑️ Delete</button>
+        ${
+          u.role !== "student"
+            ? `<button data-id="${u._id}" class="resend-creds-btn">📧 Resend</button>`
+            : ""
+        }
+      </td>
+    `;
+    frag.appendChild(tr);
+  });
+
+  usersTableBody.appendChild(frag);
 
     usersTableBody.querySelectorAll(".delete-user-btn").forEach(b => {
       b.onclick = async () => {
@@ -238,13 +496,22 @@
     usersTableBody.querySelectorAll(".resend-creds-btn").forEach(b => {
       b.onclick = async () => {
         const id = b.dataset.id;
+        const email = b.parentElement.previousElementSibling.textContent.trim();
         const ok = await showConfirm({ message: "Resend login credentials to this user?" });
         if (!ok) return;
-        await secureFetch(`${API_BASE}/users/resend-credentials`, { 
-          method: "POST",
-          body: JSON.stringify({ userId: id })
-        });
-        showToast("Credentials re-sent successfully", "success");
+        try {
+          const result = await secureFetch(`${API_BASE}/users/resend-credentials`, { 
+            method: "POST",
+            headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+            body: JSON.stringify({ email: email })
+          });
+          if (result) {
+            showToast("Credentials re-sent successfully", "success");
+          }
+        } catch (err) {
+          console.error("Resend error:", err);
+          showToast("Failed to resend credentials", "error");
+        }
       };
     });
   }
@@ -283,13 +550,14 @@
         frag.appendChild(tr);
       } else {
         allocations.forEach((alloc, index) => {
+          const gradeLabel = alloc.stream ? `Grade ${alloc.grade}${alloc.stream}` : `Grade ${alloc.grade}`;
           const tr = document.createElement("tr");
           tr.innerHTML = `
             <td>${index === 0 ? item.name : ""}</td>
-            <td>${alloc.grade}</td>
+            <td>${gradeLabel}</td>
             <td>${Array.isArray(alloc.subjects) && alloc.subjects.length > 0 ? alloc.subjects.join(", ") : "No subjects allocated"}</td>
             <td>
-              <button class="danger" data-id="${item._id}" data-grade="${alloc.grade}" data-action="remove-subjects">Remove</button>
+              <button class="danger" data-id="${item._id}" data-grade="${alloc.grade}" data-stream="${alloc.stream || ''}" data-action="remove-subjects">Remove</button>
             </td>
           `;
           frag.appendChild(tr);
@@ -306,10 +574,11 @@
     const frag = document.createDocumentFragment();
 
     data.forEach(item => {
+      const classLabel = item.classLabel || (item.assignedStream ? `Grade ${item.assignedClass}${item.assignedStream}` : `Grade ${item.assignedClass}`);
       const tr = document.createElement("tr");
       tr.innerHTML = `
         <td>${item.teacherName}${item.isClassTeacher ? " (Class Teacher)" : ""}</td>
-        <td>${item.assignedClass || ""}</td>
+        <td>${classLabel}</td>
         <td><button class="danger" data-id="${item.teacherId}" data-action="remove-class">Remove</button></td>
       `;
       frag.appendChild(tr);
@@ -348,11 +617,140 @@
     if (!data) { classAllocTableBody.innerHTML = ""; return; }
     renderClassAllocations(data);
   }
+//------------------------
+  //EDIT ENROLLMENT MODAL
+//------------------------
+  async function openEditModal(enrollment) {
+  const modal = document.createElement("div");
+  modal.style = "position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.4);display:flex;justify-content:center;align-items:center;z-index:10000;overflow:auto;";
+  
+  const enrollmentId = enrollment._id || enrollment.id;
+  
+  modal.innerHTML = `
+    <div style="background:#fff;padding:20px;border-radius:8px;min-width:350px;margin:auto;">
+      <h3>Edit Enrollment</h3>
+      <div style="margin:15px 0;">
+        <label>Academic Year:</label>
+        <input type="number" id="editAcademicYear" value="${enrollment.academicYear || ''}" style="width:100%;padding:8px;border:1px solid #ccc;border-radius:4px;">
+      </div>
+      <div style="margin:15px 0;">
+        <label>Grade:</label>
+        <input type="text" id="editGrade" value="${enrollment.grade || ''}" style="width:100%;padding:8px;border:1px solid #ccc;border-radius:4px;">
+      </div>
+      <div style="margin:15px 0;">
+        <label>Stream (Optional):</label>
+        <input type="text" id="editStream" value="${enrollment.stream || ''}" placeholder="e.g., A, B, C" style="width:100%;padding:8px;border:1px solid #ccc;border-radius:4px;">
+      </div>
+      <div style="margin:15px 0;">
+        <label>Status:</label>
+        <select id="editStatus" style="width:100%;padding:8px;border:1px solid #ccc;border-radius:4px;">
+          <option value="active" ${enrollment.status==='active'?'selected':''}>Active</option>
+          <option value="completed" ${enrollment.status==='completed'?'selected':''}>Completed</option>
+          <option value="transferred" ${enrollment.status==='transferred'?'selected':''}>Transferred</option>
+        </select>
+      </div>
+      <div style="display:flex;gap:10px;margin-top:20px;">
+        <button id="saveEditBtn" style="flex:1;padding:10px;background:#2ecc71;color:#fff;border:none;border-radius:4px;cursor:pointer;">Save</button>
+        <button id="cancelEditBtn" style="flex:1;padding:10px;background:#95a5a6;color:#fff;border:none;border-radius:4px;cursor:pointer;">Cancel</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(modal);
 
-  // ---------------------------
-  // FORM SUBMISSIONS
-  // ---------------------------
-  if (registerForm) {
+  document.getElementById("cancelEditBtn").onclick = () => modal.remove();
+
+  document.getElementById("saveEditBtn").onclick = async () => {
+    const updated = {
+      academicYear: document.getElementById("editAcademicYear").value,
+      grade: document.getElementById("editGrade").value,
+      stream: document.getElementById("editStream").value || null,
+      status: document.getElementById("editStatus").value
+    };
+
+    const res = await secureFetch(`${API_BASE}/enrollments/${enrollmentId}`, {
+      method: "PUT",
+      body: JSON.stringify(updated)
+    });
+
+    if (res) {
+      showToast("Enrollment updated successfully", "success");
+      modal.remove();
+      studentSearchBtn.click(); // refresh search results
+    }
+  };
+}
+// ---------------------------
+// STUDENT HISTORICAL DATA LOAD
+// ---------------------------
+async function openHistoryModal(studentId) {
+  const res = await secureFetch(`${API_BASE}/enrollments/history?studentId=${studentId}`);
+  if (!res || !res.history || !res.history.length) {
+    showToast("No enrollment history found", "info");
+    return;
+  }
+
+  const modal = document.createElement("div");
+  modal.style = "position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.4);display:flex;justify-content:center;align-items:center;z-index:10000;overflow:auto;";
+  
+  let rows = "";
+  res.history.forEach(h => {
+    rows += `
+      <tr style="border-bottom:1px solid #e0e0e0;">
+        <td style="padding:10px;text-align:center;">${h.academicYear || "-"}</td>
+        <td style="padding:10px;text-align:center;">${h.grade || "-"}</td>
+        <td style="padding:10px;text-align:center;">${h.term || "-"}</td>
+        <td style="padding:10px;text-align:center;">${h.status}</td>
+        <td style="padding:10px;text-align:center;">${h.promotedFrom ?? "-"}</td>
+        <td style="padding:10px;text-align:center;">${new Date(h.createdAt).toLocaleDateString()}</td>
+      </tr>
+    `;
+  });
+
+  modal.innerHTML = `
+    <div style="background:#fff;padding:20px;border-radius:8px;max-width:700px;margin:auto;max-height:80%;overflow:auto;">
+      <h3 style="margin-top:0;">Enrollment History</h3>
+      <table style="width:100%;border-collapse:collapse;font-size:14px;">
+        <thead style="background:#f5f5f5;border-bottom:2px solid #333;">
+          <tr>
+            <th style="padding:10px;text-align:center;">Year</th>
+            <th style="padding:10px;text-align:center;">Grade</th>
+            <th style="padding:10px;text-align:center;">Term</th>
+            <th style="padding:10px;text-align:center;">Status</th>
+            <th style="padding:10px;text-align:center;">Promoted From</th>
+            <th style="padding:10px;text-align:center;">Created</th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+      <div style="margin-top:20px;text-align:right;">
+        <button id="closeHistoryBtn" style="padding:10px 20px;background:#0078d4;color:#fff;border:none;border-radius:4px;cursor:pointer;">Close</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(modal);
+
+  document.getElementById("closeHistoryBtn").onclick = () => modal.remove();
+}
+
+(async function initialLoad() {
+  if (isRefreshing) return;
+  try { 
+    await Promise.all([
+      loadUsers(), 
+      loadSubjectAllocations(), 
+      loadClassAllocations(),
+      loadSchoolInfo()  // ✅ Fetch school info here
+    ]); 
+  } catch (err) { 
+    console.error("Initial load error:", err); 
+  }
+})();
+
+
+// ---------------------------
+// FORM SUBMISSIONS
+// ---------------------------
+if (registerForm) {
   registerForm.addEventListener("submit", async e => {
     e.preventDefault();
 
@@ -369,35 +767,42 @@
     const name = document.getElementById("userName").value.trim();
     const email = document.getElementById("userEmail").value.trim();
     const admission = document.getElementById("userAdmission").value.trim();
+    const grade = role === "student" ? document.getElementById("studentGrade").value.trim() : null;
+    const stream = role === "student" ? document.getElementById("studentStream").value.trim() : null;
 
     // -------------------
     // Validate inputs
     // -------------------
     if (!role) {
       showFeedback(registerFeedback, "Please select a role", "error");
-      if (submitBtn) submitBtn.disabled = false;
-      Array.from(submitBtn.querySelectorAll(".spinner")).forEach(n => n.remove());
+      resetSubmitBtn();
       return;
     }
 
     if (!name) {
       showFeedback(registerFeedback, "Please enter full name", "error");
-      if (submitBtn) submitBtn.disabled = false;
-      Array.from(submitBtn.querySelectorAll(".spinner")).forEach(n => n.remove());
+      resetSubmitBtn();
       return;
     }
 
-    if (role === "student" && !admission) {
-      showFeedback(registerFeedback, "Admission number is required for students", "error");
-      if (submitBtn) submitBtn.disabled = false;
-      Array.from(submitBtn.querySelectorAll(".spinner")).forEach(n => n.remove());
-      return;
+    // Students: require admission & grade
+    if (role === "student") {
+      if (!admission) {
+        showFeedback(registerFeedback, "Admission number is required for students", "error");
+        resetSubmitBtn();
+        return;
+      }
+      if (!grade) {
+        showFeedback(registerFeedback, "Please select a grade for the student", "error");
+        resetSubmitBtn();
+        return;
+      }
     }
 
-    if (role === "teacher" && !email) {
-      showFeedback(registerFeedback, "Email is required for teachers", "error");
-      if (submitBtn) submitBtn.disabled = false;
-      Array.from(submitBtn.querySelectorAll(".spinner")).forEach(n => n.remove());
+    // Teachers & Accounts: require email
+    if ((role === "teacher" || role === "accounts") && !email) {
+      showFeedback(registerFeedback, "Email is required for this role", "error");
+      resetSubmitBtn();
       return;
     }
 
@@ -405,38 +810,59 @@
     // Build request body
     // -------------------
     const body = { role, name };
-    if (role === "teacher") body.email = email;
-    if (role === "student") body.admission = admission;
+
+    if (role === "student") {
+      body.admission = admission;
+      body.grade = grade;
+      if (stream) {
+        body.stream = stream; // Include stream if provided
+      }
+    } else {
+      // Teacher or Accounts: include email
+      body.email = email;
+    }
 
     // -------------------
     // Make API request
     // -------------------
-    const token = localStorage.getItem("token"); // or however you store it
-     console.log("Register body:", body);
-  const res = await fetch(`${API_BASE}/users/register`, {
-  method: "POST",
-  headers: {
-    "Content-Type": "application/json",
-    "Authorization": `Bearer ${token}`   // ✅ include token
-  },
-  body: JSON.stringify(body)
-});
+    const token = localStorage.getItem("token"); 
+    console.log("Register body:", body);
 
-    if (res) {
-      showFeedback(registerFeedback, "User registered successfully", "info");
-      registerForm.reset();
-      await loadUsers();
-      showToast("User registered", "success");
-    } else {
-      showFeedback(registerFeedback, "Failed to register user", "error");
+    try {
+      const res = await fetch(`${API_BASE}/users/register`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`
+        },
+        body: JSON.stringify(body)
+      });
+
+      if (res && res.ok) {
+        showFeedback(registerFeedback, "User registered successfully", "info");
+        registerForm.reset();
+        await loadUsers();
+        showToast("User registered", "success");
+      } else {
+        const errorText = await res.text();
+        showFeedback(registerFeedback, `Failed to register user: ${errorText}`, "error");
+      }
+    } catch (err) {
+      console.error(err);
+      showFeedback(registerFeedback, "Network error or server issue", "error");
     }
 
-    if (submitBtn) { 
-      submitBtn.disabled = false; 
-      Array.from(submitBtn.querySelectorAll(".spinner")).forEach(n => n.remove());
+    resetSubmitBtn();
+
+    function resetSubmitBtn() {
+      if (submitBtn) { 
+        submitBtn.disabled = false; 
+        Array.from(submitBtn.querySelectorAll(".spinner")).forEach(n => n.remove());
+      }
     }
   });
 }
+
 
 //subject allocation form handler
   if (subjectAllocForm) {
@@ -449,12 +875,13 @@
 const gradeRange = gradeRangeSelect?.value || "";
 const grades = gradesSelect ? Array.from(gradesSelect.selectedOptions).map(opt => opt.value) : [];
 const grade = grades.length > 0 ? grades[0] : ""; // ✅ fix here
+const stream = streamInput?.value?.trim() || null; // 🆕 Get stream from input
 const subjects = subjectsSelect ? Array.from(subjectsSelect.selectedOptions).map(opt => opt.value) : [];
 
 const res = await fetch(`${API_BASE}/users/subjects/assign`, {
   method: 'POST',
   headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-  body: JSON.stringify({ teacherId, gradeRange, grade, subjects }) // ✅ send grade
+  body: JSON.stringify({ teacherId, gradeRange, grade, stream, subjects }) // 🆕 Include stream
 });
 
       if (res && res.ok) { await loadSubjectAllocations(); showToast("Subject allocation saved successfully!", "success"); }
@@ -472,15 +899,16 @@ const res = await fetch(`${API_BASE}/users/subjects/assign`, {
 
     const teacherId = classTeacherSelect?.value || "";
     const assignedClass = classGradeSelect?.value || "";
+    const assignedStream = classStreamSelect?.value?.trim() || null; // 🆕 Get stream from input
 
     const res = await fetch(`${API_BASE}/users/classes/assign-teacher`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-      body: JSON.stringify({ teacherId, assignedClass }) // matches controller
+      body: JSON.stringify({ teacherId, assignedClass, assignedStream }) // 🆕 Include stream
     });
 
     if (res && res.ok) {
-      await loadClassTeacherAllocations(); // should GET /users/classes/allocations and pass to renderClassAllocations
+      await loadClassAllocations(); // should GET /users/classes/allocations and pass to renderClassAllocations
       showToast("Class allocation saved successfully!", "success");
     } else {
       showToast("Failed to save class allocation", "error");
@@ -498,18 +926,42 @@ const res = await fetch(`${API_BASE}/users/subjects/assign`, {
   if (e.target.dataset.action === "remove-subjects") {
     const teacherId = e.target.dataset.id;
     const grade = e.target.dataset.grade; // 👈 capture grade from dataset
-
-    const ok = await showConfirm({ message: `Remove allocation for grade ${grade}?` });
+    let stream = e.target.dataset.stream; // 🆕 capture stream from dataset
+    
+    // Convert empty string or whitespace to null for proper backend matching
+    stream = (stream && stream.trim() && stream.trim() !== '') ? stream.trim() : null;
+    
+    console.log(`[DEBUG] Remove Subject - teacherId: ${teacherId}, grade: ${grade}, stream: ${stream}`);
+    
+    const gradeLabel = stream ? `Grade ${grade}${stream}` : `Grade ${grade}`;
+    const ok = await showConfirm({ message: `Remove allocation for ${gradeLabel}?` });
     if (!ok) return;
 
-    await secureFetch(`${API_BASE}/users/subjects/remove`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
-      body: JSON.stringify({ teacherId, grade }) // 👈 send both teacherId and grade
-    });
-
-    await loadSubjectAllocations();
-    showToast(`Allocation for grade ${grade} removed`, "success");
+    try {
+      console.log(`[DEBUG] Sending remove request with:`, { teacherId, grade, stream });
+      
+      const result = await secureFetch(`${API_BASE}/users/subjects/remove`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+        body: JSON.stringify({ teacherId, grade, stream })
+      });
+      
+      console.log(`[DEBUG] Remove result:`, result);
+      
+      if (result) {
+        // Wait a moment for backend to process
+        await new Promise(r => setTimeout(r, 800));
+        
+        // Reload all allocations to refresh the table
+        await loadSubjectAllocations();
+        showToast(`Subject allocation for ${gradeLabel} removed successfully`, "success");
+      } else {
+        showToast("Failed to remove allocation - please check browser console", "error");
+      }
+    } catch (err) {
+      console.error("[ERROR] Remove allocation error:", err);
+      showToast("Error removing allocation: " + (err.message || "Unknown error"), "error");
+    }
   }
 });
 //remove class allocation handler
@@ -518,11 +970,72 @@ const res = await fetch(`${API_BASE}/users/subjects/assign`, {
       const teacherId = e.target.dataset.id;
       const ok = await showConfirm({ message: "Remove this class allocation?" });
       if (!ok) return;
-      await secureFetch(`${API_BASE}/users/classes/remove`, { method: "POST", body: JSON.stringify({ teacherId }) });
-      await loadClassAllocations();
-      showToast("Class allocation removed", "success");
+      
+      try {
+        const result = await secureFetch(`${API_BASE}/users/classes/remove`, { 
+          method: "POST",
+          headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+          body: JSON.stringify({ teacherId })
+        });
+        
+        if (result) {
+          await loadClassAllocations();
+          showToast("Class allocation removed", "success");
+        } else {
+          showToast("Failed to remove class allocation", "error");
+        }
+      } catch (err) {
+        console.error("Remove class allocation error:", err);
+        showToast("Error removing class allocation", "error");
+      }
     }
   });
+// ---------------------------
+//EDIT ENROLLMENT BUTTON HANDLER
+// ---------------------------
+  studentSearchBody.addEventListener("click", async (e) => {
+  if (!e.target.classList.contains("btn-edit")) return;
+
+  const tr = e.target.closest("tr");
+  const enrollmentId = tr.dataset.enrollmentId;
+
+if (!enrollmentId) {
+  showToast("No enrollment found for this student", "error");
+  return;
+}
+
+const res = await secureFetch(
+  `${API_BASE}/enrollments/${enrollmentId}`
+);
+  try {
+    if (!res) return;
+    
+    openEditModal(res); // render edit form with fetched data
+  } catch (err) {
+    console.error("Edit fetch error:", err);
+    showToast(err.message || "Failed to fetch student data", "error");
+  }
+});
+
+// ---------------------------
+// VIEW HISTORY BUTTON HANDLER
+// ---------------------------
+studentSearchBody.addEventListener("click", async (e) => {
+  const btn = e.target;
+
+  if (!btn.classList.contains("btn-history")) return;
+
+  const tr = btn.closest("tr");
+  const studentId = tr?.dataset.studentId;
+
+  if (!studentId) {
+    showToast("Student ID missing", "error");
+    return;
+  }
+
+  await openHistoryModal(studentId);
+});
+
 
   // ---------------------------
   // SMART REFRESH BUTTON
@@ -571,119 +1084,316 @@ const res = await fetch(`${API_BASE}/users/subjects/assign`, {
   if (gradeRangeSelect) {
     gradeRangeSelect.addEventListener("change", () => {
       const selectedRange = gradeRangeSelect.value;
-      if (gradesSelect) { gradesSelect.innerHTML = ""; gradesSelect.multiple = true; if (selectedRange) { const [start, end] = selectedRange.split("-").map(Number); for (let i=start;i<=end;i++){ const opt=document.createElement("option"); opt.value=i; opt.textContent=`Grade ${i}`; gradesSelect.appendChild(opt); }}}
-      if (subjectsSelect) { subjectsSelect.innerHTML=""; subjectsSelect.multiple=true; if(selectedRange && gradeSubjects[selectedRange]) gradeSubjects[selectedRange].forEach(sub=>{ const opt=document.createElement("option"); opt.value=sub; opt.textContent=sub; subjectsSelect.appendChild(opt); }); }
-    });
-  }
-
-  function setupMultiSelectSelectAll(selectElement, selectAllBtnId, deselectAllBtnId) {
-    if (!selectElement) return;
-    document.getElementById(selectAllBtnId)?.addEventListener("click",()=>Array.from(selectElement.options).forEach(opt=>opt.selected=true));
-    document.getElementById(deselectAllBtnId)?.addEventListener("click",()=>Array.from(selectElement.options).forEach(opt=>opt.selected=false));
-  }
-  setupMultiSelectSelectAll(gradesSelect, "selectAllGradesBtn", "deselectAllGradesBtn");
-  setupMultiSelectSelectAll(subjectsSelect, "selectAllSubjectsBtn", "deselectAllSubjectsBtn");
-
-  // ---------------------------
-  // EXPORT TO PDF
-  // ---------------------------
- function exportTableToPDF(tableId, title) {
-  if (tableId === "usersTable") {
-    // Users table: only visible rows
-    const { jsPDF } = window.jspdf;
-    const doc = new jsPDF();
-    const table = document.getElementById("usersTable");
-    if (!table) return showToast("Table not found", "error");
-
-    const headers = [];
-    const rows = [];
-    table.querySelectorAll("thead th").forEach(th => {
-      const t = th.textContent.trim();
-      if (t.toLowerCase() !== "action") headers.push(t);
-    });
-
-    table.querySelectorAll("tbody tr").forEach(tr => {
-      if (tr.style.display === "none") return; // skip hidden rows
-      const row = [];
-      tr.querySelectorAll("td").forEach((td, i) => {
-        const h = table.querySelectorAll("thead th")[i]?.textContent.trim().toLowerCase();
-        if (h !== "action") row.push(td.textContent.trim());
-      });
-      if (row.length) rows.push(row);
-    });
-
-    const addTableAndSave = () => {
+      if (gradesSelect) { 
+        gradesSelect.innerHTML = ""; 
+        gradesSelect.multiple = true; 
+        if (selectedRange) { 
+          const [start, end] = selectedRange.split("-").map(Number); 
+          for (let i=start;i<=end;i++){ 
+            const opt=document.createElement("option"); 
+            opt.value=i; 
+            opt.textContent=`Grade ${i}`; 
+            gradesSelect.appendChild(opt); 
+          }
+        }
+      }
       
-      doc.setFontSize(12); doc.text(title, 50, 22);
-      doc.setFontSize(10); doc.text(`Exported on: ${new Date().toLocaleString()}`, 50, 28);
-      doc.autoTable({ head: [headers], body: rows, startY: 40, theme: 'grid', styles: { fontSize: 10 } });
-      doc.save(`${title.replace(/\s+/g, "_")}.pdf`);
-    };
+      if (subjectsSelect) { 
+        subjectsSelect.innerHTML=""; 
+        subjectsSelect.multiple=true;
+        
+        // For senior school (10-12), show pathways with courses grouped
+        if (selectedRange === "10-12") {
+          Object.entries(seniorSchoolPathways).forEach(([pathway, courses]) => {
+            const optgroup = document.createElement("optgroup");
+            optgroup.label = pathway;
+            courses.forEach(course => {
+              const opt = document.createElement("option");
+              opt.value = course;
+              opt.textContent = course;
+              optgroup.appendChild(opt);
+            });
+            subjectsSelect.appendChild(optgroup);
+          });
+        } else if(selectedRange && gradeSubjects[selectedRange]) {
+          gradeSubjects[selectedRange].forEach(sub=>{ 
+            const opt=document.createElement("option"); 
+            opt.value=sub; 
+            opt.textContent=sub; 
+            subjectsSelect.appendChild(opt); 
+          }); 
+        }
+      }
+    });
+  }
 
-    const logo = new Image();
-    logo.src = "logo.png";
-    logo.onload = () => addTableAndSave();
-    logo.onerror = () => addTableAndSave();
-  } else {
-    // For other tables, fallback to previous behavior
-    const { jsPDF } = window.jspdf;
-    const doc = new jsPDF();
+// ---------------------------
+// EXPORT TO PDF - SIMPLIFIED APPROACH
+// ---------------------------
+
+function exportTableToPDF(tableId, title) {
+  try {
+    console.log(`[PDF Export] Starting export for table: ${tableId}`);
+    
+    // The UMD build exposes jsPDF at window.jsPDF
+    const jsPDFClass = window.jsPDF || (window.jspdf && window.jspdf.jsPDF);
+    
+    if (!jsPDFClass) {
+      console.error("[PDF Export] jsPDF not available. Window state:", { hasJsPDF: !!window.jsPDF, hasJspdf: !!window.jspdf });
+      showToast("PDF library not loaded. Please refresh the page.", "error");
+      return;
+    }
+
+    console.log(`[PDF Export] jsPDF available`);
+
+    // Get table element
     const table = document.getElementById(tableId);
-    if (!table) return showToast("Table not found", "error");
+    if (!table) {
+      console.error(`[PDF Export] Table ${tableId} not found`);
+      showToast("Table not found", "error");
+      return;
+    }
 
-    const headers = [];
-    const rows = [];
-    table.querySelectorAll("thead th").forEach(th => { 
-      const t = th.textContent.trim();
-      if (t.toLowerCase() !== "action") headers.push(t);
+    console.log(`[PDF Export] Found table: ${tableId}`);
+
+    // Create PDF document
+    const doc = new jsPDFClass({
+      orientation: "portrait",
+      unit: "mm",
+      format: "a4"
     });
-    table.querySelectorAll("tbody tr").forEach(tr => {
-      const row = [];
-      tr.querySelectorAll("td").forEach((td,i)=>{
-        const h = table.querySelectorAll("thead th")[i]?.textContent.trim().toLowerCase();
-        if (h!=="action") row.push(td.textContent.trim());
+
+    console.log(`[PDF Export] PDF document created`);
+
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.getHeight();
+    const marginX = 10;
+    const marginY = 15;
+    let yPosition = marginY;
+
+    // Add school header
+    const school = window.schoolInfo || {};
+    const centerX = pageWidth / 2;
+
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(14);
+    doc.text(school.name || "CBC School", centerX, yPosition, { align: "center" });
+    yPosition += 5;
+
+    if (school.address) {
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(10);
+      doc.text(school.address, centerX, yPosition, { align: "center" });
+      yPosition += 5;
+    }
+
+    // Add title
+    if (title && title.trim()) {
+      yPosition += 3;
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(11);
+      doc.text(title, centerX, yPosition, { align: "center" });
+      yPosition += 5;
+    }
+
+    // Collect table data
+    const headerRow = table.querySelector("thead tr");
+    if (!headerRow) {
+      console.error("[PDF Export] Table header not found");
+      showToast("Table header not found", "error");
+      return;
+    }
+
+    const allHeaders = [];
+    const headerCells = headerRow.querySelectorAll("th");
+    
+    headerCells.forEach((th, idx) => {
+      const text = th.textContent.trim();
+      if (text.toLowerCase() !== "action") {
+        allHeaders.push({ text, idx });
+      }
+    });
+
+    console.log(`[PDF Export] Headers collected: ${allHeaders.length}`);
+
+    if (allHeaders.length === 0) {
+      showToast("No headers found to export", "error");
+      return;
+    }
+
+    const headers = allHeaders.map(h => h.text);
+    const headerIndices = allHeaders.map(h => h.idx);
+
+    // Collect visible rows
+    const tableRows = [];
+    const tbodyRows = table.querySelectorAll("tbody tr");
+    
+    tbodyRows.forEach(tr => {
+      // Skip hidden rows
+      if (tr.style.display === "none") return;
+
+      const cells = tr.querySelectorAll("td");
+      const rowData = [];
+
+      headerIndices.forEach(idx => {
+        if (cells[idx]) {
+          rowData.push(cells[idx].textContent.trim());
+        }
       });
-      rows.push(row);
+
+      if (rowData.length > 0) {
+        tableRows.push(rowData);
+      }
     });
 
-    const addTableAndSave = () => {
-     
-      doc.setFontSize(12); doc.text(title, 50, 22);
-      doc.setFontSize(10); doc.text(`Exported on: ${new Date().toLocaleString()}`, 50, 28);
-      doc.autoTable({ head: [headers], body: rows, startY: 40, theme: 'grid', styles: { fontSize: 10 } });
-      doc.save(`${title.replace(/\s+/g, "_")}.pdf`);
-    };
+    console.log(`[PDF Export] Rows collected: ${tableRows.length}`);
 
-    const logo = new Image();
-    logo.src = "logo.png";
-    logo.onload = () => addTableAndSave();
-    logo.onerror = () => addTableAndSave();
+    if (tableRows.length === 0) {
+      showToast("No data rows to export", "error");
+      return;
+    }
+
+    // Check if autoTable is available on the doc instance
+    const hasAutoTable = typeof doc.autoTable === "function";
+    console.log(`[PDF Export] autoTable available: ${hasAutoTable}`);
+
+    if (hasAutoTable) {
+      console.log(`[PDF Export] Using autoTable plugin`);
+      
+      doc.autoTable({
+        head: [headers],
+        body: tableRows,
+        startY: yPosition,
+        margin: { left: marginX, right: marginX },
+        theme: "grid",
+        styles: {
+          fontSize: 9,
+          cellPadding: 3
+        },
+        headStyles: {
+          fillColor: [41, 128, 185],
+          textColor: [255, 255, 255],
+          fontStyle: "bold",
+          halign: "center"
+        },
+        alternateRowStyles: {
+          fillColor: [240, 240, 240]
+        },
+        didDrawPage: (data) => {
+          // Footer
+          doc.setFontSize(8);
+          doc.setFont("helvetica", "normal");
+          doc.text(
+            `Printed on: ${new Date().toLocaleString()}`,
+            marginX,
+            pageHeight - 8
+          );
+          
+          // Page numbers - use data.pageNumber directly
+          if (data.pageCount && data.pageCount > 1) {
+            doc.text(
+              `Page ${data.pageNumber} of ${data.pageCount}`,
+              pageWidth - marginX - 20,
+              pageHeight - 8,
+              { align: "right" }
+            );
+          }
+        }
+      });
+    } else {
+      console.warn(`[PDF Export] autoTable not available, using fallback table`);
+      
+      // Fallback: Create simple table without autoTable
+      const colWidth = (pageWidth - 2 * marginX) / headers.length;
+      let yPos = yPosition;
+      
+      // Draw headers
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(9);
+      doc.setFillColor(41, 128, 185);
+      doc.setTextColor(255, 255, 255);
+      
+      headers.forEach((header, idx) => {
+        doc.rect(marginX + idx * colWidth, yPos, colWidth, 8, "F");
+        doc.text(header, marginX + idx * colWidth + 1, yPos + 5);
+      });
+      
+      yPos += 8;
+      
+      // Draw rows
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(8);
+      doc.setTextColor(0, 0, 0);
+      
+      tableRows.forEach((row, rowIdx) => {
+        if (yPos > pageHeight - 15) {
+          doc.addPage();
+          yPos = marginY;
+        }
+        
+        row.forEach((cell, colIdx) => {
+          if (rowIdx % 2 === 1) {
+            doc.setFillColor(240, 240, 240);
+            doc.rect(marginX + colIdx * colWidth, yPos, colWidth, 6, "F");
+          }
+          doc.text(cell, marginX + colIdx * colWidth + 1, yPos + 4);
+        });
+        
+        yPos += 6;
+      });
+    }
+
+    // Save the PDF
+    const filename = `${(title || "export").replace(/\s+/g, "_")}.pdf`;
+    doc.save(filename);
+    
+    console.log(`[PDF Export] PDF saved: ${filename}`);
+    showToast(`PDF exported successfully: ${filename}`, "success");
+    
+  } catch (err) {
+    console.error(`[PDF Export] Error:`, err);
+    showToast("Error generating PDF: " + (err.message || "Unknown error"), "error");
   }
 }
 
-
-  exportUsersBtn?.addEventListener("click", () => exportTableToPDF("usersTable", " "));
-  exportSubjectsBtn?.addEventListener("click", () => exportTableToPDF("subjectAllocTable", "Subject Allocations"));
-  exportClassBtn?.addEventListener("click", () => exportTableToPDF("classAllocTable", "Class Teacher Allocations"));
-
-  // ---------------------------
-// EXPORT TO PDF BUTTONS
 // ---------------------------
+// BUTTON HANDLERS - PDF EXPORTS
+// ---------------------------
+if (exportUsersBtn) {
+  exportUsersBtn.addEventListener("click", () => {
+    try {
+      console.log(`[Export] Users button clicked`);
+      exportTableToPDF("usersTable", "Registered Users");
+    } catch (err) {
+      console.error("PDF export error:", err);
+      showToast("Failed to export PDF: " + err.message, "error");
+    }
+  });
+}
 
-// Users table: exclude admins
-exportUsersBtn?.addEventListener("click", () => {
-  exportTableToPDF("usersTable", " ");
-});
+if (exportSubjectsBtn) {
+  exportSubjectsBtn.addEventListener("click", () => {
+    try {
+      console.log(`[Export] Subjects button clicked`);
+      exportTableToPDF("subjectAllocTable", "Subject Allocations");
+    } catch (err) {
+      console.error("PDF export error:", err);
+      showToast("Failed to export PDF: " + err.message, "error");
+    }
+  });
+}
 
-// Subjects table: normal export
-exportSubjectsBtn?.addEventListener("click", () => {
-  exportTableToPDF("subjectAllocTable", "Subject Allocations");
-});
-
-// Class allocations table: normal export
-exportClassBtn?.addEventListener("click", () => {
-  exportTableToPDF("classAllocTable", "Class Teacher Allocations");
-});
+if (exportClassBtn) {
+  exportClassBtn.addEventListener("click", () => {
+    try {
+      console.log(`[Export] Class button clicked`);
+      exportTableToPDF("classAllocTable", "Class Teacher Allocations");
+    } catch (err) {
+      console.error("PDF export error:", err);
+      showToast("Failed to export PDF: " + err.message, "error");
+    }
+  });
+}
 
   // ---------------------------
   // LOGOUT
@@ -697,14 +1407,27 @@ exportClassBtn?.addEventListener("click", () => {
     });
   }
 
+
+
   // ---------------------------
-  // INITIAL LOAD
-  // ---------------------------
-  (async function initialLoad() {
-    if (isRefreshing) return;
-    try { await Promise.all([loadUsers(), loadSubjectAllocations(), loadClassAllocations()]); }
-    catch (err) { console.error("Initial load error:", err); }
-  })();
+// USERS TABLE COLLAPSE
+// ---------------------------
+const toggleUsersBtn = document.getElementById("toggleUsersBtn");
+const usersContent = document.getElementById("usersContent");
+const usersPanelHeader = document.querySelector("#usersPanel .panel-header");
+
+function toggleUsersPanel() {
+  const isCollapsed = usersContent.classList.toggle("collapsed");
+  toggleUsersBtn.textContent = isCollapsed ? "►" : "▼";
+}
+
+if (toggleUsersBtn && usersPanelHeader) {
+  // Clicking header or button both collapse the panel
+  toggleUsersBtn.addEventListener("click", toggleUsersPanel);
+  usersPanelHeader.addEventListener("click", (e) => {
+    if (e.target.id !== "toggleUsersBtn") toggleUsersPanel();
+  });
+}
 
   // ---------------------------
   // BACKWARD-COMPATIBLE GLOBAL FUNCTIONS
@@ -723,5 +1446,53 @@ exportClassBtn?.addEventListener("click", () => {
     await secureFetch(`${API_BASE}/user/resend-credentials`, { method: "POST", body: JSON.stringify({ userId: id }) });
     showToast("Credentials re-sent successfully", "success");
   };
+  // ---------------------------
+// PROMOTION TABLE FILTER
+// ---------------------------
+
+studentSearchBtn.addEventListener("click", async () => {
+  const q = studentSearchInput.value.trim();
+  if (!q) {
+    showToast("Enter name or admission", "info");
+    return;
+  }
+
+  const res = await secureFetch(
+    `${API_BASE}/enrollments/admin-search?q=${encodeURIComponent(q)}`
+  );
+
+  studentSearchBody.innerHTML = "";
+
+  if (!res || !res.results.length) {
+    studentSearchBody.innerHTML =
+      `<tr><td colspan="6" style="text-align:center">No student found</td></tr>`;
+    return;
+  }
+
+ res.results.forEach(s => {
+  const tr = document.createElement("tr");
+
+  tr.dataset.studentId = s.studentId; 
+  tr.dataset.enrollmentId = s.enrollmentId; 
+
+  // Format grade with stream
+  const gradeLabel = s.grade && s.stream ? `${s.grade}${s.stream}` : (s.grade || "-");
+
+  tr.innerHTML = `
+    <td>${s.name}</td>
+    <td>${s.admission}</td>
+    <td>${s.academicYear || "-"}</td>
+    <td>${gradeLabel}</td>
+    <td>${s.status}</td>
+    <td>
+      <button class="btn-history" data-student-id="${s.studentId}" data-student-name="${s.name}" style="padding: 6px 10px; margin-right: 5px; background: #0077b6; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">📋 History</button>
+      <button class="btn-edit" data-enrollment-id="${s.enrollmentId}" data-student-id="${s.studentId}" style="padding: 6px 10px; background: #2ecc71; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">✏️ Edit</button>
+    </td>
+  `;
+
+  studentSearchBody.appendChild(tr);
+});
+
+});
 
 })();

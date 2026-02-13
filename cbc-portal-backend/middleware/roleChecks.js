@@ -20,7 +20,7 @@ export const isAdmin = (req, res, next) => {
 // Student guard
 export const isStudent = (req, res, next) => {
   const roles = getRoles(req.user);
-  if (!roles.includes("student")) {
+  if (!roles.includes("student") && !roles.includes("learner")) {
     return res.status(403).json({ message: "Forbidden: student role required" });
   }
   next();
@@ -41,5 +41,12 @@ export const isClassTeacher = (req, res, next) => {
     return res.status(403).json({ message: "Unauthorized: not the class teacher for this grade" });
   }
 
+  next();
+};
+
+export const accountsOnly = (req, res, next) => {
+  if (!req.user || req.user.role !== "accounts") {
+    return res.status(403).json({ message: "Accounts access only" });
+  }
   next();
 };

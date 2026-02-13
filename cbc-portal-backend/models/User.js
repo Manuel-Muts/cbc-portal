@@ -3,6 +3,7 @@ import mongoose from "mongoose";
 
 const allocationSchema = new mongoose.Schema({
   grade: { type: String, required: true },
+  stream: { type: String, default: null }, // e.g., "W", "E", "A" for Grade 5W, Grade 5E, Grade 5A
   subjects: { type: [String], default: [] }
 });
 
@@ -19,23 +20,25 @@ const userSchema = new mongoose.Schema({
 
   role: {
     type: String,
-    enum: ["student", "teacher", "classteacher", "admin", "super_admin"],
+    enum: ["student", "teacher", "accounts", "classteacher", "admin", "super_admin"],
     required: true
   },
 
   // Each non-super admin user can belong to a school.
-  // super_admin can have null schoolId.
   schoolId: { type: mongoose.Schema.Types.ObjectId, ref: "School", default: null },
-  // Add schoolName for convenience
   schoolName: { type: String, default: null },
 
-
-  email: {
-    type: String,
-    required: function () { return this.role !== "student"; },
-    unique: true,
-    sparse: true
+ email: {
+  type: String,
+  lowercase: true,
+  trim: true,
+  required: function () {
+    return ["teacher", "classteacher", "accounts","admin", "super_admin"].includes(this.role);
   },
+  unique: true,
+  sparse: true
+},
+
 
   admission: {
     type: String,
@@ -48,7 +51,6 @@ const userSchema = new mongoose.Schema({
   // PASSWORDS
   // ------------------------------------
   password: { type: String, required: true },
-
   classTeacherPassword: { type: String, default: null },
   admissionNumber: { type: String },
   passwordMustChange: { type: Boolean, default: false },
@@ -58,7 +60,13 @@ const userSchema = new mongoose.Schema({
   // ------------------------------------
   allocations: { type: [allocationSchema], default: [] },
   assignedClass: { type: String, default: null },
+  assignedStream: { type: String, default: null }, // e.g., "W", "E", "A" for class stream
   isClassTeacher: { type: Boolean, default: false },
+
+  // ------------------------------------
+  // STUDENT ENROLLMENT REFERENCE
+  // ------------------------------------
+  enrollmentId: { type: mongoose.Schema.Types.ObjectId, ref: "StudentEnrollment", default: null },
 
   // ------------------------------------
   // PASSWORD RESET SYSTEM

@@ -3,26 +3,27 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Login - CBC Portal</title>
+  <title>Login - COMPETENCE HUB</title>
   <link rel="stylesheet" href="css/style.css" />
   <link rel="icon" href="https://cdn-icons-png.flaticon.com/512/1077/1077012.png" />
 </head>
 <body class="login-body">
   <div class="login-container">
-    <h2>Login to CBC Portal</h2>
+    <h2>Login</h2>
 
     <form id="loginForm" class="login-form">
       <label for="role">Select Role</label>
       <select id="role" name="role" required>
         <option value="">-- Select Role --</option>
-        <option value="student">Student</option>
+        <option value="learner">Learner</option>
         <option value="teacher">Teacher</option>
         <option value="classteacher">Class Teacher</option>
-        <option value="admin">School Admin</option>
-       <option value="superAdmin">Super Admin</option> 
+        <option value="accounts">Accounts</option>
+        <option value="admin">Admin</option>
+       
       </select>
 
-      <!-- STUDENT FIELD -->
+      <!-- LEARNER FIELD -->
       <label for="firstname" id="firstnameLabel" style="display:none;">Full Name</label>
       <input type="text" id="firstname" name="firstname" placeholder="Enter your full name" style="display:none;">
 
@@ -59,9 +60,12 @@
   </div>
 
   <footer>
-    <p>&copy; Muts Tech <script>document.write(new Date().getFullYear());</script>. All rights reserved.</p>
+    <p>
+© Muts Tech Ltd · Secure CBE Education Platform ·
+<script>document.write(new Date().getFullYear());</script>
+</p>
   </footer>
-
+  
   <script src="http://localhost:5000/js/xlsx.full.min.js"></script>
   <script src="js/login.js"></script>
 </body>

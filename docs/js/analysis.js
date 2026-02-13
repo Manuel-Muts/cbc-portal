@@ -1,3 +1,52 @@
+// ===== ANALYSIS.JS(CLASSTEACHERS) =====
+
+// ===== CBC GRADING HELPERS =====
+const CBC_WEIGHTS = {
+  continuousAssessment: 0.30,
+  projectWork: 0.20,
+  endTermExam: 0.50
+};
+
+function scoreToPerformanceLevel(score) {
+  if (score >= 70) return "EE";
+  if (score >= 60) return "ME";
+  if (score >= 40) return "AE";
+  return "BE";
+}
+
+function getPerformanceLevelLabel(level) {
+  const labels = {
+    EE: "Exceeding Expectations",
+    ME: "Meeting Expectations",
+    AE: "Approaching Expectations",
+    BE: "Below Expectations"
+  };
+  return labels[level] || "Unknown";
+}
+
+//JUNIOR SCHOOL
+function calculateSeniorSchoolFinalScore(mark) {
+  if (!mark) return null;
+  
+  const ca = mark.continuousAssessment;
+  const pw = mark.projectWork;
+  const et = mark.endTermExam;
+
+  if ((ca === null || ca === undefined) && (pw === null || pw === undefined) && (et === null || et === undefined)) {
+    return null;
+  }
+
+  const caVal = ca !== null && ca !== undefined ? Number(ca) : 0;
+  const pwVal = pw !== null && pw !== undefined ? Number(pw) : 0;
+  const etVal = et !== null && et !== undefined ? Number(et) : 0;
+
+  const finalScore = (caVal * CBC_WEIGHTS.continuousAssessment) +
+                     (pwVal * CBC_WEIGHTS.projectWork) +
+                     (etVal * CBC_WEIGHTS.endTermExam);
+
+  return Math.round(finalScore * 10) / 10;
+}
+
 document.addEventListener("DOMContentLoaded", () => {
   // ---------------------------
   // DOM ELEMENTS
@@ -13,6 +62,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const gradeFilter = document.getElementById("gradeFilter");
   const termFilter = document.getElementById("termFilter");
   const yearFilter = document.getElementById("yearFilter");
+  const streamFilterSelect = document.getElementById("streamFilterSelect"); // 🆕 Stream filter
   const onlyMySubjects = document.getElementById("onlyMySubjects");
   const assessmentFilter = document.getElementById("assessmentFilter");
 
@@ -53,7 +103,7 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   // ===== HELPERS =====
-  function getCbcLevel(mean) {
+  function getPerformanceLevel(mean) {
     if (mean >= 80) return "EE";
     if (mean >= 60) return "ME";
     if (mean >= 40) return "AE";
@@ -61,10 +111,25 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   function generateAIFeedback(mean) {
-    if (mean >= 85) return "🚀 Outstanding performance! Encourage advanced tasks and peer mentoring.";
-    if (mean >= 70) return "👍 Good performance. Reinforce collaborative learning and creative thinking.";
-    if (mean >= 50) return "⚠️ Average performance. Focus on targeted interventions for weaker areas.";
+    if (mean >= 80) return "🚀 Outstanding performance! Encourage advanced tasks and peer mentoring.";
+    if (mean >= 60) return "👍 Good performance. Reinforce collaborative learning and creative thinking.";
+    if (mean >= 40) return "⚠️ Average performance. Focus on targeted interventions for weaker areas.";
     return "🔴 Below average. Plan personalized learning and extra support sessions.";
+  }
+
+  
+  // ===== FETCH SCHOOL =====
+  async function fetchSchoolInfo() {
+    try {
+      const res = await fetch("http://localhost:5000/api/my-school", {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (!res.ok) throw new Error("School fetch failed");
+      return await res.json();
+    } catch (err) {
+      console.error("School fetch error:", err);
+      return null;
+    }
   }
 
   // ===== BUTTONS =====
@@ -86,6 +151,12 @@ document.addEventListener("DOMContentLoaded", () => {
       });
       if (!userRes.ok) throw new Error("Unauthorized");
       const profile = await userRes.json();
+
+      // Require schoolId for class-teacher flows
+      if (!profile?.schoolId) {
+        console.error("Profile missing schoolId:", profile);
+        return showNotAllowed();
+      }
 
       let classGrade = profile.classGrade;
 
@@ -116,49 +187,134 @@ document.addEventListener("DOMContentLoaded", () => {
         teacherInfoEl.innerHTML = `Class Teacher: <strong>${profile.name || "—"}</strong> | Grade: <strong>${classGrade}</strong>`;
       }
 
+      // 🆕 Display class stream if available
+      const streamDisplay = document.getElementById("streamDisplay");
+      if (streamDisplay) {
+        const classStream = profile.assignedStream || "No Stream";
+        streamDisplay.textContent = classStream;
+      }
+
+      // 🆕 Hide stream filter if no stream is assigned
+      if (streamFilterSelect) {
+        if (profile.assignedStream) {
+          streamFilterSelect.style.display = "block";
+        } else {
+          streamFilterSelect.style.display = "none";
+        }
+      }
+
+      user = profile; // update user globally
+     
+      
+      // ===== LOAD SCHOOL HEADER =====
+      const school = await fetchSchoolInfo();
+      if (!school) return;
+
+      const nameEl = document.getElementById("schoolName");
+      const logoEl = document.getElementById("schoolLogo");
+      const addressEl = document.getElementById("schoolAddress");
+
+      if (nameEl) nameEl.textContent = `${school.name} — Class Analysis`;
+      if (addressEl && school.address) addressEl.textContent = school.address;
+
+      // ===== LOGO RESOLUTION (FIXED) =====
+      if (logoEl && school.logo) {
+        const BACKEND_URL = "http://localhost:5000";
+        let logoPath = school.logo.trim();
+
+        logoEl.crossOrigin = "anonymous";
+
+        if (/^https?:\/\//i.test(logoPath)) {
+          logoEl.src = logoPath;
+        } else {
+          logoPath = logoPath.replace(/^\/+/, "");
+          if (!logoPath.startsWith("uploads/")) {
+            logoPath = `uploads/${logoPath}`;
+          }
+          logoEl.src = `${BACKEND_URL}/${logoPath}`;
+        }
+
+        logoEl.alt = "School Logo";
+        logoEl.classList.remove("hidden");
+      }
+
     } catch (err) {
-      console.error("Error loading profile:", err);
+      console.error("Profile load error:", err);
       localStorage.clear();
       showNotAllowed();
     }
-  };
+  }
 
+  // ✅ CALL ONCE
   fetchUserAndAllocations();
 
-  // ===== FETCH MARKS =====
+  // ===== INITIALIZE FILTERS =====
+  // Set year filter to current year
+  const currentYear = new Date().getFullYear();
+  if (yearFilter) {
+    yearFilter.value = currentYear.toString();
+  }
+
   async function getFilteredMarks() {
     if (!user?.classGrade) return [];
 
-    const term = (termFilter?.value || "").trim();
-    const year = (yearFilter?.value || "").trim();
-    const assessment = assessmentFilter?.value === "all" ? "" : (assessmentFilter?.value || "").trim();
+    // Build filter values - always send term and assessment (use "all" if not selected)
+    const termValue = termFilter?.value || "all";
+    const yearValue = yearFilter?.value ? Number(yearFilter.value) : currentYear;
+    const assessmentValue = assessmentFilter?.value || "all";
 
-    const params = new URLSearchParams({ grade: user.classGrade, term, year, assessment });
+    const params = new URLSearchParams({ 
+      grade: user.classGrade,
+      term: termValue,
+      year: yearValue,
+      assessment: assessmentValue
+    });
+
+    // 🆕 Handle stream filter based on selection
+    if (streamFilterSelect?.value === "assigned" && user.assignedStream) {
+      // "My Stream Only" - filter by the teacher's assigned stream
+      params.append("stream", user.assignedStream);
+    } else {
+      // "All Leaners (Whole Class)" - fetch all students in the grade regardless of stream
+      params.append("stream", "");
+    }
+
+    console.log("[Analysis] Fetching marks with params:", Object.fromEntries(params.entries()));
 
     try {
-      const res = await fetch(`http://localhost:5000/api/marks/by-grade?${params}`, { headers: { Authorization: `Bearer ${token}` } });
+      const res = await fetch(`http://localhost:5000/api/marks/by-grade?${params}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (res.status === 403) {
+        showNotAllowed();
+        return [];
+      }
       if (!res.ok) throw new Error("Failed to fetch marks");
+
       const data = await res.json();
+
+      console.log("[Analysis] Received data:", data.length, "records");
 
       const normalized = Array.isArray(data) ? data.map(m => ({
         admissionNo: m.admissionNo,
         studentName: m.studentName || "Unnamed",
         grade: m.grade || user.classGrade,
+        stream: m.stream || null,
         term: Number(m.term) || 0,
         year: Number(m.year) || 0,
         assessment: String(m.assessment),
-        subjects: Array.isArray(m.subjects) ? m.subjects.map(s => ({ subject: String(s.subject), score: Number(s.score) || 0 })) : []
+        subjects: Array.isArray(m.subjects) ? m.subjects.map(s => ({ subject: String(s.subject), score: Number(s.score) || 0 })) : [],
+        course: m.course || null,
+        continuousAssessment: m.continuousAssessment || null,
+        projectWork: m.projectWork || null,
+        endTermExam: m.endTermExam || null,
+        finalScore: m.finalScore || null
       })) : [];
 
-      if (onlyMySubjects?.value === "yes" && user.subjects?.length) {
-        normalized.forEach(student => {
-          student.subjects = student.subjects.filter(s => user.subjects.includes(s.subject));
-        });
-      }
-
+      console.log("[Analysis] Normalized to:", normalized.length, "records");
       return normalized;
     } catch (err) {
-      console.error("Error fetching marks:", err);
+      console.error("[Analysis] Error fetching marks:", err);
       return [];
     }
   }
@@ -225,6 +381,114 @@ document.addEventListener("DOMContentLoaded", () => {
     return { studentArray, subjects, subjectMeans, classMean, topMean, lowMean, topSubject, lowSubject, records: studentArray.length, groupedByAssessment };
   }
 
+  // ===== CALCULATE SENIOR SCHOOL STATS (Component-Based) =====
+  function calculateSeniorSchoolStats(filtered) {
+    if (!filtered.length) return { students: [], courseMeans: {}, componentAverages: {}, performanceDistribution: {}, classMean: 0, records: 0 };
+
+    const coursesSet = new Set();
+    const students = {};
+    let caSum = 0, pwSum = 0, etSum = 0, caCount = 0, pwCount = 0, etCount = 0;
+
+    filtered.forEach(m => {
+      const key = `${m.admissionNo}_${m.assessment}_${m.term}_${m.year}`;
+      
+      if (m.course) coursesSet.add(m.course);
+
+      if (!students[key]) {
+        students[key] = {
+          admissionNo: m.admissionNo,
+          name: m.studentName || "Unnamed",
+          grade: m.grade,
+          assessment: m.assessment,
+          term: m.term,
+          year: m.year,
+          courses: {}
+        };
+      }
+
+      // Store component scores per course
+      if (!students[key].courses[m.course]) {
+        students[key].courses[m.course] = {
+          course: m.course,
+          continuousAssessment: m.continuousAssessment,
+          projectWork: m.projectWork,
+          endTermExam: m.endTermExam,
+          finalScore: calculateSeniorSchoolFinalScore(m),
+          performanceLevel: scoreToPerformanceLevel(calculateSeniorSchoolFinalScore(m))
+        };
+      }
+
+      // Aggregate components
+      if (m.continuousAssessment !== null && m.continuousAssessment !== undefined) {
+        caSum += Number(m.continuousAssessment);
+        caCount++;
+      }
+      if (m.projectWork !== null && m.projectWork !== undefined) {
+        pwSum += Number(m.projectWork);
+        pwCount++;
+      }
+      if (m.endTermExam !== null && m.endTermExam !== undefined) {
+        etSum += Number(m.endTermExam);
+        etCount++;
+      }
+    });
+
+    // Calculate student overall performance
+    const studentArray = Object.values(students).map(s => {
+      const courseScores = Object.values(s.courses).map(c => c.finalScore || 0).filter(v => v > 0);
+      const mean = courseScores.length ? courseScores.reduce((a, b) => a + b) / courseScores.length : 0;
+      return { ...s, mean, totalScore: courseScores.reduce((a, b) => a + b, 0) };
+    });
+
+    // Rank students
+    studentArray.sort((a, b) => b.mean - a.mean);
+    let prevMean = null, prevRank = 0, currentRank = 0;
+    studentArray.forEach(stu => {
+      currentRank++;
+      if (stu.mean === prevMean) stu.rank = prevRank;
+      else { stu.rank = currentRank; prevRank = currentRank; prevMean = stu.mean; }
+    });
+
+    // Course means
+    const courseMeans = {};
+    const courseData = {};
+    filtered.forEach(m => {
+      if (!courseData[m.course]) courseData[m.course] = { ca: 0, pw: 0, et: 0, caCount: 0, pwCount: 0, etCount: 0, scores: [] };
+      if (m.continuousAssessment !== null) { courseData[m.course].ca += Number(m.continuousAssessment); courseData[m.course].caCount++; }
+      if (m.projectWork !== null) { courseData[m.course].pw += Number(m.projectWork); courseData[m.course].pwCount++; }
+      if (m.endTermExam !== null) { courseData[m.course].et += Number(m.endTermExam); courseData[m.course].etCount++; }
+      const fs = calculateSeniorSchoolFinalScore(m);
+      if (fs) courseData[m.course].scores.push(fs);
+    });
+
+    Object.entries(courseData).forEach(([course, data]) => {
+      courseMeans[course] = {
+        ca: data.caCount > 0 ? (data.ca / data.caCount).toFixed(1) : 0,
+        pw: data.pwCount > 0 ? (data.pw / data.pwCount).toFixed(1) : 0,
+        et: data.etCount > 0 ? (data.et / data.etCount).toFixed(1) : 0,
+        mean: data.scores.length > 0 ? (data.scores.reduce((a, b) => a + b) / data.scores.length).toFixed(2) : 0
+      };
+    });
+
+    const componentAverages = {
+      continuousAssessment: caCount > 0 ? (caSum / caCount).toFixed(1) : 0,
+      projectWork: pwCount > 0 ? (pwSum / pwCount).toFixed(1) : 0,
+      endTermExam: etCount > 0 ? (etSum / etCount).toFixed(1) : 0
+    };
+
+    // Performance distribution
+    const performanceDistribution = { EE: 0, ME: 0, AE: 0, BE: 0 };
+    studentArray.forEach(s => {
+      const level = scoreToPerformanceLevel(s.mean);
+      if (performanceDistribution[level] !== undefined) performanceDistribution[level]++;
+    });
+
+    const classMean = studentArray.length ? studentArray.reduce((a, s) => a + s.mean, 0) / studentArray.length : 0;
+
+    return { studentArray, courseMeans, componentAverages, performanceDistribution, classMean, records: studentArray.length };
+  }
+
+
   // ===== RENDER TABLES =====
   function renderRankingTable(stats) {
     if (!stats.studentArray.length) { rankingTableWrap.innerHTML = "<div class='small'>No ranking data found.</div>"; return; }
@@ -238,25 +502,43 @@ document.addEventListener("DOMContentLoaded", () => {
       html += `<table style="border-collapse: collapse; width: 100%; border:1px solid #000; margin-bottom: 15px;">
         <thead><tr><th>Rank</th><th>Name</th><th>Assessment</th>`;
       stats.subjects.forEach(sub => html += `<th>${sub}</th>`);
-      html += `<th>Total Marks</th><th>CBC Level</th></tr></thead><tbody>`;
+      html += `<th>Total Marks</th><th>Performance Level</th></tr></thead><tbody>`;
       arr.forEach(s => {
         const assessLabelRow = s.assessment === "5" ? "End Term" : s.assessment;
         html += `<tr><td>${s.rank}</td><td>${s.name}</td><td>${assessLabelRow}</td>`;
         stats.subjects.forEach(sub => html += `<td>${s.subjects[sub] ?? '-'}</td>`);
-        html += `<td>${s.total}</td><td>${getCbcLevel(s.mean)}</td></tr>`;
+        html += `<td>${s.total}</td><td>${getPerformanceLevel(s.mean)}</td></tr>`;
       });
       html += "</tbody></table>";
 
-      const topStudent = arr[0];
-      const lowStudent = arr[arr.length - 1];
-      const classMean = arr.reduce((a, s) => a + s.mean, 0) / arr.length;
-      const aiFeedback = generateAIFeedback(classMean);
+// ===== TIE-AWARE TOP & LOW STUDENTS =====
+const highestTotal = arr.length ? arr[0].total : 0;
+const lowestTotal = arr.length ? arr[arr.length - 1].total : 0;
 
-      html += `<div class="ai-feedback">
-        🏆 Top Student: ${topStudent.name} — ${topStudent.total} marks (Avg: ${topStudent.mean.toFixed(1)}%)<br>
-        ⚠️ Lowest Student: ${lowStudent.name} — ${lowStudent.total} marks (Avg: ${lowStudent.mean.toFixed(1)}%)<br><br>
-        ${aiFeedback}
-      </div>`;
+const tiedTop = arr.filter(s => s.total === highestTotal);
+const tiedLow = arr.filter(s => s.total === lowestTotal);
+
+// Format names
+const topNames = tiedTop.map(s => `${s.name} (${s.total} marks, Avg: ${s.mean.toFixed(1)}%)`).join("; ");
+const lowNames = tiedLow.map(s => `${s.name} (${s.total} marks, Avg: ${s.mean.toFixed(1)}%)`).join("; ");
+
+// Class mean for AI
+const classMean = arr.reduce((a, s) => a + s.mean, 0) / arr.length;
+const aiFeedback = generateAIFeedback(classMean);
+
+// ===== OUTPUT =====
+html += `
+  <div class="ai-feedback">
+    🏆 <strong>Top ${tiedTop.length > 1 ? "Students (Tied)" : "Student"}:</strong><br>
+    ${topNames}<br><br>
+
+    ⚠️ <strong>Lowest ${tiedLow.length > 1 ? "Students (Tied)" : "Student"}:</strong><br>
+    ${lowNames}<br><br>
+
+    <strong>AI Feedback:</strong><br>
+    ${aiFeedback}
+  </div>
+`;
     });
     rankingTableWrap.innerHTML = html;
   }
@@ -274,41 +556,113 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // ===== GENERATE REPORT =====
   async function generateReport() {
+    console.log("[Analysis] Generate Report clicked");
     generateBtn.textContent = "Generating...";
     generateBtn.disabled = true;
 
-    const filtered = await getFilteredMarks();
-    if (!filtered.length) {
-      alert("No marks found for the selected filters.");
-      rankingTableWrap.innerHTML = "<div class='small'>No ranking data found.</div>";
-      subjectTableWrap.innerHTML = "<div class='small'>No subject means found.</div>";
-      classMeanEl.textContent = "-"; topMeanEl.textContent = "-"; lowMeanEl.textContent = "-";
-      topSubjectEl.textContent = "-"; lowSubjectEl.textContent = "-"; recordsCountEl.textContent = "0";
+    try {
+      const filtered = await getFilteredMarks();
+      console.log("[Analysis] Filtered marks count:", filtered.length);
+      
+      if (!filtered.length) {
+        console.warn("[Analysis] No marks found for the selected filters");
+        alert("No marks found for the selected filters. Please check your grade, term, year, and assessment selections.");
+        rankingTableWrap.innerHTML = "<div class='small'>No ranking data found.</div>";
+        subjectTableWrap.innerHTML = "<div class='small'>No subject means found.</div>";
+        classMeanEl.textContent = "-"; topMeanEl.textContent = "-"; lowMeanEl.textContent = "-";
+        topSubjectEl.textContent = "-"; lowSubjectEl.textContent = "-"; recordsCountEl.textContent = "0";
+        if (window.trendChart) window.trendChart.destroy();
+        generateBtn.textContent = "Generate Report";
+        generateBtn.disabled = false;
+        return;
+      }
+
+    // Check if senior school (Grade 10-12)
+    const gradeNum = parseInt(gradeFilter?.value) || 0;
+    const isSeniorSchool = gradeNum >= 10 && gradeNum <= 12;
+
+    // ===== JUNIOR SCHOOL (1-9) REPORT =====
+    if (!isSeniorSchool) {
+      const stats = calculateStats(filtered);
+
+      // Render tables
+      renderRankingTable(stats);
+      renderSubjectMeansTable(stats);
+
+      // Update summary stats
+      classMeanEl.textContent = stats.classMean.toFixed(2);
+      topMeanEl.textContent = stats.topMean.toFixed(2);
+      lowMeanEl.textContent = stats.lowMean.toFixed(2);
+      topSubjectEl.textContent = stats.topSubject;
+      lowSubjectEl.textContent = stats.lowSubject;
+      recordsCountEl.textContent = stats.records;
+
+      // Render chart
+      renderTrendChartWithData(filtered);
+    }
+    // ===== SENIOR SCHOOL (10-12) REPORT =====
+    else {
+      const stats = calculateSeniorSchoolStats(filtered);
+
+      // Render senior school tables
+      renderSeniorSchoolAnalysis(stats);
+
+      // Update summary stats
+      classMeanEl.textContent = stats.classMean.toFixed(2);
+      topMeanEl.textContent = stats.records > 0 ? Math.max(...stats.studentArray.map(s => s.mean)).toFixed(2) : "-";
+      lowMeanEl.textContent = stats.records > 0 ? Math.min(...stats.studentArray.map(s => s.mean)).toFixed(2) : "-";
+      
+      // Top and low components
+      topSubjectEl.textContent = Object.entries(stats.componentAverages).reduce((max, [k, v]) => v > max.val ? { name: k, val: v } : max, { name: "N/A", val: 0 }).name;
+      lowSubjectEl.textContent = Object.entries(stats.componentAverages).reduce((min, [k, v]) => v > 0 && v < min.val ? { name: k, val: v } : min, { name: "N/A", val: 100 }).name;
+      recordsCountEl.textContent = stats.records;
+
       if (window.trendChart) window.trendChart.destroy();
-      generateBtn.textContent = "Generate Report";
-      generateBtn.disabled = false;
-      return;
     }
 
-    const stats = calculateStats(filtered);
+    } catch (err) {
+      console.error("[Analysis] Error in generateReport:", err);
+      alert("Error generating report: " + err.message);
+    } finally {
+      generateBtn.textContent = "Generate Report";
+      generateBtn.disabled = false;
+    }
+  }
 
-    // Render tables
-    renderRankingTable(stats);
-    renderSubjectMeansTable(stats);
+  // ===== RENDER SENIOR SCHOOL ANALYSIS =====
+  function renderSeniorSchoolAnalysis(stats) {
+    // Ranking table with final scores
+    let html = "<h3>📊 CLASS RANKING (By Final Weighted Score)</h3>";
+    html += "<table style='border-collapse: collapse; width: 100%; border:1px solid #ddd;'>";
+    html += "<thead><tr style='background:#4CAF50;color:white;'><th style='border:1px solid #ddd;padding:8px;'>Rank</th><th style='border:1px solid #ddd;padding:8px;'>Student Name</th><th style='border:1px solid #ddd;padding:8px;'>Avg Final Score</th><th style='border:1px solid #ddd;padding:8px;'>Performance Level</th></tr></thead><tbody>";
+    
+    stats.studentArray.forEach(s => {
+      const level = scoreToPerformanceLevel(s.mean);
+      const bg = s.rank % 2 === 0 ? "#f9f9f9" : "#fff";
+      html += `<tr style='background:${bg};'><td style='border:1px solid #ddd;padding:8px;'>${s.rank}</td><td style='border:1px solid #ddd;padding:8px;'>${s.name}</td><td style='border:1px solid #ddd;padding:8px;text-align:center;'><strong>${s.mean.toFixed(2)}%</strong></td><td style='border:1px solid #ddd;padding:8px;'>${level} (${getPerformanceLevelLabel(level)})</td></tr>`;
+    });
+    html += "</tbody></table>";
+    rankingTableWrap.innerHTML = html;
 
-    // Update summary stats
-    classMeanEl.textContent = stats.classMean.toFixed(2);
-    topMeanEl.textContent = stats.topMean.toFixed(2);
-    lowMeanEl.textContent = stats.lowMean.toFixed(2);
-    topSubjectEl.textContent = stats.topSubject;
-    lowSubjectEl.textContent = stats.lowSubject;
-    recordsCountEl.textContent = stats.records;
+    // Component analysis table
+    let compHtml = "<h3>📈 COMPONENT PERFORMANCE ANALYSIS</h3>";
+    compHtml += "<table style='border-collapse: collapse; width: 100%; border:1px solid #ddd;'>";
+    compHtml += "<thead><tr style='background:#2196F3;color:white;'><th style='border:1px solid #ddd;padding:8px;'>Component</th><th style='border:1px solid #ddd;padding:8px;'>Class Average</th><th style='border:1px solid #ddd;padding:8px;'>Weight</th><th style='border:1px solid #ddd;padding:8px;'>Status</th></tr></thead><tbody>";
+    
+    const components = [
+      { name: "Continuous Assessment (CATs, Quizzes, Practicals)", key: "continuousAssessment", weight: "30%" },
+      { name: "Project Work / Performance Tasks", key: "projectWork", weight: "20%" },
+      { name: "End-Term Examination", key: "endTermExam", weight: "50%" }
+    ];
 
-    // Render chart
-    renderTrendChartWithData(filtered);
-
-    generateBtn.textContent = "Generate Report";
-    generateBtn.disabled = false;
+    components.forEach((comp, idx) => {
+      const avg = Number(stats.componentAverages[comp.key]);
+      const status = avg >= 65 ? "✅ Good" : avg >= 50 ? "⚠️ Average" : "❌ Needs Attention";
+      const bg = idx % 2 === 0 ? "#f9f9f9" : "#fff";
+      compHtml += `<tr style='background:${bg};'><td style='border:1px solid #ddd;padding:8px;'>${comp.name}</td><td style='border:1px solid #ddd;padding:8px;text-align:center;'><strong>${avg}%</strong></td><td style='border:1px solid #ddd;padding:8px;text-align:center;'>${comp.weight}</td><td style='border:1px solid #ddd;padding:8px;'>${status}</td></tr>`;
+    });
+    compHtml += "</tbody></table>";
+    subjectTableWrap.innerHTML = compHtml;
   }
 
   // ===== EXPORT PDF =====
@@ -355,7 +709,7 @@ async function exportPdf() {
 
     // HEADER ROW - capitalize all
     let headHTML = "<tr>";
-    ["Rank", "Student", ...subjects.map(s => s.charAt(0).toUpperCase() + s.slice(1)), "Total Marks", "Mean"].forEach(h => {
+    ["Rank", "Student", ...subjects.map(s => s.charAt(0).toUpperCase() + s.slice(1)), "Total Marks", "Performance Level"].forEach(h => {
       headHTML += `<th style="border:1px solid #000;padding:5px;background:#4CAF50;color:#fff;font-weight:bold;text-align:center;">${h}</th>`;
     });
     headHTML += "</tr>";
@@ -370,11 +724,12 @@ async function exportPdf() {
         const row = document.createElement("tr");
         row.style.background = bg;
         const rowData = [
-          student.rank ?? "-",
-          student.name || "Unnamed",
-          ...subjects.map(sub => student.subjects[sub] ?? "-"),
-          student.total ?? 0,
-          student.mean?.toFixed(2) ?? "0.00"
+            student.rank ?? "-",
+            student.name || "Unnamed",
+            ...subjects.map(sub => student.subjects[sub] ?? "-"),
+            student.total ?? 0,
+            getPerformanceLevel(student.mean)   
+
         ];
         rowData.forEach(val => {
           const td = document.createElement("td");
@@ -426,30 +781,6 @@ async function exportPdf() {
       <strong>Records:</strong> ${stats.records}
     `;
     pdfContainer.appendChild(statsDiv);
-
-    // AI FEEDBACK (no emojis)
-    const aiDiv = document.createElement("div");
-    aiDiv.style.marginTop = "15px";
-    aiDiv.style.padding = "10px";
-    aiDiv.style.border = "1px solid #000";
-    aiDiv.style.background = "#fffbcc";
-
-    const topStudent = stats.studentArray[0] || { name: "-", total: 0, mean: 0 };
-    const lowStudent = stats.studentArray[stats.studentArray.length - 1] || { name: "-", total: 0, mean: 0 };
-
-    function generatePdfAIFeedback(mean) {
-      if (mean >= 85) return "Outstanding performance! Encourage advanced tasks and peer mentoring.";
-      if (mean >= 70) return "Good performance. Reinforce collaborative learning and creative thinking.";
-      if (mean >= 50) return "Average performance. Focus on targeted interventions for weaker areas.";
-      return "Below average. Plan personalized learning and extra support sessions.";
-    }
-
-    aiDiv.innerHTML = `
-      <strong>Top Student:</strong> ${topStudent.name} — ${topStudent.total} marks (Avg: ${topStudent.mean.toFixed(1)}%) |
-      <strong>Lowest Student:</strong> ${lowStudent.name} — ${lowStudent.total} marks (Avg: ${lowStudent.mean.toFixed(1)}%)<br><br>
-      ${generatePdfAIFeedback(stats.classMean)}
-    `;
-    pdfContainer.appendChild(aiDiv);
 
     // FOOTER
     const teacherName = localStorage.getItem("teacherName") || user?.name || "Teacher";

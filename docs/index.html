@@ -3,70 +3,229 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>CBC Student Portal</title>
+  <title>COMPETENCE HUB</title>
   <link rel="stylesheet" href="css/style.css" />
-  <link rel="icon" type="image/png" href="images/child-head.png"/>  
+  <link rel="icon" type="image/png" href="/images/child-head.png"/> 
 </head>
-<body>
-  
-  <!-- Header -->
-  <header>
-    <div class="logo">CBC Portal</div>
-    <nav>
-      <ul>
-         <li><a href="index.html" class="active">Home</a></li>
-        <li><a href="login.html">Login</a></li>
-        <!--<li><a href="signup.html">Sign Up</a></li>-->
-        <!--WIP: Add a link to the contact page-->
-        <li><a href="contact.html">Contact</a></li>
-      </ul>
-    </nav>
-    <div class="menu-toggle">&#9776;</div>
-  </header>
 
-  <!-- Hero Section -->
-  <section class="hero">
-    <div class="hero-content">
-      <h1>Empowering CBC Learning with Smart Insights</h1>
-      <p>Track progress, get AI-powered feedback, and learn better every day.</p>
-      <a href="login.html" class="btn">Get Started</a>
-    </div>
-  </section>
+<body>
+
+<!-- Header -->
+<header>
+  <div class="logo">CBE Portal</div>
+  <nav>
+    <ul>
+      <li><a href="index.html" class="active">Home</a></li>
+      <li><a href="login.html">Login</a></li>
+      <li><a href="contact.html">Contact</a></li>
+   
+    </ul>
+  </nav>
+  <div class="menu-toggle">&#9776;</div>
+</header>
+
+<!-- Hero -->
+<section class="hero">
+  <div class="hero-content">
+    <h1>Comprehensive CBE School Management System</h1>
+<p>
+A secure, centralized platform for student assessment, reporting,<br>
+teacher management, and academic insights aligned with the<br>
+Competency-Based Education (CBE).
+</p><br>
+
+    <a href="login.html" class="btn">Get Started</a><br>
+    <p style="margin-top:14px;font-size:14px;opacity:.85">
+     Used by teachers,Class Teachers, Learners & administrators</p>
+  </div>
 </section>
-  <!-- Features -->
-  <section class="features">
-    <h2>Key Features</h2>
-    <div class="feature-grid">
-      <div class="feature-card">
-        <h3>📊 Progress Tracking</h3>
-        <p>Monitor your learning milestones and CBC competencies in real time.</p>
-      </div>
-      <div class="feature-card">
-        <h3>🧠 AI Recommendations</h3>
-        <p>Receive personalized feedback and study suggestions based on your performance.</p>
-      </div>
-      <div class="feature-card">
-        <h3>👩‍🏫 Teacher Dashboard</h3>
-        <p>Teachers can record marks, analyze performance, and generate reports.</p>
-      </div>
-      <div class="feature-card">
-        <h3>👨‍🎓 Student-Friendly Interface</h3>
-        <p>Simple, clear, and responsive design for all devices.</p>
-      </div>
+
+<!-- Features -->
+<section class="features">
+  <h2>Key Features</h2>
+  <div class="feature-grid">
+    <div class="feature-card">
+      <h3>📊 Progress Tracking</h3>
+      <p>Monitor your learning milestones and CBE competencies in real time.</p>
     </div>
-  </section>
-  <!-- Footer -->
-  <footer>
-  <p>&copy; Muts Tech <script>document.write(new Date().getFullYear());</script>. All rights reserved.</p>
+    <div class="feature-card">
+      <h3>🧠 AI Recommendations</h3>
+      <p>Receive personalized feedback and study suggestions based on your performance.</p>
+    </div>
+    <div class="feature-card">
+      <h3>👩‍🏫 Teacher Dashboard</h3>
+      <p>Teachers can record marks, analyze performance, and generate reports.</p>
+    </div>
+    <div class="feature-card">
+      <h3>👨‍🎓 Leaner-Friendly Interface</h3>
+      <p>Simple, clear, and responsive design for all devices.</p>
+    </div>
+  </div>
+</section>
+<section class="features">
+  <h2>Designed for Schools</h2>
+  <div class="feature-grid">
+    <div class="feature-card">
+      <p>✔ CBE compliant assessment structure</p>
+      <p>✔ Secure role-based access</p>
+      <p>✔ Centralized multi-school system</p>
+      <p>✔ Cloud-ready architecture</p>
+    </div>
+
+    <div class="feature-card">
+      <p><strong>Target Users:</strong></p>
+      <p>• Primary,Junior & Senior Secondary Schools</p>
+      <p>• Administrators & Teachers</p>
+      <p>• Leaners & Parents</p>
+    </div>
+  </div>
+</section>
+
+<!-- Footer -->
+<footer>
+  <p> 
+     <a href="#" id="openSuperAdminModal">MUTS_TECH LTD</a> |  
+   © Muts Tech Ltd · Secure CBE Education Platform ·
+<script>document.write(new Date().getFullYear());</script>
+</p>
 </footer>
 
-  <!-- JS for mobile menu -->
-  <script>
-    const menuToggle = document.querySelector('.menu-toggle');
-    const nav = document.querySelector('nav ul');
-    menuToggle.addEventListener('click', () => {
-      nav.classList.toggle('active');
-    });
-  </script>
+<!-- SUPER ADMIN LOGIN MODAL -->
+<div id="superAdminModal" class="modal">
+  <div class="modal-content">
+    <span class="close">&times;</span>
+    <h2>Super Admin Login</h2>
+
+    <form id="superAdminLoginForm">
+      <label>Email</label>
+      <input type="email" name="email" placeholder="Enter email" required>
+
+      <label>Password</label>
+      <input type="password" name="password" placeholder="Enter password" required>
+
+      <button type="submit" class="btn-submit">Log In</button>
+      <div id="saLoginError"></div>
+    </form>
+  </div>
+</div>
+
+<!-- MODAL STYLE -->
+<style>
+.modal {
+  position: fixed;
+  top:0; left:0; width:100%; height:100%;
+  background: rgba(0,0,0,0.55);
+  display: flex; justify-content: center; align-items: center;
+  opacity: 0; pointer-events: none;
+  transition: opacity .3s ease-in-out;
+  z-index: 1000;
+}
+
+/* SHOW */
+.modal.show { opacity: 1; pointer-events: auto; }
+
+/* CONTENT */
+.modal-content {
+  background: #fff;
+  padding: 25px;
+  width: 330px;
+  border-radius: 12px;
+  box-shadow: 0px 4px 20px rgba(0,0,0,0.3);
+  position: relative;
+  transform: translateY(-40px);
+  transition: transform .35s ease;
+}
+.modal.show .modal-content { transform: translateY(0); }
+
+/* CLOSE BUTTON */
+.close {
+  position: absolute; top: 12px; right: 15px;
+  cursor: pointer; font-size: 20px; color: #333;
+}
+
+/* FORM */
+label { margin-top: 10px; font-weight: 600; display: block; }
+input {
+  width: 100%; padding: 10px;
+  border-radius: 6px; margin-top: 5px;
+  border: 1px solid #ccc; font-size: 15px;
+}
+.btn-submit {
+  width: 100%; margin-top: 15px; padding: 10px;
+  background: #0066ff; color: #fff;
+  border: none; border-radius: 6px;
+  cursor: pointer; font-size: 16px;
+}
+.btn-submit:hover { background: #004dc1; }
+
+#saLoginError { color: red; margin-top: 10px; text-align: center; font-size: 14px; }
+</style>
+
+<!-- MODAL SCRIPT -->
+<script>
+document.addEventListener("DOMContentLoaded", () => {
+  const API_BASE = "http://localhost:5000";   // <- VERY IMPORTANT
+
+  const modal = document.getElementById("superAdminModal");
+  const openBtn = document.getElementById("openSuperAdminModal");
+  const closeBtn = modal.querySelector(".close");
+  const form = document.getElementById("superAdminLoginForm");
+  const errorDiv = document.getElementById("saLoginError");
+
+  const openModal = () => modal.classList.add("show");
+  const closeModal = () => { 
+    modal.classList.remove("show"); 
+    errorDiv.textContent = ""; 
+    form.reset(); 
+  };
+
+  openBtn.addEventListener("click", openModal);
+  closeBtn.addEventListener("click", closeModal);
+  window.addEventListener("click", e => { if (e.target === modal) closeModal(); });
+
+  form.addEventListener("submit", async e => {
+    e.preventDefault();
+    errorDiv.textContent = "";
+
+    const formData = new FormData(form);
+    const email = formData.get("email");
+    const password = formData.get("password");
+
+    try {
+      const res = await fetch(`${API_BASE}/api/users/login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ 
+          email, 
+          password, 
+          role: "super_admin"    // backend expects snake_case role
+        })
+      });
+
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        errorDiv.textContent = data.message || "Invalid login";
+        return;
+      }
+
+      localStorage.setItem("token", data.token);
+      window.location.href = "super-admin.html";
+
+    } catch (err) {
+      console.error(err);
+      errorDiv.textContent = "Server error. Try again.";
+    }
+  });
+});
+</script>
+
+<!-- Mobile Menu -->
+<script>
+  const menuToggle = document.querySelector('.menu-toggle');
+  const nav = document.querySelector('nav ul');
+  menuToggle.addEventListener('click', () => nav.classList.toggle('active'));
+</script>
+
 </body>
 </html>

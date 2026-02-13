@@ -3,16 +3,16 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Admin Dashboard - CBC Portal</title>
+<title>SCHOOL ADMIN</title>
 <link rel="stylesheet" href="css/admin.css">
-<link rel="icon" href="https://cdn-icons-png.flaticon.com/512/1077/1077012.png" />
 </head>
 <body>
 
 <main class="admin-wrap">
 
   <header class="dashboard-header">
-    <h2>Admin Dashboard</h2>
+  <div id="schoolNameDisplay" class="school-header"></div>
+
     <div class="toolbar">
       <button id="logoutBtn" class="danger">Logout</button>
       <button id="refreshBtn" class="refresh-btn">🔄 Refresh Data</button>
@@ -20,66 +20,106 @@
   </header>
 
   <!-- ================== REGISTER USER ================== -->
-  <section class="allocation-section">
-    <h3>Register New User</h3>
+<section class="allocation-section">
 
-    <form id="registerForm">
+  <!-- COLLAPSIBLE USERS PANEL -->
+  <div id="usersPanel" class="collapsible-panel">
 
-      <div class="form-flex-row">
+    <div class="panel-header">
+      <h3>REGISTER NEW USER</h3>
+      <button id="toggleUsersBtn" class="collapse-btn">▼</button>
+    </div>
+
+    <div id="usersContent" class="panel-content">
+
+      <form id="registerForm">
+
+        <div class="form-flex-row">
+          <div>
+            <label for="userRole">Role:</label>
+            <select id="userRole" required>
+              <option value="">-- Select Role --</option>
+              <option value="student">Student</option>
+              <option value="teacher">Teacher</option>
+              <option value="accounts">Accounts</option>
+            </select>
+          </div>
+
+          <div>
+            <label for="userName">Full Name:</label>
+            <input type="text" id="userName" placeholder="Emmanuel Gitonga" required>
+          </div>
+        </div>
+
+        <div class="form-flex-row">
+          <div>
+            <label for="userEmail">Email (Teachers&Accounts):</label>
+            <input type="email" id="userEmail" placeholder="teacher@example.com">
+          </div>
+
+          <div>
+            <label for="userAdmission">Admission/ID (students only):</label>
+            <input type="text" id="userAdmission" placeholder="S1234">
+          </div>
+        </div>
+      <div class="form-flex-row" id="studentGradeGroup" style="display:none;">
         <div>
-          <label for="userRole">Role:</label>
-          <select id="userRole" required>
-            <option value="">-- Select Role --</option>
-            <option value="teacher">Teacher</option>
-            <option value="student">Student</option>
+          <label for="studentGrade">Grade</label>
+          <select id="studentGrade" name="studentGrade" >
+            <option value="">Select grade</option>
+            <option value="1">Grade 1</option>
+            <option value="2">Grade 2</option>
+            <option value="3">Grade 3</option>
+            <option value="4">Grade 4</option>
+            <option value="5">Grade 5</option>
+            <option value="6">Grade 6</option>
+            <option value="7">Grade 7</option>
+            <option value="8">Grade 8</option>
+            <option value="9">Grade 9</option>
+            <option value="10">Grade 10</option>
+            <option value="11">Grade 11</option>
+            <option value="12">Grade 12</option>
           </select>
         </div>
-
         <div>
-          <label for="userName">Full Name:</label>
-          <input type="text" id="userName" placeholder="Emmanuel Gitonga" required>
+          <label for="studentStream">Stream (Optional):</label>
+          <input type="text" id="studentStream" name="studentStream" placeholder="e.g., W, E, A" maxlength="2">
+          <small>Leave empty for no stream</small>
         </div>
       </div>
 
-      <div class="form-flex-row">
-        <div>
-          <label for="userEmail">Email (teachers only):</label>
-          <input type="email" id="userEmail" placeholder="teacher@example.com">
+        <div class="button-row">
+          <button type="submit" class="primary">Register User</button>
         </div>
+      </form>
 
-        <div>
-          <label for="userAdmission">Admission/ID (students only):</label>
-          <input type="text" id="userAdmission" placeholder="S1234">
-        </div>
-      </div>
+      <div id="registerFeedback" class="feedback" style="display:none;"></div>
 
-      <div class="button-row">
-        <button type="submit" class="primary">Register User</button>
-      </div>
-    </form>
+      <input type="text" id="userSearchInput" class="search-input" placeholder="Search users by name or role">
 
-    <div id="registerFeedback" class="feedback" style="display:none;"></div>
+      <table id="usersTable">
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>Role</th>
+            <th>Email/Admission</th>
+            <th>Action</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
 
-    <input type="text" id="userSearchInput" placeholder="Search users by name or role">
+      <button id="exportUsersBtn" class="export-btn">Export Users to PDF</button>
 
-    <table id="usersTable">
-      <thead>
-        <tr>
-          <th>Name</th>
-          <th>Role</th>
-          <th>Email/Admission</th>
-          <th>Action</th>
-        </tr>
-      </thead>
-      <tbody></tbody>
-    </table>
+    </div> <!-- end content -->
 
-    <button id="exportUsersBtn" class="export-btn">Export Users to PDF</button>
-  </section>
+  </div> <!-- end panel -->
+
+</section>
 
   <!-- ================== SUBJECT ALLOCATION ================== -->
   <section class="allocation-section">
-    <h3>Allocate Subjects to Teacher</h3>
+    <h3>ALLOCATE SUBJECTS TO TEACHER</h3>
 
     <form id="subjectAllocForm">
 
@@ -96,21 +136,24 @@
             <option value="1-3">Grades 1-3</option>
             <option value="4-6">Grades 4-6</option>
             <option value="7-9">Grades 7-9</option>
+            <option value="10-12">Grades 10-12</option>
           </select>
         </div>
       </div>
 
       <label for="gradesSelect">Select Grades:</label>
       <div class="multi-select-wrapper">
-        <button type="button" id="selectAllGradesBtn">Select All</button>
-        <button type="button" id="deselectAllGradesBtn">Deselect All</button>
         <select id="gradesSelect" multiple required></select>
+      </div>
+
+      <div>
+        <label for="streamInput">Stream (Optional):</label>
+        <input type="text" id="streamInput" placeholder="e.g., W, E, A" maxlength="2" style="width: 100px;">
+        <small>Leave empty for no stream</small>
       </div>
 
       <label for="subjectsSelect">Select Subjects:</label>
       <div class="multi-select-wrapper">
-        <button type="button" id="selectAllSubjectsBtn">Select All</button>
-        <button type="button" id="deselectAllSubjectsBtn">Deselect All</button>
         <select id="subjectsSelect" multiple required></select>
       </div>
 
@@ -119,13 +162,13 @@
       </div>
     </form>
 
-    <input type="text" id="subjectSearchInput" placeholder="Search subjects or teacher name">
+    <input type="text" id="subjectSearchInput" class="search-input" placeholder="Search subjects or teacher name">
 
     <table id="subjectAllocTable">
       <thead>
         <tr>
           <th>Teacher</th>
-          <th>Grades</th>
+          <th>Grade & Stream</th>
           <th>Subjects</th>
           <th>Action</th>
         </tr>
@@ -138,7 +181,7 @@
 
   <!-- ================== CLASS TEACHER ASSIGNMENT ================== -->
   <section class="allocation-section">
-    <h3>Assign Class Teacher</h3>
+    <h3>ASSIGN CLASS TEACHER</h3>
 
     <form id="classAllocForm">
       <div class="form-flex-row">
@@ -160,7 +203,16 @@
             <option value="7">Grade 7</option>
             <option value="8">Grade 8</option>
             <option value="9">Grade 9</option>
+            <option value="10">Grade 10</option>
+            <option value="11">Grade 11</option>
+            <option value="12">Grade 12</option>
           </select>
+        </div>
+
+        <div>
+          <label for="classStreamSelect">Stream (Optional):</label>
+          <input type="text" id="classStreamSelect" placeholder="e.g., W, E, A" maxlength="2" style="width: 100px;">
+          <small>Leave empty for no stream</small>
         </div>
       </div>
 
@@ -169,13 +221,13 @@
       </div>
     </form>
 
-    <input type="text" id="classSearchInput" placeholder="Search class teacher or grade">
+    <input type="text" id="classSearchInput" class="search-input" placeholder="Search class teacher or grade">
 
     <table id="classAllocTable">
       <thead>
         <tr>
           <th>Teacher</th>
-          <th>Grade</th>
+          <th>Grade & Stream</th>
           <th>Action</th>
         </tr>
       </thead>
@@ -185,8 +237,103 @@
     <button id="exportClassBtn" class="export-btn">Export Class Teachers to PDF</button>
   </section>
 
-</main>
+  <!-- ================== SEARCH STUDENT ================== -->
+  <section class="allocation-section">
+    <h3>SEARCH & VIEW STUDENT</h3>
 
+    <div class="form-flex-row" style="margin-bottom: 20px;">
+      <div style="flex: 1;">
+        <label for="studentSearchInput">Search Student:</label>
+        <input
+          type="text"
+          id="studentSearchInput"
+          class="search-input"
+          placeholder="Search by name or admission"
+        />
+      </div>
+      <div style="display: flex; align-items: flex-end;">
+        <button id="studentSearchBtn" style="padding: 10px 20px; margin-left: 10px;">Search</button>
+      </div>
+    </div>
+
+    <table id="studentSearchTable">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Admission</th>
+          <th>Academic Year</th>
+          <th>Grade & Stream</th>
+          <th>Status</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody id="studentSearchBody"></tbody>
+    </table>
+  </section>
+
+  <!-- ================== STUDENT PROMOTION ================== -->
+  <section class="allocation-section">
+    <h3>STUDENT PROMOTION</h3>
+
+    <div class="form-flex-row">
+      <div>
+        <label for="fromAcademicYear">From Academic Year:</label>
+        <input type="number" id="fromAcademicYear" placeholder="2025">
+      </div>
+
+      <div>
+        <label for="toAcademicYear">To Academic Year:</label>
+        <input type="number" id="toAcademicYear" placeholder="2026">
+      </div>
+
+      <div style="display: flex; align-items: flex-end;">
+        <button id="previewPromotionBtn">Preview Promotion</button>
+      </div>
+    </div>
+
+    <table id="promotionPreviewTable">
+      <thead>
+        <tr>
+          <th>Student</th>
+          <th>Admission</th>
+          <th>Current Grade</th>
+          <th>Next Grade</th>
+          <th>Action</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+
+    <div class="button-row">
+      <button id="confirmPromotionBtn" class="danger" disabled>
+        ✓ Confirm Promotion
+      </button>
+    </div>
+  </section>
+
+
+</main>
+<!--garde selection script for students in admin students registration-->
+<script>
+const userRoleSelect = document.getElementById("userRole");
+const studentGradeGroup = document.getElementById("studentGrade");
+const studentGradeWrapper = document.getElementById("studentGradeGroup");
+
+userRoleSelect?.addEventListener("change", () => {
+  const role = userRoleSelect.value;
+
+  if (role === "student") {
+    studentGradeWrapper.style.display = "block";
+    studentGradeGroup.required = true;
+  } else {
+    studentGradeWrapper.style.display = "none";
+    studentGradeGroup.required = false;
+    studentGradeGroup.value = ""; // 🔥 VERY IMPORTANT
+  }
+});
+</script>
+
+<!-- SEARCH PROMOTION PREVIEW SCRIPT -->
 <script src="http://localhost:5000/js/email.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.25/jspdf.plugin.autotable.min.js"></script>

@@ -1,31 +1,40 @@
+// routes/markRoutes.js
 import express from "express";
 import {
   addMark,
+  updateMark,
   getMarks,
   deleteMark,
-  updateMark,
   getStudentMarks,
-  getAllMarks,
-  getMarksByGrade
+  getMarksByGrade,
+  getClassMarks
 } from "../controllers/MarkController.js";
+
 import VerifyToken from "../middleware/verifyToken.js";
-import { isAdmin, isStudent, isClassTeacher } from "../middleware/roleChecks.js";
+import { isStudent, isClassTeacher } from "../middleware/roleChecks.js";
+import { attachEnrollmentToMarks } from "../middleware/attachEnrollmentToMarks.js";
 
 const router = express.Router();
 
 // Teacher routes
-router.post("/add", VerifyToken, addMark);
-router.get("/teacher", VerifyToken, getMarks);
-router.put("/:id", VerifyToken, updateMark);
-router.delete("/:id", VerifyToken, deleteMark);
+router.post(
+  "/add",
+  VerifyToken,
+  attachEnrollmentToMarks,   // 🔒 MUST be before addMark
+  addMark
+);
 
-// Admin route
-router.get("/all", VerifyToken, isAdmin, getAllMarks);
+router.get("/teacher", VerifyToken, getMarks);
+
+router.put("/:id", VerifyToken, attachEnrollmentToMarks, updateMark);
+
+router.delete("/:id", VerifyToken, deleteMark);
 
 // Class teacher route
 router.get("/by-grade", VerifyToken, isClassTeacher, getMarksByGrade);
 
-// Student route
+// Student routes
 router.get("/student", VerifyToken, isStudent, getStudentMarks);
+router.get("/class", VerifyToken, isStudent, getClassMarks);
 
 export default router;
