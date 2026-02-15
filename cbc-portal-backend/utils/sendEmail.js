@@ -7,15 +7,12 @@ dotenv.config(); // Load .env variables
 // Create transporter
 // ------------------------
 const transporter = nodemailer.createTransport({
-  host: process.env.EMAIL_HOST,
-  port: Number(process.env.EMAIL_PORT),
-  secure: Number(process.env.EMAIL_PORT) === 465, // true if using SSL port 465
+  host: process.env.EMAIL_HOST,          // smtp.gmail.com
+  port: Number(process.env.EMAIL_PORT),  // 587
+  secure: false,                         // false for TLS (587)
   auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS,
-  },
-  tls: {
-    rejectUnauthorized: false, // ✅ allow self-signed certificates
+    user: process.env.EMAIL_USER,        // your Gmail address
+    pass: process.env.EMAIL_PASS,        // your Gmail App Password
   },
 });
 
