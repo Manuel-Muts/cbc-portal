@@ -1,37 +1,31 @@
-import nodemailer from 'nodemailer';
 import dotenv from 'dotenv';
+import SibApiV3Sdk from 'sib-api-v3-sdk';
 
 dotenv.config();
 
-const transporter = nodemailer.createTransport({
-  host: process.env.BREVO_SMTP_HOST,
-  port: process.env.BREVO_SMTP_PORT,
-  secure: false, // use TLS, not SSL
-  auth: {
-    user: process.env.BREVO_SMTP_USER,
-    pass: process.env.BREVO_SMTP_PASS,
-  },
-  tls: {
-    rejectUnauthorized: false, // ✅ allow cloud certs
-  },
-});
 
-transporter.verify()
-  .then(() => console.log('✅ Brevo SMTP ready'))
-  .catch(err => console.error('❌ Brevo SMTP failed:', err));
+const client = SibApiV3Sdk.ApiClient.instance;
+
+// Choose API key based on environment
+const apiKey = process.env.BREVO_API_KEY;
+client.authentications['api-key'].apiKey = apiKey;
+
+const apiInstance = new SibApiV3Sdk.TransactionalEmailsApi();
 
 const sendEmail = async ({ to, subject, text, html }) => {
   try {
-    await transporter.sendMail({
-      from: `"CBC Portal" <${process.env.BREVO_SMTP_USER}>`,
-      to,
+    const response = await apiInstance.sendTransacEmail({
+      sender: { email: "cbcportal71@gmail.com", name: "Muts tech ltd" },
+      to: [{ email: to }],
       subject,
-      text,
-      html,
+      textContent: text,
+      htmlContent: html,
     });
-    console.log(`✅ Email sent to ${to}`);
+
+    console.log(`✅ Email sent to ${to}`, response);
   } catch (err) {
-    console.error(`❌ Failed to send email to ${to}:`, err);
+    // Brevo errors often include structured response bodies
+    console.error(`❌ Failed to send email to ${to}:`, err.response?.body || err);
     throw err;
   }
 };

@@ -3,7 +3,11 @@ document.addEventListener("DOMContentLoaded", () => {
   const pageTitle = document.getElementById("pageTitle");
   const contentArea = document.getElementById("contentArea");
 
-  const API_BASE = "http://localhost:5000"; // backend base URL
+  const API_BASE =
+  window.location.hostname === "localhost"
+    ? "http://localhost:5000/api"
+    : "https://competence-hub.onrender.com/api";
+// backend base URL
 
   // ---------------------------
   // SESSION CHECK

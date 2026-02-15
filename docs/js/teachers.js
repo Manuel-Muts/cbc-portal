@@ -2,7 +2,11 @@
   // ---------------------------
   // CONFIG + GLOBALS
   // ---------------------------
-  const API_BASE = "http://localhost:5000/api";
+  const API_BASE =
+  window.location.hostname === "localhost"
+    ? "http://localhost:5000/api"
+    : "https://competence-hub.onrender.com/api";
+
   const token = localStorage.getItem("token");
   let submittedMarks = []; // in-memory marks list
   let editingMarkId = null;
