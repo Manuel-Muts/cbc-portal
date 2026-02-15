@@ -1,25 +1,25 @@
 import nodemailer from 'nodemailer';
 import dotenv from 'dotenv';
 
-dotenv.config(); // Load .env variables
+dotenv.config();
 
-// ------------------------
-// Create transporter
-// ------------------------
 const transporter = nodemailer.createTransport({
-  host: process.env.EMAIL_HOST,          // smtp.gmail.com
-  port: Number(process.env.EMAIL_PORT),  // 587
-  secure: false,                         // false for TLS (587)
+  service: 'gmail',
   auth: {
-    user: process.env.EMAIL_USER,        // your Gmail address
-    pass: process.env.EMAIL_PASS,        // your Gmail App Password
+    type: 'OAuth2',
+    user: process.env.EMAIL_USER,
+    clientId: process.env.OAUTH_CLIENT_ID,
+    clientSecret: process.env.OAUTH_CLIENT_SECRET,
+    refreshToken: process.env.OAUTH_REFRESH_TOKEN,
+  },
+  tls: {
+    rejectUnauthorized: false, // ✅ allow self-signed / cloud certs
   },
 });
 
-// Verify connection configuration
 transporter.verify()
-  .then(() => console.log('✅ SMTP server is ready'))
-  .catch(err => console.error('❌ SMTP verification failed:', err));
+  .then(() => console.log('✅ Gmail OAuth2 ready'))
+  .catch(err => console.error('❌ Gmail OAuth2 failed:', err));
 
 const sendEmail = async ({ to, subject, text, html }) => {
   try {
