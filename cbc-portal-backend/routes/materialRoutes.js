@@ -8,7 +8,7 @@ import {
   deleteMaterial,
   downloadMaterial,
   getStudentMaterials
-} from "../controllers/materialController.js";
+} from "../controllers/materialcontroller.js";
 
 const router = express.Router();
 

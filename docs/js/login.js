@@ -58,7 +58,7 @@ document.addEventListener("DOMContentLoaded", function () {
     const headers = { "Content-Type": "application/json" };
     if (token) headers["Authorization"] = `Bearer ${token}`;
 
-    const res = await fetch(`http://localhost:5000/api/users/${endpoint}`, {
+    const res = await fetch(`https://competence-hub.onrender.com/api/users/${endpoint}`, {
       method,
       headers,
       body: body ? JSON.stringify(body) : null,
