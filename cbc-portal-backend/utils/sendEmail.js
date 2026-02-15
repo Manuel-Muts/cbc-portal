@@ -4,27 +4,26 @@ import dotenv from 'dotenv';
 dotenv.config();
 
 const transporter = nodemailer.createTransport({
-  service: 'gmail',
+  host: process.env.BREVO_SMTP_HOST,
+  port: process.env.BREVO_SMTP_PORT,
+  secure: false, // use TLS, not SSL
   auth: {
-    type: 'OAuth2',
-    user: process.env.EMAIL_USER,
-    clientId: process.env.OAUTH_CLIENT_ID,
-    clientSecret: process.env.OAUTH_CLIENT_SECRET,
-    refreshToken: process.env.OAUTH_REFRESH_TOKEN,
+    user: process.env.BREVO_SMTP_USER,
+    pass: process.env.BREVO_SMTP_PASS,
   },
   tls: {
-    rejectUnauthorized: false, // ✅ allow self-signed / cloud certs
+    rejectUnauthorized: false, // ✅ allow cloud certs
   },
 });
 
 transporter.verify()
-  .then(() => console.log('✅ Gmail OAuth2 ready'))
-  .catch(err => console.error('❌ Gmail OAuth2 failed:', err));
+  .then(() => console.log('✅ Brevo SMTP ready'))
+  .catch(err => console.error('❌ Brevo SMTP failed:', err));
 
 const sendEmail = async ({ to, subject, text, html }) => {
   try {
     await transporter.sendMail({
-      from: `"CBC Portal" <${process.env.EMAIL_USER}>`,
+      from: `"CBC Portal" <${process.env.BREVO_SMTP_USER}>`,
       to,
       subject,
       text,
