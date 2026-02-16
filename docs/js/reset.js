@@ -43,10 +43,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const pwStrengthBar = document.getElementById("pwStrengthBar");
   const pwStrengthText = document.getElementById("pwStrengthText");
 
-  const API_BASE = "http://localhost:5000/api/reset";
-  window.location.hostname === "localhost"
-    ? "http://localhost:5000/api/reset"
-    : "https://competence-hub.onrender.com/api/reset";
+  const API_BASE = "https://competence-hub.onrender.com/api/reset";
 
   // -------------------------
   // Frontend rate-limit / resend protection

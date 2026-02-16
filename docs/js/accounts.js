@@ -1,9 +1,5 @@
 // accounts.js - Student Accounts Management
-const API_BASE =
-  window.location.hostname === "localhost"
-    ? "http://localhost:5000/api"
-    : "https://competence-hub.onrender.com/api";
-
+const API_BASE = "https://competence-hub.onrender.com/api";
 const token = localStorage.getItem("token");
 
 if (!token) {

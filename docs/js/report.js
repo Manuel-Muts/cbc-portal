@@ -12,7 +12,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 // Fetch School Info
 // -----------------------------
 // Set backend URL dynamically (adjust for production via env variable if needed)
-const BACKEND_URL = window.BACKEND_URL || "http://localhost:5000";
+const BACKEND_URL = window.BACKEND_URL || "https://competence-hub.onrender.com";
 
 if (token) {
   try {

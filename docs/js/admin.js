@@ -3,11 +3,7 @@
   // ---------------------------
   // CONFIG + DOM SHORTCUTS
   // ---------------------------
-  const API_BASE =
-  window.location.hostname === "localhost"
-    ? "http://localhost:5000/api"
-    : "https://competence-hub.onrender.com/api";
-
+  const API_BASE = "https://competence-hub.onrender.com/api";
   const token = localStorage.getItem("token");
 
   if (!token) {
@@ -64,7 +60,7 @@
 // ---------------------------
 // FETCH SCHOOL INFO
 // ---------------------------
-const BACKEND_URL = "http://localhost:5000";
+const BACKEND_URL = "https://competence-hub.onrender.com";
 
 async function loadSchoolInfo() {
   try {

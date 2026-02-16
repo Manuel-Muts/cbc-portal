@@ -1,4 +1,5 @@
 // ===== CBC GRADING HELPERS (For both Junior & Senior School) =====
+const API_BASE = "https://competence-hub.onrender.com/api";
 const CBC_WEIGHTS = {
   continuousAssessment: 0.30,
   projectWork: 0.20,
@@ -57,7 +58,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   let user;
   try {
-    const res = await fetch("http://localhost:5000/api/users/user", {
+    const res = await fetch(`${API_BASE}/users/user`, {
       headers: { Authorization: `Bearer ${token}` },
     });
 
@@ -101,7 +102,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   // ---------------------------
   let studentEnrollment = null;
   try {
-    const enrollmentRes = await fetch("http://localhost:5000/api/enrollments/my-enrollment", {
+    const enrollmentRes = await fetch(`${API_BASE}/enrollments/my-enrollment`, {
       headers: { Authorization: `Bearer ${token}` }
     });
     if (enrollmentRes.ok) {
@@ -165,7 +166,7 @@ if (dashboardMain) dashboardMain.prepend(schoolNameEl);
 if (dashboardMain) dashboardMain.prepend(feeInfoEl);
 
 try {
-  const schoolRes = await fetch("http://localhost:5000/api/users/my-school", {
+  const schoolRes = await fetch(`${API_BASE}/users/my-school`, {
     headers: { Authorization: `Bearer ${token}` },
   });
 
@@ -186,7 +187,7 @@ try {
 // Fetch fee structure for current student
 // ---------------------------
 try {
-  const feesRes = await fetch('http://localhost:5000/api/users/my-fees', {
+  const feesRes = await fetch(`${API_BASE}/users/my-fees`, {
     headers: { Authorization: `Bearer ${token}` }
   });
 
@@ -215,13 +216,13 @@ const loadFeeData = async (selectedYear) => {
 
   try {
     const [feesRes, balanceRes, paymentsRes] = await Promise.all([
-      fetch(`http://localhost:5000/api/users/my-fees?academicYear=${selectedYear}`, {
+      fetch(`${API_BASE}/users/my-fees?academicYear=${selectedYear}`, {
         headers: { Authorization: `Bearer ${token}` }
       }),
-      fetch(`http://localhost:5000/api/users/my-balance?academicYear=${selectedYear}`, {
+      fetch(`${API_BASE}/users/my-balance?academicYear=${selectedYear}`, {
         headers: { Authorization: `Bearer ${token}` }
       }),
-      fetch(`http://localhost:5000/api/users/my-payments?academicYear=${selectedYear}`, {
+      fetch(`${API_BASE}/users/my-payments?academicYear=${selectedYear}`, {
         headers: { Authorization: `Bearer ${token}` }
       })
     ]);
@@ -463,7 +464,7 @@ const displayStudentTables = async () => {
     if (assessValue !== "all" && !isNaN(assessValue)) query.set("assessment", Number(assessValue));
 
     // Build URL
-    let url = "http://localhost:5000/api/marks/student";
+    let url = `${API_BASE}/marks/student`;
     const queryString = query.toString();
     if (queryString) url += `?${queryString}`;
 

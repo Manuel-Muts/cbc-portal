@@ -75,6 +75,8 @@ document.addEventListener("DOMContentLoaded", () => {
   const lowSubjectEl = document.getElementById("lowSubject");
   const recordsCountEl = document.getElementById("recordsCount");
 
+  // ===== API CONFIG =====
+  const API_BASE = "https://competence-hub.onrender.com/api";
   const token = localStorage.getItem("token");
   let user = null;
 
@@ -121,7 +123,7 @@ document.addEventListener("DOMContentLoaded", () => {
   // ===== FETCH SCHOOL =====
   async function fetchSchoolInfo() {
     try {
-      const res = await fetch("http://localhost:5000/api/my-school", {
+      const res = await fetch(`${API_BASE}/my-school`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       if (!res.ok) throw new Error("School fetch failed");
@@ -146,7 +148,7 @@ document.addEventListener("DOMContentLoaded", () => {
   // ===== FETCH USER PROFILE =====
   const fetchUserAndAllocations = async () => {
     try {
-      const userRes = await fetch("http://localhost:5000/api/users/user", {
+      const userRes = await fetch(`${API_BASE}/users/user`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       if (!userRes.ok) throw new Error("Unauthorized");
@@ -161,7 +163,8 @@ document.addEventListener("DOMContentLoaded", () => {
       let classGrade = profile.classGrade;
 
       if (!classGrade) {
-        const allocRes = await fetch("http://localhost:5000/api/users/allocations", {
+        const allocRes = await fetch(`${API_BASE}/users/allocations`, {
+
           headers: { Authorization: `Bearer ${token}` }
         });
         const allocations = allocRes.ok ? await allocRes.json() : [];
@@ -219,7 +222,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
       // ===== LOGO RESOLUTION (FIXED) =====
       if (logoEl && school.logo) {
-        const BACKEND_URL = "http://localhost:5000";
+        const BACKEND_URL = "https://competence-hub.onrender.com";
         let logoPath = school.logo.trim();
 
         logoEl.crossOrigin = "anonymous";
@@ -282,7 +285,8 @@ document.addEventListener("DOMContentLoaded", () => {
     console.log("[Analysis] Fetching marks with params:", Object.fromEntries(params.entries()));
 
     try {
-      const res = await fetch(`http://localhost:5000/api/marks/by-grade?${params}`, {
+      const res = await fetch(`${API_BASE}/marks/by-grade?${params}`, {
+
         headers: { Authorization: `Bearer ${token}` }
       });
       if (res.status === 403) {
