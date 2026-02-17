@@ -40,27 +40,29 @@ app.use(helmet());
 // CORS
 // -------------------------
 const FRONTEND_ORIGINS = [
-  "https://competence-hub.onrender.com",
+  process.env.FRONTEND_URL,         // Production frontend (Netlify)
+  "http://localhost:5000",          // Local testing
+  "http://localhost:3000"
+].filter(Boolean);
 
-  
-  process.env.FRONTEND_URL
-];
-
-
-// General CORS for API
 app.use(cors({
   origin: function(origin, callback) {
-    // Allow requests with no origin (like Postman)
+    // Allow tools like Postman (no origin)
     if (!origin) return callback(null, true);
-    if (FRONTEND_ORIGINS.indexOf(origin) === -1) {
-      const msg = `The CORS policy for this site does not allow access from the specified Origin: ${origin}`;
-      return callback(new Error(msg), false);
+
+    if (FRONTEND_ORIGINS.includes(origin)) {
+      return callback(null, true);
     }
-    return callback(null, true);
+
+    return callback(
+      new Error(`CORS blocked for origin: ${origin}`),
+      false
+    );
   },
   methods: ["GET","POST","PUT","PATCH","DELETE","OPTIONS"],
   credentials: true
 }));
+
 // -------------------------
 // RATE LIMIT
 // -------------------------
@@ -122,7 +124,8 @@ mongoose.connect(mongoURI)
     console.log("✅ MongoDB connected successfully!");
     const PORT = process.env.PORT || 5000;
     app.listen(PORT, () =>
-      console.log(`🚀 Server running at http://localhost:${PORT}`)
+      console.log(`🚀 Server running on port ${PORT}`)
+
     );
   })
   .catch(err => {

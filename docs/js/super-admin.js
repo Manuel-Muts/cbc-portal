@@ -256,7 +256,7 @@ document.addEventListener("DOMContentLoaded", () => {
         `;
 
         (async () => {
-          const res = await authFetch(`${API_BASE}/api/analytics`);
+          const res = await authFetch(`${API_BASE}/analytics`);
           if (!res) return;
           const data = await res.json();
 
@@ -313,7 +313,7 @@ document.addEventListener("DOMContentLoaded", () => {
         `;
 
         (async () => {
-          const res = await authFetch(`${API_BASE}/api/logs`);
+          const res = await authFetch(`${API_BASE}/logs`);
           if (!res) return;
           const data = await res.json();
 
@@ -453,7 +453,7 @@ document.addEventListener("DOMContentLoaded", () => {
       formData.append("address", address);
       if (logoFile) formData.append("logo", logoFile);
 
-      await authFetch(`${API_BASE}/api/schools`, {
+      await authFetch(`${API_BASE}/schools`, {
         method: "POST",
         body: formData
       });
@@ -466,7 +466,7 @@ document.addEventListener("DOMContentLoaded", () => {
     // LOAD SCHOOLS
     // ---------------------------
     async function loadSchools() {
-      const res = await authFetch(`${API_BASE}/api/schools`);
+      const res = await authFetch(`${API_BASE}/schools`);
       if (!res) return;
       const schools = await res.json();
 
@@ -531,7 +531,7 @@ document.addEventListener("DOMContentLoaded", () => {
             formData.append("address", address);
             if (logoFile) formData.append("logo", logoFile);
 
-            await authFetch(`${API_BASE}/api/schools/${id}`, {
+            await authFetch(`${API_BASE}/schools/${id}`, {
               method: "PUT",
               body: formData
             });
@@ -557,7 +557,7 @@ document.addEventListener("DOMContentLoaded", () => {
           const id = btn.dataset.id;
           const currentStatus = btn.dataset.status;
 
-          const res = await authFetch(`${API_BASE}/api/schools/${id}/toggle-status`, { method: "PATCH" });
+          const res = await authFetch(`${API_BASE}/schools/${id}/toggle-status`, { method: "PATCH" });
           if (!res) return;
           const data = await res.json();
 
@@ -653,7 +653,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const editAdminSchool = document.getElementById("editAdminSchool");
 
     async function loadSchoolsOptions() {
-      const res = await authFetch(`${API_BASE}/api/schools`);
+      const res = await authFetch(`${API_BASE}/schools`);
       if (!res) return;
       const schools = await res.json();
       [newAdminSchool, editAdminSchool].forEach(sel => {
@@ -663,7 +663,7 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     async function loadAdmins() {
-      const res = await authFetch(`${API_BASE}/api/admins`);
+      const res = await authFetch(`${API_BASE}/admins`);
       if (!res) return;
       const admins = await res.json();
       tableBody.innerHTML = "";
@@ -688,7 +688,7 @@ document.addEventListener("DOMContentLoaded", () => {
       document.querySelectorAll(".editAdminBtn").forEach(btn => {
         btn.addEventListener("click", async () => {
           const id = btn.dataset.id;
-          const res = await authFetch(`${API_BASE}/api/admins/${id}`);
+          const res = await authFetch(`${API_BASE}/admins/${id}`);
           const admin = await res.json();
 
           document.getElementById("editAdminName").value = admin.name;
@@ -700,7 +700,7 @@ document.addEventListener("DOMContentLoaded", () => {
             const name = document.getElementById("editAdminName").value.trim();
             const email = document.getElementById("editAdminEmail").value.trim();
             const schoolId = document.getElementById("editAdminSchool").value;
-            await authFetch(`${API_BASE}/api/admins/${id}`, { method: "PUT", body: JSON.stringify({ name, email, schoolId }) });
+            await authFetch(`${API_BASE}/admins/${id}`, { method: "PUT", body: JSON.stringify({ name, email, schoolId }) });
             document.getElementById("editAdminModal").classList.add("hidden");
             loadAdmins();
           };
@@ -710,7 +710,7 @@ document.addEventListener("DOMContentLoaded", () => {
       document.querySelectorAll(".deleteAdminBtn").forEach(btn => {
         btn.addEventListener("click", async () => {
           if (!confirm("Are you sure?")) return;
-          await authFetch(`${API_BASE}/api/admins/${btn.dataset.id}`, { method: "DELETE" });
+          await authFetch(`${API_BASE}/admins/${btn.dataset.id}`, { method: "DELETE" });
           loadAdmins();
         });
       });
@@ -737,7 +737,7 @@ document.addEventListener("DOMContentLoaded", () => {
       const schoolId = document.getElementById("newAdminSchool").value;
       if (!name || !email || !schoolId) return alert("Fill all fields");
       const password = generatePassword();
-      await authFetch(`${API_BASE}/api/admins`, { method: "POST", body: JSON.stringify({ name, email, schoolId, password }) });
+      await authFetch(`${API_BASE}/admins`, { method: "POST", body: JSON.stringify({ name, email, schoolId, password }) });
       modal.classList.add("hidden");
       loadAdmins();
     });
@@ -752,7 +752,7 @@ document.addEventListener("DOMContentLoaded", () => {
   function initSettingsPage() {
     // fetch current settings
     (async () => {
-      const res = await authFetch(`${API_BASE}/api/settings`);
+      const res = await authFetch(`${API_BASE}/settings`);
       if (!res) return;
       const data = await res.json();
       const s = data.settings || {};
@@ -768,7 +768,7 @@ document.addEventListener("DOMContentLoaded", () => {
           saveBtn.disabled = true;
           saveBtn.textContent = 'Saving...';
           // Use relative path so authFetch appends API_BASE
-          const r = await authFetch('/api/settings', { method: 'PUT', body: JSON.stringify(payload) });
+          const r = await authFetch(`${API_BASE}/settings`, { method: 'PUT', body: JSON.stringify(payload) });
           if (!r) throw new Error('No response (session?)');
           if (r.ok) {
             alert('Settings saved');
@@ -869,7 +869,7 @@ document.addEventListener("DOMContentLoaded", () => {
       submitBtn.textContent = "Saving...";
 
       const token = localStorage.getItem("token");
-      const response = await fetch(`${API_BASE}/api/update-paybill`, {
+      const response = await fetch(`${API_BASE}/update-paybill`, {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
