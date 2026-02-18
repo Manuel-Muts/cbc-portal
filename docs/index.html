@@ -155,8 +155,14 @@ input {
   background: #0066ff; color: #fff;
   border: none; border-radius: 6px;
   cursor: pointer; font-size: 16px;
+  transition: background 0.3s ease;
 }
 .btn-submit:hover { background: #004dc1; }
+.btn-submit:disabled { 
+  background: #4a90e2; 
+  cursor: not-allowed; 
+  opacity: 0.7;
+}
 
 #saLoginError { color: red; margin-top: 10px; text-align: center; font-size: 14px; }
 </style>
@@ -191,6 +197,12 @@ document.addEventListener("DOMContentLoaded", () => {
     const email = formData.get("email");
     const password = formData.get("password");
 
+    // Get the submit button and show loading state
+    const submitBtn = form.querySelector('button[type="submit"]');
+    const originalText = submitBtn.textContent;
+    submitBtn.disabled = true;
+    submitBtn.innerHTML = '<span class="spinner"></span>Logging in...';
+
     try {
       const res = await fetch(`${API_BASE}/api/users/login`, {
         method: "POST",
@@ -206,6 +218,8 @@ document.addEventListener("DOMContentLoaded", () => {
 
       if (!res.ok) {
         errorDiv.textContent = data.message || "Invalid login";
+        submitBtn.disabled = false;
+        submitBtn.textContent = originalText;
         return;
       }
 
@@ -215,6 +229,8 @@ document.addEventListener("DOMContentLoaded", () => {
     } catch (err) {
       console.error(err);
       errorDiv.textContent = "Server error. Try again.";
+      submitBtn.disabled = false;
+      submitBtn.textContent = originalText;
     }
   });
 });

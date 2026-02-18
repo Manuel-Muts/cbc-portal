@@ -675,3 +675,25 @@ footer {
 .close-btn:hover {
   color: #000;
 }
+/* SPINNER FOR LOGIN BUTTON */
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+.spinner {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  border: 2px solid rgba(0, 74, 173, 0.3);
+  border-top: 2px solid #004aad;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  margin-right: 8px;
+  vertical-align: middle;
+}
+
+.btn:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}

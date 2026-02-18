@@ -95,6 +95,12 @@ document.addEventListener("DOMContentLoaded", function () {
 
     console.log("Payload sending to backend:", payload);
 
+    // Get the submit button and show loading state
+    const submitBtn = loginForm.querySelector('button[type="submit"]');
+    const originalText = submitBtn.textContent;
+    submitBtn.disabled = true;
+    submitBtn.innerHTML = '<span class="spinner"></span>Logging in...';
+
     try {
       // Login and fetch user + token + schoolId
       const data = await apiRequest("login", "POST", payload);
@@ -108,6 +114,8 @@ document.addEventListener("DOMContentLoaded", function () {
       // Open password change modal if required
       if ((["teacher", "classteacher", "admin", "accounts"].includes(selectedRole)) && data.user.passwordMustChange) {
         openChangePasswordModal();
+        submitBtn.disabled = false;
+        submitBtn.textContent = originalText;
         return;
       }
 
@@ -116,6 +124,9 @@ document.addEventListener("DOMContentLoaded", function () {
     } catch (err) {
       console.error(err);
       alert(err.message);
+      // Reset button on error
+      submitBtn.disabled = false;
+      submitBtn.textContent = originalText;
     }
   }
 
