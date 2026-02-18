@@ -519,6 +519,11 @@ form {
   min-width: 180px;
   font-weight: 600;
   box-shadow: 0 3px 8px rgba(0,0,0,0.2);
+  position: fixed;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 10000;
 }
 
 .toast.success { background: #28a745; }
