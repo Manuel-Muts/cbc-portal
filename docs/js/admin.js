@@ -291,11 +291,21 @@ previewPromotionBtn.addEventListener("click", async () => {
     return;
   }
 
-  const res = await secureFetch(
-    `${API_BASE}/promotions/preview?academicYear=${year}`
-  );
+  const originalText = previewPromotionBtn.innerHTML;
+  previewPromotionBtn.classList.add("btn-spinning");
+  previewPromotionBtn.disabled = true;
 
-  if (res) renderPromotionPreview(res.preview);
+  try {
+    const res = await secureFetch(
+      `${API_BASE}/promotions/preview?academicYear=${year}`
+    );
+
+    if (res) renderPromotionPreview(res.preview);
+  } finally {
+    previewPromotionBtn.classList.remove("btn-spinning");
+    previewPromotionBtn.disabled = false;
+    previewPromotionBtn.innerHTML = originalText;
+  }
 });
 
 confirmPromotionBtn.addEventListener("click", async () => {
@@ -326,19 +336,28 @@ confirmPromotionBtn.addEventListener("click", async () => {
 
   if (!ok) return;
 
-  const res = await secureFetch(`${API_BASE}/promotions/promote`, {
-    method: "POST",
-    body: JSON.stringify({
-      fromAcademicYear: fromYear,
-      toAcademicYear: toYear,
-      decisions
-    })
-  });
+  const originalText = confirmPromotionBtn.innerHTML;
+  confirmPromotionBtn.classList.add("btn-spinning");
+  confirmPromotionBtn.disabled = true;
 
-  if (res) {
-    showToast("Promotion completed", "success");
-    promotionPreviewBody.innerHTML = "";
-    confirmPromotionBtn.disabled = true;
+  try {
+    const res = await secureFetch(`${API_BASE}/promotions/promote`, {
+      method: "POST",
+      body: JSON.stringify({
+        fromAcademicYear: fromYear,
+        toAcademicYear: toYear,
+        decisions
+      })
+    });
+
+    if (res) {
+      showToast("Promotion completed", "success");
+      promotionPreviewBody.innerHTML = "";
+      confirmPromotionBtn.disabled = true;
+    }
+  } finally {
+    confirmPromotionBtn.classList.remove("btn-spinning");
+    confirmPromotionBtn.innerHTML = originalText;
   }
 });
 
@@ -1457,42 +1476,51 @@ studentSearchBtn.addEventListener("click", async () => {
     return;
   }
 
-  const res = await secureFetch(
-    `${API_BASE}/enrollments/admin-search?q=${encodeURIComponent(q)}`
-  );
+  const originalText = studentSearchBtn.innerHTML;
+  studentSearchBtn.classList.add("btn-spinning");
+  studentSearchBtn.disabled = true;
 
-  studentSearchBody.innerHTML = "";
+  try {
+    const res = await secureFetch(
+      `${API_BASE}/enrollments/admin-search?q=${encodeURIComponent(q)}`
+    );
 
-  if (!res || !res.results.length) {
-    studentSearchBody.innerHTML =
-      `<tr><td colspan="6" style="text-align:center">No student found</td></tr>`;
-    return;
+    studentSearchBody.innerHTML = "";
+
+    if (!res || !res.results.length) {
+      studentSearchBody.innerHTML =
+        `<tr><td colspan="6" style="text-align:center">No student found</td></tr>`;
+      return;
+    }
+
+    res.results.forEach(s => {
+      const tr = document.createElement("tr");
+
+      tr.dataset.studentId = s.studentId; 
+      tr.dataset.enrollmentId = s.enrollmentId; 
+
+      // Format grade with stream
+      const gradeLabel = s.grade && s.stream ? `${s.grade}${s.stream}` : (s.grade || "-");
+
+      tr.innerHTML = `
+        <td>${s.name}</td>
+        <td>${s.admission}</td>
+        <td>${s.academicYear || "-"}</td>
+        <td>${gradeLabel}</td>
+        <td>${s.status}</td>
+        <td>
+          <button class="btn-history" data-student-id="${s.studentId}" data-student-name="${s.name}" style="padding: 6px 10px; margin-right: 5px; background: #0077b6; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">📋 History</button>
+          <button class="btn-edit" data-enrollment-id="${s.enrollmentId}" data-student-id="${s.studentId}" style="padding: 6px 10px; background: #2ecc71; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">✏️ Edit</button>
+        </td>
+      `;
+
+      studentSearchBody.appendChild(tr);
+    });
+  } finally {
+    studentSearchBtn.classList.remove("btn-spinning");
+    studentSearchBtn.disabled = false;
+    studentSearchBtn.innerHTML = originalText;
   }
-
- res.results.forEach(s => {
-  const tr = document.createElement("tr");
-
-  tr.dataset.studentId = s.studentId; 
-  tr.dataset.enrollmentId = s.enrollmentId; 
-
-  // Format grade with stream
-  const gradeLabel = s.grade && s.stream ? `${s.grade}${s.stream}` : (s.grade || "-");
-
-  tr.innerHTML = `
-    <td>${s.name}</td>
-    <td>${s.admission}</td>
-    <td>${s.academicYear || "-"}</td>
-    <td>${gradeLabel}</td>
-    <td>${s.status}</td>
-    <td>
-      <button class="btn-history" data-student-id="${s.studentId}" data-student-name="${s.name}" style="padding: 6px 10px; margin-right: 5px; background: #0077b6; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">📋 History</button>
-      <button class="btn-edit" data-enrollment-id="${s.enrollmentId}" data-student-id="${s.studentId}" style="padding: 6px 10px; background: #2ecc71; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">✏️ Edit</button>
-    </td>
-  `;
-
-  studentSearchBody.appendChild(tr);
-});
-
 });
 
 })();

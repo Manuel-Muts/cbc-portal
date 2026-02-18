@@ -186,6 +186,11 @@
   // ASSESSMENT SELECT POPULATE
   // ---------------------------
   (function populateAssessments() {
+    const midterm = document.createElement("option");
+    midterm.value = 0;
+    midterm.textContent = "Midterm";
+    assessmentSelect.appendChild(midterm);
+    
     for (let i = 1; i <= 4; i++) {
       const opt = document.createElement("option");
       opt.value = i;
@@ -589,7 +594,14 @@
         const headerInfo = groupMarks[0];
         const details = document.createElement('details');
         details.className = 'marks-accordion';
-        const assessmentLabel = headerInfo.assessment === 5 ? 'End Term' : 'Assessment ' + headerInfo.assessment;
+        let assessmentLabel;
+        if (headerInfo.assessment === 0) {
+          assessmentLabel = 'Midterm';
+        } else if (headerInfo.assessment === 5) {
+          assessmentLabel = 'End Term';
+        } else {
+          assessmentLabel = 'Assessment ' + headerInfo.assessment;
+        }
         const summaryText = `Grade: ${sanitize(headerInfo.grade)} • Term: ${sanitize(headerInfo.term)} • Year: ${sanitize(headerInfo.year)} • ${assessmentLabel} — ${groupMarks.length} record${groupMarks.length > 1 ? 's' : ''}`;
         const summary = document.createElement('summary');
         summary.className = 'marks-accordion-summary';
@@ -922,6 +934,7 @@
     if (!admission) {
       studentNameInput.value = '';
       currentGradeInput.value = '';
+      selectedStudentStream = null;
       return;
     }
     try {
@@ -933,6 +946,7 @@
       if (!res.ok) {
         studentNameInput.value = '';
         currentGradeInput.value = '';
+        selectedStudentStream = null;
         showToast("Student not found. Please check the admission number.", "error");
         return;
       }
@@ -941,22 +955,26 @@
       if (student.schoolId !== teacherSchoolId) {
         studentNameInput.value = '';
         currentGradeInput.value = '';
+        selectedStudentStream = null;
         admissionInput.value = '';
         showToast("The student not found in your school.", "error");
         return;
       }
       studentNameInput.value = student.name || '';
-      currentGradeInput.value = student.grade || ''; // Display full grade with stream (e.g., "Grade 5W")
       
-      // 🆕 Extract and store the student's stream from their grade
+      // 🔧 IMPROVED: Display current grade with stream clearly
       // Grade format: "Grade 5" (no stream) or "Grade 5W" (with stream "W")
       selectedStudentStream = null;
+      let displayGrade = student.grade || '';
+      
       if (student.grade) {
         const gradeStr = String(student.grade).trim();
         // Try to extract stream: "Grade 5W" → stream is "W" (last char if not a digit)
         const lastChar = gradeStr[gradeStr.length - 1];
         if (lastChar && isNaN(lastChar)) {
           selectedStudentStream = lastChar;
+          // Show grade with stream clearly, e.g., "Grade 5 (Stream W)"
+          displayGrade = gradeStr.replace(/([A-Z])$/, ' (Stream $1)');
         }
         
         const gradeMatch = gradeStr.match(/\d+/);
@@ -966,10 +984,13 @@
           populateGradeFields(gradeNum);
         }
       }
+      
+      currentGradeInput.value = displayGrade; // Display with stream info
     } catch (err) {
       console.error('Student lookup error:', err);
       studentNameInput.value = '';
       currentGradeInput.value = '';
+      selectedStudentStream = null;
       showToast("Error looking up student. Please try again.", "error");
     }
   });

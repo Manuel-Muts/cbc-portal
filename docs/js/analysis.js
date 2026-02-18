@@ -500,7 +500,14 @@ document.addEventListener("DOMContentLoaded", () => {
     Object.keys(stats.groupedByAssessment).forEach(assessmentKey => {
       const arr = stats.groupedByAssessment[assessmentKey];
       if (!arr.length) return;
-      const assessLabel = assessmentKey === "5" ? "End Term" : assessmentKey;
+      let assessLabel;
+      if (assessmentKey === "0") {
+        assessLabel = "Midterm";
+      } else if (assessmentKey === "5") {
+        assessLabel = "End Term";
+      } else {
+        assessLabel = assessmentKey;
+      }
 
       html += `<h4>Assessment ${assessLabel}</h4>`;
       html += `<table style="border-collapse: collapse; width: 100%; border:1px solid #000; margin-bottom: 15px;">
@@ -508,7 +515,14 @@ document.addEventListener("DOMContentLoaded", () => {
       stats.subjects.forEach(sub => html += `<th>${sub}</th>`);
       html += `<th>Total Marks</th><th>Performance Level</th></tr></thead><tbody>`;
       arr.forEach(s => {
-        const assessLabelRow = s.assessment === "5" ? "End Term" : s.assessment;
+        let assessLabelRow;
+        if (s.assessment === "0") {
+          assessLabelRow = "Midterm";
+        } else if (s.assessment === "5") {
+          assessLabelRow = "End Term";
+        } else {
+          assessLabelRow = s.assessment;
+        }
         html += `<tr><td>${s.rank}</td><td>${s.name}</td><td>${assessLabelRow}</td>`;
         stats.subjects.forEach(sub => html += `<td>${s.subjects[sub] ?? '-'}</td>`);
         html += `<td>${s.total}</td><td>${getPerformanceLevel(s.mean)}</td></tr>`;
@@ -698,6 +712,7 @@ async function exportPdf() {
         Term: ${termFilter.value || "-"} |
         Year: ${yearFilter.value || "-"} |
         Assessment: ${
+          assessmentFilter.value === "0" ? "Midterm" :
           assessmentFilter.value === "5" ? "End Term" :
           assessmentFilter.value === "all" ? "All" : assessmentFilter.value
         }
@@ -836,7 +851,7 @@ async function exportPdf() {
     if (window.trendChart) window.trendChart.destroy();
     window.trendChart = new Chart(ctx, {
       type: "line",
-      data: { labels: assessments.map(a => a === "5" ? "End Term" : a), datasets: [{ label: "Class Mean", data: classMeans, borderColor: "blue", fill: false, tension: 0.2 }] },
+      data: { labels: assessments.map(a => a === "0" ? "Midterm" : a === "5" ? "End Term" : a), datasets: [{ label: "Class Mean", data: classMeans, borderColor: "blue", fill: false, tension: 0.2 }] },
       options: { responsive: true, plugins: { legend: { position: 'bottom' } }, scales: { y: { beginAtZero: true, title: { display: true, text: "Class Mean (%)" } }, x: { title: { display: true, text: "Assessment" } } } }
     });
   }

@@ -771,19 +771,29 @@ export const getStudentByAdmission = async (req, res) => {
     }
     // super_admin can fetch any student → no schoolId restriction
 
-    const student = await User.findOne(query).select("name admission schoolId enrollmentId");
+    const student = await User.findOne(query).select("name admission schoolId _id");
     if (!student) return res.status(404).json({ message: "Student not found" });
 
-    // Fetch current enrollment to get grade and stream
-    let grade = null;
-    let stream = null;
-    if (student.enrollmentId) {
-      const enrollment = await StudentEnrollment.findById(student.enrollmentId).select("grade stream");
-      if (enrollment) {
-        grade = enrollment.grade;
-        stream = enrollment.stream;
-      }
+    // 🔧 FIXED: Fetch LATEST ACTIVE enrollment (handles promotion correctly)
+    // First, try to get enrollment for current academic year with active status
+    const currentYear = new Date().getFullYear();
+    let enrollment = await StudentEnrollment.findOne({
+      studentId: student._id,
+      academicYear: currentYear,
+      status: 'active'
+    }).select("grade stream");
+
+    // If no active enrollment for current year, get latest enrollment (post-promotion)
+    if (!enrollment) {
+      enrollment = await StudentEnrollment.findOne({
+        studentId: student._id
+      })
+        .sort({ academicYear: -1 })
+        .select("grade stream");
     }
+
+    const grade = enrollment?.grade || null;
+    const stream = enrollment?.stream || null;
 
     res.json({
       name: student.name,

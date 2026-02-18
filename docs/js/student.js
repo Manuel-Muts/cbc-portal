@@ -432,8 +432,11 @@ if (downloadFeeStatementPDF) {
   };
   
 
-  const getAssessmentLabel = (value) =>
-    value == 5 ? "End Term" : `Assessment ${value}`;
+  const getAssessmentLabel = (value) => {
+    if (value == 0) return "Midterm";
+    if (value == 5) return "End Term";
+    return `Assessment ${value}`;
+  };
 
  // ---------------------------
 
