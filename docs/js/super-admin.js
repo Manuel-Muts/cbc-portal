@@ -32,7 +32,7 @@ document.addEventListener("DOMContentLoaded", () => {
       ...(options.body instanceof FormData ? {} : { "Content-Type": "application/json" })
     };
 
-    const res = await fetch(url.startsWith("http") ? url : API_BASE + url, options);
+    const res = await fetch(url.startsWith("https") ? url : API_BASE + url, options);
 
     if (res.status === 401) {
       alert("Session expired. Please log in again.");
@@ -139,7 +139,7 @@ document.addEventListener("DOMContentLoaded", () => {
           </div>
         `;
 
-        const overviewRes = await authFetch(`${API_BASE}/api/overview`);
+        const overviewRes = await authFetch(`${API_BASE}/overview`);
         if (!overviewRes) break;
         const metrics = await overviewRes.json();
 
@@ -506,7 +506,7 @@ document.addEventListener("DOMContentLoaded", () => {
       document.querySelectorAll(".editSchoolBtn").forEach(btn => {
         btn.addEventListener("click", async () => {
           const id = btn.dataset.id;
-          const res = await authFetch(`${API_BASE}/api/schools/${id}`);
+          const res = await authFetch(`${API_BASE}/schools/${id}`);
           const school = await res.json();
 
           document.getElementById("editSchoolName").value = school.name;
@@ -546,7 +546,7 @@ document.addEventListener("DOMContentLoaded", () => {
       document.querySelectorAll(".deleteSchoolBtn").forEach(btn => {
         btn.addEventListener("click", async () => {
           if (!confirm("Are you sure?")) return;
-          await authFetch(`${API_BASE}/api/schools/${btn.dataset.id}`, { method: "DELETE" });
+          await authFetch(`${API_BASE}/schools/${btn.dataset.id}`, { method: "DELETE" });
           loadSchools();
         });
       });
