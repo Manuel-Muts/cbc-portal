@@ -1,3 +1,7 @@
+const API_BASE =
+  window.location.hostname === "localhost"
+    ? "http://localhost:5000/api"
+    : "https://competence-hub.onrender.com/api";
 document.addEventListener("DOMContentLoaded", function () {
   const loginForm = document.getElementById("loginForm");
   const changePasswordForm = document.getElementById("changePasswordForm");
@@ -58,7 +62,7 @@ document.addEventListener("DOMContentLoaded", function () {
     const headers = { "Content-Type": "application/json" };
     if (token) headers["Authorization"] = `Bearer ${token}`;
 
-    const res = await fetch(`https://competence-hub.onrender.com/api/users/${endpoint}`, {
+    const res = await fetch(`${API_BASE}/users/${endpoint}`, {
       method,
       headers,
       body: body ? JSON.stringify(body) : null,
