@@ -29,6 +29,13 @@ const __dirname = path.dirname(__filename);
 
 const app = express();
 
+// When running behind a proxy (Render, Heroku, etc.) Express needs to
+// know to trust the proxy so that `req.ip` and `X-Forwarded-*` headers
+// are interpreted correctly. express-rate-limit depends on this when the
+// `X-Forwarded-For` header is present.
+// For Render, trusting the first proxy is sufficient.
+app.set('trust proxy', 1);
+
 // -------------------------
 // MIDDLEWARE
 // -------------------------
