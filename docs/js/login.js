@@ -1,5 +1,3 @@
-const API_BASE = "https://competence-hub.onrender.com/api";
-
 document.addEventListener("DOMContentLoaded", function () {
   const loginForm = document.getElementById("loginForm");
   const changePasswordForm = document.getElementById("changePasswordForm");
