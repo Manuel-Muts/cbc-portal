@@ -159,6 +159,12 @@ document.addEventListener("DOMContentLoaded", function () {
     const payload = { newPassword };
     if (selectedRole !== "classteacher") payload.currentPassword = currentPassword;
 
+    // Get the submit button and show loading state
+    const submitBtn = changePasswordForm.querySelector("button[type='submit']");
+    const originalText = submitBtn.textContent;
+    submitBtn.disabled = true;
+    submitBtn.innerHTML = '<span class="spinner"></span>Updating...';
+
     try {
       // Include schoolId automatically
       const schoolId = localStorage.getItem("schoolId");
@@ -175,6 +181,9 @@ document.addEventListener("DOMContentLoaded", function () {
     } catch (err) {
       console.error("Change password error:", err);
       alert(err.message);
+      // Reset button on error
+      submitBtn.disabled = false;
+      submitBtn.textContent = originalText;
     }
   });
 
