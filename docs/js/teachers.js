@@ -889,6 +889,11 @@
       markPayload.endTermExam = et;
     }
 
+    const submitBtn = marksForm.querySelector('button[type=\"submit\"]');
+    const originalBtnHTML = submitBtn.innerHTML;
+    submitBtn.disabled = true;
+    submitBtn.innerHTML = '<span class=\"spinner\"></span>Submitting...';
+
     try {
       if (editingMarkId) {
         const res = await fetch(`${API_BASE}/marks/${editingMarkId}`, {
@@ -923,6 +928,9 @@
     } catch (err) {
       console.error('Mark submission error:', err);
       showToast("⚠️ Error submitting mark. Please try again.");
+    } finally {
+      submitBtn.disabled = false;
+      submitBtn.innerHTML = originalBtnHTML;
     }
   });
 
@@ -1136,6 +1144,11 @@
       return;
     }
 
+    const uploadBtn = materialsForm.querySelector('button[type=\"submit\"]');
+    const originalUploadBtnHTML = uploadBtn.innerHTML;
+    uploadBtn.disabled = true;
+    uploadBtn.innerHTML = '<span class=\"spinner\"></span>Uploading...';
+
     // ===== JUNIOR SCHOOL (1-9) =====
     if (!isSeniorSchool) {
       if (!materialSubject.value) {
@@ -1166,6 +1179,9 @@
       } catch (err) {
         console.error("Upload error:", err);
         showToast("⚠️ Upload failed: " + err.message, "error");
+      } finally {
+        uploadBtn.disabled = false;
+        uploadBtn.innerHTML = originalUploadBtnHTML;
       }
     }
     // ===== SENIOR SCHOOL (10-12) =====
@@ -1203,6 +1219,9 @@
       } catch (err) {
         console.error("Upload error:", err);
         showToast("⚠️ Upload failed: " + err.message, "error");
+      } finally {
+        uploadBtn.disabled = false;
+        uploadBtn.innerHTML = originalUploadBtnHTML;
       }
     }
   });

@@ -291,9 +291,9 @@ previewPromotionBtn.addEventListener("click", async () => {
     return;
   }
 
-  const originalText = previewPromotionBtn.innerHTML;
-  previewPromotionBtn.classList.add("btn-spinning");
+  const originalHTML = previewPromotionBtn.innerHTML;
   previewPromotionBtn.disabled = true;
+  previewPromotionBtn.innerHTML = '<span class="spinner"></span>Loading...';
 
   try {
     const res = await secureFetch(
@@ -302,9 +302,8 @@ previewPromotionBtn.addEventListener("click", async () => {
 
     if (res) renderPromotionPreview(res.preview);
   } finally {
-    previewPromotionBtn.classList.remove("btn-spinning");
     previewPromotionBtn.disabled = false;
-    previewPromotionBtn.innerHTML = originalText;
+    previewPromotionBtn.innerHTML = originalHTML;
   }
 });
 
@@ -336,9 +335,9 @@ confirmPromotionBtn.addEventListener("click", async () => {
 
   if (!ok) return;
 
-  const originalText = confirmPromotionBtn.innerHTML;
-  confirmPromotionBtn.classList.add("btn-spinning");
+  const originalHTML = confirmPromotionBtn.innerHTML;
   confirmPromotionBtn.disabled = true;
+  confirmPromotionBtn.innerHTML = '<span class="spinner"></span>Processing...';
 
   try {
     const res = await secureFetch(`${API_BASE}/promotions/promote`, {
@@ -356,8 +355,8 @@ confirmPromotionBtn.addEventListener("click", async () => {
       confirmPromotionBtn.disabled = true;
     }
   } finally {
-    confirmPromotionBtn.classList.remove("btn-spinning");
-    confirmPromotionBtn.innerHTML = originalText;
+    confirmPromotionBtn.disabled = false;
+    confirmPromotionBtn.innerHTML = originalHTML;
   }
 });
 
@@ -1476,9 +1475,9 @@ studentSearchBtn.addEventListener("click", async () => {
     return;
   }
 
-  const originalText = studentSearchBtn.innerHTML;
-  studentSearchBtn.classList.add("btn-spinning");
+  const originalHTML = studentSearchBtn.innerHTML;
   studentSearchBtn.disabled = true;
+  studentSearchBtn.innerHTML = '<span class="spinner"></span>Searching...';
 
   try {
     const res = await secureFetch(
@@ -1517,9 +1516,8 @@ studentSearchBtn.addEventListener("click", async () => {
       studentSearchBody.appendChild(tr);
     });
   } finally {
-    studentSearchBtn.classList.remove("btn-spinning");
     studentSearchBtn.disabled = false;
-    studentSearchBtn.innerHTML = originalText;
+    studentSearchBtn.innerHTML = originalHTML;
   }
 });
 
