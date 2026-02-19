@@ -48,8 +48,18 @@ app.use(helmet());
 // -------------------------
 const FRONTEND_ORIGINS = [
   process.env.FRONTEND_URL,         // Production frontend (Netlify)
-  "http://localhost:5000",          // Local testing
-  "http://localhost:3000"
+  "http://localhost:5000",          // Local testing - Express
+  "http://localhost:3000",          // Local testing - React/common
+  "http://localhost:8000",          // Local testing - Python/other
+  "http://localhost:8080",          // Local testing - Vue/other
+  "http://127.0.0.1:5000",          // Localhost IPv4
+  "http://127.0.0.1:3000",          // Localhost IPv4
+  "http://127.0.0.1:8000",          // Localhost IPv4
+  "http://127.0.0.1:8080",          // Localhost IPv4
+  "http://127.0.0.1:5500",          // VS Code Live Server (default)
+  "http://127.0.0.1:5501",          // VS Code Live Server (alternate)
+  "http://localhost:5500",          // VS Code Live Server
+  "http://localhost:5501",          // VS Code Live Server alternate
 ].filter(Boolean);
 
 app.use(cors({

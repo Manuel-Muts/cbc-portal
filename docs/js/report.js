@@ -12,7 +12,8 @@ document.addEventListener("DOMContentLoaded", async () => {
 // Fetch School Info
 // -----------------------------
 // Set backend URL dynamically (adjust for production via env variable if needed)
-const BACKEND_URL = window.BACKEND_URL || "https://competence-hub.onrender.com";
+// Using API_BASE from config.js instead of BACKEND_URL
+const BACKEND_URL = config.api.baseURL.replace('/api', ''); // Remove /api suffix to get base URL
 
 if (token) {
   try {

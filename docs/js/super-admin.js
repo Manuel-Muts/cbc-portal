@@ -3,7 +3,9 @@ document.addEventListener("DOMContentLoaded", () => {
   const pageTitle = document.getElementById("pageTitle");
   const contentArea = document.getElementById("contentArea");
 
-  const API_BASE = "https://competence-hub.onrender.com/api"; // backend base URL
+  // API_BASE is now loaded from config.js
+  // To change the API endpoint, update config.js
+  const API_BASE = config.api.baseURL; // backend base URL
 
   // ---------------------------
   // SESSION CHECK

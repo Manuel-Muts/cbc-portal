@@ -3,7 +3,9 @@
   // ---------------------------
   // CONFIG + DOM SHORTCUTS
   // ---------------------------
-  const API_BASE = "https://competence-hub.onrender.com/api";
+  // API_BASE is now loaded from config.js
+  // To change the API endpoint, update config.js
+  const API_BASE = config.api.baseURL;
   const token = localStorage.getItem("token");
 
   if (!token) {

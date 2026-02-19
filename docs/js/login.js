@@ -1,4 +1,5 @@
-const API_BASE = "https://competence-hub.onrender.com/api";
+// API_BASE is now loaded from config.js
+// To change the API endpoint, update config.js
 
 document.addEventListener("DOMContentLoaded", function () {
   const loginForm = document.getElementById("loginForm");
@@ -60,7 +61,7 @@ document.addEventListener("DOMContentLoaded", function () {
     const headers = { "Content-Type": "application/json" };
     if (token) headers["Authorization"] = `Bearer ${token}`;
 
-    const res = await fetch(`${API_BASE}/users/${endpoint}`, {
+    const res = await fetch(config.getApiUrl(`/users/${endpoint}`), {
       method,
       headers,
       body: body ? JSON.stringify(body) : null,
