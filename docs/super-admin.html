@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MUTS TECH</title>
+  <link rel="stylesheet" href="css/super-admin.css">
+  <!-- Chart.js CDN -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+</head>
+
+<body>
+   
+  <div class="container">
+
+    <!-- SIDEBAR -->
+    <aside class="sidebar">
+      <h2 class="logo">SUPER ADMIN</h2>
+
+      <ul class="menu">
+        <li class="active" data-page="overview">Overview</li>
+        <li data-page="schools">Schools</li>
+        <li data-page="admins">Admins</li>
+        <li data-page="analytics">Analytics</li>
+        <li data-page="logs">Logs</li>
+        <li data-page="backups">Backups</li>
+        <li data-page="settings">Settings</li>
+      </ul>
+
+      <button id="logoutBtn" class="logout-btn">Logout</button><br><br>
+      <button id="refreshBtn" class="refresh-btn">Refresh</button>
+    </aside>
+
+    <!-- MAIN CONTENT -->
+    <main class="main">
+      <header class="topbar">
+        <h1 id="pageTitle">Overview</h1>
+      </header>
+
+      <section id="contentArea">
+        <!-- Dynamic pages will load here -->
+        <div class="card">
+          <h2>Welcome Super Admin</h2>
+          <p>Select a menu option to begin.</p>
+        </div>
+      </section>
+
+    </main>
+
+  </div>
+
+  <!-- ================== PAYBILL CONFIGURATION MODAL ================== -->
+  <div id="paybillModal" class="modal" style="display: none;">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2>Configure M-Pesa Paybill</h2>
+        <button class="modal-close" id="closePaybillModal">&times;</button>
+      </div>
+      
+      <div class="modal-body">
+        <div class="paybill-info" id="paybillInfo" style="display: none;">
+          <div class="info-box">
+            <h3>✅ Paybill Configured</h3>
+            <p><strong>Paybill Number:</strong> <span id="currentPaybill"></span></p>
+            <p class="instructions">
+              Parents can now pay using:<br>
+              • <strong>Paybill:</strong> [Paybill Number]<br>
+              • <strong>Account:</strong> Student's Admission Number<br>
+              • Payments will automatically update student ledgers
+            </p>
+          </div>
+        </div>
+
+        <div class="paybill-setup" id="paybillSetup">
+          <p class="modal-description">
+            Configure your school's M-Pesa paybill details to enable automatic payment processing. This is optional but highly recommended.
+          </p>
+
+          <form id="paybillForm">
+            <div class="form-group">
+              <label for="paybillInput">M-Pesa Paybill Number:</label>
+              <input 
+                type="text" 
+                id="paybillInput" 
+                placeholder="e.g., 123456" 
+                class="form-input"
+              >
+              <small>The paybill business number provided by M-Pesa</small>
+            </div>
+
+            <div class="modal-feedback" id="paybillFeedback" style="display: none;"></div>
+
+            <div class="modal-footer">
+              <button type="button" class="secondary" id="skipPaybillBtn">Skip for Now</button>
+              <button type="submit" class="primary">Save Configuration</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- OVERLAY FOR MODAL -->
+  <div id="paybillOverlay" class="modal-overlay" style="display: none;" onclick="closePaybillModal()"></div>
+
+  <script src="js/config.js"></script>
+  <script src="js/super-admin.js"></script>
+</body>
+</html>

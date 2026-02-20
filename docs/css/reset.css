@@ -1,0 +1,124 @@
+:root{
+  --bg:#0f172a;
+  --card:#0b1220;
+  --muted:#94a3b8;
+  --accent:#0ea5a3;
+  --accent-2:#06b6d4;
+  --glass: rgba(255,255,255,0.03);
+  --radius:14px;
+  --success:#10b981;
+  --danger:#ef4444;
+}
+
+*{box-sizing:border-box}
+html,body{height:100%}
+body{
+  margin:0;
+  font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial;
+  color:#e6eef6;
+  background:linear-gradient(180deg,#071023 0%, #07162a 100%);
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  padding:28px;
+}
+
+/* Card layout */
+.reset-wrap{width:100%;max-width:840px}
+.card{
+  background:linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));
+  border-radius:var(--radius);
+  padding:28px;
+  box-shadow:0 10px 30px rgba(2,6,23,0.6);
+  border:1px solid rgba(255,255,255,0.04);
+}
+
+.card-head{display:flex;flex-direction:column;gap:6px;margin-bottom:18px}
+.card-head h1{margin:0;font-size:24px;font-weight:700;letter-spacing:0.4px}
+.lead{margin:0;color:var(--muted);font-size:14px;line-height:1.4}
+
+/* Form */
+.reset-form{display:flex;flex-direction:column;gap:16px;margin-top:12px}
+.reset-form label{font-size:13px;font-weight:600;color:#a0b0c0;margin-bottom:6px}
+
+/* Inputs */
+.reset-form input,.reset-form select{
+  padding:12px 14px;border-radius:12px;border:1px solid rgba(211,165,165,0.06);
+  background:var(--glass);color:#e6eef6;font-size:15px;outline:none;transition:all .18s ease;
+  width:100%;
+}
+.reset-form select{color:#e6eef6;}
+/* make role options more visible */
+.reset-form select option{color:#042022;background:#ffffff10}
+
+/* Focus states */
+.reset-form input:focus,.reset-form select:focus{border-color:var(--accent);box-shadow:0 4px 18px rgba(14,165,163,0.12)}
+
+/* Placeholders */
+.reset-form input::placeholder{color:rgba(230,238,246,0.45)}
+
+/* Buttons */
+.row{display:flex;gap:12px;align-items:center;margin-top:8px}
+.btn{padding:12px 18px;border-radius:12px;border:none;cursor:pointer;font-weight:700;transition:all .16s ease;display:inline-flex;align-items:center;gap:8px}
+.btn.small{padding:8px 10px;font-weight:600}
+.primary{background:linear-gradient(90deg,var(--accent),var(--accent-2));color:#042022}
+.ghost{background:transparent;color:var(--muted);border:1px solid rgba(255,255,255,0.04)}
+.link{display:inline-block;text-align:center;width:100%;background:transparent;color:var(--accent);text-decoration:none;padding:10px 12px;border-radius:10px;border:1px solid var(--accent);transition:0.18s}
+.link:hover{background:var(--accent);color:#042022}
+
+/* Disabled */
+.btn[disabled],.btn.disabled{opacity:.6;cursor:not-allowed;transform:none}
+
+/* Feedback & helpers */
+.feedback{min-height:22px;font-size:13px;margin-top:8px;color:var(--muted)}
+.muted{color:var(--muted)}
+.small{font-size:12px}
+.sr-only{position:absolute!important;height:1px;width:1px;overflow:hidden;clip:rect(1px,1px,1px,1px);white-space:nowrap;border:0;padding:0;margin:-1px}
+
+/* Steps (animated) */
+.step{opacity:0;max-height:0;overflow:hidden;transform:translateY(6px);transition:all .42s cubic-bezier(.2,.9,.2,1)}
+.step.active{opacity:1;max-height:1200px;transform:none;margin-bottom:12px}
+
+/* OTP boxes */
+.otp-boxes{display:flex;gap:10px;justify-content:center;margin:8px 0 6px}
+.otp{width:44px;height:56px;border-radius:10px;border:1px solid rgba(255,255,255,0.06);background:var(--glass);color:#e6eef6;font-size:22px;text-align:center;outline:none;transition:all .12s}
+.otp:focus{border-color:var(--accent);box-shadow:0 6px 18px rgba(14,165,163,0.12)}
+.hidden-fallback{display:none;margin-top:6px}
+
+/* Password row */
+.password-row{display:flex;gap:8px}
+.password-row input{flex:1}
+.password-row .btn{padding:8px 10px}
+
+/* Password meter */
+.pw-meter{margin-top:8px}
+.pw-bar{height:8px;border-radius:6px;background:#ffffff12;overflow:hidden}
+#pwStrengthBar{height:8px;width:0%;transition:width .28s ease;background:linear-gradient(90deg,var(--accent),var(--accent-2))}
+.pw-text{margin-top:6px;font-size:13px;color:var(--muted)}
+
+/* Success */
+.success-wrap{text-align:center;padding:20px 8px}
+.success-check{font-size:44px;color:var(--success);width:88px;height:88px;border-radius:50%;display:inline-grid;place-items:center;border:2px solid rgba(16,185,129,0.12);margin:10px auto 6px;transform:scale(.8);animation:pop .6s cubic-bezier(.2,.9,.2,1) forwards}
+@keyframes pop{to{transform:scale(1)}}
+
+/* Button spinner (simple) */
+.btn-spinner{display:inline-block;width:18px;height:18px;border-radius:50%;border:2px solid rgba(0,0,0,0.08);border-top-color:rgba(0,0,0,0.2);opacity:0;transform:scale(.9);transition:all .12s}
+.btn.loading .btn-spinner{opacity:1;animation:spin .8s linear infinite;transform:scale(1)}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* small utility */
+.muted.small{font-size:12px;color:var(--muted)}
+
+/* Responsive */
+@media (max-width:520px){
+  .card{padding:18px}
+  .otp{width:40px;height:52px;font-size:20px}
+  .btn{padding:10px 12px}
+  .password-row .btn{display:inline-flex}
+  .row{flex-direction:column;align-items:stretch}
+}
+
+/* Visual invalid */
+.input-error{box-shadow:0 0 0 4px rgba(239,68,68,0.06);border-color:var(--danger) !important}
+.feedback.error{color:var(--danger)}
+.feedback.success{color:var(--success)}
