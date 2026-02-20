@@ -11,7 +11,6 @@ const loginAttemptSchema = new mongoose.Schema({
   userAgent: { type: String, default: null }
 }, { timestamps: true });
 
-<<<<<<< HEAD
 // ------------------------------------
 // AUTO-CLEANUP: TTL INDEX
 // ------------------------------------
@@ -23,6 +22,4 @@ loginAttemptSchema.index(
   { expireAfterSeconds: 604800 } // 7 days in seconds
 );
 
-=======
->>>>>>> e1dc602009aea5f961882d8191b5cd611f05bdb2
 export default mongoose.model('LoginAttempt', loginAttemptSchema);
