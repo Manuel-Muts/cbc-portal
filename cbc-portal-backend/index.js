@@ -41,7 +41,21 @@ app.set('trust proxy', 1);
 // -------------------------
 app.use(express.json());
 app.use(cookieParser());
-app.use(helmet());
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'"],
+      styleSrc: ["'self'", "'unsafe-inline'"],
+      imgSrc: ["'self'", "data:", "https:"],
+      connectSrc: ["'self'", "http://localhost:*", "http://127.0.0.1:*", "https:"],
+      fontSrc: ["'self'", "data:", "https:"],
+      objectSrc: ["'none'"],
+      mediaSrc: ["'self'"],
+      frameSrc: ["'self'"]
+    }
+  }
+}));
 
 // -------------------------
 // CORS
@@ -120,13 +134,67 @@ app.use("/api/reports", reportsRoutes);
 
 
 // -------------------------
-// FRONTEND SPA
+// STATIC FILES & FRONTEND SPA
 // -------------------------
 const frontendPath = path.join(__dirname, '../docs');
-app.use(express.static(frontendPath));
-app.get('', (req, res) => {
-  res.sendFile(path.join(frontendPath, 'index.html'));
+
+// Map clean URLs to their HTML files
+const pathMap = {
+  '/': 'index.html',
+  '/home': 'index.html',
+  '/login': 'login.html',
+  '/admin': 'admin.html',
+  '/super-admin': 'super-admin.html',
+  '/teacher': 'teacher-dashboard.html',
+  '/teacher-dashboard': 'teacher-dashboard.html',
+  '/student': 'student-dashboard.html',
+  '/student-dashboard': 'student-dashboard.html',
+  '/materials': 'studentstudymaterial.html',
+  '/study-materials': 'studentstudymaterial.html',
+  '/analysis': 'analysis.html',
+  '/report': 'report.html',
+  '/reset': 'reset.html',
+  '/contact': 'contact.html',
+  '/accounts': 'accounts.html'
+};
+
+// SPA fallback: serve the appropriate HTML file for routes - BEFORE static files
+app.use((req, res, next) => {
+  // Skip API routes
+  if (req.path.startsWith('/api')) {
+    return next();
+  }
+  
+  // Skip file requests (has extension like .js, .css, .png, etc.)
+  if (req.path.includes('.')) {
+    return next();
+  }
+  
+  // Extract the path without leading slash and query params
+  const requestedPath = req.path;
+  
+  // Determine which file to serve
+  let htmlFile = pathMap[requestedPath] || 'index.html';
+  
+  const filePath = path.join(frontendPath, htmlFile);
+  console.log(`📄 Serving SPA route: ${requestedPath} -> ${htmlFile}`);
+  
+  res.sendFile(filePath, (err) => {
+    if (err) {
+      console.error(`❌ Error serving ${filePath}:`, err.message);
+      // Fallback to index.html if file not found
+      res.sendFile(path.join(frontendPath, 'index.html'), (fallbackErr) => {
+        if (fallbackErr) {
+          console.error(`❌ Error serving fallback index.html:`, fallbackErr.message);
+          res.status(404).send('Page not found');
+        }
+      });
+    }
+  });
 });
+
+// Serve static files (CSS, JS, images, etc.) - AFTER SPA routes
+app.use(express.static(frontendPath));
 
 // -------------------------
 // DATABASE CONNECTION
@@ -139,7 +207,7 @@ console.log(`📦 Using database: ${mongoURI.includes("mongodb+srv") ? "MongoDB 
 mongoose.connect(mongoURI)
   .then(() => {
     console.log("✅ MongoDB connected successfully!");
-    const PORT = process.env.PORT || 5000;
+    const PORT = process.env.PORT || 5500;
     app.listen(PORT, () =>
       console.log(`🚀 Server running on port ${PORT}`)
 
