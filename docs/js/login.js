@@ -17,13 +17,13 @@ document.addEventListener("DOMContentLoaded", function () {
   const passwordField = admissionField;
 
   const redirectPaths = {
-  student: "student-dashboard.html",
-  learner: "student-dashboard.html",
-  teacher: "teacher-dashboard.html",
-  classteacher: "analysis.html",
-  accounts: "accounts.html",
-  admin: "admin.html",
-  superAdmin: "super-admin.html"
+  student: "/student-dashboard",
+  learner: "/student-dashboard",
+  teacher: "/teacher-dashboard",
+  classteacher: "/analysis",
+  accounts: "/accounts",
+  admin: "/admin",
+  superAdmin: "/super-admin"
 };
 
 
@@ -61,7 +61,8 @@ document.addEventListener("DOMContentLoaded", function () {
     const headers = { "Content-Type": "application/json" };
     if (token) headers["Authorization"] = `Bearer ${token}`;
 
-    const res = await fetch(config.getApiUrl(`/users/${endpoint}`), {
+    const url = endpoint.startsWith('/') ? config.getApiUrl(endpoint) : config.getApiUrl(`/users/${endpoint}`);
+    const res = await fetch(url, {
       method,
       headers,
       body: body ? JSON.stringify(body) : null,
@@ -196,7 +197,7 @@ document.addEventListener("DOMContentLoaded", function () {
     localStorage.removeItem("loggedInUser");
     localStorage.removeItem("userRole");
     localStorage.removeItem("schoolId");
-    window.location.href = "login.html";
+    window.location.href = "/login";
   }
 
   const logoutBtn = document.getElementById("logoutBtn");

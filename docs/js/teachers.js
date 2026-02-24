@@ -173,7 +173,7 @@
 
   function redirectToLogin() {
     localStorage.clear();
-    window.location.href = "login.html";
+    window.location.href = "/login";
   }
 
   // ---------------------------
@@ -181,7 +181,7 @@
   // ---------------------------
   logoutBtn?.addEventListener("click", () => {
     localStorage.clear();
-    window.location.href = "login.html";
+    window.location.href = "/login";
   });
 
   // ---------------------------

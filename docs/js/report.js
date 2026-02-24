@@ -4,7 +4,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   if (!user || !token) {
     alert("Please log in again.");
-    window.location.href = "login.html";
+    window.location.href = "/login";
     return;
   }
 
@@ -42,11 +42,13 @@ if (token) {
 
        // normalize logo path
         if (logoPath.startsWith("http")) {
-          schoolLogoElem.src = logoPath;
+          // Add cache-busting timestamp for absolute URLs
+          schoolLogoElem.src = `${logoPath}?t=${Date.now()}`;
        } else {
          if (!logoPath.startsWith("/")) logoPath = "/" + logoPath;
          if (!logoPath.startsWith("/uploads")) logoPath = "/uploads" + logoPath;
-         schoolLogoElem.src = `${BACKEND_URL}${logoPath}`;
+         // Add cache-busting timestamp to force fresh logo loads
+         schoolLogoElem.src = `${BACKEND_URL}${logoPath}?t=${Date.now()}`;
           }
 
           schoolLogoElem.alt = school.name;

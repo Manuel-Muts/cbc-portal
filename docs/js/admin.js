@@ -10,7 +10,7 @@
 
   if (!token) {
     alert("You must log in first.");
-    window.location.href = "login.html";
+    window.location.href = "/login";
     return;
   }
   console.log("Stored token:", token);
@@ -62,7 +62,8 @@
 // ---------------------------
 // FETCH SCHOOL INFO
 // ---------------------------
-const BACKEND_URL = "https://competence-hub.onrender.com";
+// Derive BACKEND_URL from config (removes /api suffix)
+const BACKEND_URL = config.api.baseURL.replace('/api', '');
 
 async function loadSchoolInfo() {
   try {
@@ -85,8 +86,9 @@ async function loadSchoolInfo() {
 function renderSchoolInfo() {
   if (!schoolNameDisplay || !schoolInfo) return;
 
+  // Add cache-busting timestamp to force fresh logo loads when updated
   const logoURL = schoolInfo.logo
-    ? `${BACKEND_URL}${schoolInfo.logo}`   // ✅ ONE PLACE ONLY
+    ? `${BACKEND_URL}${schoolInfo.logo}?t=${Date.now()}`
     : "";
 
   schoolNameDisplay.innerHTML = `
@@ -1423,7 +1425,7 @@ if (exportClassBtn) {
       const ok = await showConfirm({ message: "Are you sure you want to logout?" });
       if (!ok) return;
       localStorage.removeItem("token");
-      window.location.href = "login.html";
+      window.location.href = "/login";
     });
   }
 

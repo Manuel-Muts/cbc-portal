@@ -207,7 +207,7 @@ console.log(`📦 Using database: ${mongoURI.includes("mongodb+srv") ? "MongoDB 
 mongoose.connect(mongoURI)
   .then(() => {
     console.log("✅ MongoDB connected successfully!");
-    const PORT = process.env.PORT || 5500;
+    const PORT = process.env.PORT || 5000;
     app.listen(PORT, () =>
       console.log(`🚀 Server running on port ${PORT}`)
 

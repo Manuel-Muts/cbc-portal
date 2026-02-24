@@ -6,7 +6,7 @@ const token = localStorage.getItem("token");
 
 if (!token) {
   alert("Please login first");
-  window.location.href = "../login.html";
+  window.location.href = "/login";
 }
 
 const headers = {
@@ -443,7 +443,7 @@ function drawChart(expected, paid) {
 ================================ */
 document.getElementById("logoutBtn").addEventListener("click", () => {
   localStorage.clear();
-  window.location.href = "index.html";
+  window.location.href = "/home";
 });
 
 // Save payment handler

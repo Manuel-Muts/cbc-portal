@@ -54,7 +54,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   const token = localStorage.getItem("token");
   if (!token) {
     console.warn("No token found in localStorage, redirecting to login.");
-    window.location.href = "login.html";
+    window.location.href = "/login";
     return;
   }
 
@@ -67,7 +67,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (!res.ok) {
       localStorage.removeItem("token");
       localStorage.removeItem("loggedInUser");
-      window.location.href = "login.html";
+      window.location.href = "/login";
       return;
     }
 
@@ -76,7 +76,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (!user || (user.role !== "student" && user.role !== "learner")) {
       localStorage.removeItem("token");
       localStorage.removeItem("loggedInUser");
-      window.location.href = "login.html";
+      window.location.href = "/login";
       return;
     }
 
@@ -813,7 +813,7 @@ Object.entries(grouped).forEach(([key, list]) => {
   document.getElementById("logoutBtn")?.addEventListener("click", () => {
     localStorage.removeItem("token");
     localStorage.removeItem("loggedInUser");
-    window.location.href = "index.html";
+    window.location.href = "/home";
   });
 
   // ---------------------------

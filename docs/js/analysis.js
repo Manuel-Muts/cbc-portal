@@ -143,7 +143,7 @@ document.addEventListener("DOMContentLoaded", () => {
   logoutBtn?.addEventListener("click", () => {
     localStorage.removeItem("loggedInUser");
     localStorage.removeItem("token");
-    window.location.href = "index.html";
+    window.location.href = "/home";
   });
   exportPdfBtn?.addEventListener("click", exportPdf);
 
@@ -224,19 +224,22 @@ document.addEventListener("DOMContentLoaded", () => {
 
       // ===== LOGO RESOLUTION (FIXED) =====
       if (logoEl && school.logo) {
-        const BACKEND_URL = "https://competence-hub.onrender.com";
+        // Derive BACKEND_URL from config (removes /api suffix)
+        const BACKEND_URL = config.api.baseURL.replace('/api', '');
         let logoPath = school.logo.trim();
 
         logoEl.crossOrigin = "anonymous";
 
         if (/^https?:\/\//i.test(logoPath)) {
-          logoEl.src = logoPath;
+          // Add cache-busting timestamp for absolute URLs
+          logoEl.src = `${logoPath}?t=${Date.now()}`;
         } else {
           logoPath = logoPath.replace(/^\/+/, "");
           if (!logoPath.startsWith("uploads/")) {
             logoPath = `uploads/${logoPath}`;
           }
-          logoEl.src = `${BACKEND_URL}/${logoPath}`;
+          // Add cache-busting timestamp to force fresh logo loads
+          logoEl.src = `${BACKEND_URL}/${logoPath}?t=${Date.now()}`;
         }
 
         logoEl.alt = "School Logo";

@@ -14,7 +14,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const token = localStorage.getItem("token");
     if (!token) {
       alert("Please log in as super-admin.");
-      window.location.href = "login.html";
+      window.location.href = "/login";
       return false;
     }
     return true;
@@ -40,7 +40,7 @@ document.addEventListener("DOMContentLoaded", () => {
       alert("Session expired. Please log in again.");
       localStorage.clear();
       sessionStorage.clear();
-      window.location.href = "login.html";
+      window.location.href = "/login";
       return null;
     }
 
@@ -95,7 +95,7 @@ document.addEventListener("DOMContentLoaded", () => {
   logoutBtn.addEventListener("click", () => {
     localStorage.clear();
     sessionStorage.clear();
-    window.location.href = "login.html";
+    window.location.href = "/login";
   });
 
   // ---------------------------

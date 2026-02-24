@@ -490,7 +490,7 @@ document.addEventListener("DOMContentLoaded", () => {
       showStep(stepSuccess);
 
       clearState();
-      setTimeout(() => window.location.href = "login.html", 2500);
+      setTimeout(() => window.location.href = "/login", 2500);
 
     } catch (err) {
       console.error("Reset password error:", err);
@@ -501,7 +501,7 @@ document.addEventListener("DOMContentLoaded", () => {
   resetPasswordBtn.addEventListener("click", withLoading(resetPasswordBtn, doResetPassword));
 
   cancelBtn.addEventListener("click", () => {
-    window.location.href = "login.html";
+    window.location.href = "/login";
   });
 
   // -------------------------
