@@ -1,6 +1,7 @@
 [build]
+  base = "."
   publish = "docs"
-  command = "echo 'No build command needed'"
+  command = "echo 'Build complete'"
 
 [[redirects]]
   from = "/*"
