@@ -813,7 +813,7 @@ Object.entries(grouped).forEach(([key, list]) => {
   document.getElementById("logoutBtn")?.addEventListener("click", () => {
     localStorage.removeItem("token");
     localStorage.removeItem("loggedInUser");
-    window.location.href = "/home";
+    window.location.href = "/login";
   });
 
   // ---------------------------

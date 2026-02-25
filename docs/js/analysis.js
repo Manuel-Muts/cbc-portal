@@ -143,7 +143,7 @@ document.addEventListener("DOMContentLoaded", () => {
   logoutBtn?.addEventListener("click", () => {
     localStorage.removeItem("loggedInUser");
     localStorage.removeItem("token");
-    window.location.href = "/home";
+    window.location.href = "/login";
   });
   exportPdfBtn?.addEventListener("click", exportPdf);
 

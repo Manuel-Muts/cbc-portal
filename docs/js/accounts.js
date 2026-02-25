@@ -443,7 +443,7 @@ function drawChart(expected, paid) {
 ================================ */
 document.getElementById("logoutBtn").addEventListener("click", () => {
   localStorage.clear();
-  window.location.href = "/home";
+  window.location.href = "/login";
 });
 
 // Save payment handler
