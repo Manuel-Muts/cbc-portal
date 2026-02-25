@@ -40,15 +40,19 @@ if (token) {
        schoolLogoElem.crossOrigin = "anonymous";
          let logoPath = school.logo || "";
 
-       // normalize logo path
-        if (logoPath.startsWith("http")) {
-          // Add cache-busting timestamp for absolute URLs
-          schoolLogoElem.src = `${logoPath}?t=${Date.now()}`;
-       } else {
-         if (!logoPath.startsWith("/")) logoPath = "/" + logoPath;
-         if (!logoPath.startsWith("/uploads")) logoPath = "/uploads" + logoPath;
-         // Add cache-busting timestamp to force fresh logo loads
-         schoolLogoElem.src = `${BACKEND_URL}${logoPath}?t=${Date.now()}`;
+       // Check if logo is base64 or file path
+        if (logoPath && !logoPath.startsWith('/') && !logoPath.startsWith('http')) {
+          // Logo is base64 - convert to data URL
+          const mimeType = school.logoMimeType || 'image/png';
+          schoolLogoElem.src = `data:${mimeType};base64,${logoPath}`;
+       } else if (logoPath.startsWith("http")) {
+          // Absolute URL
+          schoolLogoElem.src = logoPath;
+       } else if (logoPath) {
+          // Legacy: file path
+          if (!logoPath.startsWith("/")) logoPath = "/" + logoPath;
+          if (!logoPath.startsWith("/uploads")) logoPath = "/uploads" + logoPath;
+          schoolLogoElem.src = `${BACKEND_URL}${logoPath}`;
           }
 
           schoolLogoElem.alt = school.name;

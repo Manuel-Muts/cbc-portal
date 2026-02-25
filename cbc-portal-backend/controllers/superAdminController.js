@@ -6,6 +6,7 @@ import { sendCredentialsEmail } from '../utils/authHelpers.js';
 import Payment from '../models/Payment.js';
 import Setting from '../models/Setting.js';
 import LoginAttempt from '../models/LoginAttempt.js';
+import fs from 'fs';
 
 // ---------------------------
 // CREATE NEW SCHOOL
@@ -23,15 +24,24 @@ export const createSchool = async (req, res) => {
     if (existingSchool) 
       return res.status(400).json({ msg: 'School already exists' });
 
-    // Handle logo upload
-    const logo = req.file ? `/uploads/school-logos/${req.file.filename}` : "";
+    // Handle logo upload - convert to base64
+    let logo = "";
+    let logoMimeType = "image/png";
+    if (req.file) {
+      const fileBuffer = fs.readFileSync(req.file.path);
+      logo = fileBuffer.toString('base64');
+      logoMimeType = req.file.mimetype || 'image/png';
+      // Delete the file after converting to base64
+      fs.unlinkSync(req.file.path);
+    }
 
     const school = await School.create({ 
       name, 
       adminEmail, 
       address, 
       contactNumber,
-      logo 
+      logo,
+      logoMimeType 
     });
 
     res.status(201).json({ msg: 'School created', school });
@@ -200,8 +210,14 @@ export const updateSchool = async (req, res) => {
     if (address) school.address = address;
     if (contactNumber) school.contactNumber = contactNumber;
 
-    // Update logo if uploaded
-    if (req.file) school.logo = `/uploads/school-logos/${req.file.filename}`;
+    // Update logo if uploaded - convert to base64
+    if (req.file) {
+      const fileBuffer = fs.readFileSync(req.file.path);
+      school.logo = fileBuffer.toString('base64');
+      school.logoMimeType = req.file.mimetype || 'image/png';
+      // Delete the file after converting to base64
+      fs.unlinkSync(req.file.path);
+    }
 
     await school.save();
     res.json({ msg: 'School updated successfully', school });

@@ -67,7 +67,7 @@ const BACKEND_URL = config.api.baseURL.replace('/api', '');
 
 async function loadSchoolInfo() {
   try {
-    const res = await fetch(`${API_BASE}/school-info`, {
+    const res = await fetch(`${API_BASE}/my-school`, {
       headers: { Authorization: `Bearer ${token}` }
     });
 
@@ -86,9 +86,9 @@ async function loadSchoolInfo() {
 function renderSchoolInfo() {
   if (!schoolNameDisplay || !schoolInfo) return;
 
-  // Add cache-busting timestamp to force fresh logo loads when updated
+  // Convert base64 logo to data URL
   const logoURL = schoolInfo.logo
-    ? `${BACKEND_URL}${schoolInfo.logo}?t=${Date.now()}`
+    ? `data:${schoolInfo.logoMimeType || 'image/png'};base64,${schoolInfo.logo}`
     : "";
 
   schoolNameDisplay.innerHTML = `

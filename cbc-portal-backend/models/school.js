@@ -5,7 +5,8 @@ const schoolSchema = new mongoose.Schema({
   name: { type: String, required: true },
   adminEmail: { type: String, required: true, unique: true },
   status: { type: String, enum: ["Active", "Suspended"], default: "Active" },
-  logo: { type: String, default: "" },
+  logo: { type: String, default: "" }, // Base64 encoded image or data URL
+  logoMimeType: { type: String, default: "image/png" }, // MIME type of logo
   address: { type: String, default: "" },
   version: { type: Number, default: 1 },       // <-- version increments on suspension
   paybill: { type: String, default: "" },      // M-Pesa paybill number (for C2B manual payments)

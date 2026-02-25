@@ -224,21 +224,22 @@ document.addEventListener("DOMContentLoaded", () => {
 
       // ===== LOGO RESOLUTION (FIXED) =====
       if (logoEl && school.logo) {
-        // Derive BACKEND_URL from config (removes /api suffix)
-        const BACKEND_URL = config.api.baseURL.replace('/api', '');
-        let logoPath = school.logo.trim();
-
         logoEl.crossOrigin = "anonymous";
 
-        if (/^https?:\/\//i.test(logoPath)) {
-          // Add cache-busting timestamp for absolute URLs
-          logoEl.src = `${logoPath}?t=${Date.now()}`;
+        // Check if logo is base64 or file path
+        if (school.logo.includes('base64') || !school.logo.startsWith('/')) {
+          // Logo is base64 - convert to data URL
+          const mimeType = school.logoMimeType || 'image/png';
+          logoEl.src = `data:${mimeType};base64,${school.logo}`;
         } else {
+          // Legacy: Logo is file path
+          const BACKEND_URL = config.api.baseURL.replace('/api', '');
+          let logoPath = school.logo.trim();
           logoPath = logoPath.replace(/^\/+/, "");
           if (!logoPath.startsWith("uploads/")) {
             logoPath = `uploads/${logoPath}`;
           }
-          // Add cache-busting timestamp to force fresh logo loads
+          // Add cache-busting timestamp
           logoEl.src = `${BACKEND_URL}/${logoPath}?t=${Date.now()}`;
         }
 
