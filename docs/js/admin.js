@@ -86,10 +86,21 @@ async function loadSchoolInfo() {
 function renderSchoolInfo() {
   if (!schoolNameDisplay || !schoolInfo) return;
 
-  // Convert base64 logo to data URL
-  const logoURL = schoolInfo.logo
-    ? `data:${schoolInfo.logoMimeType || 'image/png'};base64,${schoolInfo.logo}`
-    : "";
+  // Detect logo format and create appropriate URL
+  let logoURL = "";
+  if (schoolInfo.logo) {
+    // Check if logo is a file path (legacy) or base64 (new)
+    if (schoolInfo.logo.startsWith('/') || schoolInfo.logo.includes('uploads/')) {
+      // Legacy file path - use with backend URL
+      logoURL = `${BACKEND_URL}${schoolInfo.logo}?t=${Date.now()}`;
+    } else if (schoolInfo.logo.startsWith('http')) {
+      // Absolute URL
+      logoURL = schoolInfo.logo;
+    } else {
+      // New base64 format - convert to data URL
+      logoURL = `data:${schoolInfo.logoMimeType || 'image/png'};base64,${schoolInfo.logo}`;
+    }
+  }
 
   schoolNameDisplay.innerHTML = `
   <div class="school-header">

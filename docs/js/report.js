@@ -40,23 +40,23 @@ if (token) {
        schoolLogoElem.crossOrigin = "anonymous";
          let logoPath = school.logo || "";
 
-       // Check if logo is base64 or file path
-        if (logoPath && !logoPath.startsWith('/') && !logoPath.startsWith('http')) {
-          // Logo is base64 - convert to data URL
-          const mimeType = school.logoMimeType || 'image/png';
-          schoolLogoElem.src = `data:${mimeType};base64,${logoPath}`;
-       } else if (logoPath.startsWith("http")) {
-          // Absolute URL
-          schoolLogoElem.src = logoPath;
-       } else if (logoPath) {
-          // Legacy: file path
+       // Detect logo format: file path (legacy), HTTP URL, or base64 (new)
+        if (logoPath.startsWith('/') || logoPath.includes('uploads/')) {
+          // Legacy file path
           if (!logoPath.startsWith("/")) logoPath = "/" + logoPath;
           if (!logoPath.startsWith("/uploads")) logoPath = "/uploads" + logoPath;
-          schoolLogoElem.src = `${BACKEND_URL}${logoPath}`;
-          }
+          schoolLogoElem.src = `${BACKEND_URL}${logoPath}?t=${Date.now()}`;
+        } else if (logoPath.startsWith("http")) {
+          // Absolute URL
+          schoolLogoElem.src = logoPath;
+        } else if (logoPath) {
+          // New base64 format - convert to data URL
+          const mimeType = school.logoMimeType || 'image/png';
+          schoolLogoElem.src = `data:${mimeType};base64,${logoPath}`;
+        }
 
-          schoolLogoElem.alt = school.name;
-          }
+        schoolLogoElem.alt = school.name;
+      }
 
 
       // Display school address

@@ -225,22 +225,24 @@ document.addEventListener("DOMContentLoaded", () => {
       // ===== LOGO RESOLUTION (FIXED) =====
       if (logoEl && school.logo) {
         logoEl.crossOrigin = "anonymous";
+        const BACKEND_URL = config.api.baseURL.replace('/api', '');
 
-        // Check if logo is base64 or file path
-        if (school.logo.includes('base64') || !school.logo.startsWith('/')) {
-          // Logo is base64 - convert to data URL
-          const mimeType = school.logoMimeType || 'image/png';
-          logoEl.src = `data:${mimeType};base64,${school.logo}`;
-        } else {
-          // Legacy: Logo is file path
-          const BACKEND_URL = config.api.baseURL.replace('/api', '');
+        // Detect logo format: file path (legacy), HTTP URL, or base64 (new)
+        if (school.logo.startsWith('/') || school.logo.includes('uploads/')) {
+          // Legacy file path - use with backend URL
           let logoPath = school.logo.trim();
           logoPath = logoPath.replace(/^\/+/, "");
           if (!logoPath.startsWith("uploads/")) {
             logoPath = `uploads/${logoPath}`;
           }
-          // Add cache-busting timestamp
           logoEl.src = `${BACKEND_URL}/${logoPath}?t=${Date.now()}`;
+        } else if (school.logo.startsWith('http')) {
+          // Absolute HTTP URL
+          logoEl.src = school.logo;
+        } else {
+          // New base64 format - convert to data URL
+          const mimeType = school.logoMimeType || 'image/png';
+          logoEl.src = `data:${mimeType};base64,${school.logo}`;
         }
 
         logoEl.alt = "School Logo";
