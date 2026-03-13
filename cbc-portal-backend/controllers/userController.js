@@ -949,18 +949,36 @@ export const updateUser = async (req, res) => {
     // Assign allowed fields
     const allowed = ["name", "email", "role"];
 
+    // Allow admission to be updated for students
+    if (targetUser.role === "student") {
+      allowed.push("admission");
+    }
+
     allowed.forEach(key => {
       if (req.body[key] !== undefined) {
         targetUser[key] = req.body[key];
       }
     });
 
+    // Ensure student has an admission number
+    if (targetUser.role === "student" && !targetUser.admission) {
+      return res.status(400).json({ message: "Admission number is required for students" });
+    }
+
     // schoolId safely assigned after validation
     if (actingUser.role === "super_admin" && req.body.schoolId) {
       targetUser.schoolId = req.body.schoolId;
     }
 
-    await targetUser.save();
+    try {
+      await targetUser.save();
+    } catch (err) {
+      // Handle unique constraint violations gracefully
+      if (err.code === 11000) {
+        return res.status(400).json({ message: "Admission number already exists" });
+      }
+      throw err;
+    }
 
     res.json({ message: "User updated", user: targetUser });
   } catch (err) {

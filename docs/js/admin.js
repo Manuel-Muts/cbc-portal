@@ -712,6 +712,68 @@ confirmPromotionBtn.addEventListener("click", async () => {
     }
   };
 }
+
+// ---------------------------
+// EDIT STUDENT PROFILE MODAL
+// ---------------------------
+function openEditProfileModal(student) {
+  const modal = document.createElement("div");
+  modal.style = "position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.4);display:flex;justify-content:center;align-items:center;z-index:10000;overflow:auto;";
+
+  modal.innerHTML = `
+    <div style="background:#fff;padding:20px;border-radius:8px;min-width:350px;margin:auto;max-width:420px;">
+      <h3>Edit Profile</h3>
+      <div style="margin:15px 0;">
+        <label>Full Name:</label>
+        <input type="text" id="editProfileName" value="${student.name || ''}" style="width:100%;padding:8px;border:1px solid #ccc;border-radius:4px;" />
+      </div>
+      <div style="margin:15px 0;">
+        <label>Admission Number:</label>
+        <input type="text" id="editProfileAdmission" value="${student.admission || ''}" style="width:100%;padding:8px;border:1px solid #ccc;border-radius:4px;" />
+      </div>
+      <div style="display:flex;gap:10px;margin-top:20px;">
+        <button id="saveProfileBtn" style="flex:1;padding:10px;background:#2ecc71;color:#fff;border:none;border-radius:4px;cursor:pointer;">Save</button>
+        <button id="cancelProfileBtn" style="flex:1;padding:10px;background:#95a5a6;color:#fff;border:none;border-radius:4px;cursor:pointer;">Cancel</button>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(modal);
+
+  document.getElementById("cancelProfileBtn").onclick = () => modal.remove();
+
+  document.getElementById("saveProfileBtn").onclick = async () => {
+    const saveBtn = document.getElementById("saveProfileBtn");
+    const originalHTML = saveBtn.innerHTML;
+    saveBtn.disabled = true;
+    saveBtn.innerHTML = `${createSpinner(14).outerHTML} Saving...`;
+
+    const payload = {
+      name: document.getElementById("editProfileName").value.trim(),
+      admission: document.getElementById("editProfileAdmission").value.trim()
+    };
+
+    try {
+      const res = await secureFetch(`${API_BASE}/users/${student.id || student.studentId}`, {
+        method: "PUT",
+        body: JSON.stringify(payload)
+      });
+
+      if (res) {
+        showToast("Profile updated successfully", "success");
+        modal.remove();
+        studentSearchBtn.click();
+      }
+    } catch (err) {
+      console.error("Profile update error:", err);
+      showToast(err.message || "Failed to update profile", "error");
+    } finally {
+      saveBtn.disabled = false;
+      saveBtn.innerHTML = originalHTML;
+    }
+  };
+}
+
 // ---------------------------
 // STUDENT HISTORICAL DATA LOAD
 // ---------------------------
@@ -1024,29 +1086,35 @@ const res = await fetch(`${API_BASE}/users/subjects/assign`, {
     }
   });
 // ---------------------------
-//EDIT ENROLLMENT BUTTON HANDLER
+// EDIT ENROLLMENT BUTTON HANDLER
 // ---------------------------
-  studentSearchBody.addEventListener("click", async (e) => {
-  if (!e.target.classList.contains("btn-edit")) return;
+studentSearchBody.addEventListener("click", async (e) => {
+  const btn = e.target;
+  if (!btn.classList.contains("btn-edit")) return;
 
-  const tr = e.target.closest("tr");
-  const enrollmentId = tr.dataset.enrollmentId;
+  const originalHTML = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = `${createSpinner(14).outerHTML} Loading...`;
 
-if (!enrollmentId) {
-  showToast("No enrollment found for this student", "error");
-  return;
-}
-
-const res = await secureFetch(
-  `${API_BASE}/enrollments/${enrollmentId}`
-);
   try {
+    const tr = btn.closest("tr");
+    const enrollmentId = tr.dataset.enrollmentId;
+
+    if (!enrollmentId) {
+      showToast("No enrollment found for this student", "error");
+      return;
+    }
+
+    const res = await secureFetch(`${API_BASE}/enrollments/${enrollmentId}`);
     if (!res) return;
-    
+
     openEditModal(res); // render edit form with fetched data
   } catch (err) {
     console.error("Edit fetch error:", err);
     showToast(err.message || "Failed to fetch student data", "error");
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = originalHTML;
   }
 });
 
@@ -1055,18 +1123,61 @@ const res = await secureFetch(
 // ---------------------------
 studentSearchBody.addEventListener("click", async (e) => {
   const btn = e.target;
-
   if (!btn.classList.contains("btn-history")) return;
 
-  const tr = btn.closest("tr");
-  const studentId = tr?.dataset.studentId;
+  const originalHTML = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = `${createSpinner(14).outerHTML} Loading...`;
 
-  if (!studentId) {
-    showToast("Student ID missing", "error");
-    return;
+  try {
+    const tr = btn.closest("tr");
+    const studentId = tr?.dataset.studentId;
+
+    if (!studentId) {
+      showToast("Student ID missing", "error");
+      return;
+    }
+
+    await openHistoryModal(studentId);
+  } catch (err) {
+    console.error("History fetch error:", err);
+    showToast(err.message || "Failed to load history", "error");
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = originalHTML;
   }
+});
 
-  await openHistoryModal(studentId);
+// ---------------------------
+// EDIT PROFILE BUTTON HANDLER
+// ---------------------------
+studentSearchBody.addEventListener("click", async (e) => {
+  const btn = e.target;
+  if (!btn.classList.contains("btn-edit-profile")) return;
+
+  const originalHTML = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = `${createSpinner(14).outerHTML} Loading...`;
+
+  try {
+    const tr = btn.closest("tr");
+    const studentId = tr?.dataset.studentId;
+    const studentName = btn.dataset.studentName;
+    const studentAdmission = btn.dataset.studentAdmission;
+
+    if (!studentId) {
+      showToast("Student ID missing", "error");
+      return;
+    }
+
+    openEditProfileModal({ id: studentId, name: studentName, admission: studentAdmission });
+  } catch (err) {
+    console.error("Edit profile error:", err);
+    showToast(err.message || "Failed to open profile editor", "error");
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = originalHTML;
+  }
 });
 
 
@@ -1524,7 +1635,8 @@ studentSearchBtn.addEventListener("click", async () => {
         <td>${s.status}</td>
         <td>
           <button class="btn-history" data-student-id="${s.studentId}" data-student-name="${s.name}" style="padding: 6px 10px; margin-right: 5px; background: #0077b6; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">📋 History</button>
-          <button class="btn-edit" data-enrollment-id="${s.enrollmentId}" data-student-id="${s.studentId}" style="padding: 6px 10px; background: #2ecc71; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">✏️ Edit</button>
+          <button class="btn-edit" data-enrollment-id="${s.enrollmentId}" data-student-id="${s.studentId}" style="padding: 6px 10px; margin-right: 5px; background: #2ecc71; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">✏️ Edit Enrollment</button>
+          <button class="btn-edit-profile" data-student-id="${s.studentId}" data-student-name="${s.name}" data-student-admission="${s.admission}" style="padding: 6px 10px; background: #6c757d; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">👤 Edit Profile</button>
         </td>
       `;
 
