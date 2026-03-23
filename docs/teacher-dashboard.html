@@ -16,7 +16,7 @@
   
 
   <header>
-    <h1>Welcome, <span id="teacherName"></span></h1>
+    <h1>WELCOME, <span id="teacherName"></span></h1>
     <button id="logoutBtn">Logout</button>
   
   </header>
@@ -28,105 +28,83 @@
 
     <!-- =================== MY ALLOCATIONS =================== -->
     <section class="allocations-section">
-      <h3>📚 My Subject & Class Allocations</h3>
+      <h3>📚 Class Allocations</h3>
       <div id="allocationsContainer" style="margin-bottom: 20px; padding: 15px; background: #f5f5f5; border-radius: 8px;">
         <p>Loading your allocations...</p>
       </div>
     </section>
 
-    <!-- =================== MARKS ENTRY =================== -->
+    <!-- =================== MARKS ENTRY (TABLE-BASED) =================== -->
     <section class="marks-section">
-      <h2>Enter Learners Marks</h2>
-      <form id="marks-form">
-        <div class="form-group">
-          <label>Learner Admission No</label>
-          <input type="text" id="admissionNo" placeholder="ADM001" required />
-        </div>
-        <div class="form-group">
-          <label>Learner Name</label>
-          <input type="text" id="studentName" placeholder="Auto-filled" readonly />
-        </div>
-        <div class="form-group">
-          <label>Current Grade</label>
-          <input type="text" id="currentGrade" placeholder="Auto-filled" readonly />
-        </div>
-
-        <div class="form-group">
-          <label>Subject</label>
-          <select id="subject" required>
-            <option value="">-- Select Subject --</option>
-          </select>
-        </div>
-
-        <!-- Senior School Fields (hidden by default) -->
-        <div class="form-group senior-school-fields" style="display: none;">
-          <label>Pathway</label>
-          <select id="pathway">
-            <option value="">-- Select Pathway --</option>
-            <option value="STEM">STEM (Science, Technology, Engineering & Mathematics)</option>
-            <option value="Social Sciences">Social Sciences</option>
-            <option value="Arts & Sports Science">Arts & Sports Science</option>
-          </select>
-        </div>
-
-        <div class="form-group senior-school-fields" style="display: none;">
-          <label>Course (Learning Area)</label>
-          <select id="course">
-            <option value="">-- Select Course --</option>
-          </select>
-        </div>
-
-        <!-- Senior School Assessment Components (Grade 10-12) -->
-        <div class="form-group senior-school-fields" style="display: none;">
-          <label>Continuous Assessment (CATs, quizzes, practicals) - 30% weight</label>
-          <input type="number" id="continuousAssessment" placeholder="78" min="0" max="100" />
-          <small>Score out of 100</small>
-        </div>
-
-        <div class="form-group senior-school-fields" style="display: none;">
-          <label>Project Work / Performance Tasks - 20% weight</label>
-          <input type="number" id="projectWork" placeholder="85" min="0" max="100" />
-          <small>Score out of 100</small>
-        </div>
-
-        <div class="form-group senior-school-fields" style="display: none;">
-          <label>End-Term Examination - 50% weight</label>
-          <input type="number" id="endTermExam" placeholder="72" min="0" max="100" />
-          <small>Score out of 100</small>
-        </div>
-
-        <!-- Junior School Single Score -->
-        <div class="form-group junior-school-fields">
-          <label>Score (%)</label>
-          <input type="number" id="score" placeholder="78" min="0" max="100" required />
-        </div>
-
-        <div class="form-group">
-          <label>Term</label>
-          <select id="term" required>
-         <option value="">-- Select Term --</option>
-         <option value="1">Term 1</option>
-         <option value="2">Term 2</option>
-          <option value="3">Term 3</option>
-           </select>
-
+      <h2>📊 Enter Learners Marks</h2>
+      
+      <!-- Step 1: Select Subject/Class Allocation -->
+      <div class="marks-controls" style="margin-bottom: 20px; padding: 15px; background: #f9f9f9; border-radius: 8px;">
+        <h3>Step 1: Select Your Subject & Grade</h3>
+        <div style="display: grid; grid-template-columns: 1fr 1fr 1fr 1fr auto; gap: 10px; align-items: flex-end;">
+          <div class="form-group" style="margin: 0;">
+            <label>Subject & Grade</label>
+            <select id="subjectAllocationSelect" required>
+              <option value="">-- Select Subject/Grade --</option>
+            </select>
           </div>
- 
-        <div class="form-group">
-          <label>Year</label>
-          <input type="number" id="year" min="2025" max="2090" required />
+          
+          <div class="form-group" style="margin: 0;">
+            <label>Term</label>
+            <select id="marksTermSelect" required>
+              <option value="">-- Select Term --</option>
+              <option value="1">Term 1</option>
+              <option value="2">Term 2</option>
+              <option value="3">Term 3</option>
+            </select>
+          </div>
+
+          <div class="form-group" style="margin: 0;">
+            <label>Assessment</label>
+            <select id="marksAssessmentSelect" required></select>
+          </div>
+
+          <div class="form-group" style="margin: 0;">
+            <label>Year</label>
+            <input type="number" id="marksYearInput" min="2025" max="2090" readonly style="background: #f0f0f0;" />
+          </div>
+
+          <button type="button" id="loadStudentsBtn" class="btn" style="margin-top: 0;">📥 Load Learners</button>
+        </div>
+      </div>
+
+      <!-- Step 2: Marks Entry Table -->
+      <div id="marksTableContainer" style="display: none;">
+        <h3>Step 2: Enter Marks for Each Learner</h3>
+        <div style="overflow-x: auto;">
+          <table id="marksEntryTable" class="marks-entry-table">
+            <thead>
+              <tr>
+                <th style="width: 5%;">ADM No</th>
+                <th style="width: 10%;">Learner's Name</th>
+                <th style="width: 8%;" id="marksColumnHeader">Marks</th>
+              </tr>
+            </thead>
+            <tbody id="marksEntryTableBody">
+              <!-- Students will be populated here -->
+            </tbody>
+          </table>
         </div>
 
-        <div class="form-group">
-          <label>Assessment</label>
-          <select id="assessmentSelect" required></select>
+        <div style="margin-top: 15px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+          <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+            <button type="button" id="saveDraftBtn" class="btn" style="background: #ff9800; padding: 8px 16px;">💾 Save Draft</button>
+            <button type="button" id="loadDraftBtn" class="btn" style="background: #2196f3; padding: 8px 16px; display: none;">📂 Load Draft</button>
+          </div>
+          <button type="button" id="submitAllMarksBtn" class="btn btn-primary" style="padding: 10px 25px; font-size: 16px;">✅ Submit All Marks</button>
         </div>
 
-
-           <button type="submit" class="btn">Submit Marks</button>
-          </form>
-    
-          </section>
+        <!-- Draft Status Indicator -->
+        <div id="draftStatus" style="margin-top: 10px; padding: 8px 12px; background: #f5f5f5; border-radius: 4px; color: #666; font-size: 0.9rem; display: none;">
+          ✓ Draft saved at <span id="draftTime"></span>
+        </div>
+      </div>
+    </section>
            <button id="smartRefreshBtn" class="smart-refresh">⟳ Refresh</button>
          <!-- =================== SUBMITTED MARKS TABLES =================== -->
      
@@ -143,82 +121,11 @@
 
     <!-- =================== STUDY MATERIALS =================== -->
     <section class="materials-section">
-      <h2>Upload Study Materials/Assignments</h2>
-      <form id="materials-form">
-        
-        <div class="form-group">
-          <label>Grade Level</label>
-          <select id="materialGrade" required>
-            <option value="">-- Select Grade --</option>
-            <option value="1">Grade 1</option>
-            <option value="2">Grade 2</option>
-            <option value="3">Grade 3</option>
-            <option value="4">Grade 4</option>
-            <option value="5">Grade 5</option>
-            <option value="6">Grade 6</option>
-            <option value="7">Grade 7</option>
-            <option value="8">Grade 8</option>
-            <option value="9">Grade 9</option>
-            <option value="10">Grade 10</option>
-            <option value="11">Grade 11</option>
-            <option value="12">Grade 12</option>
-          </select>
-        </div>
-
-        <div class="form-group">
-          <label>Subject/Pathway</label>
-          <select id="materialSubject" required>
-            <option value="">-- Select Subject --</option>
-          </select>
-        </div>
-
-        <div class="form-group senior-material-fields" style="display:none;">
-          <label>Pathway</label>
-          <select id="materialPathway">
-            <option value="">-- Select Pathway --</option>
-          </select>
-        </div>
-
-        <div class="form-group senior-material-fields" style="display:none;">
-          <label>Course</label>
-          <select id="materialCourse">
-            <option value="">-- Select Course --</option>
-          </select>
-        </div>
-
-        <div class="form-group">
-          <label>Title</label>
-          <input type="text" id="materialTitle" placeholder="Chapter 1 Notes" required />
-        </div>
-
-        <div class="form-group">
-          <label>Description</label>
-          <textarea id="materialDescription" rows="3" placeholder="Brief description" required></textarea>
-        </div>
-
-        <div class="form-group">
-          <label>PDF/Word</label>
-          <input type="file" id="materialLink" accept=".pdf,.doc,.docx" required />
-        </div>
-
-        <button type="submit" class="btn">Upload Material</button>
-      </form>
-
-      <div class="materials-list">
-        <h3>Uploaded Materials</h3>
-        <table id="materialsTable">
-          <thead>
-            <tr id="materialsTableHeader">
-              <th>Grade</th>
-              <th>Subject/Pathway</th>
-              <th>Title</th>
-              <th>Description</th>
-              <th>File</th>
-              <th>Actions</th>
-            </tr>
-          </thead>
-          <tbody id="materialsList"></tbody>
-        </table>
+      <div class="card" style="text-align: center; padding: 40px; border: 1px dashed #ccc;">
+        <h3 style="margin-top: 0;">📚 Study Materials & Assignments</h3>
+        <a href="teacher-materials.html" class="btn" style="text-decoration: none; padding: 12px 24px; font-size: 1.1em; border-radius: 6px; background-color: #3498db; color: white; display: inline-block;">
+          🚀 Go to Materials Dashboard
+        </a>
       </div>
     </section>
   </main>

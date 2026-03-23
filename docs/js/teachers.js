@@ -4,8 +4,15 @@
   // ---------------------------
   // API_BASE is now loaded from config.js
   // To change the API endpoint, update config.js
+  console.log("🔧 Teachers.js loading...");
+  console.log("📦 Window.config available:", !!window.config);
+  
   const API_BASE = config.api.baseURL;
   const token = localStorage.getItem("token");
+  
+  console.log("🔑 Token from localStorage:", token ? `${token.substring(0, 20)}...` : "NOT FOUND");
+  console.log("📍 API Base URL:", API_BASE);
+  
   let submittedMarks = []; // in-memory marks list
   let editingMarkId = null;
   let teacher = null;
@@ -15,58 +22,89 @@
   // ---------------------------
   // DOM ELEMENTS
   // ---------------------------
-  const subjectSelect = document.getElementById("subject");
-  const pathwaySelect = document.getElementById("pathway");
-  const courseSelect = document.getElementById("course");
-  const assessmentSelect = document.getElementById("assessmentSelect");
-  const admissionInput = document.getElementById("admissionNo");
-  const studentNameInput = document.getElementById("studentName");
-  const currentGradeInput = document.getElementById("currentGrade");
-  const logoutBtn = document.getElementById("logoutBtn");
-  const marksForm = document.getElementById("marks-form");
-  const submittedMarksContainer = document.getElementById("submittedMarksContainer");
-  const yearInput = document.getElementById("year");
-  const scoreInput = document.getElementById("score");
+  const subjectAllocationSelect = document.getElementById("subjectAllocationSelect");
+  const marksTableContainer = document.getElementById("marksTableContainer");
+  const marksTermSelect = document.getElementById("marksTermSelect");
+  const marksAssessmentSelect = document.getElementById("marksAssessmentSelect");
+  const marksYearInput = document.getElementById("marksYearInput");
+  const loadStudentsBtn = document.getElementById("loadStudentsBtn");
+  const marksEntryTable = document.getElementById("marksEntryTable");
+  const marksEntryTableBody = document.getElementById("marksEntryTableBody");
+  const submitAllMarksBtn = document.getElementById("submitAllMarksBtn");
+  const marksColumnHeader = document.getElementById("marksColumnHeader");
   
-  // Senior School Components (Grade 10-12)
-  const continuousAssessmentInput = document.getElementById("continuousAssessment");
-  const projectWorkInput = document.getElementById("projectWork");
-  const endTermExamInput = document.getElementById("endTermExam");
-
-  // Study materials
-  const materialGrade = document.getElementById("materialGrade");
-  const materialSubject = document.getElementById("materialSubject");
-  const materialPathway = document.getElementById("materialPathway");
-  const materialCourse = document.getElementById("materialCourse");
-  const materialTitle = document.getElementById("materialTitle");
-  const materialDescription = document.getElementById("materialDescription");
-  const materialsForm = document.getElementById("materials-form");
-  const materialsListEl = document.getElementById("materialsList");
+  // Draft & Copy functionality
+  const saveDraftBtn = document.getElementById("saveDraftBtn");
+  const loadDraftBtn = document.getElementById("loadDraftBtn");
+  const draftStatus = document.getElementById("draftStatus");
+  const draftTime = document.getElementById("draftTime");
+  
+  const assessmentSelect = document.getElementById("assessmentSelect");
+  const logoutBtn = document.getElementById("logoutBtn");
+  const submittedMarksContainer = document.getElementById("submittedMarksContainer");
 
   // Smart refresh & toast elements
   const smartRefreshBtn = document.getElementById("smartRefreshBtn");
 
   // ---------------------------
-  // SET DEFAULT YEAR TO CURRENT YEAR
+  // SET DEFAULT YEAR TO CURRENT YEAR (AUTO & READ-ONLY)
   // ---------------------------
   const currentYear = new Date().getFullYear();
-  if (yearInput) {
-    yearInput.value = currentYear;
+  if (marksYearInput) {
+    marksYearInput.value = currentYear;
+    // Ensure it always stays current year
+    marksYearInput.addEventListener("change", () => {
+      marksYearInput.value = currentYear;
+    });
   }
+
+  // ---------------------------
+  // 🆕 SET DEFAULT VALUES FOR TERM AND ASSESSMENT
+  // ---------------------------
+  if (marksTermSelect) {
+    marksTermSelect.value = "1"; // Default to Term 1
+  }
+  if (marksAssessmentSelect) {
+    marksAssessmentSelect.value = "0"; // Default to Midterm
+  }
+
+  // ---------------------------
+  // NEW: STORE TEACHER ALLOCATIONS & STUDENTS
+  // ---------------------------
+  let teacherAllocations = [];
+  let selectedAllocationData = null;
+  let selectedSubject = null; // 🆕 Store selected subject
+  let loadedStudents = [];
+  let currentStudentPage = 1;
+  const STUDENTS_PER_PAGE = 20;
 
   // ---------------------------
   // AUTHENTICATION
   // ---------------------------
   async function loadTeacherProfile() {
-    if (!token) return redirectToLogin();
+    console.log("🔐 Loading teacher profile...");
+    if (!token) {
+      console.error("❌ No token found in localStorage");
+      return redirectToLogin();
+    }
     try {
+      console.log("📡 Fetching user profile from:", `${API_BASE}/users/user`);
       const res = await fetch(`${API_BASE}/users/user`, {
         headers: {
           Authorization: `Bearer ${token}`
         }
       });
-      if (!res.ok) throw new Error("Unauthorized");
+      console.log("📨 Profile API Response Status:", res.status);
+      
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        console.error("❌ Profile fetch error:", errorData);
+        throw new Error("Unauthorized");
+      }
+      
       const data = await res.json();
+      console.log("✅ Teacher profile received:", data);
+      
       teacher = data;
       teacherSchoolId = teacher.schoolId; // ✅ assign here
       if (!teacherSchoolId) {
@@ -76,7 +114,15 @@
       const rolesArray = Array.isArray(teacher.roles) ? teacher.roles : [teacher.role];
       if (!rolesArray.includes("teacher") && !rolesArray.includes("classteacher"))
         throw new Error("Unauthorized");
-      document.getElementById("teacherName").textContent = teacher.name || "";
+      // Display teacher name with proper formatting
+      const teacherNameEl = document.getElementById("teacherName");
+      if (teacherNameEl) {
+        const displayName = teacher.name ? teacher.name.toUpperCase() : "TEACHER";
+        teacherNameEl.textContent = displayName;
+        console.log("✅ Teacher name set to:", displayName);
+      } else {
+        console.warn("⚠️ teacherName element not found in DOM");
+      }
       window.currentTeacher = teacher;
     } catch (err) {
       console.error("Dashboard auth error:", err);
@@ -111,23 +157,71 @@
   // ---------------------------
   // LOAD TEACHER ALLOCATIONS (🆕)
   // ---------------------------
-  async function loadTeacherAllocations() {
+  async function loadTeacherAllocations(forceRefresh = false) {
+    const CACHE_KEY = "teacher_allocations_cache";
+    const CACHE_DURATION = 15 * 60 * 1000; // 15 minutes
+
+    if (!forceRefresh) {
+      const cached = localStorage.getItem(CACHE_KEY);
+      if (cached) {
+        try {
+          const { timestamp, data } = JSON.parse(cached);
+          if (Date.now() - timestamp < CACHE_DURATION) {
+            console.log("✅ Using cached teacher allocations");
+            processAllocationsData(data);
+            return;
+          }
+        } catch (e) { console.warn("Cache read error:", e); }
+      }
+    }
+
     try {
+      console.log("🔍 Starting to load teacher allocations...");
+      console.log("📡 API Base URL:", API_BASE);
+      console.log("🔑 Token present:", !!token);
+      
       const res = await fetch(`${API_BASE}/users/subjects/my-allocations`, {
         headers: {
           Authorization: `Bearer ${token}`
         }
       });
-      if (!res.ok) throw new Error("Failed to fetch allocations");
+      
+      console.log("📨 API Response Status:", res.status);
+      
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        console.error("❌ API Error:", errorData);
+        throw new Error(`Failed to fetch allocations (Status: ${res.status})`);
+      }
+      
       const data = await res.json();
-      renderAllocations(data);
+      console.log("✅ Allocations data received:", data);
+      
+      // Cache the result
+      localStorage.setItem(CACHE_KEY, JSON.stringify({
+        timestamp: Date.now(),
+        data: data
+      }));
+
+      processAllocationsData(data);
     } catch (err) {
-      console.error("Load allocations error:", err);
+      console.error("❌ Load allocations error:", err);
       const container = document.getElementById("allocationsContainer");
       if (container) {
-        container.innerHTML = '<p style="color: red;">Failed to load allocations</p>';
+        container.innerHTML = `<p style="color: red;">❌ Failed to load allocations: ${err.message}</p><p style="font-size: 0.8rem; color: #666;">Check browser console for details</p>`;
       }
     }
+  }
+
+  function processAllocationsData(data) {
+    if (data.subjectAllocations) {
+      teacherAllocations = data.subjectAllocations;
+      console.log(`📚 Loaded ${teacherAllocations.length} allocations`);
+      populateSubjectAllocations(teacherAllocations);
+    } else {
+      console.warn("⚠️ No subjectAllocations in response");
+    }
+    renderAllocations(data);
   }
 
   // ---------------------------
@@ -138,22 +232,6 @@
     if (!container) return;
 
     let html = '<div style="margin-top: 10px;">';
-
-    // Subject Allocations
-    if (data.subjectAllocations && data.subjectAllocations.length > 0) {
-      html += '<h4>📖 Subject Allocations:</h4>';
-      html += '<ul style="list-style: none; padding: 0;">';
-      data.subjectAllocations.forEach(alloc => {
-        html += `
-          <li style="padding: 8px; background: white; margin: 5px 0; border-left: 4px solid #4CAF50; border-radius: 4px;">
-            <strong>${alloc.classLabel}</strong>: ${alloc.subjects.join(", ")}
-          </li>
-        `;
-      });
-      html += '</ul>';
-    } else {
-      html += '<p><strong>📖 Subject Allocations:</strong> None</p>';
-    }
 
     // Class Teacher Assignment
     if (data.classTeacherAssignment) {
@@ -188,96 +266,830 @@
   // ASSESSMENT SELECT POPULATE
   // ---------------------------
   (function populateAssessments() {
-    const midterm = document.createElement("option");
-    midterm.value = 0;
-    midterm.textContent = "Midterm";
-    assessmentSelect.appendChild(midterm);
-    
-    for (let i = 1; i <= 4; i++) {
-      const opt = document.createElement("option");
-      opt.value = i;
-      opt.textContent = `Assessment ${i}`;
-      assessmentSelect.appendChild(opt);
-    }
-    const endTerm = document.createElement("option");
-    endTerm.value = 5;
-    endTerm.textContent = "End Term";
-    assessmentSelect.appendChild(endTerm);
+    const selectElements = [assessmentSelect, marksAssessmentSelect].filter(el => el);
+    selectElements.forEach(select => {
+      select.innerHTML = '<option value="">-- Select Assessment --</option>';
+      const midterm = document.createElement("option");
+      midterm.value = 0;
+      midterm.textContent = "Midterm";
+      select.appendChild(midterm);
+      
+      for (let i = 1; i <= 4; i++) {
+        const opt = document.createElement("option");
+        opt.value = i;
+        opt.textContent = `Assessment ${i}`;
+        select.appendChild(opt);
+      }
+      const endTerm = document.createElement("option");
+      endTerm.value = 5;
+      endTerm.textContent = "End Term";
+      select.appendChild(endTerm);
+    });
   })();
+
+  // ---------------------------
+  // NEW: POPULATE SUBJECT/CLASS ALLOCATIONS DROPDOWN
+  // ---------------------------
+  async function populateSubjectAllocations(allocations) {
+    if (!subjectAllocationSelect) return;
+    subjectAllocationSelect.innerHTML = '<option value="">-- Select Subject & Class --</option>';
+    
+    // 🆕 Create a separate option for EACH subject in each class
+    allocations.forEach((alloc, classIndex) => {
+  const subjects = alloc.subjects || [];
+
+  // ✅ If ONLY ONE subject → add once (no unnecessary looping confusion)
+  if (subjects.length === 1) {
+    const subject = subjects[0];
+
+    const opt = document.createElement("option");
+    opt.value = `${classIndex}_0`;
+    opt.textContent = `${alloc.classLabel}: ${subject}`;
+
+    opt.dataset.classIndex = classIndex;
+    opt.dataset.subjectIndex = 0;
+    opt.dataset.classLabel = alloc.classLabel;
+    opt.dataset.subject = subject;
+
+    subjectAllocationSelect.appendChild(opt);
+  }
+
+  // ✅ If MULTIPLE subjects → normal loop
+  else {
+    subjects.forEach((subject, subjectIndex) => {
+      const opt = document.createElement("option");
+      opt.value = `${classIndex}_${subjectIndex}`;
+      opt.textContent = `${alloc.classLabel}: ${subject}`;
+
+      opt.dataset.classIndex = classIndex;
+      opt.dataset.subjectIndex = subjectIndex;
+      opt.dataset.classLabel = alloc.classLabel;
+      opt.dataset.subject = subject;
+
+      subjectAllocationSelect.appendChild(opt);
+    });
+  }
+});
+
+    // 🆕 Auto-select the first allocation if available
+    if (allocations.length > 0 && allocations[0].subjects.length > 0) {
+      subjectAllocationSelect.value = "0_0"; // First class, first subject
+      selectedAllocationData = allocations[0];
+      selectedSubject = allocations[0].subjects[0];
+      if (marksTableContainer) marksTableContainer.style.display = "block";
+      checkForExistingDraft?.();
+    }
+  }
+
+  // ---------------------------
+  // NEW: SUBJECT SELECTION CHANGED
+  // ---------------------------
+  if (subjectAllocationSelect) {
+    subjectAllocationSelect.addEventListener("change", () => {
+      const optionKey = subjectAllocationSelect.value;
+      if (optionKey === "") {
+        if (marksTableContainer) marksTableContainer.style.display = "none";
+        selectedAllocationData = null;
+        selectedSubject = null;
+        resetMarksTable();
+        if (loadDraftBtn) loadDraftBtn.style.display = "none";
+        return;
+      }
+      if (subjectAllocationSelect.options.length === 2) {
+       subjectAllocationSelect.selectedIndex = 1;
+      subjectAllocationSelect.disabled = true;
+      }
+      // 🆕 Parse the option key to get class and subject indices
+      const [classIndex, subjectIndex] = optionKey.split("_").map(Number);
+      const selectedOption = subjectAllocationSelect.options[subjectAllocationSelect.selectedIndex];
+      
+      selectedAllocationData = teacherAllocations[classIndex];
+      selectedSubject = selectedOption.dataset.subject; // 🆕 Get selected subject
+      
+      console.log(`✅ Selected: Class="${selectedAllocationData.classLabel}", Subject="${selectedSubject}"`);
+      
+      resetMarksTable();
+      if (marksTableContainer) marksTableContainer.style.display = "block";
+      checkForExistingDraft();
+    });
+  }
+
+  // ---------------------------
+  // NEW: LOAD STUDENTS FOR SELECTED SUBJECT
+  // ---------------------------
+  async function loadStudentsForSubject(classLabel, page = 1) {
+    try {
+      console.log(`📚 Loading students for class: ${classLabel} (Page ${page})`);
+      console.log("📝 Academic Year:", new Date().getFullYear());
+      
+      const res = await fetch(`${API_BASE}/enrollments/class/${classLabel}?page=${page}&limit=${STUDENTS_PER_PAGE}`, {
+        headers: {
+          Authorization: `Bearer ${token}`
+        }
+      });
+      
+      console.log("📨 API Response Status:", res.status);
+      
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        console.error("❌ API Error:", errorData);
+        throw new Error("Failed to load students");
+      }
+      
+      const data = await res.json();
+      
+      // Handle paginated response
+      if (data.students) {
+        loadedStudents = data.students;
+        currentStudentPage = data.currentPage || 1;
+      } else if (Array.isArray(data)) {
+        loadedStudents = data; // Fallback
+      }
+      
+      console.log(`✅ Loaded ${loadedStudents.length} student(s) from ${classLabel}`);
+      loadedStudents.forEach((s, idx) => {
+        console.log(`   ${idx + 1}. ${s.name} (ADM: ${s.admissionNo || s.admission}) - Grade: ${s.grade}`);
+      });
+      
+      return data; // Return full data object with pagination metadata
+    } catch (err) {
+  console.error("❌ Load students error:", err);
+  throw err; // Let caller handle toast
+}
+  }
+
+  // ---------------------------
+  // PAGINATION CONTROLS
+  // ---------------------------
+  function updateStudentsPaginationControls() {
+    let paginationEl = document.getElementById("studentsPagination");
+    if (!paginationEl) {
+      paginationEl = document.createElement("div");
+      paginationEl.id = "studentsPagination";
+      paginationEl.style.cssText = "display: flex; justify-content: center; align-items: center; gap: 15px; margin-top: 15px; padding: 10px;";
+      marksEntryTable.parentElement.appendChild(paginationEl);
+    }
+
+    // If we can't determine total pages from global context easily here without storing it, 
+    // we rely on the caller or just basic next/prev logic. 
+    // For simplicity, we will just render buttons. 
+    // Ideally loadStudentsForSubject response should drive this, but displayStudentsInMarksTable takes an array.
+    // Let's assume we have stored total pages or check loadedStudents length.
+    // However, best to just render simplistic controls here or rely on the `loadStudentsBtn` logic to pass metadata.
+    // Let's clear it here and let the load function handle rendering if needed, or:
+    
+    paginationEl.innerHTML = `
+      <button type="button" id="prevStudentsBtn" class="btn secondary-btn" ${currentStudentPage === 1 ? "disabled" : ""} style="padding: 5px 10px; font-size: 0.9em;">Previous</button>
+      <span style="font-weight: bold; color: #555;">Page ${currentStudentPage}</span>
+      <button type="button" id="nextStudentsBtn" class="btn secondary-btn" style="padding: 5px 10px; font-size: 0.9em;">Next</button>
+    `;
+
+    document.getElementById("prevStudentsBtn")?.addEventListener("click", () => {
+      if (currentStudentPage > 1) {
+        const btn = document.getElementById("loadStudentsBtn");
+        if (btn) btn.click(); // Re-trigger load but we need to inject page logic
+        loadStudentsWithPage(currentStudentPage - 1);
+      }
+    });
+
+    document.getElementById("nextStudentsBtn")?.addEventListener("click", () => {
+      loadStudentsWithPage(currentStudentPage + 1);
+    });
+  }
+
+  // ---------------------------
+  // NEW: DISPLAY STUDENTS IN MARKS TABLE
+  // ---------------------------
+  function displayStudentsInMarksTable(students) {
+    marksEntryTableBody.innerHTML = "";
+    
+    if (!students || students.length === 0) {
+      const row = marksEntryTableBody.insertRow();
+      row.innerHTML = '<td colspan="5" style="text-align: center; padding: 20px; color: #999;">No students found in this class</td>';
+      return;
+    }
+
+    // Determine if senior school based on first student's grade
+    const gradeMatch = (students[0].grade || "").toString().match(/\d+/);
+    const gradeNum = gradeMatch ? parseInt(gradeMatch[0]) : 0;
+    const isSeniorSchool = gradeNum >= 10 && gradeNum <= 12;
+
+    // 🆕 Update table title to show selected subject
+    const marksControlsSection = document.querySelector('.marks-controls');
+    if (marksControlsSection && selectedSubject) {
+      let titleElement = marksControlsSection.querySelector('.selected-subject-title');
+      if (!titleElement) {
+        titleElement = document.createElement('div');
+        titleElement.className = 'selected-subject-title';
+        marksControlsSection.appendChild(titleElement);
+      }
+      titleElement.innerHTML = `<p style="font-size: 1.1rem; color: #2b6cb0; font-weight: 600; margin: 10px 0;">📍 Subject: <strong>${selectedSubject}</strong></p>`;
+    }
+
+    // Update table header for marks column
+    if (isSeniorSchool) {
+      marksColumnHeader.innerHTML = `
+        <div style="display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 5px;">
+          <div>CA (30%)</div>
+          <div>PW (20%)</div>
+          <div>Exam (50%)</div>
+          <div>Final</div>
+        </div>
+      `;
+    } else {
+      marksColumnHeader.innerHTML = "Marks (%)";
+    }
+
+    // Add student rows
+    students.forEach(student => {
+      const row = marksEntryTableBody.insertRow();
+      row.dataset.studentId = student._id;
+      row.dataset.admission = student.admissionNo || student.admission;
+      row.dataset.name = student.name;
+      row.dataset.grade = student.grade;
+      row.dataset.subject = selectedSubject; // 🆕 Store selected subject with each row
+      
+      // ADM and Name columns
+     row.innerHTML = `
+  <td>${sanitize(student.admissionNo || student.admission)}</td>
+  <td>${sanitize(student.name)}</td>
+  <td>
+    ${isSeniorSchool ? `
+      <div style="display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 5px;">
+        <input type="number" class="ca-input" min="0" max="100" placeholder="CA" />
+        <input type="number" class="pw-input" min="0" max="100" placeholder="PW" />
+        <input type="number" class="exam-input" min="0" max="100" placeholder="Exam" />
+        <input type="number" class="final-input" min="0" max="100" placeholder="Final" readonly />
+      </div>
+    ` : `
+      <input type="number" class="marks-input" min="0" max="100" placeholder="Score" />
+    `}
+  </td>
+`;
+
+      // Auto-calculate final score for senior school
+      if (isSeniorSchool) {
+        const caInput = row.querySelector(".ca-input");
+        const pwInput = row.querySelector(".pw-input");
+        const examInput = row.querySelector(".exam-input");
+        const finalInput = row.querySelector(".final-input");
+
+        const updateFinal = () => {
+          const ca = caInput.value ? parseFloat(caInput.value) : null;
+          const pw = pwInput.value ? parseFloat(pwInput.value) : null;
+          const exam = examInput.value ? parseFloat(examInput.value) : null;
+
+          let totalScore = 0;
+          let totalWeight = 0;
+
+          if (ca !== null) {
+            totalScore += ca * 0.3;
+            totalWeight += 0.3;
+          }
+          if (pw !== null) {
+            totalScore += pw * 0.2;
+            totalWeight += 0.2;
+          }
+          if (exam !== null) {
+            totalScore += exam * 0.5;
+            totalWeight += 0.5;
+          }
+
+          if (totalWeight === 0) {
+            finalInput.value = "";
+          } else {
+            const final = totalScore / totalWeight;
+            finalInput.value = final.toFixed(2);
+          }
+        };
+
+        caInput.addEventListener("input", updateFinal);
+        pwInput.addEventListener("input", updateFinal);
+        examInput.addEventListener("input", updateFinal);
+      }
+    });
+
+    // Check if draft exists for loaded selection
+    checkForExistingDraft();
+    
+    updateStudentsPaginationControls(students);
+  }
+
+  // ---------------------------
+  // TABLE EVENT DELEGATION - Handle interactions
+  // ---------------------------
+  marksEntryTableBody.addEventListener("change", (e) => {
+    const row = e.target.closest("tr");
+    if (!row) return;
+    });
+
+  marksEntryTableBody.addEventListener("input", (e) => {
+    const row = e.target.closest("tr");
+    if (!row) return;
+
+    // When any marks input changes, mark row as modified
+    if (e.target.classList.contains("marks-input") || 
+        e.target.classList.contains("ca-input") ||
+        e.target.classList.contains("pw-input") ||
+        e.target.classList.contains("exam-input")) {
+      row.style.backgroundColor = "#fffacd"; // Light yellow to show modified
+    }
+  });
+
+  // ---------------------------
+  // TABLE RESET/CLEAR FUNCTION
+  // ---------------------------
+  function resetMarksTable() {
+    marksEntryTableBody.innerHTML = "";
+    marksColumnHeader.innerHTML = "Marks (%)";
+    loadedStudents = [];
+    const paginationEl = document.getElementById("studentsPagination");
+    if (paginationEl) {
+      paginationEl.innerHTML = "";
+    }
+  }
+
+  // ---------------------------
+  // TABLE VALIDATION FUNCTION
+  // ---------------------------
+  function validateMarksTable() {
+    const errors = [];
+    
+    marksEntryTableBody.querySelectorAll("tr").forEach((row, idx) => {
+   if (!marksTermSelect.value) {
+  errors.push("Term not selected");
+}
+
+if (!marksAssessmentSelect.value) {
+  errors.push("Assessment not selected");
+}
+      // Check for marks
+      const marksInput = row.querySelector(".marks-input");
+      const caInput = row.querySelector(".ca-input");
+      
+      if (marksInput && !marksInput.value) {
+        errors.push(`Row ${idx + 1}: Marks not entered`);
+      }
+      if (caInput && !caInput.value && !row.querySelector(".pw-input")?.value && !row.querySelector(".exam-input")?.value) {
+        errors.push(`Row ${idx + 1}: At least one marks component required`);
+      }
+    });
+
+    return errors;
+  }
+
+  // ---------------------------
+  // DRAFT FUNCTIONALITY
+  // ---------------------------
+  function getDraftKey() {
+    if (!selectedAllocationData) return null;
+    return `marks-draft-${selectedAllocationData.classLabel}-${marksTermSelect.value}-${marksAssessmentSelect.value}`;
+  }
+
+  function collectMarksData() {
+    const marksData = {};
+    marksEntryTableBody.querySelectorAll("tr").forEach(row => {
+      const admission = row.dataset.admission;
+     const selectedTerm = marksTermSelect.value;
+    const selectedAssessment = marksAssessmentSelect.value;
+
+      const marksInput = row.querySelector(".marks-input");
+      const caInput = row.querySelector(".ca-input");
+      const pwInput = row.querySelector(".pw-input");
+      const examInput = row.querySelector(".exam-input");
+
+      marksData[admission] = {
+        term: selectedTerm,
+        assessment: selectedAssessment,
+        marks: marksInput?.value || "",
+        ca: caInput?.value || "",
+        pw: pwInput?.value || "",
+        exam: examInput?.value || ""
+      };
+    });
+    return marksData;
+  }
+
+  function populateMarksFromDraft(marksData) {
+    marksEntryTableBody.querySelectorAll("tr").forEach(row => {
+      const admission = row.dataset.admission;
+      if (marksData[admission]) {
+        const data = marksData[admission];
+        const marksInput = row.querySelector(".marks-input");
+        const caInput = row.querySelector(".ca-input");
+        const pwInput = row.querySelector(".pw-input");
+        const examInput = row.querySelector(".exam-input");
+
+        if (marksInput && data.marks) marksInput.value = data.marks;
+        if (caInput && data.ca) {
+          caInput.value = data.ca;
+          // Trigger auto-calculation
+          caInput.dispatchEvent(new Event("input", { bubbles: true }));
+        }
+        if (pwInput && data.pw) {
+          pwInput.value = data.pw;
+          pwInput.dispatchEvent(new Event("input", { bubbles: true }));
+        }
+        if (examInput && data.exam) {
+          examInput.value = data.exam;
+          examInput.dispatchEvent(new Event("input", { bubbles: true }));
+        }
+
+        row.style.backgroundColor = "#fffacd"; // Light yellow to show restored
+      }
+    });
+  }
+
+  function saveDraft() {
+    if (!selectedAllocationData || marksEntryTableBody.rows.length === 0) {
+      showToast("No data to save. Please load Learners first.", "error");
+      return;
+    }
+
+    const draftKey = getDraftKey();
+    if (!draftKey) {
+      showToast("Please select subject and assessment", "error");
+      return;
+    }
+
+    const marksData = collectMarksData();
+    const draftObj = {
+      marksData,
+      classLabel: selectedAllocationData.classLabel,
+      subject: selectedSubject,
+      term: marksTermSelect.value,
+      assessment: marksAssessmentSelect.value,
+      timestamp: new Date().toLocaleString()
+    };
+
+    localStorage.setItem(draftKey, JSON.stringify(draftObj));
+    
+    // Show status
+    if (draftStatus && draftTime) {
+      draftTime.textContent = draftObj.timestamp;
+      draftStatus.style.display = "block";
+      setTimeout(() => {
+        draftStatus.style.display = "none";
+      }, 4000);
+    }
+
+    showToast("✓ Draft saved successfully", "success");
+    
+    // Show load draft button if draft exists
+    if (loadDraftBtn) {
+      loadDraftBtn.style.display = "inline-block";
+    }
+  }
+
+  function loadDraft() {
+    const draftKey = getDraftKey();
+    if (!draftKey) {
+      showToast("Please select subject and assessment", "error");
+      return;
+    }
+
+    const savedDraft = localStorage.getItem(draftKey);
+    if (!savedDraft) {
+      showToast("No draft found for this selection", "error");
+      return;
+    }
+
+    const draftObj = JSON.parse(savedDraft);
+    populateMarksFromDraft(draftObj.marksData);
+    showToast(`✓ Draft loaded from ${draftObj.timestamp}`, "success");
+  }
+
+  function clearDraft() {
+    const draftKey = getDraftKey();
+    if (draftKey) {
+      localStorage.removeItem(draftKey);
+    }
+    if (loadDraftBtn) {
+      loadDraftBtn.style.display = "none";
+    }
+  }
+
+  // ---------------------------
+  // CHECK FOR EXISTING DRAFT ON LOAD
+  // ---------------------------
+  function checkForExistingDraft() {
+    if (!selectedAllocationData) return;
+    const draftKey = getDraftKey();
+    if (draftKey && localStorage.getItem(draftKey)) {
+      if (loadDraftBtn) {
+        loadDraftBtn.style.display = "inline-block";
+      }
+    }
+  }
+
+  // ---------------------------
+  // DRAFT & COPY BUTTONS EVENT LISTENERS
+  // ---------------------------
+  if (saveDraftBtn) {
+    saveDraftBtn.addEventListener("click", saveDraft);
+  }
+
+  if (loadDraftBtn) {
+    loadDraftBtn.addEventListener("click", loadDraft);
+  }
+
+  // ---------------------------
+  // NEW: LOAD STUDENTS BUTTON CLICKED
+  // ---------------------------
+  if (loadStudentsBtn) {
+    loadStudentsBtn.addEventListener("click", async () => {
+      if (!selectedAllocationData) {
+        showToast("Please select a subject/class first", "error");
+        return;
+      }
+
+      if (!selectedSubject) {
+        showToast("Please select a specific subject", "error");
+        return;
+      }
+
+      if (!marksTermSelect.value || !marksAssessmentSelect.value || !marksYearInput.value) {
+        showToast("Please select Term and Assessment", "error");
+        return;
+      }
+
+      console.log("🔄 Loading Learners...");
+      console.log(`   Class: ${selectedAllocationData.classLabel}`);
+      console.log(`   Subject: ${selectedSubject}`);
+      console.log(`   Term: ${marksTermSelect.options[marksTermSelect.selectedIndex].text}`);
+      console.log(`   Assessment: ${marksAssessmentSelect.options[marksAssessmentSelect.selectedIndex].text}`);
+      console.log(`   Year: ${marksYearInput.value}`);
+
+      loadStudentsBtn.disabled = true;
+      loadStudentsBtn.innerHTML = '<span class="spinner"></span>Loading...';
+
+      await loadStudentsWithPage(1); // Load first page on manual click
+      
+      loadStudentsBtn.disabled = false;
+      loadStudentsBtn.innerHTML = "📥 Load Learners";
+    });
+  }
+
+  async function loadStudentsWithPage(page) {
+  try {
+    const response = await loadStudentsForSubject(selectedAllocationData.classLabel, page);
+    const students = response.students || response;
+    const totalPages = response.totalPages || 1;
+
+    displayStudentsInMarksTable(students);
+
+    // Update pagination UI explicitly
+    let paginationEl = document.getElementById("studentsPagination");
+    if (paginationEl) {
+      const prevBtn = document.getElementById("prevStudentsBtn");
+      const nextBtn = document.getElementById("nextStudentsBtn");
+      const span = paginationEl.querySelector("span");
+      
+      if (prevBtn) prevBtn.disabled = page <= 1;
+      if (nextBtn) nextBtn.disabled = page >= totalPages;
+      if (span) span.textContent = `Page ${page} of ${totalPages}`;
+      currentStudentPage = page;
+    }
+
+  if (students.length > 0) {
+    showToast(`✅ Loaded ${students.length} Learner(s) from ${selectedAllocationData.classLabel}`, "success");
+  } else {
+    showToast(`⚠️ No Learners found in ${selectedAllocationData.classLabel}`, "warning");
+  }
+
+} catch (err) {
+  showToast("❌ Failed to load Learners: " + err.message, "error");
+
+      }
+}
+
+  // ---------------------------
+  // NEW: SUBMIT ALL MARKS
+  // ---------------------------
+  if (submitAllMarksBtn) {
+    submitAllMarksBtn.addEventListener("click", async () => {
+      if (!marksTermSelect.value || !marksAssessmentSelect.value || !marksYearInput.value) {
+        showToast("Please select Term and Assessment", "error");
+      return;
+    }
+
+    if (marksEntryTableBody.rows.length === 0) {
+      showToast("No Learners loaded", "error");
+      return;
+    }
+
+    if (!selectedAllocationData) {
+      showToast("No subject selected", "error");
+      return;
+    }
+
+    const marks = [];
+    let hasErrors = false;
+
+    marksEntryTableBody.querySelectorAll("tr").forEach((row, idx) => {
+      const admission = row.dataset.admission;
+      const name = row.dataset.name;
+      const grade = row.dataset.grade;
+      
+      // Use global Term/Assessment selections
+      const term = marksTermSelect.value;
+      const assessment = marksAssessmentSelect.value;
+
+      // Get marks based on school level
+      const gradeMatch = (grade || "").toString().match(/\d+/);
+      const gradeNum = gradeMatch ? parseInt(gradeMatch[0]) : 0;
+      const isSeniorSchool = gradeNum >= 10 && gradeNum <= 12;
+
+      let mark = {
+        admissionNo: admission,
+        studentName: name,
+        grade: gradeNum,
+        term: Number(term),
+        year: Number(marksYearInput.value),
+        assessment: Number(assessment),
+        // Subject/Course/Pathway added conditionally below
+      };
+
+      if (isSeniorSchool) {
+        const course = selectedSubject;
+        let pathway = null;
+
+        // Find pathway for the given course
+        for (const pway in seniorSchoolPathways) {
+          if (seniorSchoolPathways[pway].map(s => s.toLowerCase()).includes(course.toLowerCase())) {
+            pathway = pway;
+            break;
+          }
+        }
+
+        if (!pathway) {
+          showToast(`Error: Could not find Pathway for the course "${course}". Please check senior school configurations.`, "error");
+          hasErrors = true;
+          return; // Stop processing this row
+        }
+        
+        mark.pathway = pathway;
+        mark.course = course;
+
+        const ca = row.querySelector(".ca-input")?.value;
+        const pw = row.querySelector(".pw-input")?.value;
+        const exam = row.querySelector(".exam-input")?.value;
+
+        if (!ca && !pw && !exam) {
+          // Skip empty rows instead of erroring (allows partial updates)
+          return;
+        }
+
+        mark.continuousAssessment = ca ? Number(ca) : null;
+        mark.projectWork = pw ? Number(pw) : null;
+        mark.endTermExam = exam ? Number(exam) : null;
+
+        // Calculate final score
+        let totalScore = 0;
+        let totalWeight = 0;
+        if (mark.continuousAssessment !== null) {
+          totalScore += mark.continuousAssessment * 0.3;
+          totalWeight += 0.3;
+        }
+        if (mark.projectWork !== null) {
+          totalScore += mark.projectWork * 0.2;
+          totalWeight += 0.2;
+        }
+        if (mark.endTermExam !== null) {
+          totalScore += mark.endTermExam * 0.5;
+          totalWeight += 0.5;
+        }
+        if (totalWeight > 0) {
+          mark.finalScore = (totalScore / totalWeight).toFixed(2);
+        } else {
+          mark.finalScore = null;
+        }
+
+        // Validate component scores
+        if (ca && (isNaN(Number(ca)) || Number(ca) < 0 || Number(ca) > 100)) {
+          showToast(`Row ${idx + 1}: CA must be 0-100`, "error");
+          hasErrors = true;
+          return;
+        }
+        if (pw && (isNaN(Number(pw)) || Number(pw) < 0 || Number(pw) > 100)) {
+          showToast(`Row ${idx + 1}: PW must be 0-100`, "error");
+          hasErrors = true;
+          return;
+        }
+        if (exam && (isNaN(Number(exam)) || Number(exam) < 0 || Number(exam) > 100)) {
+          showToast(`Row ${idx + 1}: Exam must be 0-100`, "error");
+          hasErrors = true;
+          return;
+        }
+      } else {
+        mark.subject = selectedSubject; // Set subject for non-senior school
+
+        const marksInput = row.querySelector(".marks-input")?.value;
+        if (!marksInput) {
+          // Skip empty rows instead of erroring (allows partial updates)
+          return;
+        }
+
+        if (isNaN(Number(marksInput)) || Number(marksInput) < 0 || Number(marksInput) > 100) {
+          showToast(`Row ${idx + 1}: Marks must be 0-100`, "error");
+          hasErrors = true;
+          return;
+        }
+
+        mark.score = Number(marksInput);
+      }
+
+      // Check for existing mark to update instead of create (prevents duplicates)
+      const existingEntry = submittedMarks.find(m => 
+        m.admissionNo === mark.admissionNo &&
+        m.term === mark.term &&
+        m.year === mark.year &&
+        m.assessment === mark.assessment &&
+        (
+          (isSeniorSchool && m.course === mark.course) ||
+          (!isSeniorSchool && m.subject === mark.subject)
+        )
+      );
+
+      if (existingEntry) {
+        mark._id = existingEntry._id; // Attach ID for update
+      }
+
+      marks.push(mark);
+    });
+
+    if (hasErrors) {
+      return;
+    }
+
+    if (marks.length === 0) {
+      showToast("No marks entered to submit", "warning");
+      return;
+    }
+
+    if (!confirm(`Are you sure you want to submit marks for ${marks.length} learner(s)?`)) {
+      return;
+    }
+
+    submitAllMarksBtn.disabled = true;
+    submitAllMarksBtn.innerHTML = '<span class="spinner"></span>Submitting...';
+
+    try {
+      let successCount = 0;
+      let failureCount = 0;
+
+      for (const mark of marks) {
+        try {
+          // Determine if we are updating (PUT) or creating (POST)
+          let url = `${API_BASE}/marks/add`;
+          let method = "POST";
+          
+          if (mark._id) {
+            url = `${API_BASE}/marks/${mark._id}`;
+            method = "PUT";
+          }
+
+          const res = await fetch(url, {
+            method: method,
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${token}`
+            },
+            body: JSON.stringify(mark)
+          });
+
+          if (!res.ok) {
+            failureCount++;
+          } else {
+            successCount++;
+          }
+        } catch (err) {
+          failureCount++;
+        }
+      }
+
+      showToast(`✅ Processed: ${successCount} mark(s) saved/updated, ${failureCount} failed`, successCount > 0 ? "success" : "error");
+      
+      if (successCount > 0) {
+        await loadSubmittedMarks();
+        marksEntryTableBody.innerHTML = "";
+        marksTableContainer.style.display = "none";
+        subjectAllocationSelect.value = "";
+        clearDraft(); // Clear saved draft after successful submission
+      }
+    } catch (err) {
+      console.error("Submit marks error:", err);
+      showToast("Error submitting marks", "error");
+    } finally {
+      submitAllMarksBtn.disabled = false;
+      submitAllMarksBtn.innerHTML = "✅ Submit All Marks";
+    }
+    });
+  }
 
   // ---------------------------
   // GRADE & SUBJECTS DATA
   // ---------------------------
-  const gradeSubjects = {
-    "1-3": [
-      "Mathematics",
-      "Kiswahili",
-      "English",
-      "Environmental Activities",
-      "Social Studies",
-      "Christian Religious Studies (CRE)",
-      "Creative Arts and Sports"
-    ],
-    "4-6": [
-      "Mathematics",
-      "English",
-      "Kiswahili",
-      "Integrated Science",
-      "Social Studies",
-      "Christian Religious Studies (CRE)",
-      "Creative Arts",
-      "Physical Health Education"
-    ],
-    "7-9": [
-      "Mathematics",
-      "English",
-      "Kiswahili",
-      "Integrated Science",
-      "Business Studies",
-      "Agriculture",
-      "Social Studies",
-      "Christian Religious Studies (CRE)",
-      "Health Education",
-      "Pre-Technical Studies",
-      "Sports and Physical Education"
-    ],
-    "10-12": [
-      "Mathematics",
-      "English",
-      "Kiswahili",
-      "Physics",
-      "Chemistry",
-      "Biology",
-      "Agriculture",
-      "History and Citizenship",
-      "Geography",
-      "Christian Religious Studies (CRE)",
-      "Business Studies",
-      "Computer Studies",
-      "Home Science",
-      "Electricity",
-      "Aviation",
-      "Marine and Fisheries",
-      "Building and Construction",
-      "Woodwork",
-      "Metalwork",
-      "Power Mechanics",
-      "General Science",
-      "Media Technology",
-      "Kenya Sign Language",
-      "Literature in English",
-      "Fasihi ya Kiswahili",
-      "Indigenous Language",
-      "French",
-      "German",
-      "Islamic Religious Education",
-      "Hindu Religious Education",
-      "Music and Dance",
-      "Theatre and Film",
-      "Sports and Recreation"
-    ]
-  };
-
   // ---------------------------
   // SENIOR SCHOOL PATHWAYS & COURSES
   // ---------------------------
@@ -344,183 +1156,7 @@
     ]
   };
 
-  // ---------------------------
-  // MARKS FORM - Helper function to populate grades and subjects/courses
-  // ---------------------------
-  function populateGradeFields(Grade) {
-    if (!Grade) return;
-    const isSeniorSchool = Grade >= 10 && Grade <= 12;
-    const seniorFields = document.querySelectorAll('.senior-school-fields');
-    const juniorFields = document.querySelectorAll('.junior-school-fields');
-    
-    if (isSeniorSchool) {
-      // Show senior school fields, hide subject and junior score
-      seniorFields.forEach(field => field.style.display = 'block');
-      juniorFields.forEach(field => field.style.display = 'none');
-      subjectSelect.style.display = 'none';
-      subjectSelect.required = false;
-      scoreInput.required = false;
-      scoreInput.style.display = 'none';
-      
-      // Make senior school components optional (filled based on what user enters)
-      continuousAssessmentInput.required = false;
-      projectWorkInput.required = false;
-      endTermExamInput.required = false;
-      
-      // Reset pathway and course
-      pathwaySelect.innerHTML = '<option value="">-- Select Pathway --</option>';
-      courseSelect.innerHTML = '<option value="">-- Select Course --</option>';
-      // Populate pathways
-      Object.keys(seniorSchoolPathways).forEach(pathway => {
-        const opt = document.createElement("option");
-        opt.value = pathway;
-        opt.textContent = pathway;
-        pathwaySelect.appendChild(opt);
-      });
-    } else {
-      // Hide senior school fields, show subject and junior score
-      seniorFields.forEach(field => field.style.display = 'none');
-      juniorFields.forEach(field => field.style.display = 'block');
-      subjectSelect.style.display = 'block';
-      subjectSelect.required = true;
-      scoreInput.required = true;
-      scoreInput.style.display = 'block';
-      
-      // Make senior school components not required
-      continuousAssessmentInput.required = false;
-      projectWorkInput.required = false;
-      endTermExamInput.required = false;
-      
-      // Reset senior school selects
-      pathwaySelect.value = '';
-      courseSelect.innerHTML = '<option value="">-- Select Course --</option>';
-      // Populate subjects for junior school based on actual grade (not range)
-      subjectSelect.innerHTML = '<option value="">-- Select Subject --</option>';
-      let range = "";
-      if (Grade >= 1 && Grade <= 3) range = "1-3";
-      else if (Grade >= 4 && Grade <= 6) range = "4-6";
-      else if (Grade >= 7 && Grade <= 9) range = "7-9";
-      (gradeSubjects[range] || []).forEach(sub => {
-        const opt = document.createElement("option");
-        opt.value = sub.toLowerCase().replace(/\s+/g, "-");
-        opt.textContent = sub;
-        subjectSelect.appendChild(opt);
-      });
-    }
-  }
 
-  // ---------------------------
-  // PATHWAY SELECTION - Populate courses
-  // ---------------------------
-  pathwaySelect?.addEventListener("change", () => {
-    const pathway = pathwaySelect.value;
-    courseSelect.innerHTML = '<option value="">-- Select Course --</option>';
-    if (pathway && seniorSchoolPathways[pathway]) {
-      seniorSchoolPathways[pathway].forEach(course => {
-        const opt = document.createElement("option");
-        opt.value = course.toLowerCase().replace(/\s+/g, "-");
-        opt.textContent = course;
-        courseSelect.appendChild(opt);
-      });
-    }
-  });
-
-  // Helper function to populate material grade fields
-  function populateMaterialGradeFields(grade) {
-    if (!grade) return;
-    const isSeniorSchool = grade >= 10 && grade <= 12;
-    const seniorMaterialFields = document.querySelectorAll('.senior-material-fields');
-    
-    if (isSeniorSchool) {
-      // Show pathway and course fields
-      seniorMaterialFields.forEach(field => field.style.display = 'block');
-      materialSubject.style.display = 'none';
-      materialSubject.required = false;
-      materialSubject.innerHTML = '<option value="">-- Select Subject --</option>';
-      
-      // Reset pathway and course
-      materialPathway.innerHTML = '<option value="">-- Select Pathway --</option>';
-      materialCourse.innerHTML = '<option value="">-- Select Course --</option>';
-      
-      // Populate pathways
-      Object.keys(seniorSchoolPathways).forEach(pathway => {
-        const opt = document.createElement("option");
-        opt.value = pathway;
-        opt.textContent = pathway;
-        materialPathway.appendChild(opt);
-      });
-    } else {
-      // Hide pathway and course fields
-      seniorMaterialFields.forEach(field => field.style.display = 'none');
-      materialSubject.style.display = 'block';
-      materialSubject.required = true;
-      materialPathway.value = '';
-      materialCourse.innerHTML = '<option value="">-- Select Course --</option>';
-      
-      // Populate subjects for junior school
-      let range = "";
-      if (grade >= 1 && grade <= 3) range = "1-3";
-      else if (grade >= 4 && grade <= 6) range = "4-6";
-      else if (grade >= 7 && grade <= 9) range = "7-9";
-      materialSubject.innerHTML = '<option value="">-- Select Subject --</option>';
-      (gradeSubjects[range] || []).forEach(sub => {
-        const opt = document.createElement("option");
-        opt.value = sub.toLowerCase().replace(/\s+/g, "-");
-        opt.textContent = sub;
-        materialSubject.appendChild(opt);
-      });
-    }
-  }
-
-  // ---------------------------
-  // STUDY MATERIALS - Populate subjects dynamically
-  // ---------------------------
-  materialGrade?.addEventListener("change", () => {
-    const grade = Number(materialGrade.value);
-    populateMaterialGradeFields(grade);
-  });
-
-  // ---------------------------
-  // MATERIALS PATHWAY SELECTION - Populate courses
-  // ---------------------------
-  materialPathway?.addEventListener("change", () => {
-    const pathway = materialPathway.value;
-    materialCourse.innerHTML = '<option value="">-- Select Course --</option>';
-    if (pathway && seniorSchoolPathways[pathway]) {
-      seniorSchoolPathways[pathway].forEach(course => {
-        const opt = document.createElement("option");
-        opt.value = course.toLowerCase().replace(/\s+/g, "-");
-        opt.textContent = course;
-        materialCourse.appendChild(opt);
-      });
-    }
-  });
-
-  // ---------------------------
-  // BACKEND INTERACTIONS
-  // ---------------------------
-  async function saveMarkBackend(mark) {
-    try {
-      console.log("[TeachersDashboard] Submitting mark payload:", mark);  // 🆕 Log what's being sent
-      const res = await fetch(`${API_BASE}/marks/add`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`
-        },
-        body: JSON.stringify(mark)
-      });
-      if (res.status === 403) throw new Error("Forbidden");
-      if (!res.ok) throw new Error((await res.json()).message || "Failed to save mark");
-      const result = await res.json();
-      console.log("[TeachersDashboard] Mark saved successfully:", result);  // 🆕 Log the response
-      return result;
-    } catch (err) {
-      console.error("Save mark error:", err);
-      alert("Failed to save mark. See console for details.");
-      throw err;
-    }
-  }
 
   async function loadSubmittedMarks() {
     try {
@@ -631,15 +1267,14 @@
                   <th>Name</th>
                   <th>Subject/Course</th>`;
         
-        if (isSeniorSchool) {
-          thead += `<th>Continuous Assessment (30%)</th>
-                  <th>Project Work (20%)</th>
-                  <th>End-Term Exam (50%)</th>
-                  <th>Final Score</th>
-                  <th>Grade</th>`;
-        } else {
-          thead += `<th>Score (%)</th>`;
-        }
+              if (isSeniorSchool) {
+              thead += `<th>Continuous Assessment (30%)</th>
+            <th>Project Work (20%)</th>
+            <th>End-Term Exam (50%)</th>
+            <th>Final Score</th>`;
+             } else {
+             thead += `<th>Score (%)</th>`;
+             }
         
         thead += `<th>Actions</th>
               </tr>
@@ -654,15 +1289,17 @@
           
           let scoreCell = '';
           if (isSeniorSchool) {
-            const ca = m.continuousAssessment !== null && m.continuousAssessment !== undefined ? sanitize(m.continuousAssessment) : '-';
-            const pw = m.projectWork !== null && m.projectWork !== undefined ? sanitize(m.projectWork) : '-';
-            const et = m.endTermExam !== null && m.endTermExam !== undefined ? sanitize(m.endTermExam) : '-';
-            const finalScore = m.finalScore !== null && m.finalScore !== undefined ? sanitize(m.finalScore) : '-';
-            const perfLevel = m.performanceLevel || '-';
-            scoreCell = `<td>${ca}</td><td>${pw}</td><td>${et}</td><td><strong>${finalScore}</strong></td><td>${perfLevel}</td>`;
+  const ca = m.continuousAssessment ?? '-';
+          const pw = m.projectWork ?? '-';
+           const et = m.endTermExam ?? '-';
+           const finalScore = m.finalScore ?? '-';
+          scoreCell = `<td>${sanitize(ca)}</td>
+               <td>${sanitize(pw)}</td>
+               <td>${sanitize(et)}</td>
+               <td><strong>${sanitize(finalScore)}</strong></td>`;
           } else {
-            scoreCell = `<td>${sanitize(m.score ?? '-')}</td>`;
-          }
+          scoreCell = `<td>${sanitize(m.score ?? '-')}</td>`;
+         }
           
           return `<tr data-id="${m._id || ''}">
                       <td>${sanitize(m.admissionNo ?? m.admission ?? '')}</td>
@@ -698,48 +1335,90 @@
     const row = btn.closest("tr");
     const id = row?.dataset.id;
     if (btn.dataset.action === "edit") {
+      // NEW EDIT LOGIC FOR TABLE-BASED ENTRY
       const mark = submittedMarks.find(m => m._id === id);
-      if (!mark) return alert("Error: mark not found");
-      admissionInput.value = mark.admissionNo || mark.admission;
-      studentNameInput.value = mark.studentName;
-      
-      // Set grade - it's stored as "Grade 5" format
-      currentGradeInput.value = mark.grade || '';
-      
-      // Extract grade number and trigger field population
-      const gradeMatch = mark.grade.toString().match(/\d+/);
-      const gradeNum = gradeMatch ? parseInt(gradeMatch[0]) : 0;
-      populateGradeFields(gradeNum);
-      
-      document.getElementById("term").value = mark.term;
-      yearInput.value = mark.year;
-      assessmentSelect.value = mark.assessment;
-      
-      // Set subject/pathway/course based on school level
-      const isSeniorSchool = gradeNum >= 10 && gradeNum <= 12;
-      if (isSeniorSchool) {
-        pathwaySelect.value = mark.pathway || '';
-        if (mark.pathway) {
-          // Trigger pathway change to populate courses
-          const evt = new Event('change', { bubbles: true });
-          pathwaySelect.dispatchEvent(evt);
-          // Now set the course value
-          setTimeout(() => {
-            courseSelect.value = mark.course || '';
-          }, 50);
+      if (!mark) return showToast("Error: Mark data not found.", "error");
+
+      // Robust Grade extraction
+      const markGradeStr = (mark.grade || "").toString();
+      const markGradeMatch = markGradeStr.match(/\d+/);
+      const markGradeNum = markGradeMatch ? parseInt(markGradeMatch[0], 10) : 0;
+
+      showToast("Loading learner for editing...", "info");
+
+      const isSeniorSchool = markGradeNum >= 10 && markGradeNum <= 12;
+
+      // 1. Find the correct allocation in the dropdown by normalizing subject/course names
+      const allocationOption = Array.from(subjectAllocationSelect.options).find(opt => {
+        const classLabelForOption = opt.dataset.classLabel || '';
+        const subjectForOption = opt.dataset.subject || '';
+        const gradeNumberInLabel = parseInt(classLabelForOption.match(/\d+/)?.[0], 10);
+        
+        if (gradeNumberInLabel !== markGradeNum) return false;
+
+        // Normalize helper: lowercase, replace hyphens with spaces, trim
+        const normalize = s => (s || '').toLowerCase().replace(/-/g, ' ').replace(/\s+/g, ' ').trim();
+        
+        const optSub = normalize(subjectForOption);
+        const markSub = normalize(mark.subject);
+        const markCourse = normalize(mark.course);
+
+        if (isSeniorSchool) {
+          return optSub === markCourse || optSub === markSub;
+        } else {
+          return optSub === markSub;
         }
-        // Set component scores
-        continuousAssessmentInput.value = mark.continuousAssessment || '';
-        projectWorkInput.value = mark.projectWork || '';
-        endTermExamInput.value = mark.endTermExam || '';
-      } else {
-        subjectSelect.value = mark.subject || '';
-        scoreInput.value = mark.score || '';
+      });
+
+      if (!allocationOption) {
+        return showToast("Cannot edit: You are not allocated to this subject/class.", "error");
       }
-      
-      editingMarkId = id;
-      showToast("Editing mode activated - scroll to form", "info");
-      marksForm.scrollIntoView({ behavior: 'smooth' });
+
+      // 2. Set the filters at the top of the page
+      subjectAllocationSelect.value = allocationOption.value;
+      marksTermSelect.value = mark.term;
+      marksAssessmentSelect.value = mark.assessment;
+      marksYearInput.value = mark.year;
+
+      // 3. Trigger a 'change' on the allocation select to update internal state
+      subjectAllocationSelect.dispatchEvent(new Event('change', { bubbles: true }));
+
+      // 4. "Click" the load students button programmatically
+      loadStudentsBtn.click();
+
+      // 5. Find the student's row and populate the mark after a short delay for the DOM to update
+      setTimeout(() => {
+        const studentRow = Array.from(marksEntryTableBody.querySelectorAll("tr")).find(r =>
+          r.dataset.admission === mark.admissionNo
+        );
+
+        if (!studentRow) {
+          return showToast("Could not find the student in the loaded class list.", "error");
+        }
+
+        // 6. Populate the mark inputs in that specific row
+        if (isSeniorSchool) {
+          const caInput = studentRow.querySelector(".ca-input");
+          const pwInput = studentRow.querySelector(".pw-input");
+          const examInput = studentRow.querySelector(".exam-input");
+          if (caInput) caInput.value = mark.continuousAssessment ?? '';
+          if (pwInput) pwInput.value = mark.projectWork ?? '';
+          if (examInput) examInput.value = mark.endTermExam ?? '';
+          caInput?.dispatchEvent(new Event('input', { bubbles: true })); // Trigger final score calculation
+        } else {
+          const marksInput = studentRow.querySelector(".marks-input");
+          if (marksInput) marksInput.value = mark.score ?? '';
+        }
+
+        // 7. Scroll to the table and highlight the row
+        marksTableContainer.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        studentRow.style.backgroundColor = "#d4edda"; // Light green to highlight
+        setTimeout(() => {
+          studentRow.style.backgroundColor = "#fffacd"; // Back to 'modified' color
+        }, 5000);
+
+        showToast("Learner loaded. Please update the mark and submit.", "success");
+      }, 700); // Delay to allow async table population to complete
     }
     if (btn.dataset.action === "delete") {
       if (!confirm("Delete this mark?")) return;
@@ -807,454 +1486,10 @@
   });
 
   // ---------------------------
-  // FORM SUBMISSION
-  // ---------------------------
-  marksForm?.addEventListener('submit', async e => {
-    e.preventDefault();
-    
-    // Get grade number from currentGradeInput
-    const gradeMatch = currentGradeInput.value.match(/\d+/);
-    if (!gradeMatch) {
-      alert("Please select a student first");
-      return;
-    }
-    const grade = Number(gradeMatch[0]);
-    const isSeniorSchool = grade >= 10 && grade <= 12;
-    
-    const markPayload = {
-      admissionNo: admissionInput.value.trim(),
-      studentName: studentNameInput.value.trim(),
-      grade: grade,
-      stream: selectedStudentStream || null,  // 🆕 Include student's stream (from their enrollment), not teacher's stream
-      term: Number(document.getElementById('term').value),
-      year: Number(yearInput.value),
-      assessment: Number(assessmentSelect.value)
-    };
-
-    // Basic validation - all fields must be present
-    if (!markPayload.admissionNo || !markPayload.studentName || !markPayload.grade || 
-        isNaN(markPayload.term) || isNaN(markPayload.year) || isNaN(markPayload.assessment)) {
-      alert("Please fill all required fields.");
-      return;
-    }
-
-    // ===== JUNIOR SCHOOL (1-9): Simple score =====
-    if (!isSeniorSchool) {
-      markPayload.subject = subjectSelect.value;
-      markPayload.score = Number(scoreInput.value);
-      
-      if (!markPayload.subject || isNaN(markPayload.score)) {
-        alert("Please fill Subject and Score.");
-        return;
-      }
-      if (markPayload.score < 0 || markPayload.score > 100) {
-        alert("Score must be between 0-100.");
-        return;
-      }
-    } 
-    // ===== SENIOR SCHOOL (10-12): Component scores =====
-    else {
-      markPayload.pathway = pathwaySelect.value;
-      markPayload.course = courseSelect.value;
-      
-      if (!markPayload.pathway || !markPayload.course) {
-        alert("Please select Pathway and Course.");
-        return;
-      }
-      
-      const ca = continuousAssessmentInput.value ? Number(continuousAssessmentInput.value) : null;
-      const pw = projectWorkInput.value ? Number(projectWorkInput.value) : null;
-      const et = endTermExamInput.value ? Number(endTermExamInput.value) : null;
-      
-      // At least one component must be provided
-      if ((ca === null || isNaN(ca)) && (pw === null || isNaN(pw)) && (et === null || isNaN(et))) {
-        alert("Please enter at least one component score.");
-        return;
-      }
-
-      // Validate component scores if provided
-      if (ca !== null && (isNaN(ca) || ca < 0 || ca > 100)) {
-        alert("Continuous Assessment must be between 0-100.");
-        return;
-      }
-      if (pw !== null && (isNaN(pw) || pw < 0 || pw > 100)) {
-        alert("Project Work must be between 0-100.");
-        return;
-      }
-      if (et !== null && (isNaN(et) || et < 0 || et > 100)) {
-        alert("End-Term Exam must be between 0-100.");
-        return;
-      }
-
-      markPayload.continuousAssessment = ca;
-      markPayload.projectWork = pw;
-      markPayload.endTermExam = et;
-    }
-
-    const submitBtn = marksForm.querySelector('button[type=\"submit\"]');
-    const originalBtnHTML = submitBtn.innerHTML;
-    submitBtn.disabled = true;
-    submitBtn.innerHTML = '<span class=\"spinner\"></span>Submitting...';
-
-    try {
-      if (editingMarkId) {
-        const res = await fetch(`${API_BASE}/marks/${editingMarkId}`, {
-          method: 'PUT',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${token}`
-          },
-          body: JSON.stringify(markPayload)
-        });
-        if (!res.ok) throw new Error("Update failed");
-        editingMarkId = null;
-      } else {
-        await saveMarkBackend(markPayload);
-      }
-      
-      marksForm.reset();
-      admissionInput.value = '';
-      studentNameInput.value = '';
-      currentGradeInput.value = '';
-      if (continuousAssessmentInput) continuousAssessmentInput.value = '';
-      if (projectWorkInput) projectWorkInput.value = '';
-      if (endTermExamInput) endTermExamInput.value = '';
-      
-      const searchBox = document.getElementById("marksSearchBox");
-      if (searchBox) {
-        searchBox.value = '';
-      }
-      
-      await loadSubmittedMarks();
-      showToast("✅ Mark submitted successfully!");
-    } catch (err) {
-      console.error('Mark submission error:', err);
-      showToast("⚠️ Error submitting mark. Please try again.");
-    } finally {
-      submitBtn.disabled = false;
-      submitBtn.innerHTML = originalBtnHTML;
-    }
-  });
-
-  // ---------------------------
-  // AUTO-FILL STUDENT NAME AND GRADE WITH SCHOOL CHECK
-  // ---------------------------
-  admissionInput?.addEventListener('blur', async () => {
-    const admission = admissionInput.value.trim();
-    if (!admission) {
-      studentNameInput.value = '';
-      currentGradeInput.value = '';
-      selectedStudentStream = null;
-      return;
-    }
-    try {
-      const res = await fetch(`${API_BASE}/users/student/${admission}`, {
-        headers: {
-          Authorization: `Bearer ${token}`
-        }
-      });
-      if (!res.ok) {
-        studentNameInput.value = '';
-        currentGradeInput.value = '';
-        selectedStudentStream = null;
-        showToast("Student not found. Please check the admission number.", "error");
-        return;
-      }
-      const student = await res.json();
-      // Only autofill if student is in the same school as the teacher
-      if (student.schoolId !== teacherSchoolId) {
-        studentNameInput.value = '';
-        currentGradeInput.value = '';
-        selectedStudentStream = null;
-        admissionInput.value = '';
-        showToast("The student not found in your school.", "error");
-        return;
-      }
-      studentNameInput.value = student.name || '';
-      
-      // 🔧 IMPROVED: Display current grade with stream clearly
-      // Grade format: "Grade 5" (no stream) or "Grade 5W" (with stream "W")
-      selectedStudentStream = null;
-      let displayGrade = student.grade || '';
-      
-      if (student.grade) {
-        const gradeStr = String(student.grade).trim();
-        // Try to extract stream: "Grade 5W" → stream is "W" (last char if not a digit)
-        const lastChar = gradeStr[gradeStr.length - 1];
-        if (lastChar && isNaN(lastChar)) {
-          selectedStudentStream = lastChar;
-          // Show grade with stream clearly, e.g., "Grade 5 (Stream W)"
-          displayGrade = gradeStr.replace(/([A-Z])$/, ' (Stream $1)');
-        }
-        
-        const gradeMatch = gradeStr.match(/\d+/);
-        if (gradeMatch) {
-          const gradeNum = Number(gradeMatch[0]);
-          // Automatically populate grade fields based on the fetched grade
-          populateGradeFields(gradeNum);
-        }
-      }
-      
-      currentGradeInput.value = displayGrade; // Display with stream info
-    } catch (err) {
-      console.error('Student lookup error:', err);
-      studentNameInput.value = '';
-      currentGradeInput.value = '';
-      selectedStudentStream = null;
-      showToast("Error looking up student. Please try again.", "error");
-    }
-  });
-
-  // ---------------------------
-  // STUDY MATERIALS - Fetch materials for display
-  // ---------------------------
-  async function loadMaterials() {
-    try {
-      if (!token) {
-        console.error("No token found");
-        showToast("Authentication required", "error");
-        return;
-      }
-
-      const res = await fetch(`${API_BASE}/materials`, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json"
-        }
-      });
-
-      if (res.status === 401 || res.status === 403) {
-        showToast("Unauthorized to fetch materials", "error");
-        return;
-      }
-
-      if (!res.ok) {
-        const errData = await res.json().catch(() => ({}));
-        console.error("Fetch error:", errData);
-        showToast(`Error fetching materials: ${errData.message || res.statusText}`, "error");
-        return;
-      }
-
-      const materials = await res.json();
-      materialsListEl.innerHTML = "";
-      
-      if (!materials || materials.length === 0) {
-        materialsListEl.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:20px;color:#999;">No materials uploaded yet</td></tr>';
-        return;
-      }
-
-      // Determine if we have senior school materials
-      const hasSeniorSchool = materials.some(m => parseInt(m.grade) >= 10);
-      const hasJuniorSchool = materials.some(m => parseInt(m.grade) < 10);
-
-      // Update table header based on materials
-      const tableHeader = document.getElementById("materialsTableHeader");
-      if (tableHeader) {
-        if (hasSeniorSchool && !hasJuniorSchool) {
-          tableHeader.innerHTML = `
-            <th>Grade</th>
-            <th>Pathway</th>
-            <th>Course</th>
-            <th>Title</th>
-            <th>Description</th>
-            <th>File</th>
-            <th>Actions</th>
-          `;
-        } else {
-          tableHeader.innerHTML = `
-            <th>Grade</th>
-            <th>Subject</th>
-            <th>Title</th>
-            <th>Description</th>
-            <th>File</th>
-            <th>Actions</th>
-          `;
-        }
-      }
-
-      materials.forEach(mat => {
-        const row = document.createElement("tr");
-        const gradeNum = parseInt(mat.grade);
-        const isSeniorSchool = gradeNum >= 10 && gradeNum <= 12;
-        
-        // Use secure download route so server can enforce schoolId on download
-        const fileCellContent = mat._id && mat.file ? 
-          `<a href="${API_BASE}/materials/download/${mat._id}" target="_blank" class="file-link" style="color:#007bff;text-decoration:none;">📥 ${sanitize(mat.fileName)}</a>` : 
-          '<span class="no-file" style="color:#999;">No file</span>';
-
-        // ===== JUNIOR SCHOOL (1-9) =====
-        if (!isSeniorSchool) {
-          row.innerHTML = `
-            <td>${sanitize(mat.grade)}</td>
-            <td><strong>${sanitize((mat.subject || '').replace(/-/g, ' '))}</strong></td>
-            <td>${sanitize(mat.title)}</td>
-            <td>${sanitize(mat.description.substring(0, 50))}${mat.description.length > 50 ? '...' : ''}</td>
-            <td>${fileCellContent}</td>
-            <td><button data-action="delete-material" data-id="${mat._id}" class="btn-delete" style="background:none;border:none;cursor:pointer;font-size:1.2em;">🗑️</button></td>
-          `;
-        }
-        // ===== SENIOR SCHOOL (10-12) =====
-        else {
-          row.innerHTML = `
-            <td>${sanitize(mat.grade)}</td>
-            <td><strong>${sanitize(mat.pathway || '')}</strong></td>
-            <td><strong>${sanitize((mat.course || '').replace(/-/g, ' '))}</strong></td>
-            <td>${sanitize(mat.title)}</td>
-            <td>${sanitize(mat.description.substring(0, 40))}${mat.description.length > 40 ? '...' : ''}</td>
-            <td>${fileCellContent}</td>
-            <td><button data-action="delete-material" data-id="${mat._id}" class="btn-delete" style="background:none;border:none;cursor:pointer;font-size:1.2em;">🗑️</button></td>
-          `;
-        }
-        
-        materialsListEl.appendChild(row);
-      });
-    } catch (err) {
-      console.error("Load materials error:", err);
-      showToast("Error loading materials: " + err.message, "error");
-      materialsListEl.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:20px;color:#999;">Error loading materials</td></tr>';
-    }
-  }
-
-  materialsForm?.addEventListener('submit', async e => {
-    e.preventDefault();
-    
-    const grade = Number(materialGrade.value);
-    const isSeniorSchool = grade >= 10 && grade <= 12;
-    const fileInput = materialsForm.querySelector('input[type="file"]');
-
-    // Validation
-    if (!materialGrade.value) {
-      showToast("Please select a grade", "error");
-      return;
-    }
-    if (!materialTitle.value.trim()) {
-      showToast("Please enter a title", "error");
-      return;
-    }
-    if (!materialDescription.value.trim()) {
-      showToast("Please enter a description", "error");
-      return;
-    }
-    if (!fileInput || !fileInput.files[0]) {
-      showToast("Please select a file to upload", "error");
-      return;
-    }
-
-    // Check file size (max 10MB)
-    if (fileInput.files[0].size > 10 * 1024 * 1024) {
-      showToast("File size must be less than 10MB", "error");
-      return;
-    }
-
-    const uploadBtn = materialsForm.querySelector('button[type=\"submit\"]');
-    const originalUploadBtnHTML = uploadBtn.innerHTML;
-    uploadBtn.disabled = true;
-    uploadBtn.innerHTML = '<span class=\"spinner\"></span>Uploading...';
-
-    // ===== JUNIOR SCHOOL (1-9) =====
-    if (!isSeniorSchool) {
-      if (!materialSubject.value) {
-        showToast("Please select a subject", "error");
-        return;
-      }
-
-      const formData = new FormData();
-      formData.append("grade", materialGrade.value);
-      formData.append("subject", materialSubject.value);
-      formData.append("title", materialTitle.value.trim());
-      formData.append("description", materialDescription.value.trim());
-      formData.append("file", fileInput.files[0]);
-
-      try {
-        const res = await fetch(`${API_BASE}/materials/upload`, {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${token}`
-          },
-          body: formData
-        });
-        if (res.status === 403) throw new Error("Forbidden");
-        if (!res.ok) throw new Error((await res.json()).message || "Failed to upload material");
-        materialsForm.reset();
-        await loadMaterials();
-        showToast("✅ Study material uploaded successfully!", "success");
-      } catch (err) {
-        console.error("Upload error:", err);
-        showToast("⚠️ Upload failed: " + err.message, "error");
-      } finally {
-        uploadBtn.disabled = false;
-        uploadBtn.innerHTML = originalUploadBtnHTML;
-      }
-    }
-    // ===== SENIOR SCHOOL (10-12) =====
-    else {
-      if (!materialPathway.value) {
-        showToast("Please select a pathway", "error");
-        return;
-      }
-      if (!materialCourse.value) {
-        showToast("Please select a course", "error");
-        return;
-      }
-
-      const formData = new FormData();
-      formData.append("grade", materialGrade.value);
-      formData.append("pathway", materialPathway.value);
-      formData.append("course", materialCourse.value);
-      formData.append("title", materialTitle.value.trim());
-      formData.append("description", materialDescription.value.trim());
-      formData.append("file", fileInput.files[0]);
-
-      try {
-        const res = await fetch(`${API_BASE}/materials/upload`, {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${token}`
-          },
-          body: formData
-        });
-        if (res.status === 403) throw new Error("Forbidden");
-        if (!res.ok) throw new Error((await res.json()).message || "Failed to upload material");
-        materialsForm.reset();
-        await loadMaterials();
-        showToast("✅ Study material uploaded successfully!", "success");
-      } catch (err) {
-        console.error("Upload error:", err);
-        showToast("⚠️ Upload failed: " + err.message, "error");
-      } finally {
-        uploadBtn.disabled = false;
-        uploadBtn.innerHTML = originalUploadBtnHTML;
-      }
-    }
-  });
-
-  // Handle delete-material clicks
-  materialsListEl?.addEventListener("click", async (e) => {
-    const btn = e.target.closest("button[data-action='delete-material']");
-    if (!btn) return;
-    const id = btn.dataset.id;
-    if (!confirm("Delete this material?")) return;
-    try {
-      const res = await fetch(`${API_BASE}/materials/${id}`, {
-        method: "DELETE",
-        headers: {
-          Authorization: `Bearer ${token}`
-        }
-      });
-      if (res.status === 403) return showToast("Unauthorized", "error");
-      if (!res.ok) throw new Error("Delete failed");
-      await loadMaterials();
-      showToast("Material deleted", "success");
-    } catch (err) {
-      console.error("Delete material error:", err);
-      showToast("Failed to delete material", "error");
-    }
-  });
-
-  // ---------------------------
   // SMART REFRESH
   // ---------------------------
   smartRefreshBtn?.addEventListener("click", () => {
+    localStorage.removeItem("teacher_allocations_cache");
     window.location.reload();
   });
 
@@ -1273,10 +1508,23 @@
   // INITIAL LOAD
   // ---------------------------
   (async function init() {
+    console.log("🚀 Dashboard initialization started");
+    console.log("📝 Step 1: Loading teacher profile...");
     await loadTeacherProfile();
-    await loadSchoolName(); // ✅ ADD THIS
-    await loadTeacherAllocations(); // 🆕 Load allocations
+    console.log("✅ Step 1 complete");
+    
+    console.log("📝 Step 2: Loading school name...");
+    await loadSchoolName();
+    console.log("✅ Step 2 complete");
+    
+    console.log("📝 Step 3: Loading teacher allocations...");
+    await loadTeacherAllocations();
+    console.log("✅ Step 3 complete");
+    
+    console.log("📝 Step 4: Loading submitted marks...");
     await loadSubmittedMarks();
-    await loadMaterials();
+    console.log("✅ Step 4 complete (Materials dashboard separated)");
+    
+    console.log("🎉 Dashboard initialization complete!");
   })();
 })();

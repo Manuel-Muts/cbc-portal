@@ -9,9 +9,9 @@ const CBC_WEIGHTS = {
 };
 
 function scoreToPerformanceLevel(score) {
-  if (score >= 80) return "EE";
-  if (score >= 65) return "ME";
-  if (score >= 50) return "AE";
+  if (score >= 75) return "EE";
+  if (score >= 41) return "ME";
+  if (score >= 21) return "AE";
   return "BE";
 }
 
@@ -23,6 +23,17 @@ function getPerformanceLevelLabel(level) {
     BE: "Below Expectations"
   };
   return labels[level] || "Unknown";
+}
+
+function getPerformanceSubdivision(score) {
+  if (score >= 90) return "EE1";
+  if (score >= 75) return "EE2";
+  if (score >= 58) return "ME1";
+  if (score >= 41) return "ME2";
+  if (score >= 31) return "AE1";
+  if (score >= 21) return "AE2";
+  if (score >= 11) return "BE1";
+  return "BE2";
 }
 
 function calculateSeniorSchoolFinalScore(mark) {
@@ -90,6 +101,30 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
 
   // ---------------------------
+  // CACHE UTILITIES
+  // ---------------------------
+  const CACHE_KEY = "student_dashboard_cache";
+  const CACHE_TTL = 15 * 60 * 1000; // 15 minutes
+
+  const getCached = (key) => {
+    try {
+      const store = JSON.parse(localStorage.getItem(CACHE_KEY) || "{}");
+      if (store[key] && (Date.now() - store[key].timestamp < CACHE_TTL)) {
+        return store[key].data;
+      }
+    } catch (e) { }
+    return null;
+  };
+
+  const setCached = (key, data) => {
+    try {
+      const store = JSON.parse(localStorage.getItem(CACHE_KEY) || "{}");
+      store[key] = { timestamp: Date.now(), data };
+      localStorage.setItem(CACHE_KEY, JSON.stringify(store));
+    } catch (e) { }
+  };
+
+  // ---------------------------
   // GREETING
   // ---------------------------
   const welcomeNameEl = document.getElementById("welcomeName");
@@ -102,14 +137,20 @@ document.addEventListener("DOMContentLoaded", async () => {
   // ---------------------------
   // FETCH STUDENT ENROLLMENT (Grade & Stream)
   // ---------------------------
-  let studentEnrollment = null;
+  let studentEnrollment = getCached("studentEnrollment");
   try {
-    const enrollmentRes = await fetch(`${API_BASE}/enrollments/my-enrollment`, {
-      headers: { Authorization: `Bearer ${token}` }
-    });
-    if (enrollmentRes.ok) {
-      studentEnrollment = await enrollmentRes.json();
-      console.log("✅ Enrollment fetched:", studentEnrollment);
+    if (!studentEnrollment) {
+      const enrollmentRes = await fetch(`${API_BASE}/enrollments/my-enrollment`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (enrollmentRes.ok) {
+        studentEnrollment = await enrollmentRes.json();
+        setCached("studentEnrollment", studentEnrollment);
+      }
+    }
+
+    if (studentEnrollment) {
+      console.log("✅ Enrollment fetched (Cache/API):", studentEnrollment);
       
       // Update user grade if available
       if (studentEnrollment.grade && !user.grade) {
@@ -122,13 +163,11 @@ document.addEventListener("DOMContentLoaded", async () => {
       const streamDisplay = document.getElementById("learnerStreamDisplay");
       
       if (gradeDisplay) {
-        gradeDisplay.textContent = studentEnrollment.grade || user.grade || "N/A";
+        gradeDisplay.textContent = studentEnrollment?.grade || user.grade || "N/A";
       }
       if (streamDisplay) {
-        streamDisplay.textContent = studentEnrollment.stream ? studentEnrollment.stream : "N/A";
+        streamDisplay.textContent = studentEnrollment?.stream || "N/A";
       }
-    } else {
-      console.warn("Failed to fetch enrollment:", enrollmentRes.status);
     }
   } catch (err) {
     console.error("Enrollment fetch error:", err);
@@ -168,18 +207,21 @@ if (dashboardMain) dashboardMain.prepend(schoolNameEl);
 if (dashboardMain) dashboardMain.prepend(feeInfoEl);
 
 try {
-  const schoolRes = await fetch(`${API_BASE}/users/my-school`, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
+  let school = getCached("schoolProfile");
+  if (!school) {
+    const schoolRes = await fetch(`${API_BASE}/users/my-school`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
 
-  if (schoolRes.ok) {
-    const school = await schoolRes.json();
-    schoolNameEl.textContent = school.name.toUpperCase();
-    console.log("✅ School info fetched:", school);
-  } else {
-    schoolNameEl.textContent = "School Name N/A";
-    console.error("Failed to fetch school info:", schoolRes.status, schoolRes.statusText);
+    if (schoolRes.ok) {
+      school = await schoolRes.json();
+      setCached("schoolProfile", school);
+    }
   }
+
+  schoolNameEl.textContent = school ? school.name.toUpperCase() : "School Name N/A";
+  if (school) console.log("✅ School info fetched (Cache/API):", school);
+
 } catch (err) {
   schoolNameEl.textContent = "School Name N/A";
   console.error("Error fetching school info:", err);
@@ -189,19 +231,20 @@ try {
 // Fetch fee structure for current student
 // ---------------------------
 try {
-  const feesRes = await fetch(`${API_BASE}/users/my-fees`, {
-    headers: { Authorization: `Bearer ${token}` }
-  });
+  let f = getCached("feeInfo");
+  if (!f) {
+    const feesRes = await fetch(`${API_BASE}/users/my-fees`, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    if (feesRes.ok) {
+      f = await feesRes.json();
+      setCached("feeInfo", f);
+    }
+  }
 
-  if (feesRes.ok) {
-    const f = await feesRes.json();
+  if (f) {
     feeInfoEl.textContent = `Total Annual Fees (${f.grade}, ${f.academicYear}): KES ${f.totalFee}`;
     console.log("✅ Fee info fetched:", f);
-  } else if (feesRes.status === 404) {
-    feeInfoEl.textContent = 'Fee structure not available';
-  } else {
-    console.error('Failed to fetch fee info', feesRes.status);
-    feeInfoEl.textContent = '';
   }
 } catch (err) {
   console.error('Error fetching fees:', err);
@@ -367,6 +410,15 @@ if (viewFeeBtn) {
   });
 }
 
+// Fix Fee Modal Close Button
+const feeModal = document.getElementById('feeModal');
+if (feeModal) {
+  const closeBtn = feeModal.querySelector('.cancel-btn');
+  if (closeBtn) {
+    closeBtn.addEventListener('click', () => feeModal.classList.add('hidden'));
+  }
+}
+
 // Fee year filter button handler
 const feeFilterBtn = document.getElementById('feeFilterBtn');
 if (feeFilterBtn) {
@@ -417,9 +469,6 @@ if (downloadFeeStatementPDF) {
   // ---------------------------
   // UTILITY FUNCTIONS
   // ---------------------------
-  const getPerformanceLevel = (score) =>
-    score >= 80 ? "EE" : score >= 60 ? "ME" : score >= 40 ? "AE" : "BE";
-
   const getSubjectAverages = (list) => {
     const subjects = {};
     list.forEach((m) => {
@@ -473,24 +522,30 @@ const displayStudentTables = async () => {
     const queryString = query.toString();
     if (queryString) url += `?${queryString}`;
 
-    // Fetch marks
-    const res = await fetch(url, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
+    // Cache key for this specific query
+    const cacheKey = `marks_${queryString || 'default'}`;
+    let data = getCached(cacheKey);
 
-    if (!res.ok) {
-      if (res.status === 404) {
-        marksContainer.textContent = "No marks found for the selected filters.";
-        hideSpinner();
-        return;
-      } else {
-        throw new Error(`Error fetching marks: ${res.status}`);
+    if (!data) {
+      const res = await fetch(url, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      if (!res.ok) {
+        if (res.status === 404) {
+          marksContainer.textContent = "No marks found for the selected filters.";
+          hideSpinner();
+          return;
+        } else {
+          throw new Error(`Error fetching marks: ${res.status}`);
+        }
       }
+      data = await res.json();
+      setCached(cacheKey, data);
     }
 
-    const data = await res.json();
-    const studentMarks = data.studentMarks || [];
-    const allClassMarks = data.allClassMarks || [];
+    const studentMarks = data?.studentMarks || [];
+    const allClassMarks = data?.allClassMarks || [];
     console.log("✅ Marks fetched:", { studentMarks, allClassMarks });
 
     if (!studentMarks.length) {
@@ -596,7 +651,7 @@ Object.entries(grouped).forEach(([key, list]) => {
   const table = document.createElement("table");
   const thead = document.createElement("thead");
   const tbody = document.createElement("tbody");
-  const gradeNum = parseInt(grade);
+  const gradeNum = parseInt(String(grade).match(/\d+/)?.[0] || 0);
   const isSeniorSchool = gradeNum >= 10 && gradeNum <= 12;
 
   // ===== JUNIOR SCHOOL (1-9): Simple Score Display =====
@@ -605,11 +660,12 @@ Object.entries(grouped).forEach(([key, list]) => {
     
     list.forEach((m) => {
       const tr = document.createElement("tr");
-      const perfLevel = getPerformanceLevel(m.score);
+      const subLevel = getPerformanceSubdivision(m.score);
+      const mainLevel = scoreToPerformanceLevel(m.score);
       tr.innerHTML = `
         <td>${(m.subject || "").replace(/-/g, " ")}</td>
         <td><strong>${m.score}%</strong></td>
-        <td>${perfLevel} (${getPerformanceLevelLabel(perfLevel)})</td>
+        <td>${subLevel} (${getPerformanceLevelLabel(mainLevel)})</td>
       `;
       tbody.appendChild(tr);
     });
@@ -630,7 +686,8 @@ Object.entries(grouped).forEach(([key, list]) => {
     list.forEach((m) => {
       const tr = document.createElement("tr");
       const finalScore = calculateSeniorSchoolFinalScore(m);
-      const perfLevel = finalScore ? scoreToPerformanceLevel(finalScore) : "N/A";
+      const subLevel = finalScore ? getPerformanceSubdivision(finalScore) : "N/A";
+      const mainLevel = finalScore ? scoreToPerformanceLevel(finalScore) : "N/A";
       
       const ca = m.continuousAssessment !== null && m.continuousAssessment !== undefined ? `${m.continuousAssessment}%` : "-";
       const pw = m.projectWork !== null && m.projectWork !== undefined ? `${m.projectWork}%` : "-";
@@ -643,7 +700,7 @@ Object.entries(grouped).forEach(([key, list]) => {
         <td>${pw}</td>
         <td>${et}</td>
         <td><strong>${fs}</strong></td>
-        <td>${perfLevel}${finalScore ? ` (${getPerformanceLevelLabel(perfLevel)})` : ''}</td>
+        <td>${subLevel}${finalScore ? ` (${getPerformanceLevelLabel(mainLevel)})` : ''}</td>
       `;
       tbody.appendChild(tr);
     });
@@ -669,12 +726,14 @@ Object.entries(grouped).forEach(([key, list]) => {
   // ===== JUNIOR SCHOOL (1-9): Subject-Based Analysis =====
   if (!isSeniorSchool) {
     const allScores = list.map((m) => Number(m.score || 0));
-    const avg = allScores.reduce((a, b) => a + b, 0) / allScores.length;
+    const avg = allScores.length > 0 ? allScores.reduce((a, b) => a + b, 0) / allScores.length : 0;
 
     // Get subject averages
     const subjectAvgs = getSubjectAverages(list);
-    const topStrengths = subjectAvgs.slice(0, 3);         // top 3
-    const areasToImprove = subjectAvgs.slice(-3).reverse(); // bottom 3
+    // Any subject above 80% is a strength
+    const topStrengths = subjectAvgs.filter(s => s.avg >= 80);
+    // Any subject below 50% needs improvement, sorted with the lowest first
+    const areasToImprove = subjectAvgs.filter(s => s.avg < 50).sort((a, b) => a.avg - b.avg);
 
     // Build HTML for strengths
     let strengthsHtml = topStrengths.length
@@ -684,7 +743,7 @@ Object.entries(grouped).forEach(([key, list]) => {
             ${createProgressBar(s.avg, "green")}
           </span>
         `).join("<br>")
-      : "N/A";
+      : "No subjects above 80%.";
 
     // Build HTML for areas to improve
     let improveHtml = areasToImprove.length
@@ -694,17 +753,17 @@ Object.entries(grouped).forEach(([key, list]) => {
             ${createProgressBar(s.avg, "red")}
           </span>
         `).join("<br>")
-      : "N/A";
+      : "No subjects below 50%.";
 
     summary.innerHTML = `
       <hr>
       <h4 style="text-align:center;">📊 RESULTS OVERVIEW</h4>
       <p><strong>Average Score:</strong> ${avg.toFixed(2)}%</p>
-      <p><strong>Overall Performance Level:</strong> ${getPerformanceLevel(avg)} (${getPerformanceLevelLabel(getPerformanceLevel(avg))})</p>
+      <p><strong>Overall Performance Level:</strong> ${getPerformanceSubdivision(avg)} (${getPerformanceLevelLabel(scoreToPerformanceLevel(avg))})</p>
       <br>
-      <p><strong>✅ TOP STRENGTHS (Top 3 Subjects):</strong><br>${strengthsHtml}</p>
+      <p><strong>✅ TOP STRENGTHS (Subjects Above 80%):</strong><br>${strengthsHtml}</p>
       <br>
-      <p><strong>⚠️ AREAS TO IMPROVE (Bottom 3 Subjects):</strong><br>${improveHtml}</p>
+      <p><strong>⚠️ AREAS TO IMPROVE (Subjects Below 50%):</strong><br>${improveHtml}</p>
     `;
   }
   // ===== SENIOR SCHOOL (10-12): Component-Based Analysis =====
@@ -712,6 +771,9 @@ Object.entries(grouped).forEach(([key, list]) => {
     // Calculate component averages across all courses
     let caSum = 0, pwSum = 0, etSum = 0, fsSum = 0;
     let caCount = 0, pwCount = 0, etCount = 0, fsCount = 0;
+    
+    // Track course scores for ranking
+    const courseScores = [];
 
     list.forEach(m => {
       if (m.continuousAssessment !== null && m.continuousAssessment !== undefined) {
@@ -730,6 +792,10 @@ Object.entries(grouped).forEach(([key, list]) => {
       if (fs !== null) {
         fsSum += fs;
         fsCount++;
+        courseScores.push({
+          course: (m.course || "Unknown").replace(/-/g, " "),
+          score: fs
+        });
       }
     });
 
@@ -737,18 +803,39 @@ Object.entries(grouped).forEach(([key, list]) => {
     const pwAvg = pwCount > 0 ? (pwSum / pwCount).toFixed(1) : 0;
     const etAvg = etCount > 0 ? (etSum / etCount).toFixed(1) : 0;
     const fsAvg = fsCount > 0 ? (fsSum / fsCount).toFixed(2) : 0;
-    const overallLevel = scoreToPerformanceLevel(fsAvg);
+    const overallSubLevel = getPerformanceSubdivision(fsAvg);
+    const overallMainLevel = scoreToPerformanceLevel(fsAvg);
 
-    // Identify strongest and weakest components
-    const componentAvgs = { "Continuous Assessment": caAvg, "Project Work": pwAvg, "End-Term Exam": etAvg };
-    const strongest = Object.entries(componentAvgs).reduce((max, [k, v]) => v > max.val ? { name: k, val: v } : max, { name: "N/A", val: 0 });
-    const weakest = Object.entries(componentAvgs).reduce((min, [k, v]) => v < min.val && v > 0 ? { name: k, val: v } : min, { name: "N/A", val: 100 });
+    // Identify strongest and weakest subjects (courses) based on score thresholds
+    courseScores.sort((a, b) => b.score - a.score); // Sort descending for strengths
+    const topStrengths = courseScores.filter(s => s.score >= 80);
+    const areasToImprove = courseScores.filter(s => s.score < 50).sort((a, b) => a.score - b.score); // Sort ascending for weaknesses
+
+    // Build HTML for strengths
+    let strengthsHtml = topStrengths.length
+      ? topStrengths.map(s => `
+          <span style="color:green;font-weight:bold;">
+            ${s.course} (${s.score}%)
+            ${createProgressBar(s.score, "green")}
+          </span>
+        `).join("<br>")
+      : "No courses above 80%.";
+
+    // Build HTML for areas to improve
+    let improveHtml = areasToImprove.length
+      ? areasToImprove.map(s => `
+          <span style="color:red;font-weight:bold;">
+            ${s.course} (${s.score}%)
+            ${createProgressBar(s.score, "red")}
+          </span>
+        `).join("<br>")
+      : "No courses below 50%.";
 
     summary.innerHTML = `
       <hr>
       <h4 style="text-align:center;">📊 COMPONENT ANALYSIS (Weighted Assessment)</h4>
       <p><strong>Overall Final Score:</strong> ${fsAvg}%</p>
-      <p><strong>Overall Performance Level:</strong> ${overallLevel} (${getPerformanceLevelLabel(overallLevel)})</p>
+      <p><strong>Overall Performance Level:</strong> ${overallSubLevel} (${getPerformanceLevelLabel(overallMainLevel)})</p>
       <br>
       <table style="width:100%;border-collapse:collapse;margin:10px 0;">
         <tr style="background:#f5f5f5;">
@@ -773,8 +860,9 @@ Object.entries(grouped).forEach(([key, list]) => {
         </tr>
       </table>
       <br>
-      <p><strong>✅ Strongest Component:</strong> ${strongest.name} (${strongest.val}%)</p>
-      <p><strong>⚠️ Area Needing Attention:</strong> ${weakest.name} (${weakest.val}%)</p>
+      <p><strong>✅ TOP STRENGTHS (Courses Above 80%):</strong><br>${strengthsHtml}</p>
+      <br>
+      <p><strong>⚠️ AREAS TO IMPROVE (Courses Below 50%):</strong><br>${improveHtml}</p>
     `;
   }
 
@@ -798,6 +886,7 @@ Object.entries(grouped).forEach(([key, list]) => {
   document.getElementById("applyFiltersBtn")?.addEventListener("click", displayStudentTables);
   const refreshBtnEl = document.getElementById("refreshBtn");
   refreshBtnEl?.addEventListener("click", () => {
+    localStorage.removeItem("student_dashboard_cache"); // Clear cache on explicit refresh
     refreshBtnEl.disabled = true;
     refreshBtnEl.classList.add("spinning");
     setTimeout(() => {
@@ -813,6 +902,7 @@ Object.entries(grouped).forEach(([key, list]) => {
   document.getElementById("logoutBtn")?.addEventListener("click", () => {
     localStorage.removeItem("token");
     localStorage.removeItem("loggedInUser");
+    localStorage.removeItem("student_dashboard_cache"); // Clear cache on logout
     window.location.href = "/login";
   });
 

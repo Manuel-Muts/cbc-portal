@@ -1,12 +1,114 @@
 /* ==============================
    CONTACT SECTION
 ============================== */
-#contact {
-  padding: 60px 20px;
+body {
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  background: #f5f6fb;
+  color: #1c1f2a;
+  margin: 0;
+  padding: 0;
+}
+
+.page-container {
+  max-width: 900px;
+  margin: 24px auto;
+  padding: 0 16px 40px;
+}
+
+.page-header {
   text-align: center;
-  border-radius: 25px;
-  border: 5px outset #b58558;
-  width: 90%;
-  max-width: 400px;
-  margin: 20px auto;
+  margin-bottom: 24px;
+}
+
+.page-header h1 {
+  font-size: 2rem;
+  margin: 0 0 12px;
+  letter-spacing: 0.02em;
+}
+
+.page-header p {
+  max-width: 640px;
+  margin: 0 auto;
+  color: #3b3f52;
+  line-height: 1.55;
+}
+
+.card {
+  background: #fff;
+  border-radius: 18px;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.08);
+  padding: 28px 24px;
+  margin: 16px auto;
+  border: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+#contact h2,
+#logo h2 {
+  margin-top: 0;
+  letter-spacing: 0.01em;
+}
+
+.lead {
+  margin: 0 0 20px;
+  color: #3b3f52;
+  font-weight: 500;
+}
+
+.contact-grid {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.contact-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 16px;
+  border-radius: 14px;
+  background: rgba(0, 118, 255, 0.06);
+}
+
+.contact-icon {
+  font-size: 28px;
+  width: 42px;
+  height: 42px;
+  display: grid;
+  place-items: center;
+  background: rgba(0, 118, 255, 0.13);
+  border-radius: 12px;
+}
+
+.contact-card h3 {
+  margin: 0 0 4px;
+  font-size: 1.05rem;
+}
+
+.contact-card a {
+  color: #0065ff;
+  text-decoration: none;
+  font-weight: 600;
+}
+
+.contact-card a:hover {
+  text-decoration: underline;
+}
+
+.callout {
+  margin-top: 18px;
+  padding: 12px 14px;
+  background: rgba(255, 242, 205, 0.8);
+  border-left: 4px solid #f5b021;
+  border-radius: 10px;
+  color: #3b3f52;
+}
+
+#contact {
+  padding: 42px 24px;
+  text-align: left;
+  border-radius: 18px;
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  width: auto;
+  max-width: 100%;
+  margin: 0;
 }

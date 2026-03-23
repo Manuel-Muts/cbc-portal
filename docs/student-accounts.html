@@ -1,0 +1,244 @@
+<!-- docs/student-accounts.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Learner Accounts</title>
+  <link rel="stylesheet" href="css/admin.css" />
+  <style>
+    /* Specific styles for accounts table status */
+    .status-badge {
+      padding: 4px 8px;
+      border-radius: 4px;
+      font-size: 12px;
+      font-weight: 600;
+    }
+    .status-paid { background: #d1fae5; color: #065f46; }
+    .status-partial { background: #fef3c7; color: #92400e; }
+    .status-unpaid { background: #fee2e2; color: #991b1b; }
+    
+    .money-col { text-align: right; font-family: 'Consolas', monospace; }
+
+    .bf-badge {
+      display: inline-block;
+      margin-left: 8px;
+      font-size: 10px;
+      font-weight: bold;
+      background-color: #e9ecef;
+      color: #495057;
+      padding: 2px 5px;
+      border-radius: 4px;
+      vertical-align: middle;
+    }
+    .bf-badge.bf-credit { background-color: #d1fae5; color: #065f46; } /* Green for Surplus */
+    .bf-badge.bf-debt { background-color: #fee2e2; color: #991b1b; }   /* Red for Arrears */
+  </style>
+</head>
+<body>
+
+<div class="container">
+  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px; margin-top: 20px;">
+    <h2>Learner Accounts Management</h2>
+    <a href="/accounts" class="btn secondary-btn">&larr; Back to Dashboard</a>
+  </div>
+
+  <!-- ACCOUNTS LIST CARD -->
+  <div class="card">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
+      <h3>Learner Fee Status</h3>
+      <div style="display:flex; gap: 10px;">
+        <button id="addBFBtn" class="btn primary-btn">➕ Add B/F</button>
+        <button id="refreshAccountsBtn" class="btn secondary-btn">🔄 Refresh</button>
+        <button id="downloadReportPdfBtn" class="btn secondary-btn">📄 Export PDF</button>
+      </div>
+    </div>
+    
+    <!-- FILTERS -->
+    <div class="flex-row" style="margin-bottom: 20px;">
+      <div class="col">
+        <label>Filter by Grade</label>
+        <select id="classFilter">
+          <option value="">All Grades</option>
+          <option value="Grade 1">Grade 1</option>
+          <option value="Grade 2">Grade 2</option>
+          <option value="Grade 3">Grade 3</option>
+          <option value="Grade 4">Grade 4</option>
+          <option value="Grade 5">Grade 5</option>
+          <option value="Grade 6">Grade 6</option>
+          <option value="Grade 7">Grade 7</option>
+          <option value="Grade 8">Grade 8</option>
+          <option value="Grade 9">Grade 9</option>
+          <option value="Grade 10">Grade 10</option>
+          <option value="Grade 11">Grade 11</option>
+          <option value="Grade 12">Grade 12</option>
+        </select>
+      </div>
+      <div class="col">
+        <label>Academic Year</label>
+        <select id="academicYearFilter"></select>
+      </div>
+      <div class="col">
+        <label>Term</label>
+        <select id="termFilter">
+          <option value="">All Terms</option>
+          <option value="Term 1">Term 1</option>
+          <option value="Term 2">Term 2</option>
+          <option value="Term 3">Term 3</option>
+        </select>
+      </div>
+      <div class="col" style="flex: 2;">
+        <label>Search</label>
+        <input type="text" id="searchInput" placeholder="Search by name or admission number...">
+      </div>
+    </div>
+
+    <!-- TABLE -->
+    <div style="overflow-x: auto;">
+      <table id="accountsTable">
+        <thead>
+          <tr>
+            <th>Admission</th>
+            <th>Name</th>
+            <th>Grade</th>
+            <th class="money-col">Total Fee</th>
+            <th class="money-col">Paid</th>
+            <th class="money-col">Balance</th>
+            <th>Action</th>
+          </tr>
+        </thead>
+        <tbody>
+          <!-- Populated by JS -->
+        </tbody>
+      </table>
+    </div>
+
+    <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 15px; align-items: center;">
+      <button id="prevPageBtn" class="btn secondary-btn" disabled>Previous</button>
+      <span id="pageInfo">Page 1</span>
+      <button id="nextPageBtn" class="btn secondary-btn" disabled>Next</button>
+    </div>
+  </div>
+</div>
+
+<!-- LEDGER MODAL -->
+<div id="ledgerModal" class="confirm-overlay" style="display:none;">
+  <div class="confirm-box" style="max-width: 800px;">
+    <h4>Payment Ledger</h4>
+    <p id="ledgerStudentName" style="font-weight:bold; color:#0078D4; margin-bottom:15px;"></p>
+    <div id="ledgerTableContainer" style="max-height: 400px; overflow-y: auto;">
+      <!-- Ledger table will be injected here -->
+    </div>
+    <div class="confirm-buttons" style="margin-top: 20px;">
+      <button id="closeLedgerBtn" class="btn secondary-btn">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- B/F BALANCE MODAL -->
+<div id="bfModal" class="confirm-overlay" style="display:none;">
+  <div class="confirm-box" style="max-width: 450px;">
+    <h4>Manual Brought Forward Balance</h4>
+    <p style="font-size:13px; color:#666; margin-bottom:15px;">Manually record an opening balance (Surplus or Arrears) for a learner.</p>
+
+    <div class="form-group">
+      <label>Admission Number</label>
+      <input type="text" id="bfAdmission" placeholder="e.g. 1234">
+    </div>
+
+    <div class="form-group">
+      <label>Academic Year</label>
+      <input type="number" id="bfYear" placeholder="YYYY">
+    </div>
+
+    <div class="form-group">
+      <label>Balance Type</label>
+      <select id="bfType">
+        <option value="surplus">Surplus / Credit (Positive)</option>
+        <option value="arrears">Arrears / Debt (Negative)</option>
+      </select>
+    </div>
+
+    <div class="form-group">
+      <label>Amount (KES)</label>
+      <input type="number" id="bfAmount" placeholder="e.g. 5000">
+    </div>
+
+    <div class="confirm-buttons" style="margin-top: 20px;">
+      <button id="cancelBFBtn" class="btn secondary-btn">Cancel</button>
+      <button id="saveBFBtn" class="btn primary-btn">Save Balance</button>
+    </div>
+  </div>
+</div>
+
+<!-- STUDENT FEE DETAILS MODAL -->
+<div id="studentFeeDetailsModal" class="confirm-overlay" style="display:none;">
+  <div class="confirm-box" style="max-width: 800px; width: 95%;">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+      <h3>Learner Fee Details</h3>
+      <button id="closeStudentFeeDetailsBtn" class="btn secondary-btn">Close</button>
+    </div>
+    <div style="display: flex; gap: 10px; margin-bottom: 15px;">
+      <button id="dlStructureBtn" class="btn secondary-btn">📄 Download Structure</button>
+      <button id="dlStatementBtn" class="btn secondary-btn">📄 Download Statement</button>
+    </div>
+    <div id="studentFeeModalBody" style="max-height: 70vh; overflow-y: auto;"></div>
+  </div>
+</div>
+
+<!-- PAYMENT MODAL -->
+<div id="paymentModal" class="confirm-overlay" style="display:none;">
+  <div class="confirm-box" style="max-width: 500px;">
+    <h4>Record Payment</h4>
+    <p id="modalStudentName" style="font-weight:bold; color:#0078D4; margin-bottom:15px;"></p>
+    
+    <div class="form-group">
+      <label>Amount (KES)</label>
+      <div style="display:flex; gap:10px;">
+      <input type="number" id="paymentAmount" placeholder="e.g. 5000">
+      <button id="payFullBalanceBtn" type="button" class="btn secondary-btn" style="padding: 8px 12px; font-size: 12px; white-space: nowrap;">Pay Full Arrears</button>
+      </div>
+    </div>
+    
+    <div class="form-group">
+      <label>Reference</label>
+      <input type="text" id="paymentReference" placeholder="e.g. Receipt No / M-Pesa Code">
+    </div>
+
+    <div class="flex-row">
+      <div class="col form-group">
+        <label>Method</label>
+        <select id="paymentMethod">
+          <option value="cash">Cash</option>
+          <option value="mpesa">M-Pesa</option>
+          <option value="bank">Bank Deposit</option>
+          <option value="cheque">Cheque</option>
+        </select>
+      </div>
+      <div class="col form-group">
+        <label>Term</label>
+        <select id="paymentTerm">
+          <option value="Term 1">Term 1</option>
+          <option value="Term 2">Term 2</option>
+          <option value="Term 3">Term 3</option>
+          <option value="Auto">Auto-Allocate</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="confirm-buttons" style="margin-top: 20px;">
+      <button id="cancelPaymentBtn" class="btn secondary-btn">Cancel</button>
+      <button id="savePaymentBtn" class="btn primary-btn">Save Payment</button>
+    </div>
+  </div>
+</div>
+
+<!-- Config & Scripts -->
+<script src="js/config.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.28/jspdf.plugin.autotable.min.js"></script>
+<script src="js/student-accounts.js"></script>
+
+</body>
+</html>

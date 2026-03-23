@@ -828,3 +828,21 @@ select:focus {
     min-width: 80px;
   }
 }
+
+/* ===============================
+   LEDGER MODAL SPECIFIC
+================================ */
+#ledgerModal .modal-content {
+  max-width: 900px;
+}
+
+#ledgerModal table {
+  table-layout: fixed;
+}
+
+#ledgerModal table th:nth-child(1), #ledgerModal table td:nth-child(1) { width: 15%; }
+#ledgerModal table th:nth-child(2), #ledgerModal table td:nth-child(2) { width: 18%; text-align: right; }
+#ledgerModal table th:nth-child(3), #ledgerModal table td:nth-child(3) { width: 15%; }
+#ledgerModal table th:nth-child(4), #ledgerModal table td:nth-child(4) { width: 15%; }
+#ledgerModal table th:nth-child(5), #ledgerModal table td:nth-child(5) { width: 15%; }
+#ledgerModal table th:nth-child(6), #ledgerModal table td:nth-child(6) { width: 15%; text-align: center; }

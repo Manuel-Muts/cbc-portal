@@ -118,10 +118,55 @@ if (token) {
   // -----------------------------
   const setText = (id, value) => { const el = document.getElementById(id); if(el) el.textContent = value; };
   const capitalizeWords = str => str.split(" ").map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(" ");
-  const getPerformanceLevel = score => score >= 80 ? "Exceeding Expectation (EE)" : score >= 60 ? "Meeting Expectation (ME)" : score >= 40 ? "Approaching Expectation (AE)" : "Below Expectation (BE)";
-  const getSubjectRemark = score => score >= 80 ? "Excellent" : score >= 60 ? "Good" : score >= 40 ? "Average" : "Needs Improvement";
-  const getTeacherComment = mean => mean >= 80 ? "Great progress this term!" : mean >= 60 ? "Good effort, stay focused." : mean >= 40 ? "You can do better with more effort." : "Work harder next term.";
-  const getHeadteacherComment = mean => mean >= 80 ? "Keep up the outstanding work." : mean >= 60 ? "A commendable performance." : mean >= 40 ? "Needs improvement in some areas." : "Put in more effort to improve.";
+  
+  const getPerformanceSubdivision = score => {
+    if (score >= 90) return "EE1";
+    if (score >= 75) return "EE2";
+    if (score >= 58) return "ME1";
+    if (score >= 41) return "ME2";
+    if (score >= 31) return "AE1";
+    if (score >= 21) return "AE2";
+    if (score >= 11) return "BE1";
+    return "BE2";
+  };
+  const getScorePoints = score => {
+    if (score >= 90) return 8;
+    if (score >= 75) return 7;
+    if (score >= 58) return 6;
+    if (score >= 41) return 5;
+    if (score >= 31) return 4;
+    if (score >= 21) return 3;
+    if (score >= 11) return 2;
+    return 1;
+  };
+  const getPerformanceLevel = score => {
+    const sub = getPerformanceSubdivision(score);
+    const label = score >= 75 ? "Exceeding Expectation" : score >= 41 ? "Meeting Expectation" : score >= 21 ? "Approaching Expectation" : "Below Expectation";
+    return `${label} (${sub})`;
+  };
+
+  const getSubjectRemark = score => score >= 75 ? "Excellent" : score >= 41 ? "Good" : score >= 21 ? "Average" : "Needs Improvement";
+  const getTeacherComment = mean => mean >= 75 ? "Great progress this term!" : mean >= 41 ? "Good effort, stay focused." : mean >= 21 ? "You can do better with more effort." : "Work harder next term.";
+  const getHeadteacherComment = mean => mean >= 75 ? "Keep up the outstanding work." : mean >= 41 ? "A commendable performance." : mean >= 21 ? "Needs improvement in some areas." : "Put in more effort to improve.";
+  
+  const updateReportSummary = (mean, points) => {
+    const summaryEl = document.querySelector(".summary");
+    if (summaryEl) {
+      summaryEl.innerHTML = `
+        <div style="text-align:center;">
+          <p style="font-size: 12px; color: #555; text-transform: uppercase; margin-bottom: 5px;">PERFORMANCE LEVEL</p>
+          <p style="font-size: 14px; font-weight: bold; color: #1a237e; margin: 0;">${getPerformanceLevel(mean)}</p>
+        </div>
+        <div style="border-left: 1px solid #ccc; margin: 0 15px;"></div>
+        <div style="text-align:center;">
+          <p style="font-size: 12px; color: #555; text-transform: uppercase; margin-bottom: 5px;">TOTAL POINTS</p>
+          <p style="font-size: 14px; font-weight: bold; color: #1a237e; margin: 0;">${points}</p>
+        </div>
+      `;
+    }
+    setText("teacherComment", getTeacherComment(mean));
+    setText("headComment", getHeadteacherComment(mean));
+  };
 
   // -----------------------------
   // AUTO-UPDATE GRADE FROM MARKS
@@ -184,6 +229,18 @@ if (token) {
   const gradeNum = parseInt(user.grade);
   const isSeniorSchool = gradeNum >= 10 && gradeNum <= 12;
 
+  // Update report titles based on level (Head Teacher vs Principal)
+  if (isSeniorSchool) {
+    const sigLines = document.querySelectorAll(".signatures .signature-line p");
+    if (sigLines.length > 1) sigLines[1].textContent = "Principal";
+
+    const headCommentEl = document.getElementById("headComment");
+    if (headCommentEl && headCommentEl.parentElement) {
+      const labelStrong = headCommentEl.parentElement.querySelector("strong");
+      if (labelStrong) labelStrong.textContent = "Principal's Comment:";
+    }
+  }
+
   // CBC Weights for senior school calculation
   const CBC_WEIGHTS = {
     continuousAssessment: 0.30,
@@ -217,78 +274,130 @@ if (token) {
     const thead = document.querySelector("#marksTable thead tr");
     if (thead) {
       thead.innerHTML = `
-        <th>Course</th>
-        <th>Continuous Assessment (30%)</th>
-        <th>Project Work (20%)</th>
-        <th>End-Term Exam (50%)</th>
-        <th>Final Score</th>
+        <th>Subject</th>
+        <th>Marks</th>
+        <th>Points</th>
         <th>Performance Level</th>
+        <th>Remarks</th>
       `;
     }
 
     const tbody = document.querySelector("#marksTable tbody");
     tbody.innerHTML = "";
 
+    let totalFinalScore = 0;
+    let validScoreCount = 0;
+    let totalPoints = 0;
+
     studentMarks.forEach(m => {
       const finalScore = calculateSeniorSchoolFinalScore(m);
-      const ca = m.continuousAssessment !== null && m.continuousAssessment !== undefined ? m.continuousAssessment : "-";
-      const pw = m.projectWork !== null && m.projectWork !== undefined ? m.projectWork : "-";
-      const et = m.endTermExam !== null && m.endTermExam !== undefined ? m.endTermExam : "-";
       const fs = finalScore !== null ? finalScore : "-";
-      const perfLevel = finalScore !== null ? getPerformanceLevel(finalScore) : "N/A";
+      const points = finalScore !== null ? getScorePoints(finalScore) : "-";
+      const perfLevel = finalScore !== null ? getPerformanceSubdivision(finalScore) : "N/A";
+      const remark = finalScore !== null ? getSubjectRemark(finalScore) : "-";
 
       const tr = document.createElement("tr");
       tr.innerHTML = `
         <td>${capitalizeWords((m.course || "").replace(/-/g, " "))}</td>
-        <td>${ca}${ca !== "-" ? "%" : ""}</td>
-        <td>${pw}${pw !== "-" ? "%" : ""}</td>
-        <td>${et}${et !== "-" ? "%" : ""}</td>
         <td><strong>${fs}${fs !== "-" ? "%" : ""}</strong></td>
+        <td>${points}</td>
         <td>${perfLevel}</td>
+        <td>${remark}</td>
       `;
       tbody.appendChild(tr);
 
       if (finalScore !== null) {
-        let totalFinalScore = 0;
-        let validScoreCount = 0;
-        studentMarks.forEach(mark => {
-          const fs = calculateSeniorSchoolFinalScore(mark);
-          if (fs !== null) {
-            totalFinalScore += fs;
-            validScoreCount++;
-          }
-        });
-        const meanFinalScore = validScoreCount > 0 ? (totalFinalScore / validScoreCount).toFixed(1) : 0;
-        setText("performanceLevel", getPerformanceLevel(meanFinalScore));
-        setText("teacherComment", getTeacherComment(meanFinalScore));
-        setText("headComment", getHeadteacherComment(meanFinalScore));
+        totalFinalScore += finalScore;
+        totalPoints += getScorePoints(finalScore);
+        validScoreCount++;
       }
     });
+    
+    const meanFinalScore = validScoreCount > 0 ? (totalFinalScore / validScoreCount).toFixed(1) : 0;
+    updateReportSummary(meanFinalScore, totalPoints);
   }
   // ===== JUNIOR SCHOOL (1-9): Subject-Based Report =====
   else {
+    const thead = document.querySelector("#marksTable thead tr");
+    if (thead) {
+      thead.innerHTML = `
+        <th>Subject</th>
+        <th>Marks</th>
+        <th>Points</th>
+        <th>Performance Level</th>
+        <th>Remarks</th>
+      `;
+    }
     const tbody = document.querySelector("#marksTable tbody");
     tbody.innerHTML = "";
     let total = 0;
+    let totalPoints = 0;
 
     studentMarks.forEach(m => {
       const score = Number(m.score || 0);
+      const points = getScorePoints(score);
       const tr = document.createElement("tr");
       tr.innerHTML = `
         <td>${capitalizeWords((m.subject || "").replace(/-/g, " "))}</td>
-        <td>${score}</td>
-        <td>${getPerformanceLevel(score)}</td>
+        <td>${score}%</td>
+        <td>${points}</td>
+        <td>${getPerformanceSubdivision(score)}</td>
         <td>${getSubjectRemark(score)}</td>
       `;
       tbody.appendChild(tr);
       total += score;
+      totalPoints += points;
     });
 
     const mean = studentMarks.length ? (total / studentMarks.length).toFixed(1) : 0;
+    
+    updateReportSummary(mean, totalPoints);
+  }
 
-    setText("performanceLevel", getPerformanceLevel(mean));
-    setText("teacherComment", getTeacherComment(mean));
-    setText("headComment", getHeadteacherComment(mean));
+  // -----------------------------
+  // SIDE-BY-SIDE LAYOUT: KEY + MARKS TABLE
+  // -----------------------------
+  const marksTable = document.getElementById("marksTable");
+  const marksSection = marksTable ? marksTable.closest('section') : null;
+  const remarksSection = document.querySelector('.remarks-section');
+
+  if (marksSection && remarksSection) {
+    const layoutContainer = document.createElement('div');
+    layoutContainer.className = 'report-layout-container';
+
+    const performanceKeyData = [
+        { subdivision: 'EE1', range: '90-100', points: 8 },
+        { subdivision: 'EE2', range: '75-89', points: 7 },
+        { subdivision: 'ME1', range: '58-74', points: 6 },
+        { subdivision: 'ME2', range: '41-57', points: 5 },
+        { subdivision: 'AE1', range: '31-40', points: 4 },
+        { subdivision: 'AE2', range: '21-30', points: 3 },
+        { subdivision: 'BE1', range: '11-20', points: 2 },
+        { subdivision: 'BE2', range: '0-10', points: 1 },
+    ];
+
+    const keyPanel = document.createElement('div');
+    keyPanel.id = 'performanceKeySide';
+    let keyTableHTML = `
+        <h4>PERFORMANCE KEY</h4>
+        <table>
+            <thead><tr><th>Level</th><th>Range</th><th>Pts</th></tr></thead>
+            <tbody>
+    `;
+    performanceKeyData.forEach(item => {
+        keyTableHTML += `<tr><td>${item.subdivision}</td><td>${item.range}</td><td>${item.points}</td></tr>`;
+    });
+    keyTableHTML += `</tbody></table>`;
+    keyPanel.innerHTML = keyTableHTML;
+
+    layoutContainer.appendChild(keyPanel);
+    layoutContainer.appendChild(marksSection);
+
+    remarksSection.parentNode.insertBefore(layoutContainer, remarksSection);
+
+    const oldKey = document.querySelector('.performance-key-section');
+    if (oldKey) oldKey.remove();
+
   }
 
   // -----------------------------

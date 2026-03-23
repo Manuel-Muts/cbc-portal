@@ -22,32 +22,31 @@
 
 
   // DOM elements
-  const registerForm = document.getElementById("registerForm");
-  const registerFeedback = document.getElementById("registerFeedback");
-  const usersTableBody = document.querySelector("#usersTable tbody");
   const teacherSelect = document.getElementById("teacherSelect");
   const classTeacherSelect = document.getElementById("classTeacherSelect");
   const gradeRangeSelect = document.getElementById("gradeRange");
   const gradesSelect = document.getElementById("gradesSelect");
   const subjectsSelect = document.getElementById("subjectsSelect");
   const streamInput = document.getElementById("streamInput"); // 🆕 Stream for subjects
-  const classStreamSelect = document.getElementById("classStreamSelect"); // 🆕 Stream for class teacher
+  const classStreamInput = document.getElementById("classStreamInput"); // 🆕 Stream for class teacher
   const subjectAllocTableBody = document.querySelector("#subjectAllocTable tbody");
   const classAllocTableBody = document.querySelector("#classAllocTable tbody");
   const refreshBtn = document.getElementById("refreshBtn");
   const logoutBtn = document.getElementById("logoutBtn");
-  const userSearchInput = document.getElementById("userSearchInput");
   const subjectSearchInput = document.getElementById("subjectSearchInput");
   const classSearchInput = document.getElementById("classSearchInput");
-  const exportUsersBtn = document.getElementById("exportUsersBtn");
   const exportSubjectsBtn = document.getElementById("exportSubjectsBtn");
   const exportClassBtn = document.getElementById("exportClassBtn");
+
+  // Pagination + caching for user list
+
+  // Cached teacher list (used in allocation forms)
+  let teachersCache = null;
   const subjectAllocForm = document.getElementById("subjectAllocForm");
   const classAllocForm = document.getElementById("classAllocForm");
   const classGradeSelect = document.getElementById("classGradeSelect");
   const subjectAllocTable = document.getElementById("subjectAllocTable");
   const classAllocTable = document.getElementById("classAllocTable");
-  const usersTable = document.getElementById("usersTable");
   const fromAcademicYearInput = document.getElementById("fromAcademicYear");
   const toAcademicYearInput = document.getElementById("toAcademicYear");
   const previewPromotionBtn = document.getElementById("previewPromotionBtn");
@@ -58,6 +57,9 @@
    const studentSearchBody = document.getElementById("studentSearchBody");
 
 
+  let promoPage = 1;
+  const promoLimit = 20;
+  let promoTotalPages = 1;
   let isRefreshing = false;
 // ---------------------------
 // FETCH SCHOOL INFO
@@ -136,75 +138,50 @@ function renderSchoolInfo() {
 
   function showToast(message, type = "info", duration = 3000) {
     const t = document.createElement("div");
-    t.className = `toast toast-${type}`;
+    t.className = `toast toast-${type}`; // This uses the new CSS classes
     t.textContent = message;
-    t.style.marginTop = "8px";
-    t.style.padding = "10px 14px";
-    t.style.borderRadius = "8px";
-    t.style.boxShadow = "0 2px 6px rgba(0,0,0,0.12)";
-    t.style.background = type === "error" ? "#F8D7DA" : type === "success" ? "#D4EDDA" : "#E2E3E5";
-    t.style.color = "#000";
     toastContainer.appendChild(t);
     setTimeout(() => {
-      t.style.opacity = "0";
-      setTimeout(() => t.remove(), 350);
+      t.classList.add('hiding'); // Add class for hiding animation
+      t.addEventListener('transitionend', () => t.remove());
     }, duration);
   }
 
   function showConfirm({ title = "Confirm", message = "Are you sure?", confirmText = "Yes", cancelText = "No" } = {}) {
     return new Promise(resolve => {
       const overlay = document.createElement("div");
-      overlay.style.position = "fixed";
-      overlay.style.top = "0";
-      overlay.style.left = "0";
-      overlay.style.right = "0";
-      overlay.style.bottom = "0";
-      overlay.style.background = "rgba(0,0,0,0.4)";
-      overlay.style.zIndex = "10000";
-      overlay.style.display = "flex";
-      overlay.style.justifyContent = "center";
-      overlay.style.alignItems = "center";
+      overlay.className = "confirm-overlay";
 
       const box = document.createElement("div");
-      box.style.background = "#fff";
-      box.style.padding = "18px";
-      box.style.borderRadius = "8px";
-      box.style.minWidth = "320px";
-      box.style.boxShadow = "0 8px 28px rgba(0,0,0,0.2)";
+      box.className = "confirm-box";
 
-      const h = document.createElement("h4");
-      h.textContent = title;
-      h.style.margin = "0 0 8px 0";
+      box.innerHTML = `
+        <h4>${title}</h4>
+        <p>${message}</p>
+        <div class="confirm-buttons">
+          <button class="btn secondary-btn" id="confirmCancel">${cancelText}</button>
+          <button class="btn primary-btn" id="confirmOk">${confirmText}</button>
+        </div>
+      `;
 
-      const p = document.createElement("p");
-      p.textContent = message;
-      p.style.margin = "0 0 14px 0";
-
-      const btnRow = document.createElement("div");
-      btnRow.style.display = "flex";
-      btnRow.style.justifyContent = "flex-end";
-      btnRow.style.gap = "8px";
-
-      const cancelBtn = document.createElement("button");
-      cancelBtn.textContent = cancelText;
-      cancelBtn.style.padding = "6px 10px";
-      cancelBtn.onclick = () => { overlay.remove(); resolve(false); };
-
-      const confirmBtn = document.createElement("button");
-      confirmBtn.textContent = confirmText;
-      confirmBtn.style.padding = "6px 10px";
-      confirmBtn.style.background = "#0078D4";
-      confirmBtn.style.color = "#fff";
-      confirmBtn.style.border = "none";
-      confirmBtn.onclick = () => { overlay.remove(); resolve(true); };
-
-      btnRow.appendChild(cancelBtn);
-      btnRow.appendChild(confirmBtn);
-      box.appendChild(h);
-      box.appendChild(p);
-      box.appendChild(btnRow);
       overlay.appendChild(box);
       document.body.appendChild(overlay);
+
+      // Add visible class to trigger animation
+      requestAnimationFrame(() => {
+        overlay.classList.add('visible');
+      });
+
+      const close = (value) => {
+        overlay.classList.remove('visible');
+        overlay.addEventListener('transitionend', () => {
+          overlay.remove();
+          resolve(value);
+        }, { once: true });
+      };
+
+      overlay.querySelector("#confirmCancel").onclick = () => close(false);
+      overlay.querySelector("#confirmOk").onclick = () => close(true);
     });
   }
 
@@ -238,7 +215,7 @@ function renderSchoolInfo() {
     style.id = id;
     style.textContent = `
       @keyframes spin { to { transform: rotate(360deg); } }
-      .feedback.error { color: #721c24; background: #f8d7da; padding:8px; border-radius:6px; }
+      .feedback.error { color: #721c24; background: #f8d7da; padding:8px; border-radius:6px; border-left: 4px solid #dc3545; }
       .feedback.info { color: #0f5132; background: #d1e7dd; padding:8px; border-radius:6px; }
       .toast { transition: opacity .35s ease; }
       tr.clickable-row { cursor: pointer; }
@@ -299,28 +276,63 @@ function renderPromotionPreview(data = []) {
 }
 
 
-previewPromotionBtn.addEventListener("click", async () => {
+previewPromotionBtn.addEventListener("click", () => {
+  loadPromotionPreview(1);
+});
+
+async function loadPromotionPreview(page = 1) {
   const year = fromAcademicYearInput.value.trim();
   if (!year) {
     showToast("Enter academic year", "error");
     return;
   }
 
+  // Show loading in button and table
   const originalHTML = previewPromotionBtn.innerHTML;
   previewPromotionBtn.disabled = true;
   previewPromotionBtn.innerHTML = '<span class="spinner"></span>Loading...';
+  
+  if (promotionPreviewBody) {
+    promotionPreviewBody.innerHTML = '<tr><td colspan="5" style="text-align:center"><span class="spinner"></span> Loading...</td></tr>';
+  }
 
   try {
     const res = await secureFetch(
-      `${API_BASE}/promotions/preview?academicYear=${year}`
+      `${API_BASE}/promotions/preview?academicYear=${year}&page=${page}&limit=${promoLimit}`
     );
 
-    if (res) renderPromotionPreview(res.preview);
+    if (res) {
+      promoPage = res.currentPage || 1;
+      promoTotalPages = res.totalPages || 1;
+      renderPromotionPreview(res.preview);
+      renderPromotionPagination();
+    }
   } finally {
     previewPromotionBtn.disabled = false;
     previewPromotionBtn.innerHTML = originalHTML;
   }
-});
+}
+
+function renderPromotionPagination() {
+  const table = document.getElementById("promotionPreviewTable");
+  let controls = document.getElementById("promoPaginationControls");
+  
+  if (!controls) {
+    controls = document.createElement("div");
+    controls.id = "promoPaginationControls";
+    controls.style = "display: flex; justify-content: flex-end; gap: 10px; margin-top: 10px; align-items: center;";
+    table.parentNode.insertBefore(controls, table.nextSibling);
+  }
+
+  controls.innerHTML = promoTotalPages > 0 ? `
+    <button id="promoPrevBtn" class="pagination-btn" ${promoPage <= 1 ? "disabled" : ""}>Prev</button>
+    <span style="font-weight: 600; font-size: 14px;">Page ${promoPage} of ${promoTotalPages}</span>
+    <button id="promoNextBtn" class="pagination-btn" ${promoPage >= promoTotalPages ? "disabled" : ""}>Next</button>
+  ` : '';
+
+  if(document.getElementById("promoPrevBtn")) document.getElementById("promoPrevBtn").onclick = () => loadPromotionPreview(promoPage - 1);
+  if(document.getElementById("promoNextBtn")) document.getElementById("promoNextBtn").onclick = () => loadPromotionPreview(promoPage + 1);
+}
 
 confirmPromotionBtn.addEventListener("click", async () => {
   const fromYear = Number(fromAcademicYearInput.value);
@@ -477,78 +489,6 @@ confirmPromotionBtn.addEventListener("click", async () => {
   // ---------------------------
   function clearElement(el) { if (el) el.innerHTML = ""; }
 
- function renderUsers(data = []) {
-  if (!usersTableBody) return;
-
-  usersTableBody.innerHTML = "";
-  const frag = document.createDocumentFragment();
-
-  data.forEach(u => {
-
-    // ================
-    // EXEMPT SUPER ADMIN
-    // ================
-    if (
-      u.role === "super_admin" ||                   // by role
-      u.email === "admin@admin.com" ||             // by email (adjust if needed)
-      u.isSuperAdmin === true                      // optional backend flag
-    ) {
-      return; // skip rendering this user
-    }
-
-    const tr = document.createElement("tr");
-    tr.innerHTML = `
-      <td>${u.name}</td>
-      <td>${u.role}</td>
-      <td>${u.role === "student" ? (u.admission || "") : (u.email || "")}</td>
-      <td class="action-col">
-        <button data-id="${u._id}" class="delete-user-btn">🗑️ Delete</button>
-        ${
-          u.role !== "student"
-            ? `<button data-id="${u._id}" class="resend-creds-btn">📧 Resend</button>`
-            : ""
-        }
-      </td>
-    `;
-    frag.appendChild(tr);
-  });
-
-  usersTableBody.appendChild(frag);
-
-    usersTableBody.querySelectorAll(".delete-user-btn").forEach(b => {
-      b.onclick = async () => {
-        const id = b.dataset.id;
-        const ok = await showConfirm({ message: "Delete this user?" });
-        if (!ok) return;
-        await secureFetch(`${API_BASE}/users/${id}`, { method: "DELETE" });
-        await loadUsers();
-        showToast("User deleted", "success");
-      };
-    });
-
-    usersTableBody.querySelectorAll(".resend-creds-btn").forEach(b => {
-      b.onclick = async () => {
-        const id = b.dataset.id;
-        const email = b.parentElement.previousElementSibling.textContent.trim();
-        const ok = await showConfirm({ message: "Resend login credentials to this user?" });
-        if (!ok) return;
-        try {
-          const result = await secureFetch(`${API_BASE}/users/resend-credentials`, { 
-            method: "POST",
-            headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
-            body: JSON.stringify({ email: email })
-          });
-          if (result) {
-            showToast("Credentials re-sent successfully", "success");
-          }
-        } catch (err) {
-          console.error("Resend error:", err);
-          showToast("Failed to resend credentials", "error");
-        }
-      };
-    });
-  }
-
   function populateTeacherSelects(users = []) {
     if (!teacherSelect || !classTeacherSelect) return;
     teacherSelect.innerHTML = "";
@@ -624,14 +564,41 @@ confirmPromotionBtn.addEventListener("click", async () => {
   // ---------------------------
   // LOADERS
   // ---------------------------
-  async function loadUsers() {
-    if (!usersTableBody) return;
-    const original = usersTableBody.innerHTML;
-    usersTableBody.innerHTML = `<tr><td colspan="4" style="text-align:center">${createSpinner().outerHTML} Loading users...</td></tr>`;
-    const data = await secureFetch(`${API_BASE}/users`);
-    if (!data) { usersTableBody.innerHTML = original; return; }
-    renderUsers(data);
-    populateTeacherSelects(data);
+  async function loadTeacherOptions(forceReload = false) {
+    const CACHE_KEY = "admin_teachers_cache";
+    const CACHE_DURATION = 15 * 60 * 1000; // 15 minutes
+
+    if (teachersCache && !forceReload) {
+      populateTeacherSelects(teachersCache);
+      return;
+    }
+
+    if (!forceReload) {
+      const cached = localStorage.getItem(CACHE_KEY);
+      if (cached) {
+        try {
+          const { timestamp, data } = JSON.parse(cached);
+          if (Date.now() - timestamp < CACHE_DURATION) {
+            console.log("✅ Using cached teacher list");
+            teachersCache = data;
+            populateTeacherSelects(data);
+            return;
+          }
+        } catch (e) { console.warn("Cache read error:", e); }
+      }
+    }
+
+    const res = await secureFetch(`${API_BASE}/users?role=teacher&limit=500`);
+    if (!res || !res.users) return;
+
+    teachersCache = res.users;
+    
+    localStorage.setItem(CACHE_KEY, JSON.stringify({
+      timestamp: Date.now(),
+      data: teachersCache
+    }));
+
+    populateTeacherSelects(teachersCache);
   }
 
   async function loadSubjectAllocations() {
@@ -831,8 +798,8 @@ async function openHistoryModal(studentId) {
   if (isRefreshing) return;
   try { 
     await Promise.all([
-      loadUsers(), 
-      loadSubjectAllocations(), 
+      loadTeacherOptions(),
+      loadSubjectAllocations(),
       loadClassAllocations(),
       loadSchoolInfo()  // ✅ Fetch school info here
     ]); 
@@ -845,120 +812,6 @@ async function openHistoryModal(studentId) {
 // ---------------------------
 // FORM SUBMISSIONS
 // ---------------------------
-if (registerForm) {
-  registerForm.addEventListener("submit", async e => {
-    e.preventDefault();
-
-    const submitBtn = registerForm.querySelector("button[type='submit']");
-    if (submitBtn) { 
-      submitBtn.disabled = true; 
-      submitBtn.appendChild(createSpinner(12)); 
-    }
-
-    // -------------------
-    // Get form values
-    // -------------------
-    const role = document.getElementById("userRole").value.trim();
-    const name = document.getElementById("userName").value.trim();
-    const email = document.getElementById("userEmail").value.trim();
-    const admission = document.getElementById("userAdmission").value.trim();
-    const grade = role === "student" ? document.getElementById("studentGrade").value.trim() : null;
-    const stream = role === "student" ? document.getElementById("studentStream").value.trim() : null;
-
-    // -------------------
-    // Validate inputs
-    // -------------------
-    if (!role) {
-      showFeedback(registerFeedback, "Please select a role", "error");
-      resetSubmitBtn();
-      return;
-    }
-
-    if (!name) {
-      showFeedback(registerFeedback, "Please enter full name", "error");
-      resetSubmitBtn();
-      return;
-    }
-
-    // Students: require admission & grade
-    if (role === "student") {
-      if (!admission) {
-        showFeedback(registerFeedback, "Admission number is required for students", "error");
-        resetSubmitBtn();
-        return;
-      }
-      if (!grade) {
-        showFeedback(registerFeedback, "Please select a grade for the student", "error");
-        resetSubmitBtn();
-        return;
-      }
-    }
-
-    // Teachers & Accounts: require email
-    if ((role === "teacher" || role === "accounts") && !email) {
-      showFeedback(registerFeedback, "Email is required for this role", "error");
-      resetSubmitBtn();
-      return;
-    }
-
-    // -------------------
-    // Build request body
-    // -------------------
-    const body = { role, name };
-
-    if (role === "student") {
-      body.admission = admission;
-      body.grade = grade;
-      if (stream) {
-        body.stream = stream; // Include stream if provided
-      }
-    } else {
-      // Teacher or Accounts: include email
-      body.email = email;
-    }
-
-    // -------------------
-    // Make API request
-    // -------------------
-    const token = localStorage.getItem("token"); 
-    console.log("Register body:", body);
-
-    try {
-      const res = await fetch(`${API_BASE}/users/register`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${token}`
-        },
-        body: JSON.stringify(body)
-      });
-
-      if (res && res.ok) {
-        showFeedback(registerFeedback, "User registered successfully", "info");
-        registerForm.reset();
-        await loadUsers();
-        showToast("User registered", "success");
-      } else {
-        const errorText = await res.text();
-        showFeedback(registerFeedback, `Failed to register user: ${errorText}`, "error");
-      }
-    } catch (err) {
-      console.error(err);
-      showFeedback(registerFeedback, "Network error or server issue", "error");
-    }
-
-    resetSubmitBtn();
-
-    function resetSubmitBtn() {
-      if (submitBtn) { 
-        submitBtn.disabled = false; 
-        Array.from(submitBtn.querySelectorAll(".spinner")).forEach(n => n.remove());
-      }
-    }
-  });
-}
-
-
 //subject allocation form handler
   if (subjectAllocForm) {
     subjectAllocForm.addEventListener("submit", async (e) => {
@@ -994,7 +847,7 @@ const res = await fetch(`${API_BASE}/users/subjects/assign`, {
 
     const teacherId = classTeacherSelect?.value || "";
     const assignedClass = classGradeSelect?.value || "";
-    const assignedStream = classStreamSelect?.value?.trim() || null; // 🆕 Get stream from input
+    const assignedStream = classStreamInput?.value?.trim() || null; // 🆕 Get stream from input
 
     const res = await fetch(`${API_BASE}/users/classes/assign-teacher`, {
       method: 'POST',
@@ -1195,9 +1048,14 @@ studentSearchBody.addEventListener("click", async (e) => {
 
       const errors = [];
       try {
-        const results = await Promise.allSettled([loadUsers(), loadSubjectAllocations(), loadClassAllocations()]);
+        const results = await Promise.allSettled([
+          loadTeacherOptions(true), // Force reload teachers
+          loadSubjectAllocations(), 
+          loadClassAllocations(),
+          loadSchoolInfo()
+        ]);
         results.forEach((r, idx) => {
-          if (r.status === "rejected") errors.push({ step: ["loadUsers", "loadSubjectAllocations", "loadClassAllocations"][idx], error: r.reason });
+          if (r.status === "rejected") errors.push({ step: ["loadTeacherOptions", "loadSubjectAllocations", "loadClassAllocations", "loadSchoolInfo"][idx], error: r.reason });
         });
 
         refreshBtn.textContent = "✅ Refreshed!";
@@ -1218,7 +1076,6 @@ studentSearchBody.addEventListener("click", async (e) => {
   // ---------------------------
   // FILTERS
   // ---------------------------
-  if (userSearchInput) userSearchInput.addEventListener("input", function () { const q = this.value.toLowerCase(); document.querySelectorAll("#usersTable tbody tr").forEach(r => r.style.display = r.textContent.toLowerCase().includes(q) ? "" : "none"); });
   if (subjectSearchInput) subjectSearchInput.addEventListener("input", function () { const q = this.value.toLowerCase(); document.querySelectorAll("#subjectAllocTable tbody tr").forEach(r => r.style.display = r.textContent.toLowerCase().includes(q) ? "" : "none"); });
   if (classSearchInput) classSearchInput.addEventListener("input", function () { const q = this.value.toLowerCase(); document.querySelectorAll("#classAllocTable tbody tr").forEach(r => r.style.display = r.textContent.toLowerCase().includes(q) ? "" : "none"); });
 
@@ -1503,18 +1360,6 @@ function exportTableToPDF(tableId, title) {
 // ---------------------------
 // BUTTON HANDLERS - PDF EXPORTS
 // ---------------------------
-if (exportUsersBtn) {
-  exportUsersBtn.addEventListener("click", () => {
-    try {
-      console.log(`[Export] Users button clicked`);
-      exportTableToPDF("usersTable", "Registered Users");
-    } catch (err) {
-      console.error("PDF export error:", err);
-      showToast("Failed to export PDF: " + err.message, "error");
-    }
-  });
-}
-
 if (exportSubjectsBtn) {
   exportSubjectsBtn.addEventListener("click", () => {
     try {
@@ -1546,50 +1391,11 @@ if (exportClassBtn) {
     logoutBtn.addEventListener("click", async () => {
       const ok = await showConfirm({ message: "Are you sure you want to logout?" });
       if (!ok) return;
-      localStorage.removeItem("token");
+      localStorage.clear();
       window.location.href = "/login";
     });
   }
 
-
-
-  // ---------------------------
-// USERS TABLE COLLAPSE
-// ---------------------------
-const toggleUsersBtn = document.getElementById("toggleUsersBtn");
-const usersContent = document.getElementById("usersContent");
-const usersPanelHeader = document.querySelector("#usersPanel .panel-header");
-
-function toggleUsersPanel() {
-  const isCollapsed = usersContent.classList.toggle("collapsed");
-  toggleUsersBtn.textContent = isCollapsed ? "►" : "▼";
-}
-
-if (toggleUsersBtn && usersPanelHeader) {
-  // Clicking header or button both collapse the panel
-  toggleUsersBtn.addEventListener("click", toggleUsersPanel);
-  usersPanelHeader.addEventListener("click", (e) => {
-    if (e.target.id !== "toggleUsersBtn") toggleUsersPanel();
-  });
-}
-
-  // ---------------------------
-  // BACKWARD-COMPATIBLE GLOBAL FUNCTIONS
-  // ---------------------------
-  window.deleteUser = async function (id) {
-    const ok = await showConfirm({ message: "Delete this user?" });
-    if (!ok) return;
-    await secureFetch(`${API_BASE}/user/${id}`, { method: "DELETE" });
-    await loadUsers();
-    showToast("User deleted", "success");
-  };
-
-  window.resendCredentials = async function (id) {
-    const ok = await showConfirm({ message: "Resend login credentials to this user?" });
-    if (!ok) return;
-    await secureFetch(`${API_BASE}/user/resend-credentials`, { method: "POST", body: JSON.stringify({ userId: id }) });
-    showToast("Credentials re-sent successfully", "success");
-  };
   // ---------------------------
 // PROMOTION TABLE FILTER
 // ---------------------------
@@ -1634,9 +1440,9 @@ studentSearchBtn.addEventListener("click", async () => {
         <td>${gradeLabel}</td>
         <td>${s.status}</td>
         <td>
-          <button class="btn-history" data-student-id="${s.studentId}" data-student-name="${s.name}" style="padding: 6px 10px; margin-right: 5px; background: #0077b6; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">📋 History</button>
-          <button class="btn-edit" data-enrollment-id="${s.enrollmentId}" data-student-id="${s.studentId}" style="padding: 6px 10px; margin-right: 5px; background: #2ecc71; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">✏️ Edit Enrollment</button>
-          <button class="btn-edit-profile" data-student-id="${s.studentId}" data-student-name="${s.name}" data-student-admission="${s.admission}" style="padding: 6px 10px; background: #6c757d; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">👤 Edit Profile</button>
+          <button class="btn-history" data-student-id="${s.studentId}" data-student-name="${s.name}">📋 History</button>
+          <button class="btn-edit" data-enrollment-id="${s.enrollmentId}" data-student-id="${s.studentId}">✏️ Edit Enrollment</button>
+          <button class="btn-edit-profile" data-student-id="${s.studentId}" data-student-name="${s.name}" data-student-admission="${s.admission}" data-student-grade="${s.grade}">👤 Edit Profile</button>
         </td>
       `;
 

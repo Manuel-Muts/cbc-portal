@@ -1,184 +1,227 @@
+/* General Body & Container */
 body {
   font-family: 'Poppins', sans-serif;
-  background: #f9f9f9;
+  background-color: #f4f7f6;
   color: #333;
   margin: 0;
-  padding: 0;
+  padding: 20px 0;
+  -webkit-font-smoothing: antialiased;
 }
 
 .report-container {
   width: 90%;
-  max-width: 794px;
-  margin: 30px auto;
+  max-width: 800px; /* A bit more space */
+  margin: 20px auto;
   background: #fff;
-  padding: 30px;
-  border-radius: 10px;
-  box-shadow: 0 3px 8px rgba(0,0,0,0.1);
-  border: 1px solid #ddd;
+  padding: 25px 35px; /* More horizontal padding */
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+  border: 1px solid #e0e0e0;
   box-sizing: border-box;
 }
 
-/* ------------------------------
-   Report Header
------------------------------- */
+/* Report Header */
 .report-header {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
   text-align: center;
-  margin-bottom: 20px;
+  margin-bottom: 10px;
+  border-bottom: 1px solid #eee;
+  padding-bottom: 10px;
 }
 
 .school-logo {
-  width: 90px;
-  height: 90px;
+  width: 80px; /* Slightly smaller */
+  height: 80px;
   object-fit: contain;
   margin-bottom: 10px;
 }
 
 #schoolName {
-  font-size: 24px;
+  font-size: 22px; /* Slightly smaller */
   font-weight: 700;
-  color: #2c3e50;
-  margin: 0 0 5px 0;
+  color: #1a237e; /* A deeper blue */
+  margin: 0;
+  letter-spacing: 0.5px;
 }
 
-.school-hr {
-  width: 60%;
-  border: none;
-  border-top: 3px solid #2980b9;
-  margin-top: 10px;
-  margin-bottom: 20px;
+#schoolAddress {
+  font-size: 13px;
+  color: #555;
+  margin-top: 4px;
 }
 
-/* ------------------------------
-   Remarks Section
------------------------------- */
-.remarks-section {
-  margin-bottom: 25px;
-}
-
-.remarks-section h2 {
+/* Section Headers (h2) */
+h2 {
   font-size: 16px;
-  color: #2c3e50;
-  border-bottom: 2px solid #2980b9;
-  padding-bottom: 5px;
-  margin-bottom: 10px;
+  color: #1a237e;
+  border-bottom: 2px solid #3949ab;
+  padding-bottom: 6px;
+  margin-top: 0;
+  margin-bottom: 15px;
+  font-weight: 600;
 }
 
-.remarks-section p {
-  margin: 5px 0;
-  font-size: 14px;
-  line-height: 1.5;
-}
-
-
-/* ------------------------------
-   Student Info
------------------------------- */
+/* Student Info Section */
 .student-info {
-  background: #f1f5f9;
-  padding: 15px 20px;
-  border-radius: 8px;
-  margin-bottom: 20px;
-  font-size: 14px;
-  line-height: 1.5;
+  background: #f8f9fa;
+  padding: 15px;
+  border-radius: 6px;
+  margin-bottom: 25px;
+  font-size: 13px;
+  line-height: 1.6;
+  border: 1px solid #e9ecef;
 }
 
 .student-info p {
-  margin: 5px 0;
+  margin: 4px 0;
 }
 
 .student-info strong {
-  width: 120px;
+  width: 110px; /* Consistent width */
   display: inline-block;
-  color: #2c3e50;
+  color: #343a40;
+  font-weight: 600;
 }
 
-/* ------------------------------
-   Marks Table
------------------------------- */
-.marks-section {
-  margin-bottom: 25px;
+/* Layout for Marks Table and Performance Key */
+.report-layout-container {
+  display: flex;
+  gap: 20px;
+  align-items: flex-start;
+  margin-top: 25px;
+  page-break-inside: avoid !important;
 }
 
-.marks-section h2 {
-  color: #2c3e50;
-  font-size: 18px;
-  margin-bottom: 10px;
-  border-bottom: 2px solid #2980b9;
+/* Performance Key (Side Panel) */
+#performanceKeySide {
+  flex: 0 0 170px; /* A bit more width */
+  border: 1px solid #e0e0e0;
+  border-radius: 6px;
+  padding: 10px;
+  background: #f8f9fa;
+}
+
+#performanceKeySide h4 {
+  margin: 0 0 10px 0;
+  font-size: 12px;
+  text-align: center;
+  color: #1a237e;
+  font-weight: 700;
+  border-bottom: 1px solid #ddd;
   padding-bottom: 5px;
+}
+
+#performanceKeySide table {
+  width: 100%;
+  font-size: 11px; /* More readable */
+  border-collapse: collapse;
+}
+
+#performanceKeySide th,
+#performanceKeySide td {
+  border: 1px solid #e5e5e5;
+  padding: 4px;
+  text-align: center;
+}
+
+#performanceKeySide thead {
+  background: #e9ecef;
+  font-weight: 600;
+}
+
+/* Marks Table Section */
+.marks-section {
+  flex: 1;
+  margin-bottom: 0; /* Reset margin as it's in a flex container */
 }
 
 .marks-section table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 13px;
-  background: #fff;
-  border-radius: 5px;
-  overflow: hidden;
-  box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+  font-size: 12px;
+  border: 1px solid #dee2e6;
 }
 
 .marks-section th,
 .marks-section td {
-  padding: 8px;
-  text-align: center;
-  border: 1px solid #ccc;
+  padding: 10px 8px; /* More vertical padding */
+  text-align: left;
+  border: 1px solid #dee2e6;
 }
 
 .marks-section th {
-  background: #e9f0ff;
+  background-color: #e9ecef;
   font-weight: 600;
+  color: #212529;
+  text-align: center;
 }
 
-.marks-section td {
-  background: #fefefe;
+.marks-section tbody tr:nth-child(even) {
+  background-color: #f8f9fa; /* Striping for readability */
 }
 
+.marks-section td:not(:first-child) {
+  text-align: center; /* Center align scores and levels */
+}
 
-/* ------------------------------
-   Summary Section
------------------------------- */
+/* Summary Section */
 .summary {
   display: flex;
-  justify-content: space-between;
-  background: #f1f5f9;
-  padding: 10px 20px;
-  border-radius: 8px;
-  font-weight: bold;
-  font-size: 14px;
-  margin-top: 15px;
+  justify-content: space-around; /* Better spacing */
+  background: #e9ecef;
+  padding: 12px;
+  border-radius: 6px;
+  font-weight: 600;
+  font-size: 13px;
+  margin-top: 20px;
+  border: 1px solid #dee2e6;
 }
 
 .summary p {
   margin: 0;
+  color: #1a237e;
 }
 
-/* ------------------------------
-   Signatures Section
------------------------------- */
+/* Remarks Section */
+.remarks-section {
+  margin-top: 25px;
+  margin-bottom: 25px;
+}
+
+.remarks-section p {
+  margin: 8px 0;
+  font-size: 13px;
+  line-height: 1.6;
+  padding-left: 10px;
+  border-left: 3px solid #e0e0e0;
+}
+
+/* Signatures Section */
 .signatures {
   display: flex;
   justify-content: space-between;
-  margin-top: 40px;
+  margin-top: 50px; /* More space above */
+  padding-top: 20px;
+  border-top: 1px solid #eee;
+  gap: 40px;
 }
 
 .signature-line {
-  width: 45%;
+  flex: 1;
   text-align: center;
-  border-top: 1px solid #333;
-  padding-top: 6px;
-}
-
-.date-line {
-  text-align: right;
+  border-top: 1px solid #555;
+  padding-top: 8px;
   font-size: 13px;
-  margin-top: 15px;
+  color: #444;
 }
 
+/* Controls & Buttons */
+.report-controls {
+  text-align: center;
+  margin-bottom: 20px;
+}
 
-button, .report-controls button {
+button,
+.report-controls button {
   display: inline-block;
   padding: 10px 20px;
   font-size: 14px;
@@ -188,17 +231,45 @@ button, .report-controls button {
   transition: all 0.3s ease;
   color: #fff;
   margin: 6px;
+  font-weight: 500;
 }
 
-.refresh-btn { background: #7f8c8d; }
-.refresh-btn:hover { background: #636e72; }
-.download-btn { background: #27ae60; }
-.download-btn:hover { background: #1e8449; }
+.refresh-btn { background: #6c757d; }
+.refresh-btn:hover { background: #5a6268; }
+.download-btn { background: #28a745; }
+.download-btn:hover { background: #218838; }
 
+/* Print Styles */
 @media print {
-  body, html { width: 210mm; height: 297mm; margin: 0 auto; padding: 0; background: #fff !important; }
-  .report-container { width: 100%; max-width: 190mm; margin: 0 auto; box-shadow: none; border: none; padding: 15mm; page-break-inside: avoid; }
+  body, html {
+    width: 210mm;
+    height: 297mm;
+    margin: 0;
+    padding: 0;
+    background: #fff !important;
+    font-size: 10pt; /* Base font size for print */
+  }
+  .report-container {
+    width: 100%;
+    max-width: 190mm;
+    margin: 0 auto;
+    box-shadow: none;
+    border: none;
+    padding: 10mm;
+    page-break-inside: avoid;
+  }
   .report-controls { display: none !important; }
-  .marks-section table { width: 100%; border-collapse: collapse; page-break-inside: avoid; }
-  .marks-section th, .marks-section td { font-size: 12px; padding: 5px; }
+  .marks-section table, .report-layout-container {
+    page-break-inside: avoid;
+  }
+  .marks-section th, .marks-section td {
+    font-size: 9pt;
+    padding: 4px;
+  }
+  #performanceKeySide {
+    font-size: 8pt;
+  }
+  .signatures {
+    margin-top: 30px;
+  }
 }

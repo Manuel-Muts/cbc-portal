@@ -1,0 +1,132 @@
+<!-- docs/users.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>User Management - Admin Portal</title>
+  <link rel="stylesheet" href="css/admin.css" />
+</head>
+<body>
+
+<div class="container">
+  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px; margin-top: 20px;">
+    <h2>User Management</h2>
+    <a href="/admin" class="btn secondary-btn">&larr; Back to Dashboard</a>
+  </div>
+
+  <!-- REGISTER USER CARD -->
+  <div class="card">
+    <h3>Register New User</h3>
+    <form id="registerForm">
+      <div class="form-group">
+        <label>Role</label>
+        <select id="userRole">
+          <option value="">-- Select Role --</option>
+          <option value="student">Learner</option>
+          <option value="teacher">Teacher</option>
+          <option value="accounts">Accounts</option>
+          <option value="admin">Admin</option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label>Full Name</label>
+        <input type="text" id="userName" placeholder="e.g. Emmanuel Mutegi">
+      </div>
+
+      <div class="form-group" id="emailGroup">
+        <label>Email Address</label>
+        <input type="email" id="userEmail" placeholder="e.g. muts@gmail.com">
+      </div>
+
+      <div class="flex-row" id="studentFields" style="display:none;">
+        <div class="col form-group">
+          <label>Admission Number</label>
+          <input type="text" id="userAdmission" placeholder="e.g.4521">
+        </div>
+        <div class="col form-group">
+          <label>Grade</label>
+          <select id="studentGrade">
+            <option value="">-- Select --</option>
+            <option value="1">Grade 1</option>
+            <option value="2">Grade 2</option>
+            <option value="3">Grade 3</option>
+            <option value="4">Grade 4</option>
+            <option value="5">Grade 5</option>
+            <option value="6">Grade 6</option>
+            <option value="7">Grade 7</option>
+            <option value="8">Grade 8</option>
+            <option value="9">Grade 9</option>
+            <option value="10">Grade 10</option>
+            <option value="11">Grade 11</option>
+            <option value="12">Grade 12</option>
+          </select>
+        </div>
+        <div class="col form-group">
+          <label>Stream (Optional)</label>
+          <input type="text" id="studentStream" placeholder="e.g. Blue">
+        </div>
+      </div>
+
+      <button type="submit" class="btn primary-btn">Register User</button>
+      <div id="registerFeedback" class="feedback"></div>
+    </form>
+  </div>
+
+  <!-- USERS LIST CARD -->
+  <div class="card">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
+      <h3>Registered Users</h3>
+      <div style="display:flex; gap: 10px;">
+        <input type="file" id="importUsersFile" accept=".csv, .xlsx, .xls" style="display:none;" />
+        <!--<button id="downloadTemplateBtn" class="btn secondary-btn" title="Download sample import file">📥 Template</button>-->
+        <button id="importUsersBtn" class="btn primary-btn">📂 Import Learners</button>
+        <button id="refreshUsersBtn" class="btn secondary-btn">🔄 Refresh</button>
+        <button id="exportUsersBtn" class="btn secondary-btn">📄 Export PDF</button>
+      </div>
+    </div>
+
+    <div id="importProgressContainer" style="display:none; margin-bottom: 15px;">
+      <div style="background-color: #e0e0e0; border-radius: 4px; height: 20px; overflow: hidden;">
+        <div id="importProgressBar" style="width: 0%; height: 100%; background-color: #4caf50; transition: width 0.3s ease;"></div>
+      </div>
+      <div id="importProgressText" style="text-align: center; font-size: 12px; margin-top: 5px; color: #666;"></div>
+    </div>
+    
+    <div style="display: flex; gap: 10px; margin-bottom: 15px;">
+      <input type="text" id="userSearchInput" placeholder="Search by name, email, or admission..." style="flex:1;">
+    </div>
+
+    <table id="usersTable">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Role</th>
+          <th>Email / Admission</th>
+          <th>Action</th>
+        </tr>
+      </thead>
+      <tbody>
+        <!-- Populated by JS -->
+      </tbody>
+    </table>
+
+    <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 15px; align-items: center;">
+      <button id="usersPrevPage" class="btn secondary-btn" disabled>Previous</button>
+      <span id="usersPageInfo">Page 1</span>
+      <button id="usersNextPage" class="btn secondary-btn" disabled>Next</button>
+    </div>
+  </div>
+</div>
+
+<!-- Load Config & Script -->
+<script src="js/config.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<!-- jsPDF for export -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.28/jspdf.plugin.autotable.min.js"></script>
+<script src="js/users.js"></script>
+
+</body>
+</html>

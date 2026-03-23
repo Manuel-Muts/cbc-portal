@@ -206,15 +206,6 @@ body {
   border: 1px solid #ccc;
   border-radius: 6px;
 }
-
-.close-btn {
-  background: #7f8c8d;
-  color: white;
-  padding: 10px 16px;
-  border: none;
-  border-radius: 6px;
-  cursor: pointer;
-}
 .card-header {
   display: flex;
   justify-content: space-between;

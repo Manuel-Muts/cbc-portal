@@ -7,44 +7,53 @@ document.addEventListener("DOMContentLoaded", () => {
   // To change the API endpoint, update config.js
   const API_BASE = config.api.baseURL; // backend base URL
 
+  // Cache state for overview page
+  let overviewCache = null;
+  let overviewLastFetch = 0;
+  const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
   // ---------------------------
   // SESSION CHECK
   // ---------------------------
-  function checkSession() {
-    const token = localStorage.getItem("token");
-    if (!token) {
-      alert("Please log in as super-admin.");
-      window.location.href = "/login";
-      return false;
-    }
-    return true;
-  }
-
   // ---------------------------
   // JWT FETCH HELPER
   // ---------------------------
   async function authFetch(url, options = {}) {
-    if (!checkSession()) return null;
-
     const token = localStorage.getItem("token");
-    options.headers = {
-      ...options.headers,
-      Authorization: `Bearer ${token}`,
-      // Don't set Content-Type if using FormData
-      ...(options.body instanceof FormData ? {} : { "Content-Type": "application/json" })
-    };
-
-    const res = await fetch(url.startsWith("https") ? url : API_BASE + url, options);
-
-    if (res.status === 401) {
-      alert("Session expired. Please log in again.");
-      localStorage.clear();
-      sessionStorage.clear();
+    if (!token) {
       window.location.href = "/login";
       return null;
     }
+    
+    const headers = {
+      ...options.headers,
+      Authorization: `Bearer ${token}`
+    };
 
-    return res;
+    if (!(options.body instanceof FormData) && !headers["Content-Type"]) {
+      headers["Content-Type"] = "application/json";
+    }
+
+    const configOptions = { ...options, headers };
+    
+    // Handle absolute vs relative URLs robustly
+    const finalUrl = url.startsWith("http") ? url : (API_BASE + url);
+
+    try {
+      const res = await fetch(finalUrl, configOptions);
+
+      if (res.status === 401) {
+        console.warn("Session expired or invalid token. Redirecting to login.");
+        localStorage.clear();
+        sessionStorage.clear();
+        window.location.href = "/login";
+        return null;
+      }
+      return res;
+    } catch (err) {
+      console.error("Network error:", err);
+      return null;
+    }
   }
 
   // ---------------------------
@@ -82,7 +91,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const activeItem = document.querySelector(".menu li.active");
     if (activeItem) {
       const page = activeItem.getAttribute("data-page");
-      loadPage(page);
+      loadPage(page, true);
     } else {
       location.reload();
     }
@@ -107,9 +116,7 @@ document.addEventListener("DOMContentLoaded", () => {
   // ---------------------------
   // LOAD PAGE FUNCTION
   // ---------------------------
-  async function loadPage(page) {
-    if (!checkSession()) return;
-
+  async function loadPage(page, forceRefresh = false) {
     switch (page) {
       case "overview":
         contentArea.innerHTML = `
@@ -141,9 +148,17 @@ document.addEventListener("DOMContentLoaded", () => {
           </div>
         `;
 
-        const overviewRes = await authFetch(`${API_BASE}/overview`);
-        if (!overviewRes) break;
-        const metrics = await overviewRes.json();
+        let metrics;
+        // Use cache if available, valid, and not forced to refresh
+        if (!forceRefresh && overviewCache && (Date.now() - overviewLastFetch < CACHE_TTL)) {
+          metrics = overviewCache;
+        } else {
+          const overviewRes = await authFetch(`/overview`);
+          if (!overviewRes) break;
+          metrics = await overviewRes.json();
+          overviewCache = metrics;
+          overviewLastFetch = Date.now();
+        }
 
         document.getElementById("totalSchools").textContent = `Schools: ${metrics.totalSchools}`;
         document.getElementById("totalAdmins").textContent = `Admins: ${metrics.totalAdmins}`;
@@ -258,7 +273,7 @@ document.addEventListener("DOMContentLoaded", () => {
         `;
 
         (async () => {
-          const res = await authFetch(`${API_BASE}/analytics`);
+          const res = await authFetch(`/analytics`);
           if (!res) return;
           const data = await res.json();
 
@@ -296,26 +311,11 @@ document.addEventListener("DOMContentLoaded", () => {
           <div class="card">
             <h2>System Logs</h2>
             <div id="logsTopArea" style="margin-bottom:12px;"></div>
-
-            <h3>Recent Payments</h3>
-            <div class="table-responsive">
-              <table class="table" id="recentPaymentsTable"><thead><tr><th>Date</th><th>Student</th><th>Admission</th><th class="number">Amount</th><th>Ref</th></tr></thead><tbody></tbody></table>
-            </div>
-
-            <h3>Recent Schools</h3>
-            <div class="table-responsive">
-              <table class="table" id="recentSchoolsTable2"><thead><tr><th>Date</th><th>School</th><th>Admin Email</th></tr></thead><tbody></tbody></table>
-            </div>
-
-            <h3>Recent Admins</h3>
-            <div class="table-responsive">
-              <table class="table" id="recentAdminsTable2"><thead><tr><th>Date</th><th>Name</th><th>Email</th></tr></thead><tbody></tbody></table>
-            </div>
           </div>
         `;
 
         (async () => {
-          const res = await authFetch(`${API_BASE}/logs`);
+          const res = await authFetch(`/logs`);
           if (!res) return;
           const data = await res.json();
 
@@ -326,24 +326,6 @@ document.addEventListener("DOMContentLoaded", () => {
             `<div class="analytics-card" style="margin-bottom:12px;"><h4>Top Failed Logins</h4><p>No failed login attempts recorded</p></div>`;
           const topArea = document.getElementById('logsTopArea');
           if (topArea) topArea.innerHTML = topHtml;
-
-          const paymentsTbody = document.querySelector('#recentPaymentsTable tbody');
-          paymentsTbody.innerHTML = '';
-          data.recentPayments.forEach(p => {
-            paymentsTbody.innerHTML += `<tr><td>${new Date(p.createdAt).toLocaleString()}</td><td>${p.studentId?.name||'-'}</td><td>${p.studentId?.admission||'-'}</td><td style="text-align:right">${p.amount}</td><td>${p.reference}</td></tr>`;
-          });
-
-          const schoolsTbody = document.querySelector('#recentSchoolsTable2 tbody');
-          schoolsTbody.innerHTML = '';
-          data.recentSchools.forEach(s => {
-            schoolsTbody.innerHTML += `<tr><td>${new Date(s.createdAt).toLocaleString()}</td><td>${s.name}</td><td>${s.adminEmail}</td></tr>`;
-          });
-
-          const adminsTbody = document.querySelector('#recentAdminsTable2 tbody');
-          adminsTbody.innerHTML = '';
-          data.recentAdmins.forEach(a => {
-            adminsTbody.innerHTML += `<tr><td>${new Date(a.createdAt).toLocaleString()}</td><td>${a.name}</td><td>${a.email}</td></tr>`;
-          });
         })();
 
         break;
@@ -393,6 +375,11 @@ document.addEventListener("DOMContentLoaded", () => {
           <tbody id="schoolsTable"></tbody>
         </table>
         <p id="noSchoolsFound" style="display:none; text-align:center; margin-top:10px; color:#888;">No results found</p>
+        <div class="pagination-controls" style="margin-top:15px; display:flex; justify-content:center; gap:10px; align-items:center;">
+          <button id="prevSchools" class="btn secondary-btn" disabled>Prev</button>
+          <span id="schoolsPageInfo">Page 1</span>
+          <button id="nextSchools" class="btn secondary-btn" disabled>Next</button>
+        </div>
       </div>
 
       <div id="addSchoolModal" class="modal hidden">
@@ -433,6 +420,10 @@ document.addEventListener("DOMContentLoaded", () => {
     const saveBtn = document.getElementById("saveSchoolBtn");
     const tableBody = document.getElementById("schoolsTable");
     const noResults = document.getElementById("noSchoolsFound");
+    
+    let currentSchoolPage = 1;
+    let totalSchoolPages = 1;
+    let searchDebounce;
 
     addBtn.addEventListener("click", () => modal.classList.remove("hidden"));
     window.closeAddModal = () => modal.classList.add("hidden");
@@ -455,22 +446,33 @@ document.addEventListener("DOMContentLoaded", () => {
       formData.append("address", address);
       if (logoFile) formData.append("logo", logoFile);
 
-      await authFetch(`${API_BASE}/schools`, {
+      await authFetch(`/schools`, {
         method: "POST",
         body: formData
       });
 
       modal.classList.add("hidden");
-      loadSchools();
+      loadSchools(1);
     });
 
     // ---------------------------
     // LOAD SCHOOLS
     // ---------------------------
-    async function loadSchools() {
-      const res = await authFetch(`${API_BASE}/schools`);
+    async function loadSchools(page = 1) {
+      const search = document.getElementById("searchSchools").value.trim();
+      tableBody.innerHTML = '<tr><td colspan="6" style="text-align:center">Loading...</td></tr>';
+      
+      const res = await authFetch(`/schools?page=${page}&limit=10&search=${encodeURIComponent(search)}`);
       if (!res) return;
-      const schools = await res.json();
+      
+      const data = await res.json();
+      const schools = data.schools || [];
+      totalSchoolPages = data.totalPages || 1;
+      currentSchoolPage = data.currentPage || page;
+
+      document.getElementById("schoolsPageInfo").textContent = `Page ${currentSchoolPage} of ${totalSchoolPages}`;
+      document.getElementById("prevSchools").disabled = currentSchoolPage <= 1;
+      document.getElementById("nextSchools").disabled = currentSchoolPage >= totalSchoolPages;
 
       tableBody.innerHTML = "";
       if (schools.length === 0) {
@@ -508,7 +510,7 @@ document.addEventListener("DOMContentLoaded", () => {
       document.querySelectorAll(".editSchoolBtn").forEach(btn => {
         btn.addEventListener("click", async () => {
           const id = btn.dataset.id;
-          const res = await authFetch(`${API_BASE}/schools/${id}`);
+          const res = await authFetch(`/schools/${id}`);
           const school = await res.json();
 
           document.getElementById("editSchoolName").value = school.name;
@@ -533,13 +535,13 @@ document.addEventListener("DOMContentLoaded", () => {
             formData.append("address", address);
             if (logoFile) formData.append("logo", logoFile);
 
-            await authFetch(`${API_BASE}/schools/${id}`, {
+            await authFetch(`/schools/${id}`, {
               method: "PUT",
               body: formData
             });
 
             document.getElementById("editSchoolModal").classList.add("hidden");
-            loadSchools();
+            loadSchools(currentSchoolPage);
           };
         });
       });
@@ -548,8 +550,8 @@ document.addEventListener("DOMContentLoaded", () => {
       document.querySelectorAll(".deleteSchoolBtn").forEach(btn => {
         btn.addEventListener("click", async () => {
           if (!confirm("Are you sure?")) return;
-          await authFetch(`${API_BASE}/schools/${btn.dataset.id}`, { method: "DELETE" });
-          loadSchools();
+          await authFetch(`/schools/${btn.dataset.id}`, { method: "DELETE" });
+          loadSchools(currentSchoolPage);
         });
       });
 
@@ -559,7 +561,7 @@ document.addEventListener("DOMContentLoaded", () => {
           const id = btn.dataset.id;
           const currentStatus = btn.dataset.status;
 
-          const res = await authFetch(`${API_BASE}/schools/${id}/toggle-status`, { method: "PATCH" });
+          const res = await authFetch(`/schools/${id}/toggle-status`, { method: "PATCH" });
           if (!res) return;
           const data = await res.json();
 
@@ -571,7 +573,7 @@ document.addEventListener("DOMContentLoaded", () => {
           btn.dataset.status = data.school.status;
           alert(data.msg);
 
-          loadSchools();
+          loadSchools(currentSchoolPage); // Refresh to update cache
         });
       });
     }
@@ -580,19 +582,26 @@ document.addEventListener("DOMContentLoaded", () => {
     // SEARCH SCHOOLS
     // ---------------------------
     document.getElementById("searchSchools").addEventListener("input", (e) => {
-      const query = e.target.value.toLowerCase();
-      let visibleCount = 0;
-      document.querySelectorAll("#schoolsTable tr").forEach(row => {
-        const schoolName = row.children[1].textContent.toLowerCase();
-        const adminEmail = row.children[2].textContent.toLowerCase();
-        const match = schoolName.includes(query) || adminEmail.includes(query);
-        row.style.display = match ? "" : "none";
-        if (match) visibleCount++;
-      });
-      noResults.style.display = visibleCount === 0 ? "block" : "none";
+      clearTimeout(searchDebounce);
+      searchDebounce = setTimeout(() => {
+        loadSchools(1);
+      }, 500);
     });
 
-    loadSchools();
+    document.getElementById("prevSchools").addEventListener("click", () => {
+      if (currentSchoolPage > 1) {
+        loadSchools(currentSchoolPage - 1);
+      }
+    });
+
+    document.getElementById("nextSchools").addEventListener("click", () => {
+      if (currentSchoolPage < totalSchoolPages) {
+        loadSchools(currentSchoolPage + 1);
+      }
+    });
+
+    // Initial load
+    loadSchools(1);
   }
   // ---------------------------
   // ADMINS LOGIC
@@ -618,6 +627,11 @@ document.addEventListener("DOMContentLoaded", () => {
           </thead>
           <tbody id="adminsTable"></tbody>
         </table>
+        <div class="pagination-controls" style="margin-top:15px; display:flex; justify-content:center; gap:10px; align-items:center;">
+          <button id="prevAdmins" class="btn secondary-btn" disabled>Prev</button>
+          <span id="adminsPageInfo">Page 1</span>
+          <button id="nextAdmins" class="btn secondary-btn" disabled>Next</button>
+        </div>
       </div>
       <div id="addAdminModal" class="modal hidden">
         <div class="modal-content">
@@ -653,21 +667,37 @@ document.addEventListener("DOMContentLoaded", () => {
     const tableBody = document.getElementById("adminsTable");
     const newAdminSchool = document.getElementById("newAdminSchool");
     const editAdminSchool = document.getElementById("editAdminSchool");
+    
+    let currentAdminPage = 1;
+    let totalAdminPages = 1;
+    let adminSearchDebounce;
 
     async function loadSchoolsOptions() {
-      const res = await authFetch(`${API_BASE}/schools`);
+      const res = await authFetch(`/schools?limit=1000`);
       if (!res) return;
-      const schools = await res.json();
+      const data = await res.json();
+      const schools = data.schools || [];
       [newAdminSchool, editAdminSchool].forEach(sel => {
         sel.innerHTML = "";
         schools.forEach(s => sel.innerHTML += `<option value="${s._id}">${s.name}</option>`);
       });
     }
 
-    async function loadAdmins() {
-      const res = await authFetch(`${API_BASE}/admins`);
+    async function loadAdmins(page = 1) {
+      const search = document.getElementById("searchAdmins").value.trim();
+      tableBody.innerHTML = '<tr><td colspan="6" style="text-align:center">Loading...</td></tr>';
+
+      const res = await authFetch(`/admins?page=${page}&limit=10&search=${encodeURIComponent(search)}`);
       if (!res) return;
-      const admins = await res.json();
+      const data = await res.json();
+      const admins = data.admins || [];
+      totalAdminPages = data.totalPages || 1;
+      currentAdminPage = data.currentPage || page;
+
+      document.getElementById("adminsPageInfo").textContent = `Page ${currentAdminPage} of ${totalAdminPages}`;
+      document.getElementById("prevAdmins").disabled = currentAdminPage <= 1;
+      document.getElementById("nextAdmins").disabled = currentAdminPage >= totalAdminPages;
+
       tableBody.innerHTML = "";
       admins.forEach((a, i) => {
         tableBody.innerHTML += `
@@ -690,7 +720,7 @@ document.addEventListener("DOMContentLoaded", () => {
       document.querySelectorAll(".editAdminBtn").forEach(btn => {
         btn.addEventListener("click", async () => {
           const id = btn.dataset.id;
-          const res = await authFetch(`${API_BASE}/admins/${id}`);
+          const res = await authFetch(`/admins/${id}`);
           const admin = await res.json();
 
           document.getElementById("editAdminName").value = admin.name;
@@ -702,9 +732,9 @@ document.addEventListener("DOMContentLoaded", () => {
             const name = document.getElementById("editAdminName").value.trim();
             const email = document.getElementById("editAdminEmail").value.trim();
             const schoolId = document.getElementById("editAdminSchool").value;
-            await authFetch(`${API_BASE}/admins/${id}`, { method: "PUT", body: JSON.stringify({ name, email, schoolId }) });
+            await authFetch(`/admins/${id}`, { method: "PUT", body: JSON.stringify({ name, email, schoolId }) });
             document.getElementById("editAdminModal").classList.add("hidden");
-            loadAdmins();
+            loadAdmins(currentAdminPage);
           };
         });
       });
@@ -712,21 +742,30 @@ document.addEventListener("DOMContentLoaded", () => {
       document.querySelectorAll(".deleteAdminBtn").forEach(btn => {
         btn.addEventListener("click", async () => {
           if (!confirm("Are you sure?")) return;
-          await authFetch(`${API_BASE}/admins/${btn.dataset.id}`, { method: "DELETE" });
-          loadAdmins();
+          await authFetch(`/admins/${btn.dataset.id}`, { method: "DELETE" });
+          loadAdmins(currentAdminPage);
         });
       });
     }
 
     // Search Admins
     document.getElementById("searchAdmins").addEventListener("input", e => {
-      const query = e.target.value.toLowerCase();
-      document.querySelectorAll("#adminsTable tr").forEach(row => {
-        const name = row.children[1].textContent.toLowerCase();
-        const email = row.children[2].textContent.toLowerCase();
-        const school = row.children[3].textContent.toLowerCase();
-        row.style.display = (name.includes(query) || email.includes(query) || school.includes(query)) ? "" : "none";
-      });
+      clearTimeout(adminSearchDebounce);
+      adminSearchDebounce = setTimeout(() => {
+        loadAdmins(1);
+      }, 500);
+    });
+
+    document.getElementById("prevAdmins").addEventListener("click", () => {
+      if (currentAdminPage > 1) {
+        loadAdmins(currentAdminPage - 1);
+      }
+    });
+
+    document.getElementById("nextAdmins").addEventListener("click", () => {
+      if (currentAdminPage < totalAdminPages) {
+        loadAdmins(currentAdminPage + 1);
+      }
     });
 
     addBtn.addEventListener("click", () => modal.classList.remove("hidden"));
@@ -739,13 +778,13 @@ document.addEventListener("DOMContentLoaded", () => {
       const schoolId = document.getElementById("newAdminSchool").value;
       if (!name || !email || !schoolId) return alert("Fill all fields");
       const password = generatePassword();
-      await authFetch(`${API_BASE}/admins`, { method: "POST", body: JSON.stringify({ name, email, schoolId, password }) });
+      await authFetch(`/admins`, { method: "POST", body: JSON.stringify({ name, email, schoolId, password }) });
       modal.classList.add("hidden");
-      loadAdmins();
+      loadAdmins(1);
     });
 
     await loadSchoolsOptions();
-    loadAdmins();
+    loadAdmins(1);
   }
 
   // ---------------------------
@@ -754,7 +793,7 @@ document.addEventListener("DOMContentLoaded", () => {
   function initSettingsPage() {
     // fetch current settings
     (async () => {
-      const res = await authFetch(`${API_BASE}/settings`);
+      const res = await authFetch(`/settings`);
       if (!res) return;
       const data = await res.json();
       const s = data.settings || {};
@@ -770,7 +809,7 @@ document.addEventListener("DOMContentLoaded", () => {
           saveBtn.disabled = true;
           saveBtn.textContent = 'Saving...';
           // Use relative path so authFetch appends API_BASE
-          const r = await authFetch(`${API_BASE}/settings`, { method: 'PUT', body: JSON.stringify(payload) });
+          const r = await authFetch(`/settings`, { method: 'PUT', body: JSON.stringify(payload) });
           if (!r) throw new Error('No response (session?)');
           if (r.ok) {
             alert('Settings saved');

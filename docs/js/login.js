@@ -23,7 +23,8 @@ document.addEventListener("DOMContentLoaded", function () {
   classteacher: "/analysis",
   accounts: "/accounts",
   admin: "/admin",
-  superAdmin: "/super-admin"
+  superAdmin: "/super-admin",
+  super_admin: "/super-admin"
 };
 
 
@@ -39,7 +40,7 @@ document.addEventListener("DOMContentLoaded", function () {
       show(admissionField); show(admissionLabel);
       admissionLabel.textContent = "Admission Number";
       hide(emailField); hide(emailLabel);
-    } else if (["teacher", "admin", "classteacher", "accounts", "superAdmin"].includes(selectedRole)) {
+    } else if (["teacher", "admin", "classteacher", "accounts", "superAdmin", "super_admin"].includes(selectedRole)) {
       show(emailField); show(emailLabel);
       show(admissionField); show(admissionLabel);
       hide(firstnameField); hide(firstnameLabel);
@@ -82,6 +83,9 @@ document.addEventListener("DOMContentLoaded", function () {
     if (!selectedRole) return alert("Please select your role.");
 
     let payload = { role: selectedRole };
+    
+    // Normalize superAdmin role for backend if the dropdown uses camelCase
+    if (payload.role === 'superAdmin') payload.role = 'super_admin';
 
     if (selectedRole === "student" || selectedRole === "learner") {
       const fullname = firstnameField.value.trim();

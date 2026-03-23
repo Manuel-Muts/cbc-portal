@@ -168,10 +168,9 @@ input {
 </style>
 
 <!-- MODAL SCRIPT -->
+<script src="js/config.js"></script>
 <script>
 document.addEventListener("DOMContentLoaded", () => {
-  const API_BASE = "https://competence-hub.onrender.com";   // <- VERY IMPORTANT
-
   const modal = document.getElementById("superAdminModal");
   const openBtn = document.getElementById("openSuperAdminModal");
   const closeBtn = modal.querySelector(".close");
@@ -204,7 +203,7 @@ document.addEventListener("DOMContentLoaded", () => {
     submitBtn.innerHTML = '<span class="spinner"></span>Logging in...';
 
     try {
-      const res = await fetch(`${API_BASE}/api/users/login`, {
+      const res = await fetch(config.getApiUrl(`/users/login`), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ 

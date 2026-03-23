@@ -177,7 +177,10 @@ if (config.app.debug) {
   console.log(`[CONFIG] API Base URL: ${config.api.baseURL}`);
 }
 
-// Export for use in other files
+// Make config globally available for browser environment
+window.config = config;
+
+// Export for use in other files (Node.js environments)
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = config;
 }

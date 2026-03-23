@@ -1,705 +1,758 @@
-// accounts.js - Student Accounts Management
-// API_BASE is now loaded from config.js
-// To change the API endpoint, update config.js
-const API_BASE = config.api.baseURL;
-const token = localStorage.getItem("token");
-
-if (!token) {
-  alert("Please login first");
-  window.location.href = "/login";
-}
-
-const headers = {
-  "Authorization": `Bearer ${token}`,
-  "Content-Type": "application/json"
-};
-
-const tableBody = document.getElementById("accountsTableBody");
-const refreshBtn = document.getElementById("refreshBtn");
-
-let selectedStudentAdmission = null;
-let accountsData = [];
-
-/* ===============================
-   LOAD ACCOUNTS (MAIN FUNCTION)
-================================ */
-async function loadAccounts() {
-  try {
-    console.log("Fetching accounts data...");
-    const res = await fetch(`${API_BASE}/accounts`, { headers });
-
-    if (!res.ok) {
-      const text = await res.text();
-      throw new Error(text);
-    }
-
-    const data = await res.json();
-    accountsData = data;
-    console.log(`Loaded ${data.length} accounts`);
-
-    renderFiltered();
-
-    // also load posted fee structures
-    console.log("Loading fee structures...");
-    await loadFeeStructures();
-    console.log("Fee structures loaded");
-
-    // load outstanding fees
-    console.log("Loading outstanding fees...");
-    await loadOutstandingFees();
-    console.log("Outstanding fees loaded");
-
-  } catch (err) {
-    console.error("Accounts load error:", err.message);
-    alert("Accounts API not reachable");
-  }
-}
-
-async function loadFeeStructures() {
-  try {
-    const res = await fetch(`${API_BASE}/accounts/fee-structures`, { headers });
-    if (!res.ok) {
-      const tbody = document.getElementById('feeStructuresTableBody');
-      tbody.innerHTML = '<tr><td colspan="7" style="text-align: center; color: #dc3545;">Failed to load fee structures</td></tr>';
-      return;
-    }
-    const list = await res.json();
-    const tbody = document.getElementById('feeStructuresTableBody');
-
-    if (!list.length) {
-      tbody.innerHTML = '<tr><td colspan="7" style="text-align: center; color: #666;">No fee structures posted yet.</td></tr>';
-      return;
-    }
-
-    tbody.innerHTML = list.map(f => `
-      <tr>
-        <td><strong>${f.grade}</strong></td>
-        <td>${f.academicYear}</td>
-        <td>KES ${f.term1Fee.toLocaleString()}</td>
-        <td>KES ${f.term2Fee.toLocaleString()}</td>
-        <td>KES ${f.term3Fee.toLocaleString()}</td>
-        <td><strong>KES ${f.totalFee.toLocaleString()}</strong></td>
-        <td>
-          <button onclick="editFee('${f._id}', '${escapeHtml(f.grade)}', ${f.academicYear}, ${f.term1Fee}, ${f.term2Fee}, ${f.term3Fee})" style="margin-right: 5px;">Edit</button>
-          <button onclick="deleteFee('${f._id}')" style="background: #dc3545; color: white; border: none; padding: 4px 8px; border-radius: 4px; cursor: pointer;">Delete</button>
-        </td>
-      </tr>
-    `).join('');
-  } catch (err) {
-    console.error('Load fee structures error', err);
-    const tbody = document.getElementById('feeStructuresTableBody');
-    tbody.innerHTML = '<tr><td colspan="7" style="text-align: center; color: #dc3545;">Failed to load fee structures</td></tr>';
-  }
-}
-
-// small utility to escape single quotes
-function escapeHtml(s){ return String(s).replace(/'/g, "\\'"); }
-
-// edit handler: populate modal and set dataset id
-window.editFee = function(id, grade, academicYear, term1Fee, term2Fee, term3Fee){
-  document.getElementById('feeGrade').value = grade;
-  document.getElementById('feeYear').value = academicYear;
-  document.getElementById('feeTerm1').value = term1Fee;
-  document.getElementById('feeTerm2').value = term2Fee;
-  document.getElementById('feeTerm3').value = term3Fee;
-  const modal = document.getElementById('postFeeModal');
-  modal.classList.remove('hidden');
-  const saveBtn = document.getElementById('saveFeeBtn');
-  saveBtn.dataset.editId = id;
-}
-
-window.deleteFee = async function(id){
-  if (!confirm('Delete this fee structure?')) return;
-  try{
-    const res = await fetch(`${API_BASE}/accounts/fee-structure/${id}`, { method: 'DELETE', headers });
-    const j = await res.json();
-    if (!res.ok) throw new Error(j.message || 'Delete failed');
-    alert('Deleted');
-    loadFeeStructures();
-    loadAccounts();
-  }catch(err){
-    console.error(err);
-    alert(err.message || 'Delete failed');
-  }
-}
-
-/* ===============================
-   REFRESH BUTTON
-================================ */
-refreshBtn.addEventListener("click", async () => {
-  console.log("Refresh button clicked");
-  refreshBtn.disabled = true;
-  refreshBtn.textContent = "Refreshing...";
-  refreshBtn.style.opacity = "0.7";
-
-  try {
-    // Reset filters before refreshing
-    document.getElementById('searchInput').value = '';
-    document.getElementById('classFilter').value = '';
-    document.getElementById('outstandingClassFilter').value = '';
-    document.getElementById('outstandingTermFilter').value = '';
-    document.getElementById('outstandingSearchInput').value = '';
-
-    console.log("Starting loadAccounts...");
-    await loadAccounts();
-    console.log("loadAccounts completed");
-  } catch (err) {
-    console.error("Refresh failed:", err);
-    alert("Failed to refresh data. Please try again.");
-  } finally {
-    refreshBtn.disabled = false;
-    refreshBtn.textContent = "🔄 Refresh Data";
-    refreshBtn.style.opacity = "1";
-    console.log("Refresh completed");
-  }
-});
-
-function renderTable(data) {
-  tableBody.innerHTML = "";
-
-  data.forEach(row => {
-    const termBalances = row.termBalances || {
-      term1: { fee: 0, paid: 0, balance: 0 },
-      term2: { fee: 0, paid: 0, balance: 0 },
-      term3: { fee: 0, paid: 0, balance: 0 }
-    };
-
-    const totalBalance = row.balance;
-    let totalBalanceClass = totalBalance > 0 ? "balance-negative" : (totalBalance === 0 ? "balance-zero" : "balance-positive");
-
-    const tr = document.createElement("tr");
-
-    // Helper function to get balance class
-    const getBalanceClass = (balance) => {
-      return balance > 0 ? "balance-negative" : (balance === 0 ? "balance-zero" : "balance-positive");
-    };
-
-    const payButton = `<button class="action-btn pay-btn" onclick="openPaymentModal('${row.admission}', '${row.studentName}')">Pay</button>`;
-    const ledgerButton = `<button class="action-btn" onclick="openLedger('${row.admission}')">Ledger</button>`;
-
-    tr.innerHTML = `
-      <td><strong>${row.studentName}</strong><br><small style="color: #666;">${row.admission}</small></td>
-      <td>${row.className}</td>
-
-      <td>KES ${termBalances.term1.fee.toLocaleString()}</td>
-      <td>KES ${termBalances.term1.paid.toLocaleString()}</td>
-      <td class="${getBalanceClass(termBalances.term1.balance)}">KES ${termBalances.term1.balance.toLocaleString()}</td>
-
-      <td>KES ${termBalances.term2.fee.toLocaleString()}</td>
-      <td>KES ${termBalances.term2.paid.toLocaleString()}</td>
-      <td class="${getBalanceClass(termBalances.term2.balance)}">KES ${termBalances.term2.balance.toLocaleString()}</td>
-
-      <td>KES ${termBalances.term3.fee.toLocaleString()}</td>
-      <td>KES ${termBalances.term3.paid.toLocaleString()}</td>
-      <td class="${getBalanceClass(termBalances.term3.balance)}">KES ${termBalances.term3.balance.toLocaleString()}</td>
-
-      <td><strong>KES ${row.expected.toLocaleString()}</strong></td>
-      <td><strong>KES ${row.paid.toLocaleString()}</strong></td>
-      <td class="${totalBalanceClass}"><strong>KES ${totalBalance.toLocaleString()}</strong></td>
-
-      <td>${payButton} ${ledgerButton}</td>
-    `;
-    tableBody.appendChild(tr);
-  });
-}
-
-/* ===============================
-   RENDER FILTERED
-================================ */
-function renderFiltered() {
-  const q = document.getElementById('searchInput').value.trim().toLowerCase();
-  const cls = document.getElementById('classFilter').value;
-
-  let filtered = accountsData.slice();
-  if (cls) filtered = filtered.filter(r => r.className === cls);
-  if (q) filtered = filtered.filter(r => r.studentName.toLowerCase().includes(q));
-
-  renderTable(filtered);
-  calculateTotals(filtered);
-  renderClassSummary(filtered);
-}
-
-/* ===============================
-   TOTALS + CHART
-================================ */
-function calculateTotals(data) {
-  let expected = 0;
-  let paid = 0;
-
-  data.forEach(r => {
-    expected += r.expected;
-    paid += r.paid;
-  });
-
-  document.getElementById("totalExpected").textContent = `KES ${expected.toLocaleString()}`;
-  document.getElementById("totalPaid").textContent = `KES ${paid.toLocaleString()}`;
-  document.getElementById("totalBalance").textContent = `KES ${(expected - paid).toLocaleString()}`;
-
-  drawChart(expected, paid);
-}
-
-/* ===============================
-   CLASS SUMMARY
-================================ */
-function renderClassSummary(data) {
-  const grid = document.getElementById("classSummaryGrid");
-  grid.innerHTML = "";
-
-  const grouped = {};
-
-  data.forEach(r => {
-    if (!grouped[r.className]) {
-      grouped[r.className] = { expected: 0, paid: 0 };
-    }
-    grouped[r.className].expected += r.expected;
-    grouped[r.className].paid += r.paid;
-  });
-
-  Object.entries(grouped).forEach(([cls, v]) => {
-    const balance = v.expected - v.paid;
-    grid.innerHTML += `
-      <div class="stat-card">
-        <h4>${cls}</h4>
-        <p>KES ${balance.toLocaleString()}</p>
-      </div>
-    `;
-  });
-}
-
-/* ===============================
-   PAYMENT MODAL
-================================ */
-function openPaymentModal(admission, studentName) {
-  selectedStudentAdmission = admission;
-  // also store on the save button dataset to avoid relying only on outer-scope var
-  const saveBtn = document.getElementById('savePaymentBtn');
-  if (saveBtn) saveBtn.dataset.admission = admission;
-  document.getElementById("modalStudentName").textContent = studentName;
-  document.getElementById("paymentAmount").value = '';
-  document.getElementById("paymentReference").value = '';
-  // default the payment term to page term filter if present
-  const pageTerm = document.getElementById('termFilter')?.value || '';
-  const paymentTermEl = document.getElementById('paymentTerm');
-  if (paymentTermEl) paymentTermEl.value = pageTerm;
-  document.getElementById("paymentModal").classList.remove("hidden");
-}
-
-function closePaymentModal() {
-  document.getElementById("paymentModal").classList.add("hidden");
-}
-
-/* ===============================
-   LEDGER
-================================ */
-async function openLedger(admission) {
-  try {
-    const res = await fetch(`${API_BASE}/users/ledger/${admission}`, { headers });
-    if (!res.ok) throw new Error("Failed to load ledger");
-    const data = await res.json();
-
-    const body = document.getElementById("ledgerTableBody");
-    body.innerHTML = "";
-
-    (data.payments || []).forEach(p => {
-      const status = (p.method === 'reversal' || (p.amount || 0) < 0) ? 'REVERSED' : 'POSTED';
-      const actionCell = status === 'POSTED' ? `<button onclick="reversePayment('${p._id}')">Reverse</button>` : '-';
-      body.innerHTML += `
-        <tr>
-          <td>${new Date(p.createdAt).toLocaleDateString()}</td>
-          <td>KES ${Math.abs(p.amount).toLocaleString()}</td>
-          <td>${p.method}</td>
-          <td>${p.reference || "-"}</td>
-          <td>${status}</td>
-          <td>${actionCell}</td>
-        </tr>
-      `;
-    });
-
-    document.getElementById("ledgerModal").classList.remove("hidden");
-
-  } catch (err) {
-    console.error(err);
-    alert("Failed to load ledger");
-  }
-}
-
-function closeLedgerModal() {
-  document.getElementById("ledgerModal").classList.add("hidden");
-}
-
-/* ===============================
-   REVERSE PAYMENT
-================================ */
-async function reversePayment(paymentId) {
-  if (!confirm("Reverse this payment?")) return;
-  // Require a reason (backend validation requires it)
-  const reason = prompt('Enter reason for reversal (required):');
-  if (reason === null) return; // user cancelled
-  if (!reason.trim()) return alert('Reversal reason is required');
-
-  try {
-    const res = await fetch(`${API_BASE}/users/reverse`, {
-      method: "POST",
-      headers,
-      body: JSON.stringify({ paymentId, reason: reason.trim() })
-    });
-    if (!res.ok) {
-      const err = await res.json();
-      throw new Error(err.message || 'Reverse failed');
-    }
-
-    alert("Payment reversed");
-    loadAccounts();
-    closeLedgerModal();
-  } catch (err) {
-    console.error(err);
-    alert(err.message || "Failed to reverse payment");
-  }
-}
-
-/* ===============================
-   DOWNLOAD REPORTS (PDF & EXCEL)
-================================ */
-function downloadReport(type) {
-  const cls = document.getElementById("classFilter").value || "";
-  const term = document.getElementById("termFilter").value || "";
-
-  const url =
-    `${API_BASE}/reports/fees?format=${type}&class=${encodeURIComponent(cls)}&term=${encodeURIComponent(term)}`;
-
-  // fetch with auth header so token is sent
-  fetch(url, { headers })
-    .then(async (res) => {
-      if (!res.ok) throw new Error('Report download failed');
-      const blob = await res.blob();
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `fees_report.${type}`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      window.URL.revokeObjectURL(url);
-    })
-    .catch(err => {
-      console.error(err);
-      alert('Failed to download report');
-    });
-}
-
-/* ===============================
-   DOWNLOAD FEE STRUCTURES PDF
-================================ */
-document.getElementById('downloadFeeStructuresPDF').addEventListener('click', async () => {
-  try {
-    const res = await fetch(`${API_BASE}/reports/fee-structures`, { headers });
-    if (!res.ok) throw new Error('PDF download failed');
-
-    const blob = await res.blob();
-    const url = window.URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `fee_structures_${new Date().toISOString().split('T')[0]}.pdf`;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    window.URL.revokeObjectURL(url);
-  } catch (err) {
-    console.error(err);
-    alert('Failed to download fee structures PDF');
-  }
-});
-
-/* ===============================
-   CHART
-================================ */
-function drawChart(expected, paid) {
-  const canvas = document.getElementById("feesChart");
-  const ctx = canvas.getContext("2d");
-
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-  const balance = expected - paid;
-  const max = Math.max(expected, paid, balance);
-
-  const barWidth = 80;
-  const base = canvas.height - 30;
-
-  function bar(x, val, label) {
-    const h = (val / max) * 80;
-    ctx.fillStyle = "#2563eb";
-    ctx.fillRect(x, base - h, barWidth, h);
-    ctx.fillStyle = "#000";
-    ctx.fillText(label, x, base + 15);
-  }
-
-  bar(40, expected, "Expected");
-  bar(160, paid, "Paid");
-  bar(280, balance, "Balance");
-}
-
-/* ===============================
-   LOGOUT
-================================ */
-document.getElementById("logoutBtn").addEventListener("click", () => {
-  localStorage.clear();
-  window.location.href = "/login";
-});
-
-// Save payment handler
-document.getElementById("savePaymentBtn").addEventListener("click", async () => {
-  const amount = Number(document.getElementById("paymentAmount").value || 0);
-  const method = document.getElementById("paymentMethod").value;
-  const term = document.getElementById("paymentTerm")?.value || document.getElementById("termFilter").value || "";
-  const reference = document.getElementById('paymentReference').value.trim();
-
-  // admission may be stored on the button dataset or in the outer variable
-  const saveBtn = document.getElementById('savePaymentBtn');
-  const admission = (saveBtn && saveBtn.dataset && saveBtn.dataset.admission) || selectedStudentAdmission;
-
-  if (!admission) return alert('No student selected');
-  if (!amount || amount <= 0) return alert('Enter a valid amount');
-  if (!reference) return alert('Enter a reference (e.g., receipt number)');
-  if (!term) return alert('Select term');
-
-  try {
-    const res = await fetch(`${API_BASE}/users/record`, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({ admission, amount, method: method.toLowerCase(), reference, term })
-    });
-    if (!res.ok) {
-      const err = await res.json();
-      throw new Error(err.message || 'Failed to record payment');
-    }
-
-    alert('Payment recorded');
-    closePaymentModal();
-    loadAccounts();
-  } catch (err) {
-    console.error(err);
-    alert(err.message || 'Failed to record payment');
-  }
-});
-
-// Open Post Fee modal
-const openPostFeeBtn = document.getElementById('openPostFeeBtn');
-if (openPostFeeBtn) {
-  openPostFeeBtn.addEventListener('click', () => {
-    document.getElementById('postFeeModal').classList.remove('hidden');
-    // default year to current
-    const fy = document.getElementById('feeYear');
-    if (fy && !fy.value) fy.value = new Date().getFullYear();
-  });
-}
-
-// Save fee structure
-document.getElementById('saveFeeBtn').addEventListener('click', async () => {
-  const grade = document.getElementById('feeGrade').value.trim();
-  const year = Number(document.getElementById('feeYear').value);
-  const term1Fee = Number(document.getElementById('feeTerm1').value);
-  const term2Fee = Number(document.getElementById('feeTerm2').value);
-  const term3Fee = Number(document.getElementById('feeTerm3').value);
-
-  if (!grade) return alert('Enter grade');
-  if (!year || isNaN(year)) return alert('Enter valid academic year');
-  if (isNaN(term1Fee) || term1Fee < 0) return alert('Enter valid Term 1 fee');
-  if (isNaN(term2Fee) || term2Fee < 0) return alert('Enter valid Term 2 fee');
-  if (isNaN(term3Fee) || term3Fee < 0) return alert('Enter valid Term 3 fee');
-  if (term1Fee + term2Fee + term3Fee <= 0) return alert('Total fee must be greater than 0');
-
-  try {
-    const saveBtn = document.getElementById('saveFeeBtn');
-    const editId = saveBtn.dataset.editId;
-    let res;
-    if (editId) {
-      res = await fetch(`${API_BASE}/accounts/fee-structure/${editId}`, {
-        method: 'PUT',
-        headers,
-        body: JSON.stringify({ grade, academicYear: year, term1Fee, term2Fee, term3Fee })
-      });
-    } else {
-      res = await fetch(`${API_BASE}/accounts/fee-structure`, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({ grade, academicYear: year, term1Fee, term2Fee, term3Fee })
-      });
-    }
-
-    const json = await res.json();
-    if (!res.ok) throw new Error(json.message || 'Failed to save fee structure');
-
-    alert(editId ? 'Fee structure updated' : 'Fee structure saved');
-    document.getElementById('postFeeModal').classList.add('hidden');
-    // clear inputs and dataset
-    document.getElementById('feeGrade').value = '';
-    document.getElementById('feeTerm1').value = '';
-    document.getElementById('feeTerm2').value = '';
-    document.getElementById('feeTerm3').value = '';
-    delete saveBtn.dataset.editId;
-    // refresh panels and accounts
-    loadFeeStructures();
-    loadAccounts();
-  } catch (err) {
-    console.error(err);
-    alert(err.message || 'Failed to save fee structure');
-  }
-});
-
-// Search + filters (client-side)
-document.getElementById('searchInput').addEventListener('input', (e) => {
-  renderFiltered();
-});
-
-document.getElementById('classFilter').addEventListener('change', () => renderFiltered());
-
-/* ===============================
-   OUTSTANDING FEES
-================================ */
-let outstandingFeesData = [];
-
-async function loadOutstandingFees() {
-  try {
-    const classFilter = document.getElementById('outstandingClassFilter').value;
-    const termFilter = document.getElementById('outstandingTermFilter').value;
-    const nameFilter = document.getElementById('outstandingSearchInput').value;
-
-    const params = new URLSearchParams();
-    if (classFilter) params.append('class', classFilter);
-    if (termFilter) params.append('term', termFilter);
-    if (nameFilter) params.append('name', nameFilter);
-
-    const res = await fetch(`${API_BASE}/reports/outstanding-fees?${params}`, { headers });
-
-    if (!res.ok) {
-      const text = await res.text();
-      throw new Error(text);
-    }
-
-    outstandingFeesData = await res.json();
-    renderOutstandingFees();
-
-  } catch (err) {
-    console.error("Outstanding fees load error:", err.message);
-    const tbody = document.getElementById('outstandingFeesTableBody');
-    tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; color: #dc3545;">Failed to load outstanding fees</td></tr>';
-  }
-}
-
-function renderOutstandingFees() {
-  const tbody = document.getElementById('outstandingFeesTableBody');
-
-  if (!outstandingFeesData.length) {
-    tbody.innerHTML = '<tr><td colspan="15" style="text-align: center; color: #666;">No students with outstanding fees found.</td></tr>';
+// docs/js/accounts.js
+(function () {
+  const API_BASE = config.api.baseURL;
+  const token = localStorage.getItem("token");
+
+  if (!token) {
+    window.location.href = "/login";
     return;
   }
 
-  // Update class filter with unique classes from data
-  populateClassFilter();
+  const headers = {
+    "Authorization": `Bearer ${token}`,
+    "Content-Type": "application/json"
+  };
 
-  tbody.innerHTML = outstandingFeesData.map(student => {
-    const t1 = student.termBalances.term1 || { fee: 0, paid: 0, balance: 0 };
-    const t2 = student.termBalances.term2 || { fee: 0, paid: 0, balance: 0 };
-    const t3 = student.termBalances.term3 || { fee: 0, paid: 0, balance: 0 };
+  // Cache State
+  let statsCache = null;
+  let statsLastFetch = 0;
+  let feeStructuresCache = null;
+  let feesLastFetch = 0;
+  const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
-    return `
-      <tr>
-        <td>${student.admission}</td>
-        <td>${student.studentName}</td>
-        <td>${student.className}</td>
-        <td>KES ${t1.fee.toLocaleString()}</td>
-        <td>KES ${t1.paid.toLocaleString()}</td>
-        <td style="color: ${t1.balance > 0 ? '#dc3545' : '#28a745'};">KES ${t1.balance.toLocaleString()}</td>
-        <td>KES ${t2.fee.toLocaleString()}</td>
-        <td>KES ${t2.paid.toLocaleString()}</td>
-        <td style="color: ${t2.balance > 0 ? '#dc3545' : '#28a745'};">KES ${t2.balance.toLocaleString()}</td>
-        <td>KES ${t3.fee.toLocaleString()}</td>
-        <td>KES ${t3.paid.toLocaleString()}</td>
-        <td style="color: ${t3.balance > 0 ? '#dc3545' : '#28a745'};">KES ${t3.balance.toLocaleString()}</td>
-        <td><strong>KES ${student.expected.toLocaleString()}</strong></td>
-        <td><strong>KES ${student.paid.toLocaleString()}</strong></td>
-        <td style="color: #dc3545; font-weight: bold;">KES ${student.balance.toLocaleString()}</td>
-      </tr>
-    `;
-  }).join('');
-}
-
-// Populate class filter with unique classes (including streams)
-function populateClassFilter() {
-  const classFilter = document.getElementById('outstandingClassFilter');
-  const uniqueClasses = [...new Set(outstandingFeesData.map(s => s.className))].sort();
-  const currentValue = classFilter.value;
+  // DOM Elements
+  const refreshBtn = document.getElementById("refreshBtn");
+  const logoutBtn = document.getElementById("logoutBtn");
   
-  // Keep "All Classes" option and add unique classes
-  classFilter.innerHTML = '<option value="">All Classes</option>';
-  uniqueClasses.forEach(cls => {
-    if (cls !== 'Not Enrolled') {
-      const option = document.createElement('option');
-      option.value = cls;
-      option.textContent = cls;
-      classFilter.appendChild(option);
-    }
-  });
+  // Post Fee Modal Elements
+  const openPostFeeBtn = document.getElementById('openPostFeeBtn');
+  const postFeeModal = document.getElementById('postFeeModal');
+  const saveFeeBtn = document.getElementById('saveFeeBtn');
+  const cancelPostFeeBtn = document.getElementById('cancelPostFeeBtn');
+
+  // Edit Fee Modal Elements
+  const editFeeModal = document.getElementById('editFeeModal');
+  const updateFeeBtn = document.getElementById('updateFeeBtn');
+  const cancelEditFeeBtn = document.getElementById('cancelEditFeeBtn');
+
+  // Outstanding Fees Elements
+  const outstandingClassFilter = document.getElementById('outstandingClassFilter');
+  const outstandingYearFilter = document.getElementById('outstandingYearFilter');
+  const outstandingTermFilter = document.getElementById('outstandingTermFilter');
+  const outstandingSortFilter = document.getElementById('outstandingSortFilter');
+  const outstandingSearchInput = document.getElementById('outstandingSearchInput');
+  const outstandingTableBody = document.getElementById('outstandingFeesTableBody');
   
-  // Restore previous selection if still available
-  classFilter.value = currentValue;
-}
+  // Outstanding Fees Pagination
+  const outstandingPrevBtn = document.getElementById('outstandingPrevBtn');
+  const outstandingNextBtn = document.getElementById('outstandingNextBtn');
+  const outstandingPageInfo = document.getElementById('outstandingPageInfo');
+  let outstandingPage = 1;
+  const outstandingLimit = 20;
+  let outstandingTotalPages = 1;
 
-// Event listeners for outstanding fees filters
-document.getElementById('outstandingClassFilter').addEventListener('change', () => loadOutstandingFees());
-document.getElementById('outstandingTermFilter').addEventListener('change', () => loadOutstandingFees());
-document.getElementById('outstandingSearchInput').addEventListener('input', () => loadOutstandingFees());
+  const downloadOutstandingPDF = document.getElementById('downloadOutstandingPDF');
 
-// Download outstanding fees PDF
-document.getElementById('downloadOutstandingPDF').addEventListener('click', async () => {
-  try {
-    // Use the already-fetched `outstandingFeesData` (frontend filtered dataset)
-    // This avoids brittle DOM parsing and ensures all rows are included.
-    const displayedData = Array.isArray(outstandingFeesData) ? outstandingFeesData.slice() : [];
+  // Student Fee Details Modal Elements
+  const studentFeeDetailsModal = document.getElementById('studentFeeDetailsModal');
+  const closeStudentFeeDetailsBtn = document.getElementById('closeStudentFeeDetailsBtn');
+  const studentFeeModalBody = document.getElementById('studentFeeModalBody');
+  const dlStructureBtn = document.getElementById('dlStructureBtn');
+  const dlStatementBtn = document.getElementById('dlStatementBtn');
+  let currentStudentDetails = null; // Store current student for PDF naming
 
-    if (displayedData.length === 0) {
-      alert('No data to download. Please load outstanding fees first.');
-      return;
+  // ---------------------------
+  // LOAD DASHBOARD DATA
+  // ---------------------------
+  async function loadDashboardData(forceRefresh = false) {
+    if(refreshBtn) {
+        refreshBtn.disabled = true;
+        refreshBtn.textContent = "Refreshing...";
     }
 
-    console.log(`Downloading PDF with ${displayedData.length} students (from outstandingFeesData)`);
+    try {
+      await Promise.all([
+        loadStats(forceRefresh),
+        loadFeeStructures(forceRefresh),
+        loadOutstandingFees()
+      ]);
+    } catch (err) {
+      console.error("Dashboard load error", err);
+    } finally {
+        if(refreshBtn) {
+            refreshBtn.disabled = false;
+            refreshBtn.textContent = "🔄 Refresh Data";
+        }
+    }
+  }
 
-    // Send the displayed (filtered) data to backend for PDF generation
-    const response = await fetch(`${API_BASE}/reports/outstanding-fees-pdf-from-data`, {
-      method: 'POST',
-      headers: {
-        ...headers,
-        'Content-Type': 'application/json',
-        'Accept': 'application/pdf'
-      },
-      body: JSON.stringify(displayedData)
+  // ---------------------------
+  // STATS & CHART
+  // ---------------------------
+  async function loadStats(forceRefresh = false) {
+      // Fetch a sample of accounts to calculate totals
+      try {
+        if (!forceRefresh && statsCache && (Date.now() - statsLastFetch < CACHE_TTL)) {
+            calculateTotals(statsCache);
+            return;
+        }
+
+        const res = await fetch(`${API_BASE}/accounts?page=1&limit=1000`, { headers });
+        if(res.ok) {
+            const data = await res.json();
+            const accounts = data.students || data.accounts || [];
+            statsCache = accounts;
+            statsLastFetch = Date.now();
+            calculateTotals(accounts);
+        }
+      } catch (e) {
+          console.error("Failed to load stats", e);
+      }
+  }
+
+  function calculateTotals(data) {
+    let expected = 0;
+    let paid = 0;
+
+    data.forEach(r => {
+      expected += (r.expected || 0);
+      paid += (r.paid || 0);
     });
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`Failed to download PDF: ${errorText}`);
+    // Update DOM
+    if(document.getElementById("totalExpected")) document.getElementById("totalExpected").textContent = `KES ${expected.toLocaleString()}`;
+    if(document.getElementById("totalPaid")) document.getElementById("totalPaid").textContent = `KES ${paid.toLocaleString()}`;
+    if(document.getElementById("totalBalance")) document.getElementById("totalBalance").textContent = `KES ${(expected - paid).toLocaleString()}`;
+
+    drawChart(expected, paid);
+  }
+
+  function drawChart(expected, paid) {
+    const canvas = document.getElementById("feesChart");
+    if(!canvas) return;
+    const ctx = canvas.getContext("2d");
+
+    // Clear canvas
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    const balance = expected - paid;
+    const max = Math.max(expected, paid, balance) || 1;
+    const barWidth = 60;
+    // Adjust base line
+    const base = canvas.height - 20; 
+
+    function bar(x, val, label, color) {
+        // Calculate height relative to max value
+        const h = (val / max) * (canvas.height - 40);
+        
+        ctx.fillStyle = color;
+        ctx.fillRect(x, base - h, barWidth, h);
+        
+        ctx.fillStyle = "#333";
+        ctx.font = "bold 12px sans-serif";
+        ctx.textAlign = "center";
+        
+        // Label below bar
+        ctx.fillText(label, x + barWidth/2, base + 15);
+        
+        // Value inside or above bar
+        ctx.fillStyle = "#000";
+        ctx.fillText(val.toLocaleString(), x + barWidth/2, base - h - 5);
     }
 
-    const blob = await response.blob();
-    const url = window.URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `outstanding_fees_${new Date().toISOString().split('T')[0]}.pdf`;
-    document.body.appendChild(a);
-    a.click();
-    window.URL.revokeObjectURL(url);
-    document.body.removeChild(a);
-    
-    alert('PDF downloaded successfully');
-
-  } catch (err) {
-    console.error('Download PDF error:', err);
-    alert('Failed to download PDF: ' + err.message);
+    // Draw bars with spacing
+    bar(50, expected, "Expected", "#0078D4");
+    bar(150, paid, "Paid", "#28a745");
+    bar(250, balance, "Balance", "#dc3545");
   }
-});
 
-/* ===============================
-   INIT
-================================ */
-loadAccounts();
+  // ---------------------------
+  // FEE STRUCTURES LOGIC
+  // ---------------------------
+  async function loadFeeStructures(forceRefresh = false) {
+    try {
+      if (!forceRefresh && feeStructuresCache && (Date.now() - feesLastFetch < CACHE_TTL)) {
+          renderFeeStructures(feeStructuresCache);
+          return;
+      }
 
+      const res = await fetch(`${API_BASE}/accounts/fee-structures`, { headers });
+      const tbody = document.getElementById('feeStructuresTableBody');
+      if (!tbody) return;
+
+      if (!res.ok) {
+        tbody.innerHTML = '<tr><td colspan="7" style="text-align: center; color: #dc3545;">Failed to load fee structures</td></tr>';
+        return;
+      }
+      
+      const list = await res.json();
+      feeStructuresCache = list;
+      feesLastFetch = Date.now();
+      renderFeeStructures(list);
+
+    } catch (err) {
+      console.error('Load fee structures error', err);
+    }
+  }
+
+  function renderFeeStructures(list) {
+      const tbody = document.getElementById('feeStructuresTableBody');
+      if (!tbody) return;
+      
+      if (!list.length) {
+        tbody.innerHTML = '<tr><td colspan="7" style="text-align: center; color: #666;">No fee structures posted yet.</td></tr>';
+        return;
+      }
+
+      tbody.innerHTML = list.map(f => `
+        <tr>
+          <td><strong>${f.grade}</strong></td>
+          <td>${f.academicYear}</td>
+          <td>KES ${f.term1Fee.toLocaleString()}</td>
+          <td>KES ${f.term2Fee.toLocaleString()}</td>
+          <td>KES ${f.term3Fee.toLocaleString()}</td>
+          <td><strong>KES ${f.totalFee.toLocaleString()}</strong></td>
+          <td>
+            <button class="btn secondary-btn edit-fee-btn" data-id="${f._id}" style="padding: 4px 8px; font-size: 12px; margin-right: 5px;">Edit</button>
+            <button class="btn danger-btn delete-fee-btn" data-id="${f._id}" style="padding: 4px 8px; font-size: 12px;">Delete</button>
+          </td>
+        </tr>
+      `).join('');
+
+      // Attach edit listeners
+      tbody.querySelectorAll('.edit-fee-btn').forEach(btn => {
+          btn.addEventListener('click', () => {
+              const id = btn.dataset.id;
+              const fee = list.find(item => item._id === id);
+              if (fee) openEditFeeModal(fee);
+          });
+      });
+
+      // Attach delete listeners
+      tbody.querySelectorAll('.delete-fee-btn').forEach(btn => {
+          btn.addEventListener('click', async () => {
+              if(confirm("Delete this fee structure?")) {
+                  await fetch(`${API_BASE}/accounts/fee-structure/${btn.dataset.id}`, { method: 'DELETE', headers });
+                  loadFeeStructures(true); // Force refresh after delete
+              }
+          });
+      });
+  }
+
+  // ---------------------------
+  // OUTSTANDING FEES LOGIC
+  // ---------------------------
+  async function loadOutstandingFees(page = 1) {
+    if (!outstandingTableBody) return;
+    outstandingTableBody.innerHTML = '<tr><td colspan="6" style="text-align: center;">Loading...</td></tr>';
+
+    const grade = outstandingClassFilter.value;
+    const year = outstandingYearFilter.value;
+    const term = outstandingTermFilter ? outstandingTermFilter.value : "";
+    const sort = outstandingSortFilter ? outstandingSortFilter.value : "balance_desc";
+    const search = outstandingSearchInput.value.trim();
+
+    const query = new URLSearchParams({ academicYear: year, limit: outstandingLimit, page: page });
+    if (grade) query.append("class", grade);
+    if (term) query.append("term", term);
+    if (sort) query.append("sort", sort);
+    if (search) query.append("name", search);
+
+    try {
+        const res = await fetch(`${API_BASE}/reports/outstanding-fees?${query.toString()}`, { headers });
+        if (!res.ok) throw new Error('Failed to fetch outstanding fees');
+        const data = await res.json();
+        
+        renderOutstandingTable(data.students || []);
+        
+        // Update pagination state
+        outstandingPage = data.currentPage || 1;
+        outstandingTotalPages = data.totalPages || 1;
+        updateOutstandingPagination();
+
+    } catch (err) {
+        console.error(err);
+        outstandingTableBody.innerHTML = '<tr><td colspan="6" style="text-align: center; color: red;">Error loading data.</td></tr>';
+    }
+  }
+
+  function updateOutstandingPagination() {
+    if (outstandingPageInfo) outstandingPageInfo.textContent = `Page ${outstandingPage} of ${outstandingTotalPages}`;
+    if (outstandingPrevBtn) outstandingPrevBtn.disabled = outstandingPage <= 1;
+    if (outstandingNextBtn) outstandingNextBtn.disabled = outstandingPage >= outstandingTotalPages;
+  }
+
+  function renderOutstandingTable(accounts) {
+    if (!outstandingTableBody) return;
+    if (accounts.length === 0) {
+        outstandingTableBody.innerHTML = '<tr><td colspan="6" style="text-align: center;">No students with outstanding balances found.</td></tr>';
+        return;
+    }
+
+    // Store data in DOM for easy retrieval or pass relevant data in data attributes
+    outstandingTableBody.innerHTML = accounts.map(s => {
+        let balance = (s.balance !== undefined && s.balance !== null) ? s.balance : ((s.expected || 0) - (s.paid || 0));
+        
+        // If a specific term is selected, display that term's balance
+        const termFilter = outstandingTermFilter ? outstandingTermFilter.value : "";
+        if (termFilter && s.termBalances) {
+            const key = termFilter.toLowerCase().replace(/\s+/g, ''); // "Term 1" -> "term1"
+            if (s.termBalances[key]) {
+                balance = s.termBalances[key].balance;
+            }
+        }
+
+        if (balance <= 0) return ''; // Only show those with a balance
+        const safeName = (s.studentName || s.name || 'Unknown').replace(/'/g, "&apos;");
+        
+        // Safely extract student ID (handle populated object or string)
+        // If s is an Account, we want s.studentId. If s is Student, we want s._id.
+        let studentId = s.studentId;
+        if (studentId && typeof studentId === 'object') studentId = studentId._id;
+        if (!studentId) studentId = s._id; // Fallback
+        const admission = s.admission || s.admissionNo || '';
+
+        // Determine Status Badge
+        let statusBadge = '';
+        const paidAmount = s.paid || 0;
+        const totalFee = s.expected || 0;
+
+        if (balance <= 0) {
+            statusBadge = `<span class="status-badge status-paid" style="background:#d1fae5; color:#065f46; padding:4px 8px; border-radius:4px; font-size:12px; font-weight:600;">Paid</span>`;
+        } else if (paidAmount > 0 && balance > 0) {
+            statusBadge = `<span class="status-badge status-partial" style="background:#fef3c7; color:#92400e; padding:4px 8px; border-radius:4px; font-size:12px; font-weight:600;">Partial</span>`;
+        } else {
+            statusBadge = `<span class="status-badge status-unpaid" style="background:#fee2e2; color:#991b1b; padding:4px 8px; border-radius:4px; font-size:12px; font-weight:600;">Unpaid</span>`;
+        }
+
+        return `
+            <tr>
+                <td>${s.admission || s.admissionNo || '-'}</td>
+                <td>${safeName}</td>
+                <td>${s.className || s.grade || '-'}</td>
+                <td style="text-align: right; font-weight: bold; color: #dc3545;">${balance.toLocaleString('en-KE', { style: 'currency', currency: 'KES' })}</td>
+                <td style="text-align: center;">${statusBadge}</td>
+                <td style="text-align: center;"><button class="btn secondary-btn view-fee-btn" data-id="${studentId}" data-admission="${admission}" data-name="${safeName}" data-grade="${s.className || s.grade || ''}" style="padding: 4px 10px; font-size: 12px;">View</button></td>
+            </tr>
+        `;
+    }).join('');
+
+    if (outstandingTableBody.innerHTML === '') {
+        outstandingTableBody.innerHTML = '<tr><td colspan="6" style="text-align: center;">No students with outstanding balances found.</td></tr>';
+    }
+  }
+
+  // ---------------------------
+  // VIEW STUDENT FEE DETAILS LOGIC
+  // ---------------------------
+  if (outstandingTableBody) {
+    outstandingTableBody.addEventListener('click', async (e) => {
+      if (e.target.classList.contains('view-fee-btn')) {
+        const btn = e.target;
+        const studentId = btn.dataset.id;
+        const admission = btn.dataset.admission;
+        const studentName = btn.dataset.name;
+        const grade = btn.dataset.grade;
+        
+        await openStudentFeeDetails(studentId, admission, studentName, grade);
+      }
+    });
+  }
+
+  async function openStudentFeeDetails(studentId, admission, studentName, grade) {
+    studentFeeModalBody.innerHTML = '<div style="text-align:center; padding:20px;">Loading details...</div>';
+    studentFeeDetailsModal.style.display = 'flex';
+    requestAnimationFrame(() => studentFeeDetailsModal.classList.add('visible'));
+    
+    const year = outstandingYearFilter.value || new Date().getFullYear();
+    currentStudentDetails = { name: studentName, year };
+
+    if (!admission) {
+        studentFeeModalBody.innerHTML = '<div style="color:red; text-align:center;">Error: Missing Admission Number</div>';
+        return;
+    }
+
+    try {
+      // Fetch payments AND fee structures
+      const [payRes, feesRes] = await Promise.all([
+        fetch(`${API_BASE}/users/ledger/${admission}`, { headers }),
+        fetch(`${API_BASE}/accounts/fee-structures`, { headers })
+      ]);
+
+      const payData = payRes.ok ? await payRes.json() : { payments: [] };
+      const feesData = feesRes.ok ? await feesRes.json() : [];
+      
+      // Filter payments for the selected year only
+      const allPayments = payData.payments || [];
+      const payments = allPayments.filter(p => Number(p.academicYear) === Number(year));
+
+      // Find Fee Structure
+      const feeStructure = feesData.find(f => 
+        f.academicYear === Number(year) && 
+        (grade === f.grade || (grade.startsWith(f.grade) && !/\d/.test(grade.substring(f.grade.length))))
+      );
+
+      const fees = feeStructure || { term1Fee: 0, term2Fee: 0, term3Fee: 0, totalFee: 0 };
+      
+      // Calculate Term Totals
+      const termPaid = { "Term 1": 0, "Term 2": 0, "Term 3": 0 };
+      payments.forEach(p => {
+        if (termPaid[p.term] !== undefined) termPaid[p.term] += p.amount;
+      });
+
+      const totalPaid = payments.reduce((sum, p) => sum + p.amount, 0);
+      const totalBalance = fees.totalFee - totalPaid;
+      
+      // Create HTML content
+      let content = `
+        <div id="fee-details-content">
+          <div class="report-header" style="text-align:center; margin-bottom:20px; border-bottom: 2px solid #eee; padding-bottom: 10px;">
+             <h2 style="margin:0;">FEE STATEMENT</h2>
+             <p style="margin:5px 0;"><strong>Student:</strong> ${studentName}</p>
+             <p style="margin:0;"><strong>Grade:</strong> ${grade} | <strong>Year:</strong> ${year}</p>
+          </div>
+
+          <div id="fee-structure-for-pdf" style="margin-bottom: 25px;">
+            <h4 style="border-bottom: 1px solid #ccc; padding-bottom: 5px; margin-bottom: 10px;">Fee Structure & Status</h4>
+            <table style="width:100%; border-collapse:collapse; font-size: 13px; margin-bottom: 15px;">
+              <thead>
+                <tr style="background:#e9ecef;">
+                  <th style="padding:8px; text-align:left; border:1px solid #ddd;">Term</th>
+                  <th style="padding:8px; text-align:right; border:1px solid #ddd;">Fee</th>
+                  <th style="padding:8px; text-align:right; border:1px solid #ddd;">Paid</th>
+                  <th style="padding:8px; text-align:right; border:1px solid #ddd;">Balance</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td style="padding:8px; border:1px solid #ddd;">Term 1</td>
+                  <td style="padding:8px; text-align:right; border:1px solid #ddd;">${(fees.term1Fee || 0).toLocaleString()}</td>
+                  <td style="padding:8px; text-align:right; border:1px solid #ddd;">${termPaid["Term 1"].toLocaleString()}</td>
+                  <td style="padding:8px; text-align:right; border:1px solid #ddd; font-weight:bold;">${(fees.term1Fee - termPaid["Term 1"]).toLocaleString()}</td>
+                </tr>
+                <tr>
+                  <td style="padding:8px; border:1px solid #ddd;">Term 2</td>
+                  <td style="padding:8px; text-align:right; border:1px solid #ddd;">${(fees.term2Fee || 0).toLocaleString()}</td>
+                  <td style="padding:8px; text-align:right; border:1px solid #ddd;">${termPaid["Term 2"].toLocaleString()}</td>
+                  <td style="padding:8px; text-align:right; border:1px solid #ddd; font-weight:bold;">${(fees.term2Fee - termPaid["Term 2"]).toLocaleString()}</td>
+                </tr>
+                <tr>
+                  <td style="padding:8px; border:1px solid #ddd;">Term 3</td>
+                  <td style="padding:8px; text-align:right; border:1px solid #ddd;">${(fees.term3Fee || 0).toLocaleString()}</td>
+                  <td style="padding:8px; text-align:right; border:1px solid #ddd;">${termPaid["Term 3"].toLocaleString()}</td>
+                  <td style="padding:8px; text-align:right; border:1px solid #ddd; font-weight:bold;">${(fees.term3Fee - termPaid["Term 3"]).toLocaleString()}</td>
+                </tr>
+                <tr style="background:#f8f9fa; font-weight:bold;">
+                  <td style="padding:8px; border:1px solid #ddd;">TOTAL</td>
+                  <td style="padding:8px; text-align:right; border:1px solid #ddd;">${(fees.totalFee || 0).toLocaleString()}</td>
+                  <td style="padding:8px; text-align:right; border:1px solid #ddd;">${totalPaid.toLocaleString()}</td>
+                  <td style="padding:8px; text-align:right; border:1px solid #ddd; color:${totalBalance > 0 ? '#dc3545' : '#28a745'};">${totalBalance.toLocaleString()}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div id="payment-statement-for-pdf" style="margin-bottom: 25px;">
+            <h4 style="border-bottom: 1px solid #ccc; padding-bottom: 5px; margin-bottom: 10px;">Payment History</h4>
+            <table style="width:100%; border-collapse:collapse; font-size: 13px;">
+              <thead>
+                <tr style="background:#f8f9fa;">
+                  <th style="padding:8px; text-align:left; border-bottom:1px solid #ddd;">Date</th>
+                  <th style="padding:8px; text-align:left; border-bottom:1px solid #ddd;">Reference</th>
+                  <th style="padding:8px; text-align:left; border-bottom:1px solid #ddd;">Method</th>
+                  <th style="padding:8px; text-align:left; border-bottom:1px solid #ddd;">Term</th>
+                  <th style="padding:8px; text-align:right; border-bottom:1px solid #ddd;">Amount</th>
+                </tr>
+              </thead>
+              <tbody>
+      `;
+
+      if (payments.length === 0) {
+        content += `<tr><td colspan="5" style="text-align:center; padding:10px;">No payments recorded for this year.</td></tr>`;
+      } else {
+        payments.forEach(p => {
+          content += `
+            <tr>
+              <td style="padding:8px; border-bottom:1px solid #eee;">${new Date(p.createdAt).toLocaleDateString()}</td>
+              <td style="padding:8px; border-bottom:1px solid #eee;">${p.reference}</td>
+              <td style="padding:8px; border-bottom:1px solid #eee;">${p.method}</td>
+              <td style="padding:8px; border-bottom:1px solid #eee;">${p.term}</td>
+              <td style="padding:8px; border-bottom:1px solid #eee; text-align:right;">${p.amount.toLocaleString()}</td>
+            </tr>
+          `;
+        });
+      }
+
+      content += `
+              </tbody>
+            </table>
+          </div>
+        </div>
+      `;
+
+      studentFeeModalBody.innerHTML = content;
+
+    } catch (err) {
+      console.error("Error loading student details", err);
+      studentFeeModalBody.innerHTML = '<div style="color:red; text-align:center;">Error loading details.</div>';
+    }
+  }
+
+  if (closeStudentFeeDetailsBtn) {
+    closeStudentFeeDetailsBtn.addEventListener('click', () => {
+      studentFeeDetailsModal.classList.remove('visible');
+      setTimeout(() => studentFeeDetailsModal.style.display = 'none', 200);
+    });
+  }
+
+  // Generate PDF from Modal Content
+  async function generateModalPDF(elementId, titleSuffix, customTitle) {
+    const contentElement = document.getElementById(elementId);
+    const headerElement = document.querySelector('#studentFeeModalBody .report-header');
+
+    if (!contentElement || !headerElement || !window.html2canvas || !window.jspdf) {
+      alert("PDF generation components not ready.");
+      return;
+    }
+    
+    // 1. Fetch school info to get the name
+    let schoolName = "SCHOOL NAME";
+    try {
+        const res = await fetch(`${API_BASE}/my-school`, { headers });
+        if (res.ok) {
+            const school = await res.json();
+            schoolName = (school.name || "SCHOOL NAME").toUpperCase();
+        }
+    } catch (e) {
+        console.error("Could not fetch school name for PDF", e);
+    }
+
+    // 2. Create a temporary, off-screen container for printing
+    const printContainer = document.createElement('div');
+    printContainer.style.position = 'absolute';
+    printContainer.style.left = '-9999px';
+    printContainer.style.width = '800px';
+    printContainer.style.padding = '20px';
+    printContainer.style.background = 'white';
+    printContainer.style.fontFamily = 'Arial, sans-serif';
+
+    // 3. Construct the printable content
+    printContainer.innerHTML = `
+        <div style="text-align:center; margin-bottom:20px;">
+            <h1 style="margin:0; font-size:22px;">${schoolName}</h1>
+        </div>
+    `;
+    
+    const clonedHeader = headerElement.cloneNode(true);
+    if (customTitle) {
+        const h2 = clonedHeader.querySelector('h2');
+        if (h2) h2.textContent = customTitle;
+    }
+    printContainer.appendChild(clonedHeader);
+    printContainer.appendChild(contentElement.cloneNode(true));
+    document.body.appendChild(printContainer);
+
+    try {
+      const canvas = await html2canvas(printContainer, { scale: 2, useCORS: true });
+      const imgData = canvas.toDataURL('image/png');
+      const pdf = new window.jspdf.jsPDF('p', 'mm', 'a4');
+      const imgWidth = 190;
+      const imgHeight = (canvas.height * imgWidth) / canvas.width;
+      
+      pdf.addImage(imgData, 'PNG', 10, 10, imgWidth, imgHeight);
+      const fname = `${currentStudentDetails?.name || 'Student'}_${titleSuffix}.pdf`;
+      pdf.save(fname);
+    } catch(e) { 
+        console.error(e); 
+        alert("PDF generation failed"); 
+    } finally {
+        // 4. Clean up the temporary container
+        document.body.removeChild(printContainer);
+    }
+  }
+
+  if (dlStructureBtn) dlStructureBtn.addEventListener('click', () => generateModalPDF('fee-structure-for-pdf', 'Fee_Structure', 'FEE STRUCTURE AND BALANCE'));
+  if (dlStatementBtn) dlStatementBtn.addEventListener('click', () => generateModalPDF('payment-statement-for-pdf', 'Fee_Statement', 'FEE STATEMENT'));
+
+  // ---------------------------
+  // EDIT FEE MODAL LOGIC
+  // ---------------------------
+  function openEditFeeModal(fee) {
+    if (!editFeeModal) return;
+    document.getElementById('editFeeId').value = fee._id;
+    document.getElementById('editFeeGrade').value = fee.grade;
+    document.getElementById('editFeeYear').value = fee.academicYear;
+    document.getElementById('editFeeTerm1').value = fee.term1Fee;
+    document.getElementById('editFeeTerm2').value = fee.term2Fee;
+    document.getElementById('editFeeTerm3').value = fee.term3Fee;
+    
+    editFeeModal.style.display = "flex";
+    requestAnimationFrame(() => editFeeModal.classList.add('visible'));
+  }
+
+  if (cancelEditFeeBtn) {
+    cancelEditFeeBtn.addEventListener('click', () => {
+      editFeeModal.classList.remove('visible');
+      setTimeout(() => editFeeModal.style.display = "none", 200);
+    });
+  }
+
+  if (updateFeeBtn) {
+    updateFeeBtn.addEventListener('click', async () => {
+      const id = document.getElementById('editFeeId').value;
+      const grade = document.getElementById('editFeeGrade').value.trim();
+      const year = Number(document.getElementById('editFeeYear').value);
+      const t1 = Number(document.getElementById('editFeeTerm1').value);
+      const t2 = Number(document.getElementById('editFeeTerm2').value);
+      const t3 = Number(document.getElementById('editFeeTerm3').value);
+
+      if (!grade || !year) return alert("Grade and Year are required");
+
+      updateFeeBtn.disabled = true;
+      updateFeeBtn.textContent = "Updating...";
+
+      try {
+        const res = await fetch(`${API_BASE}/accounts/fee-structure/${id}`, {
+          method: 'PUT',
+          headers,
+          body: JSON.stringify({ grade, academicYear: year, term1Fee: t1, term2Fee: t2, term3Fee: t3 })
+        });
+
+        if (res.ok) {
+          alert("Fee structure updated successfully!");
+          editFeeModal.classList.remove('visible');
+          setTimeout(() => editFeeModal.style.display = "none", 200);
+          loadFeeStructures(true); // Force refresh after update
+        } else {
+          const err = await res.json();
+          alert("Error: " + (err.message || "Failed to update"));
+        }
+      } catch (e) {
+        console.error(e);
+        alert("Network error");
+      } finally {
+        updateFeeBtn.disabled = false;
+        updateFeeBtn.textContent = "Update Fee Structure";
+      }
+    });
+  }
+
+  // ---------------------------
+  // POST FEE MODAL
+  // ---------------------------
+  if (openPostFeeBtn) {
+    openPostFeeBtn.addEventListener('click', () => {
+      if(postFeeModal) {
+          postFeeModal.style.display = "flex";
+          postFeeModal.classList.add('visible');
+          // Default year
+          const fy = document.getElementById('feeYear');
+          if (fy && !fy.value) fy.value = new Date().getFullYear();
+      }
+    });
+  }
+
+  if (cancelPostFeeBtn) {
+      cancelPostFeeBtn.addEventListener('click', () => {
+          postFeeModal.classList.remove('visible');
+          setTimeout(() => postFeeModal.style.display = "none", 200);
+      });
+  }
+
+  if (saveFeeBtn) {
+      saveFeeBtn.addEventListener('click', async () => {
+          const grade = document.getElementById('feeGrade').value.trim();
+          const year = Number(document.getElementById('feeYear').value);
+          const t1 = Number(document.getElementById('feeTerm1').value);
+          const t2 = Number(document.getElementById('feeTerm2').value);
+          const t3 = Number(document.getElementById('feeTerm3').value);
+
+          if(!grade || !year) return alert("Grade and Year are required");
+
+          const payload = { grade, academicYear: year, term1Fee: t1, term2Fee: t2, term3Fee: t3 };
+          
+          saveFeeBtn.disabled = true;
+          saveFeeBtn.textContent = "Saving...";
+
+          try {
+              const res = await fetch(`${API_BASE}/accounts/fee-structure`, {
+                  method: 'POST',
+                  headers,
+                  body: JSON.stringify(payload)
+              });
+              
+              if(res.ok) {
+                  alert("Fee structure saved!");
+                  postFeeModal.classList.remove('visible');
+                  setTimeout(() => postFeeModal.style.display = "none", 200);
+                  loadFeeStructures(true); // Force refresh after save
+              } else {
+                  const err = await res.json();
+                  alert("Error: " + (err.message || "Failed to save"));
+              }
+          } catch(e) {
+              alert("Network error");
+          } finally {
+              saveFeeBtn.disabled = false;
+              saveFeeBtn.textContent = "Save Fee Structure";
+          }
+      });
+  }
+
+  // ---------------------------
+  // INIT
+  // ---------------------------
+  if(refreshBtn) refreshBtn.addEventListener("click", () => loadDashboardData(true));
+  if(logoutBtn) logoutBtn.addEventListener("click", () => { localStorage.clear(); window.location.href="/login"; });
+
+  // Outstanding fees listeners
+  if (outstandingYearFilter) {
+    const currentYear = new Date().getFullYear();
+    outstandingYearFilter.innerHTML = "";
+    for (let y = 2024; y <= 2130; y++) {
+        const opt = document.createElement("option");
+        opt.value = y;
+        opt.textContent = y;
+        if (y === currentYear) opt.selected = true;
+        outstandingYearFilter.appendChild(opt);
+    }
+  }
+
+  outstandingClassFilter?.addEventListener('change', () => loadOutstandingFees(1));
+  outstandingYearFilter?.addEventListener('change', () => loadOutstandingFees(1));
+  outstandingTermFilter?.addEventListener('change', () => loadOutstandingFees(1));
+  outstandingSortFilter?.addEventListener('change', () => loadOutstandingFees(1));
+
+  if (outstandingPrevBtn) outstandingPrevBtn.addEventListener('click', () => loadOutstandingFees(outstandingPage - 1));
+  if (outstandingNextBtn) outstandingNextBtn.addEventListener('click', () => loadOutstandingFees(outstandingPage + 1));
+  
+  let outstandingDebounce;
+  outstandingSearchInput?.addEventListener('input', () => {
+      clearTimeout(outstandingDebounce);
+      outstandingDebounce = setTimeout(() => loadOutstandingFees(1), 500);
+  });
+
+  downloadOutstandingPDF?.addEventListener('click', () => {
+    const { jsPDF } = window.jspdf;
+    if (!jsPDF) return alert("PDF library not loaded.");
+    const doc = new jsPDF();
+    doc.text("Outstanding Fees Report", 14, 15);
+    
+    const rows = [];
+    document.querySelectorAll("#outstandingFeesTable tbody tr").forEach(tr => {
+      const cells = Array.from(tr.querySelectorAll("td")).map(td => td.textContent);
+      if (cells.length > 1) rows.push(cells);
+    });
+
+    doc.autoTable({
+      head: [["Admission", "Name", "Grade", "Balance"]],
+      body: rows,
+      startY: 20
+    });
+    doc.save("outstanding_fees_report.pdf");
+  });
+
+  // Initial Load
+  loadDashboardData();
+
+})();
