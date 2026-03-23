@@ -8,6 +8,11 @@ document.addEventListener("DOMContentLoaded", () => {
   const API_BASE = config.api.baseURL;
   const token = localStorage.getItem("token");
 
+  if (!token) {
+    window.location.href = "/login";
+    return;
+  }
+
   let currentPage = 1;
   let totalPages = 1;
 

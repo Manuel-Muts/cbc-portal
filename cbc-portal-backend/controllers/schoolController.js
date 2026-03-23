@@ -15,7 +15,7 @@ export const getMySchool = async (req, res) => {
     }
 
     const school = await School.findById(req.user.schoolId)
-  .select("name logo address status paybill mpesaShortcode");
+  .select("name logo logoMimeType address status paybill mpesaShortcode");
 
 if (!school) return res.status(404).json({ msg: "School not found" });
 
@@ -27,6 +27,7 @@ const response = {
   name: school.name,
   address: school.address,
   logo: logoPath,
+  logoMimeType: school.logoMimeType,
   paybill: school.paybill || ""
 };
 cache.set(cacheKey, response, 300); // Cache for 5 minutes

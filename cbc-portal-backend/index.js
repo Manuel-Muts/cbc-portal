@@ -151,6 +151,7 @@ const pathMap = {
   '/student-dashboard': 'student-dashboard.html',
   '/materials': 'studentstudymaterial.html',
   '/study-materials': 'studentstudymaterial.html',
+  '/studentstudymaterial': 'studentstudymaterial.html',
   '/analysis': 'analysis.html',
   '/report': 'report.html',
   '/reset': 'reset.html',

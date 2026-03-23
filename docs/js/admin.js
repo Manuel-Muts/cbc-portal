@@ -67,7 +67,26 @@
 // Derive BACKEND_URL from config (removes /api suffix)
 const BACKEND_URL = config.api.baseURL.replace('/api', '');
 
-async function loadSchoolInfo() {
+async function loadSchoolInfo(forceReload = false) {
+  const CACHE_KEY = "admin_school_info_cache";
+  const CACHE_DURATION = 30 * 60 * 1000; // 30 minutes
+
+  if (!forceReload) {
+    const cached = localStorage.getItem(CACHE_KEY);
+    if (cached) {
+      try {
+        const { timestamp, data } = JSON.parse(cached);
+        if (Date.now() - timestamp < CACHE_DURATION) {
+          console.log("✅ Using cached school info");
+          schoolInfo = data;
+          window.schoolInfo = schoolInfo;
+          renderSchoolInfo();
+          return;
+        }
+      } catch (e) { console.warn("Cache read error:", e); }
+    }
+  }
+
   try {
     const res = await fetch(`${API_BASE}/my-school`, {
       headers: { Authorization: `Bearer ${token}` }
@@ -77,6 +96,12 @@ async function loadSchoolInfo() {
 
     schoolInfo = await res.json();
     window.schoolInfo = schoolInfo;
+    
+    localStorage.setItem(CACHE_KEY, JSON.stringify({
+      timestamp: Date.now(),
+      data: schoolInfo
+    }));
+
     renderSchoolInfo();
 
   } catch (err) {
@@ -1052,7 +1077,7 @@ studentSearchBody.addEventListener("click", async (e) => {
           loadTeacherOptions(true), // Force reload teachers
           loadSubjectAllocations(), 
           loadClassAllocations(),
-          loadSchoolInfo()
+          loadSchoolInfo(true) // Force reload school info
         ]);
         results.forEach((r, idx) => {
           if (r.status === "rejected") errors.push({ step: ["loadTeacherOptions", "loadSubjectAllocations", "loadClassAllocations", "loadSchoolInfo"][idx], error: r.reason });
