@@ -3,6 +3,10 @@ import mongoose from "mongoose";
 import StudentEnrollment from "../models/StudentEnrollment.js";
 import { User } from "../models/User.js";
 
+const escapeRegex = (text) => {
+  return text.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, "\\$&");
+};
+
 /**
  * ADMIN SEARCH STUDENTS (name or admission)
  */
@@ -12,25 +16,39 @@ export const adminSearchStudent = async (req, res) => {
       return res.status(403).json({ message: "Unauthorized" });
     }
 
-    const { q } = req.query;
+    const { q, page: pageQuery, limit: limitQuery } = req.query;
     if (!q) {
       return res.status(400).json({ message: "Search query required" });
     }
 
+    const page = Math.max(1, parseInt(pageQuery, 10) || 1);
+    const limit = Math.min(100, Math.max(10, parseInt(limitQuery, 10) || 20));
+    const skip = (page - 1) * limit;
+
+    const sanitizedQ = escapeRegex(q);
+
     // -----------------------
     // FIND MATCHING STUDENTS
     // -----------------------
-    const students = await User.find({
+    const searchQuery = {
       schoolId: req.user.schoolId,
       role: "student",
       $or: [
-        { name: { $regex: q, $options: "i" } },
-        { admission: { $regex: q, $options: "i" } }
+        { name: { $regex: sanitizedQ, $options: "i" } },
+        { admission: { $regex: sanitizedQ, $options: "i" } }
       ]
-    }).select("name admission");
+    };
+
+    const total = await User.countDocuments(searchQuery);
+
+    const students = await User.find(searchQuery)
+      .select("name admission")
+      .skip(skip)
+      .limit(limit)
+      .lean();
 
     if (!students.length) {
-      return res.json({ results: [] });
+      return res.json({ results: [], total, page, limit, pages: Math.ceil(total / limit) });
     }
 
     const studentIds = students.map(s => s._id);
@@ -41,14 +59,16 @@ export const adminSearchStudent = async (req, res) => {
     const enrollments = await StudentEnrollment.find({
       studentId: { $in: studentIds }
     })
+      .select("studentId academicYear grade stream status")
       .sort({ academicYear: -1 })
-      .populate("studentId", "name admission");
+      .lean();
 
     // Latest enrollment per student
     const latestMap = new Map();
     for (const e of enrollments) {
-      if (!latestMap.has(String(e.studentId._id))) {
-        latestMap.set(String(e.studentId._id), e);
+      const sId = String(e.studentId);
+      if (!latestMap.has(sId)) {
+        latestMap.set(sId, e);
       }
     }
 
@@ -66,7 +86,7 @@ export const adminSearchStudent = async (req, res) => {
       };
     });
 
-    res.json({ results });
+    res.json({ results, total, page, limit, pages: Math.ceil(total / limit) });
   } catch (err) {
     console.error("Admin student search error:", err);
     res.status(500).json({ message: "Search failed" });
@@ -203,6 +223,89 @@ export const getMyEnrollment = async (req, res) => {
     res.json(enrollment);
   } catch (err) {
     console.error("getMyEnrollment error:", err);
+    res.status(500).json({ message: "Server error" });
+  }
+};
+
+/**
+ * GET ALL STUDENTS IN A CLASS (by classLabel) - for Teachers to load students for marks entry
+ * classLabel format: "Grade 5W", "Grade 3", etc.
+ */
+export const getStudentsByClass = async (req, res) => {
+  try {
+    const { classLabel } = req.params;
+    
+    if (!classLabel) {
+      return res.status(400).json({ message: "classLabel is required" });
+    }
+    
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 20;
+    const skip = (page - 1) * limit;
+
+    // Only authenticated users can access this
+    if (!req.user.id || !req.user.schoolId) {
+      return res.status(403).json({ message: "Unauthorized" });
+    }
+
+    // Parse classLabel: "Grade 5W" or "Grade 5"
+    const classRegex = /Grade\s+(\d+)([A-Z])?/i;
+    const match = classLabel.match(classRegex);
+    
+    if (!match) {
+      return res.status(400).json({ message: "Invalid class label format" });
+    }
+
+    const gradeNum = match[1];
+    const stream = match[2] || null;
+    
+    // Build query
+    const query = {
+      schoolId: req.user.schoolId,
+      grade: `Grade ${gradeNum}`,
+      status: "active",
+      academicYear: new Date().getFullYear()
+    };
+    
+    if (stream) {
+      query.stream = stream;
+    }
+
+    const total = await StudentEnrollment.countDocuments(query);
+
+    // Get enrollments and populate student details
+    const enrollments = await StudentEnrollment.find(query)
+      .populate({
+        path: "studentId",
+        select: "name admission",
+        model: "User"
+      })
+      .select("studentId grade stream academicYear classLabel")
+      .skip(skip)
+      .limit(limit)
+      .sort("studentId");
+
+    // Filter out enrollments where studentId is null (orphaned records)
+    const validEnrollments = enrollments.filter(e => e.studentId);
+
+    // Format response
+    const students = validEnrollments.map(e => ({
+      _id: e.studentId._id,
+      name: e.studentId.name,
+      admissionNo: e.studentId.admission, // Maps DB 'admission' to API 'admissionNo'
+      grade: e.grade,
+      stream: e.stream,
+      classLabel: e.classLabel
+    }));
+
+    res.json({
+      students,
+      total,
+      totalPages: Math.ceil(total / limit),
+      currentPage: page
+    });
+  } catch (err) {
+    console.error("getStudentsByClass error:", err);
     res.status(500).json({ message: "Server error" });
   }
 };

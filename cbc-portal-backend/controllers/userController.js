@@ -11,6 +11,7 @@ import {
   generateRawPassword,
   sendCredentialsEmail
 } from '../utils/authHelpers.js';
+import cache from "../utils/simpleCache.js";
 import StudentEnrollment  from '../models/StudentEnrollment.js'; // ✅ ADD THIS
 
 
@@ -123,6 +124,9 @@ if (!allowedRoles.includes(role)) {
     });
 
     await newUser.save();
+
+    // Invalidate cache for this school
+    if (schoolIdToAssign) cache.clearByPattern(String(schoolIdToAssign));
 
     // ----------------------------
     // AUTOMATIC STUDENT ENROLLMENT
@@ -285,7 +289,23 @@ export const loginUser = async (req, res) => {
     const roles = [user.role];
     if (user.isClassTeacher && user.role !== "classteacher") roles.push("classteacher");
      
-    const classGrade = user.assignedClass ? String(user.assignedClass) : null;
+    // Resolve classGrade for students dynamically from enrollment if missing on user object
+    let studentGrade = user.grade ? String(user.grade) : null;
+    
+    if ((user.role === "student" || user.role === "learner") && !studentGrade) {
+      const currentYear = new Date().getFullYear();
+      // Try to find active enrollment
+      const enrollment = await StudentEnrollment.findOne({
+        studentId: user._id,
+        status: "active",
+        academicYear: currentYear
+      }).select("grade");
+
+      if (enrollment) {
+        studentGrade = enrollment.grade;
+      }
+    }
+
     const classStream = user.assignedStream ? String(user.assignedStream) : null; // 🆕 Stream
 
     // ---------------------------
@@ -299,7 +319,7 @@ export const loginUser = async (req, res) => {
         schoolId: user.schoolId ? String(user.schoolId) : null,
         classGrade:
           user.role === "student"
-            ? (user.grade ? String(user.grade) : null)
+            ? studentGrade
             : user.role === "classteacher"
             ? (user.assignedClass ? String(user.assignedClass) : null)
             : null,
@@ -360,6 +380,9 @@ export const resendCredentials = async (req, res) => {
       await user.save();
     }
 
+    // Invalidate cache
+    if (user.schoolId) cache.clearByPattern(String(user.schoolId));
+
     await sendCredentialsEmail({ name: user.name, email: user.email, rawPassword });
     res.status(200).json({ msg: 'Credentials resent successfully' });
   } catch (err) {
@@ -380,15 +403,52 @@ export const getAllUsers = async (req, res) => {
       return res.status(403).json({ message: 'Only admins can view users' });
     }
 
+    // Cache key based on school and query
+    const cacheKey = `users_${user.schoolId || 'global'}_${JSON.stringify(req.query)}`;
+    const cachedResult = cache.get(cacheKey);
+    if (cachedResult) {
+      return res.json(cachedResult);
+    }
+
     let query = {};
+    let sort = { createdAt: -1, _id: -1 };
+    let projection = { password: 0 };
 
     // Admins see only users in their school if schoolId exists
     if (user.role === 'admin' && user.schoolId) {
       query.schoolId = user.schoolId;
     }
 
-    const users = await User.find(query).select('-password');
-    res.json(users);
+    // Optional role filter (e.g., ?role=teacher)
+    if (req.query.role) {
+      query.role = req.query.role;
+    }
+
+    // Search filter
+    if (req.query.search) {
+      const searchRegex = new RegExp(req.query.search, 'i');
+      query.$or = [
+        { name: searchRegex },
+        { email: searchRegex },
+        { admission: searchRegex }
+      ];
+    }
+
+    // Pagination
+    const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+    const limit = Math.min(20, Math.max(10, parseInt(req.query.limit, 10) || 20)); // Limit between 10 and 20
+    const skip = (page - 1) * limit;
+
+    const total = await User.countDocuments(query);
+    const users = await User.find(query)
+      .select(projection)
+      .sort(sort)
+      .skip(skip)
+      .limit(limit);
+
+    const response = { users, total, page, limit, pages: Math.ceil(total / limit) };
+    cache.set(cacheKey, response, 60); // Cache for 60 seconds
+    res.json(response);
   } catch (err) {
     console.error("Get All Users Error:", err);
     res.status(500).json({ error: err.message });
@@ -447,6 +507,7 @@ export const assignSubjects = async (req, res) => {
     }
 
     await teacher.save();
+    cache.clearByPattern(String(teacher.schoolId)); // Invalidate cache
     res.json({ message: 'Subjects assigned successfully', teacher });
   } catch (err) {
     console.error("AssignSubjects Error:", err);
@@ -459,6 +520,12 @@ export const assignSubjects = async (req, res) => {
 // ---------------------------
 export const getSubjectAllocations = async (req, res) => {
   try {
+    const cacheKey = `sub_alloc_${req.user.schoolId || 'global'}`;
+    const cached = cache.get(cacheKey);
+    if (cached) {
+      return res.json(cached);
+    }
+
     const query = {};
     if (req.user.role === 'admin') {
       query.schoolId = req.user.schoolId;
@@ -476,7 +543,8 @@ export const getSubjectAllocations = async (req, res) => {
       }));
     });
 
-    res.json(teachers);
+    cache.set(cacheKey, teachers, 120); // Cache for 2 minutes
+    res.json(teachers); // Return formatted data
   } catch (err) {
     console.error("Get Subject Allocations Error:", err);
     res.status(500).json({ error: err.message });
@@ -561,6 +629,7 @@ export const getMyAllocations = async (req, res) => {
     teacher.passwordMustChange = true;
 
     await teacher.save();
+    cache.clearByPattern(String(teacher.schoolId)); // Invalidate cache
 
     // Email the class teacher credentials (if email exists)
     if (teacher.email) {
@@ -607,6 +676,12 @@ export const getMyAllocations = async (req, res) => {
 
 export const getClassTeacherAllocations = async (req, res) => {
   try {
+    const cacheKey = `class_alloc_${req.user.schoolId || 'global'}`;
+    const cached = cache.get(cacheKey);
+    if (cached) {
+      return res.json(cached);
+    }
+
     const query = { assignedClass: { $ne: null }, role: 'teacher' };
     if (req.user.role === 'admin') query.schoolId = req.user.schoolId;
 
@@ -622,6 +697,7 @@ export const getClassTeacherAllocations = async (req, res) => {
       isClassTeacher: !!t.isClassTeacher
     }));
 
+    cache.set(cacheKey, allocations, 120);
     res.json(allocations);
   } catch (err) {
     console.error("GetClassTeacherAllocations Error:", err);
@@ -687,6 +763,7 @@ export const removeSubjectAllocation = async (req, res) => {
     teacher.markModified('allocations');
 
     await teacher.save();
+    cache.clearByPattern(String(teacher.schoolId)); // Invalidate cache
     const gradeLabel = stream ? `Grade ${grade}${stream}` : `Grade ${grade}`;
     res.json({ 
       message: `Allocation for ${gradeLabel} removed successfully`, 
@@ -724,6 +801,7 @@ export const removeClassTeacher = async (req, res) => {
     teacher.passwordMustChange = false;
 
     await teacher.save();
+    cache.clearByPattern(String(teacher.schoolId)); // Invalidate cache
 
     if (teacher.email) {
       await sendEmail({
@@ -972,6 +1050,7 @@ export const updateUser = async (req, res) => {
 
     try {
       await targetUser.save();
+      if (targetUser.schoolId) cache.clearByPattern(String(targetUser.schoolId));
     } catch (err) {
       // Handle unique constraint violations gracefully
       if (err.code === 11000) {
@@ -1003,6 +1082,7 @@ export const deleteUser = async (req, res) => {
     }
 
     await targetUser.deleteOne();
+    if (targetUser.schoolId) cache.clearByPattern(String(targetUser.schoolId));
     res.json({ message: 'User deleted' });
   } catch (err) {
     console.error("Delete User Error:", err);

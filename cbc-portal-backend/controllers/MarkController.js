@@ -1,7 +1,22 @@
 // controllers/MarkController.js
+import mongoose from "mongoose";
 import Mark from "../models/mark.js";
 import { User } from "../models/User.js";
 import StudentEnrollment from "../models/StudentEnrollment.js";
+
+// ---------------------------
+// HELPER: Performance Level Subdivision
+// ---------------------------
+const getPerformanceSubdivision = (score) => {
+  if (score >= 90) return "EE1";
+  if (score >= 75) return "EE2";
+  if (score >= 58) return "ME1";
+  if (score >= 41) return "ME2";
+  if (score >= 31) return "AE1";
+  if (score >= 21) return "AE2";
+  if (score >= 11) return "BE1";
+  return "BE2";
+};
 
 // ---------------------------
 // ADD MARK
@@ -105,10 +120,7 @@ export const addMark = async (req, res) => {
         const finalScore = (ca * 0.3) + (pw * 0.2) + (et * 0.5);
         markData.finalScore = Math.round(finalScore * 10) / 10;
 
-        if (finalScore >= 80) markData.performanceLevel = "EE";
-        else if (finalScore >= 65) markData.performanceLevel = "ME";
-        else if (finalScore >= 50) markData.performanceLevel = "AE";
-        else markData.performanceLevel = "BE";
+        markData.performanceLevel = getPerformanceSubdivision(markData.finalScore);
       } else {
         // ✅ important reset
         markData.finalScore = null;
@@ -232,10 +244,7 @@ export const updateMark = async (req, res) => {
         const finalScore = (ca * 0.3) + (pw * 0.2) + (et * 0.5);
         mark.finalScore = Math.round(finalScore * 10) / 10;
 
-        if (finalScore >= 80) mark.performanceLevel = "EE";
-        else if (finalScore >= 65) mark.performanceLevel = "ME";
-        else if (finalScore >= 50) mark.performanceLevel = "AE";
-        else mark.performanceLevel = "BE";
+        mark.performanceLevel = getPerformanceSubdivision(mark.finalScore);
       } else {
         // ✅ reset when cleared
         mark.finalScore = null;
@@ -357,10 +366,16 @@ export const getStudentMarks = async (req, res) => {
 
 export const getMarksByGrade = async (req, res) => {
   try {
+    // Helper to escape regex special characters
+    const escapeRegex = (text) => {
+      return text.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, "\\$&");
+    };
+
     const isClassTeacher = req.user.roles?.includes("classteacher");
 
     // 🔑 ALWAYS take grade from query
     const grade = req.query.grade;
+    const schoolId = req.user.schoolId;
 
     if (!grade) {
       return res.status(400).json({
@@ -380,20 +395,29 @@ export const getMarksByGrade = async (req, res) => {
       `Grade ${gradeStr}`
     ];
 
-    const { term, year, assessment, subject } = req.query;
+    const { term, year, assessment, subject, page, limit, search } = req.query;
 
     // ---------------------------
     // BASE MARK QUERY
     // ---------------------------
     const markQuery = {
       grade: { $in: [...new Set(normalizedGrades)] },
-      schoolId: req.user.schoolId
+      schoolId: new mongoose.Types.ObjectId(schoolId)
     };
 
     if (term && term !== "all") markQuery.term = Number(term);
     if (year && year !== "all") markQuery.year = Number(year);
     if (assessment && assessment !== "all") markQuery.assessment = Number(assessment);
     if (subject && subject !== "all") markQuery.subject = subject.trim();
+    
+    // Search logic (optional)
+    if (search) {
+      const regex = new RegExp(escapeRegex(search), 'i');
+      markQuery.$or = [
+        { studentName: regex },
+        { admissionNo: regex }
+      ];
+    }
 
 // ---------------------------
 // STREAM FILTER (SMART + OPTIONAL)
@@ -405,13 +429,13 @@ if (filterByStream) {
 
   // Determine whether this grade uses streams (some schools don't)
   const streamsExist = await StudentEnrollment.exists({
-    schoolId: req.user.schoolId,
+    schoolId: schoolId,
     grade: { $in: studentGradeVariants },
     stream: { $ne: null }
   });
 
   const enrollmentFilter = {
-    schoolId: req.user.schoolId,
+    schoolId: schoolId,
     grade: { $in: studentGradeVariants },
     status: "active"
   };
@@ -431,47 +455,107 @@ if (filterByStream) {
     return res.status(404).json({ message: "No students found for selected class" });
   }
 
-  markQuery.admissionNo = { $in: admissions };
+  // Combine admission filter with existing search filters properly
+  if (markQuery.$or) {
+    markQuery.$and = [
+      { admissionNo: { $in: admissions } },
+      { $or: markQuery.$or }
+    ];
+    delete markQuery.$or;
+  } else {
+    markQuery.admissionNo = { $in: admissions };
+  }
 }
 
 
     console.log("[getMarksByGrade] final mark query:", markQuery);
 
-    const marks = await Mark.find(markQuery).sort({
-      admissionNo: 1,
-      subject: 1
-    });
+    // ---------------------------
+    // AGGREGATION PIPELINE
+    // ---------------------------
+    const pipeline = [
+      { $match: markQuery },
+      {
+        // Group marks by student+assessment to consolidate subjects
+        $group: {
+          _id: {
+            admissionNo: "$admissionNo",
+            term: "$term",
+            year: "$year",
+            assessment: "$assessment"
+          },
+          // Persist student details from the first record found
+          studentName: { $first: "$studentName" },
+          grade: { $first: "$grade" },
+          // Collect all subjects/courses into an array
+          subjects: {
+            $push: {
+              _id: "$_id",
+              subject: "$subject",
+              score: "$score",
+              course: "$course",
+              pathway: "$pathway",
+              continuousAssessment: "$continuousAssessment",
+              projectWork: "$projectWork",
+              endTermExam: "$endTermExam",
+              finalScore: "$finalScore"
+            }
+          }
+        }
+      },
+      // Flatten structure for the response
+      {
+        $project: {
+          _id: 0,
+          admissionNo: "$_id.admissionNo",
+          studentName: 1,
+          grade: 1,
+          term: "$_id.term",
+          year: "$_id.year",
+          assessment: "$_id.assessment",
+          subjects: 1
+        }
+      },
+      { $sort: { admissionNo: 1 } }
+    ];
 
-    if (!marks.length) {
+    // ---------------------------
+    // PAGINATION LOGIC
+    // ---------------------------
+    if (page && limit) {
+      const pageNum = Math.max(1, parseInt(page));
+      const limitNum = parseInt(limit);
+      const skip = (pageNum - 1) * limitNum;
+
+      pipeline.push({
+        $facet: {
+          metadata: [{ $count: "total" }],
+          data: [{ $skip: skip }, { $limit: limitNum }]
+        }
+      });
+
+      const [result] = await Mark.aggregate(pipeline).allowDiskUse(true);
+      const total = result.metadata[0]?.total || 0;
+      const data = result.data || [];
+
+      return res.json({
+        data,
+        total,
+        page: pageNum,
+        limit: limitNum,
+        totalPages: Math.ceil(total / limitNum)
+      });
+    }
+
+    const data = await Mark.aggregate(pipeline).allowDiskUse(true);
+
+    if (!data.length) {
       return res.status(404).json({
         message: "No marks found"
       });
     }
 
-    // ---------------------------
-    // GROUP RESULTS
-    // ---------------------------
-    const grouped = {};
-    marks.forEach(m => {
-      const key = `${m.admissionNo}_${m.assessment}_${m.term}_${m.year}`;
-      if (!grouped[key]) {
-        grouped[key] = {
-          admissionNo: m.admissionNo,
-          studentName: m.studentName,
-          grade: m.grade,
-          term: m.term,
-          year: m.year,
-          assessment: String(m.assessment),
-          subjects: []
-        };
-      }
-      grouped[key].subjects.push({
-        subject: m.subject,
-        score: Number(m.score)
-      });
-    });
-
-    return res.json(Object.values(grouped));
+    return res.json(data);
 
   } catch (err) {
     console.error("❌ getMarksByGrade error:", err);
@@ -480,6 +564,8 @@ if (filterByStream) {
     });
   }
 };
+
+export const getPaginatedMarksByGrade = getMarksByGrade;
 
 // ---------------------------
 // CLASS MARKS FOR STUDENT (RANKING)
@@ -492,12 +578,49 @@ export const getClassMarks = async (req, res) => {
       return res.status(400).json({ message: "Missing query parameters" });
     }
 
-    const allMarks = await Mark.find({
-      term: Number(term),
-      year: Number(year),
-      assessment: Number(assessment),
-      schoolId: req.user.schoolId
-    }).lean();
+    const pipeline = [
+      {
+        $match: {
+          schoolId: new mongoose.Types.ObjectId(req.user.schoolId),
+          term: Number(term),
+          year: Number(year),
+          assessment: Number(assessment)
+        }
+      },
+      {
+        $group: {
+          _id: "$admissionNo",
+          studentName: { $first: "$studentName" },
+          grade: { $first: "$grade" },
+          stream: { $first: "$stream" },
+          subjects: {
+            $push: {
+              _id: "$_id",
+              subject: "$subject",
+              score: "$score",
+              course: "$course",
+              pathway: "$pathway",
+              continuousAssessment: "$continuousAssessment",
+              projectWork: "$projectWork",
+              endTermExam: "$endTermExam",
+              finalScore: "$finalScore"
+            }
+          }
+        }
+      },
+      {
+        $project: {
+          _id: 0,
+          admissionNo: "$_id",
+          studentName: 1,
+          grade: 1,
+          stream: 1,
+          subjects: 1
+        }
+      }
+    ];
+
+    const allMarks = await Mark.aggregate(pipeline).allowDiskUse(true);
 
     if (!allMarks.length) {
       return res.status(404).json({ message: "No marks found" });

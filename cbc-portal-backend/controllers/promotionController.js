@@ -2,6 +2,8 @@
 import StudentEnrollment from "../models/StudentEnrollment.js";
 import {User} from "../models/User.js";
 import Mark from "../models/mark.js";
+import Payment from "../models/Payment.js";
+import { calculateBalance } from "../services/balanceService.js";
 
 
 
@@ -69,7 +71,8 @@ export const promoteStudents = async (req, res) => {
     const results = [];
     const warnings = [];
 
-    for (const d of decisions) {
+    // Optimize: Process students in parallel instead of sequentially
+    await Promise.all(decisions.map(async (d) => {
       const enrollment = await StudentEnrollment.findOne({
         studentId: d.studentId,
         schoolId: req.user.schoolId,
@@ -77,11 +80,11 @@ export const promoteStudents = async (req, res) => {
         status: "active"
       });
 
-      if (!enrollment) continue;
+      if (!enrollment) return;
 
       // 🚫 Skip if already completed or transferred
       if (["completed", "transferred"].includes(enrollment.status)) {
-        continue;
+        return;
       }
 
       // -----------------------
@@ -89,7 +92,7 @@ export const promoteStudents = async (req, res) => {
       // -----------------------
       if (d.action === "transfer") {
         await enrollment.updateOne({ status: "transferred" });
-        continue;
+        return;
       }
 
       const currentGrade = enrollment.grade;
@@ -102,13 +105,64 @@ export const promoteStudents = async (req, res) => {
       // -----------------------
       if (isGrade9 && d.action === "promote") {
         await enrollment.updateOne({ status: "completed" });
-        continue;
+        return;
       }
 
       // -----------------------
       // CLOSE OLD ENROLLMENT
       // -----------------------
       await enrollment.updateOne({ status: "completed" });
+
+      // -----------------------
+      // AUTOMATIC CARRY FORWARD (POSITIVE BALANCE)
+      // -----------------------
+      try {
+        const studentUser = await User.findById(enrollment.studentId);
+        // Calculate balance for the year we are leaving
+        const balanceData = await calculateBalance(studentUser, enrollment.grade, fromAcademicYear);
+        
+        if (balanceData) {
+          const bal = balanceData.balance;
+          // Unique reference to avoid duplicates: BF-YYYY-STUDENTID
+          const baseRef = `BF-${fromAcademicYear}-${enrollment.studentId}`;
+
+          // CASE 1: Credit/Surplus (Balance < 0)
+          // Example: Fee 10k, Paid 15k, Balance = -5k.
+          // Action: Credit new year with +5000.
+          if (bal < 0) {
+            await Payment.create({
+              studentId: enrollment.studentId,
+              schoolId: enrollment.schoolId,
+              amount: Math.abs(bal),
+              method: "fund_transfer",
+              reference: `${baseRef}-CR`, // CR for Credit
+              term: "Term 1",
+              academicYear: toAcademicYear,
+              recordedBy: req.user.id,
+              recordedByRole: "system" // Or 'accounts' if 'system' not in enum
+            });
+          }
+          // CASE 2: Debt/Arrears (Balance > 0)
+          // Example: Fee 10k, Paid 5k, Balance = +5k.
+          // Action: Debit new year with -5000 (Negative payment increases balance).
+          else if (bal > 0) {
+            await Payment.create({
+              studentId: enrollment.studentId,
+              schoolId: enrollment.schoolId,
+              amount: -Math.abs(bal), // Negative amount implies debt brought forward
+              method: "fund_transfer",
+              reference: `${baseRef}-DR`, // DR for Debit
+              term: "Term 1",
+              academicYear: toAcademicYear,
+              recordedBy: req.user.id,
+              recordedByRole: "accounts" // keeping role valid
+            });
+          }
+        }
+      } catch (err) {
+        console.error(`Failed to carry forward balance for student ${enrollment.studentId}:`, err);
+        // We assume we continue promoting even if balance transfer fails, or log a warning
+      }
 
       // -----------------------
       // REPEAT OR PROMOTE
@@ -123,7 +177,7 @@ export const promoteStudents = async (req, res) => {
           studentId: enrollment.studentId,
           message: "No next grade found"
         });
-        continue;
+        return;
       }
 
       // -----------------------
@@ -144,7 +198,7 @@ export const promoteStudents = async (req, res) => {
       });
 
       results.push(newEnrollment);
-    }
+    }));
 
     res.json({
       message: "Promotion processed successfully",
@@ -166,17 +220,29 @@ export const previewPromotion = async (req, res) => {
       return res.status(403).json({ message: "Unauthorized" });
     }
 
-    const { academicYear } = req.query;
+    const { academicYear, page, limit } = req.query;
     if (!academicYear) {
       return res.status(400).json({ message: "Academic year required" });
     }
+
+    const pageNum = parseInt(page) || 1;
+    const limitNum = parseInt(limit) || 10;
+    const skip = (pageNum - 1) * limitNum;
+
+    const total = await StudentEnrollment.countDocuments({
+      schoolId: req.user.schoolId,
+      academicYear: Number(academicYear)
+    });
 
     const enrollments = await StudentEnrollment.find({
       schoolId: req.user.schoolId,
       academicYear: Number(academicYear)
     })
       .populate("studentId", "name admission")
-      .sort({ grade: 1 });
+      .sort({ grade: 1, _id: 1 }) // Stable sort for pagination
+      .skip(skip)
+      .limit(limitNum)
+      .lean(); // Optimize read query
 
     const preview = [];
 
@@ -195,7 +261,12 @@ export const previewPromotion = async (req, res) => {
       });
     }
 
-    res.json({ preview });
+    res.json({ 
+      preview,
+      total,
+      totalPages: Math.ceil(total / limitNum),
+      currentPage: pageNum
+    });
 
   } catch (err) {
     console.error("Preview error:", err);
@@ -222,7 +293,7 @@ export const filterEnrollments = async (req, res) => {
 
     const enrollments = await StudentEnrollment.find(query)
       .populate("studentId", "name admission")
-      .sort({ grade: 1 });
+      .sort({ grade: 1, _id: 1 });
 
     const result = enrollments.map(e => ({
       _id: e._id,
@@ -241,4 +312,3 @@ export const filterEnrollments = async (req, res) => {
     res.status(500).json({ message: "Failed to filter enrollments" });
   }
 };
-

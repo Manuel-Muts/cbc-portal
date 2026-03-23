@@ -53,6 +53,7 @@ const userSchema = new mongoose.Schema({
   password: { type: String, required: true },
   classTeacherPassword: { type: String, default: null },
   admissionNumber: { type: String },
+  grade: { type: String, default: null }, // Current grade for students
   passwordMustChange: { type: Boolean, default: false },
 
   // ------------------------------------
@@ -101,5 +102,8 @@ userSchema.index({ resetCode: 1 });
 userSchema.index({ resetCodeExpires: 1 });
 userSchema.index({ createdAt: -1 });
 userSchema.index({ schoolId: 1 });
+userSchema.index({ grade: 1 }); // Optimize grade-based lookups
+userSchema.index({ schoolId: 1, role: 1 }); // Optimize filtering users by role within a school
+userSchema.index({ name: "text", admission: "text", email: "text" }); // Enable fast text search
 
 export const User = mongoose.model("User", userSchema);

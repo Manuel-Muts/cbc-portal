@@ -1,56 +1,44 @@
-import express from "express";
-import multer from "multer";
-import path from "path";
-import verifyToken from "../middleware/verifyToken.js";
-import {
-  addMaterial,
-  getMaterials,
-  deleteMaterial,
+import express from 'express';
+import verifyToken from '../middleware/verifyToken.js';
+import { 
+  addMaterial, 
+  getMaterials, 
+  getStudentMaterials, 
+  deleteMaterial, 
   downloadMaterial,
-  getStudentMaterials
-} from "../controllers/materialController.js";
+  markAsRead 
+} from '../controllers/materialController.js';
+import upload from '../utils/multer.js'; // Import the Cloudinary multer config
 
 const router = express.Router();
 
-// ---------------------------
-// MULTER CONFIG
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, path.join(path.resolve(), "uploads")),
-  filename: (req, file, cb) => {
-    const ext =
-      file.mimetype === "application/pdf"
-        ? ".pdf"
-        : file.mimetype === "application/msword"
-        ? ".doc"
-        : ".docx";
-    cb(null, Date.now() + "-" + Math.round(Math.random() * 1e9) + ext);
-  }
-});
-
-const fileFilter = (req, file, cb) => {
-  const allowed = [
-    "application/pdf",
-    "application/msword",
-    "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-  ];
-  cb(null, allowed.includes(file.mimetype));
+// Wrapper to handle Multer/Cloudinary errors gracefully
+const uploadMiddleware = (req, res, next) => {
+  upload.single('file')(req, res, (err) => {
+    if (err) {
+      console.error("Upload Error:", err);
+      if (err.code === 'LIMIT_FILE_SIZE') {
+        return res.status(400).json({ message: "File size exceeds 10MB limit" });
+      }
+      // Return actual error message instead of 500 crash
+      return res.status(400).json({ message: err.message || "File upload failed" });
+    }
+    next();
+  });
 };
 
-const upload = multer({ storage, fileFilter, limits: { fileSize: 10 * 1024 * 1024 } });
+// Teacher: Add material
+router.post('/add', verifyToken, uploadMiddleware, addMaterial);
 
-// ---------------------------
-// STUDENT MIDDLEWARE
-const isStudent = (req, res, next) => {
-  if (req.user.role !== "student") return res.status(403).json({ message: "Only students can access this route" });
-  next();
-};
+// Teacher: Get uploaded materials
+router.get('/teacher', verifyToken, getMaterials);
 
-// ---------------------------
-// ROUTES
-router.post("/upload", verifyToken, upload.single("file"), addMaterial);
-router.get("/student", verifyToken, isStudent, getStudentMaterials);
-router.get("/", verifyToken, getMaterials);
-router.delete("/:id", verifyToken, deleteMaterial);
-router.get("/download/:id", verifyToken, downloadMaterial);
+// Student: Get materials
+router.get('/student', verifyToken, getStudentMaterials);
+
+// Shared: Download & Actions
+router.get('/download/:id', verifyToken, downloadMaterial);
+router.put('/:id/read', verifyToken, markAsRead);
+router.delete('/:id', verifyToken, deleteMaterial);
 
 export default router;

@@ -79,6 +79,9 @@ studentEnrollmentSchema.index(
   { unique: true }
 );
 
+// Index for Promotion Preview (School + Year + Grade Sort)
+studentEnrollmentSchema.index({ schoolId: 1, academicYear: 1, grade: 1 });
+
 const StudentEnrollment = mongoose.model(
   "StudentEnrollment",
   studentEnrollmentSchema

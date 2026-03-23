@@ -1,10 +1,17 @@
 //schoolController.js
 import { School } from '../models/school.js';
+import cache from "../utils/simpleCache.js";
 
 export const getMySchool = async (req, res) => {
   try {
     if (!req.user?.schoolId) {
       return res.status(400).json({ msg: "No school assigned" });
+    }
+
+    const cacheKey = `school_profile_${req.user.schoolId}`;
+    const cached = cache.get(cacheKey);
+    if (cached) {
+      return res.json(cached);
     }
 
     const school = await School.findById(req.user.schoolId)
@@ -16,12 +23,14 @@ if (!school) return res.status(404).json({ msg: "School not found" });
 const logoPath = school.logo || null;
 
 
-res.json({
+const response = {
   name: school.name,
   address: school.address,
   logo: logoPath,
   paybill: school.paybill || ""
-});
+};
+cache.set(cacheKey, response, 300); // Cache for 5 minutes
+res.json(response);
 
   } catch (err) {
     console.error("Get My School Error:", err);
@@ -71,6 +80,9 @@ export const updateSchoolPaybill = async (req, res) => {
     if (!school) {
       return res.status(404).json({ msg: "School not found" });
     }
+
+    // Invalidate cache for this school
+    cache.clearByPattern(String(schoolIdToUpdate));
 
     res.json({
       msg: "Paybill configuration updated successfully",

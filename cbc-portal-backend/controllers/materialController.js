@@ -1,6 +1,9 @@
 import { Material } from "../models/Material.js";
 import fs from "fs";
 import path from "path";
+import { cloudinary } from "../utils/cloudinary.js";
+import StudentEnrollment from "../models/StudentEnrollment.js";
+import axios from "axios";
 
 // ---------------------------
 // ADD STUDY MATERIAL (Teacher)
@@ -10,8 +13,9 @@ export const addMaterial = async (req, res) => {
     const gradeNum = parseInt(grade);
     const isSeniorSchool = gradeNum >= 10 && gradeNum <= 12;
 
-    let fileName = null;
-    let fileUrl = null;
+    // --- CLOUDINARY FIX ---
+    // The multer middleware (not shown) should be configured to use Cloudinary storage.
+    // req.file will now contain Cloudinary data.
 
     if (req.file) {
       const allowedTypes = [
@@ -22,9 +26,6 @@ export const addMaterial = async (req, res) => {
       if (!allowedTypes.includes(req.file.mimetype)) {
         return res.status(400).json({ message: "Only PDF or Word files are allowed" });
       }
-
-      fileName = req.file.originalname;
-      fileUrl = `${req.protocol}://${req.get("host")}/uploads/${req.file.filename}`;
     }
 
     // ===== JUNIOR SCHOOL (1-9) =====
@@ -38,8 +39,9 @@ export const addMaterial = async (req, res) => {
         subject,
         title,
         description,
-        fileName,
-        file: fileUrl,
+        fileName: req.file?.originalname,
+        file: req.file?.path, // Cloudinary URL
+        cloudinaryId: req.file?.filename, // Cloudinary public_id
         teacherId: req.user.id,
         schoolId: req.user.schoolId
       });
@@ -59,8 +61,9 @@ export const addMaterial = async (req, res) => {
         course,
         title,
         description,
-        fileName,
-        file: fileUrl,
+        fileName: req.file?.originalname,
+        file: req.file?.path, // Cloudinary URL
+        cloudinaryId: req.file?.filename, // Cloudinary public_id
         teacherId: req.user.id,
         schoolId: req.user.schoolId
       });
@@ -86,6 +89,9 @@ export const getStudentMaterials = async (req, res) => {
       classGrade: req.user?.classGrade
     });
 
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+
     if (req.user.role !== "student") {
       return res.status(403).json({ message: "Only students can access their materials" });
     }
@@ -93,16 +99,41 @@ export const getStudentMaterials = async (req, res) => {
     const schoolId = req.user.schoolId;
     let grade = req.user.classGrade; // may be "all"
 
+    // Helper to normalize grade (e.g., "Grade 5W" -> "5") to match material storage ("5")
+    const normalizeGradeToNumberString = (g) => {
+      if (!g || g === "all") return null;
+      const str = String(g);
+      const match = str.match(/\d+/);
+      return match ? match[0] : null; 
+    };
+
+    // If classGrade is missing or "all", try to resolve real grade from Enrollment
+    if (!grade || grade === "all") {
+      const enrollment = await StudentEnrollment.findOne({
+        studentId: req.user.id, // Mongoose handles casting if id is string
+        status: "active"
+      }).sort({ academicYear: -1 }).select("grade");
+
+      if (enrollment && enrollment.grade) {
+        grade = enrollment.grade;
+        // normalize to number if stored as "Grade 5" for consistent int parsing later
+        // But Material schema stores grade as String (often "5" or "Grade 5")
+      }
+    }
+
     if (!schoolId) {
       return res.status(400).json({ message: "Student school not defined" });
     }
 
     const filter = { schoolId };
-    if (grade && grade !== "all") {
-      filter.grade = grade; // only filter grade if defined and not "all"
+    const normalizedGradeStr = normalizeGradeToNumberString(grade);
+    
+    // STRICT SERVER-SIDE FILTERING: Force grade filter if user is student
+    if (normalizedGradeStr) {
+      filter.grade = normalizedGradeStr; 
     }
 
-    const gradeNum = parseInt(grade);
+    const gradeNum = parseInt(normalizedGradeStr);
     const isSeniorSchool = gradeNum >= 10 && gradeNum <= 12;
 
     // ===== JUNIOR SCHOOL (1-9): Filter by subject =====
@@ -129,8 +160,22 @@ export const getStudentMaterials = async (req, res) => {
 
     console.log("STUDENT MATERIAL FILTER:", filter); // debug
 
-    const materials = await Material.find(filter).sort({ createdAt: -1 });
-    res.json(materials);
+    const total = await Material.countDocuments(filter);
+    const totalPages = Math.ceil(total / limit);
+    const skip = (page - 1) * limit;
+
+    const materialsDocs = await Material.find(filter)
+      .sort({ createdAt: -1, _id: -1 })
+      .skip(skip)
+      .limit(limit)
+      .lean(); // Use lean() to allow property modification
+
+    const materials = materialsDocs.map(m => ({
+      ...m,
+      isRead: m.readBy && m.readBy.some(id => id.toString() === req.user.id)
+    }));
+
+    res.json({ materials, total, totalPages, currentPage: page });
   } catch (err) {
     console.error("getStudentMaterials error:", err);
     res.status(500).json({ message: "Server error fetching student materials" });
@@ -139,14 +184,25 @@ export const getStudentMaterials = async (req, res) => {
 
 // ---------------------------
 // GET MATERIALS BY TEACHER
+// ---------------------------
 export const getMaterials = async (req, res) => {
   try {
-    const materials = await Material.find({
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const skip = (page - 1) * limit;
+
+    const query = {
       teacherId: req.user.id,
       schoolId: req.user.schoolId
-    }).sort({ createdAt: -1 });
+    };
 
-    res.json(materials);
+    const total = await Material.countDocuments(query);
+    const materials = await Material.find(query)
+      .sort({ createdAt: -1, _id: -1 })
+      .skip(skip)
+      .limit(limit);
+
+    res.json({ materials, total, totalPages: Math.ceil(total / limit), currentPage: page });
   } catch (err) {
     console.error("getMaterials error:", err);
     res.status(500).json({ message: err.message });
@@ -164,8 +220,11 @@ export const deleteMaterial = async (req, res) => {
       return res.status(403).json({ message: "Unauthorized" });
     }
 
-    const filePath = path.join(path.resolve(), "uploads", path.basename(material.file));
-    if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+    // --- CLOUDINARY FIX ---
+    // Delete from Cloudinary using the stored public_id
+    if (material.cloudinaryId) {
+      await cloudinary.uploader.destroy(material.cloudinaryId);
+    }
 
     await material.deleteOne();
     res.json({ message: "Material deleted" });
@@ -186,12 +245,68 @@ export const downloadMaterial = async (req, res) => {
       return res.status(403).json({ message: "Unauthorized file access" });
     }
 
-    const filePath = path.join(path.resolve(), "uploads", path.basename(material.file));
-    if (!fs.existsSync(filePath)) return res.status(404).json({ message: "File not found" });
+    // Update download count AND mark as read
+    await Material.findByIdAndUpdate(req.params.id, {
+      $inc: { downloadCount: 1 },
+      $addToSet: { readBy: req.user.id }
+    });
 
-    res.download(filePath, material.fileName);
+    // Generate signed URL to bypass Cloudinary ACL/Strict restrictions
+    let resourceType = 'image';
+    if (material.file && material.file.includes('/raw/')) resourceType = 'raw';
+    else if (material.file && material.file.includes('/video/')) resourceType = 'video';
+
+    const ext = material.file ? path.extname(material.file).split('?')[0].substring(1) : undefined;
+    
+    const urlParams = {
+      resource_type: resourceType,
+      secure: true,
+      sign_url: true
+    };
+
+    // Avoid double extension for raw files (e.g. .pdf.pdf)
+    if (resourceType !== 'raw' && ext) {
+      urlParams.format = ext;
+    }
+
+    const signedUrl = material.cloudinaryId ? cloudinary.url(material.cloudinaryId, urlParams) : material.file;
+
+    // Proxy file download with signed URL and User-Agent
+    const response = await axios({
+      url: signedUrl,
+      method: "GET",
+      responseType: "stream",
+      headers: {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+      }
+    });
+
+    res.setHeader("Content-Disposition", `attachment; filename="${material.fileName || 'download'}"`);
+    
+    // Ensure correct content type for PDFs
+    let contentType = response.headers["content-type"];
+    if (material.fileName && material.fileName.toLowerCase().endsWith('.pdf')) {
+      contentType = "application/pdf";
+    }
+    res.setHeader("Content-Type", contentType);
+    response.data.pipe(res);
   } catch (err) {
     console.error("downloadMaterial error:", err);
+    res.status(500).json({ message: err.message });
+  }
+};
+
+// ---------------------------
+// MARK MATERIAL AS READ
+// ---------------------------
+export const markAsRead = async (req, res) => {
+  try {
+    await Material.findByIdAndUpdate(req.params.id, {
+      $addToSet: { readBy: req.user.id }
+    });
+    res.json({ success: true });
+  } catch (err) {
+    console.error("markAsRead error:", err);
     res.status(500).json({ message: err.message });
   }
 };

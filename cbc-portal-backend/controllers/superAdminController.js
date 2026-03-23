@@ -7,6 +7,7 @@ import Payment from '../models/Payment.js';
 import Setting from '../models/Setting.js';
 import LoginAttempt from '../models/LoginAttempt.js';
 import fs from 'fs';
+import cache from "../utils/simpleCache.js";
 
 // ---------------------------
 // CREATE NEW SCHOOL
@@ -44,6 +45,7 @@ export const createSchool = async (req, res) => {
       logoMimeType 
     });
 
+    cache.clearByPattern('super_schools');
     res.status(201).json({ msg: 'School created', school });
   } catch (err) {
     console.error('Create School Error:', err);
@@ -83,6 +85,7 @@ export const createAdmin = async (req, res) => {
 
     await sendCredentialsEmail({ name, email, rawPassword });
 
+    cache.clearByPattern('super_admins');
     res.status(201).json({ msg: 'Admin created successfully', admin });
   } catch (err) {
     console.error('Create Admin Error:', err);
@@ -94,18 +97,70 @@ export const createAdmin = async (req, res) => {
 // GET ALL SCHOOLS
 // ---------------------------
 export const getSchools = async (req, res) => {
-  if (req.user.role !== 'super_admin') return res.status(403).json({ msg: 'Only super-admins can view schools' });
-  const schools = await School.find().sort({ createdAt: -1 });
-  res.json(schools);
+  try {
+    if (req.user.role !== 'super_admin') return res.status(403).json({ msg: 'Only super-admins can view schools' });
+
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const search = req.query.search || '';
+    const skip = (page - 1) * limit;
+
+    const cacheKey = `super_schools_p${page}_l${limit}_s${search}`;
+    const cached = cache.get(cacheKey);
+    if (cached) return res.json(cached);
+
+    const query = {};
+    if (search) {
+      query.$or = [
+        { name: { $regex: search, $options: 'i' } },
+        { adminEmail: { $regex: search, $options: 'i' } }
+      ];
+    }
+
+    const total = await School.countDocuments(query);
+    const schools = await School.find(query).sort({ createdAt: -1 }).skip(skip).limit(limit);
+
+    const response = { schools, total, totalPages: Math.ceil(total / limit), currentPage: page };
+    cache.set(cacheKey, response, 120); // 2 minutes cache
+    res.json(response);
+  } catch (err) {
+    res.status(500).json({ msg: err.message });
+  }
 };
 
 // ---------------------------
 // GET ALL ADMINS
 // ---------------------------
 export const getAdmins = async (req, res) => {
-  if (req.user.role !== 'super_admin') return res.status(403).json({ msg: 'Only super-admins can view admins' });
-  const admins = await User.find({ role: 'admin' }).populate('schoolId', 'name').sort({ createdAt: -1 });
-  res.json(admins);
+  try {
+    if (req.user.role !== 'super_admin') return res.status(403).json({ msg: 'Only super-admins can view admins' });
+
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const search = req.query.search || '';
+    const skip = (page - 1) * limit;
+
+    const cacheKey = `super_admins_p${page}_l${limit}_s${search}`;
+    const cached = cache.get(cacheKey);
+    if (cached) return res.json(cached);
+
+    const query = { role: 'admin' };
+    if (search) {
+      query.$or = [
+        { name: { $regex: search, $options: 'i' } },
+        { email: { $regex: search, $options: 'i' } }
+      ];
+    }
+
+    const total = await User.countDocuments(query);
+    const admins = await User.find(query).populate('schoolId', 'name').sort({ createdAt: -1 }).skip(skip).limit(limit);
+    const response = { admins, total, totalPages: Math.ceil(total / limit), currentPage: page };
+    
+    cache.set(cacheKey, response, 120);
+    res.json(response);
+  } catch (err) {
+    res.status(500).json({ msg: err.message });
+  }
 };
 
 // ---------------------------
@@ -149,6 +204,7 @@ export const updateAdmin = async (req, res) => {
     }
 
     await admin.save();
+    cache.clearByPattern('super_admins');
     res.json({ msg: 'Admin updated successfully', admin });
   } catch (err) {
     console.error('Update Admin Error:', err);
@@ -168,6 +224,7 @@ export const deleteAdmin = async (req, res) => {
     if (!admin) return res.status(404).json({ msg: 'Admin not found' });
 
     await admin.deleteOne(); // <-- changed from remove()
+    cache.clearByPattern('super_admins');
     res.json({ msg: 'Admin deleted successfully' });
   } catch (err) {
     console.error('Delete Admin Error:', err);
@@ -220,6 +277,7 @@ export const updateSchool = async (req, res) => {
     }
 
     await school.save();
+    cache.clearByPattern('super_schools');
     res.json({ msg: 'School updated successfully', school });
   } catch (err) {
     console.error('Update School Error:', err);
@@ -239,6 +297,7 @@ export const deleteSchool = async (req, res) => {
     if (!school) return res.status(404).json({ msg: 'School not found' });
 
     await school.deleteOne(); // <-- changed from remove()
+    cache.clearByPattern('super_schools');
     res.json({ msg: 'School deleted successfully' });
   } catch (err) {
     console.error('Delete School Error:', err);
@@ -443,19 +502,8 @@ export const getLogs = async (req, res) => {
       return res.json({ admins: data, meta: { total, page, limit, totalPages }, topLoginAttempt });
     }
 
-    // Default: return first page for all three lists plus topLoginAttempt
-    const recentPayments = await Payment.aggregate([
-      { $lookup: { from: 'users', localField: 'studentId', foreignField: '_id', as: 'student' } },
-      { $unwind: { path: '$student', preserveNullAndEmptyArrays: true } },
-      { $sort: { createdAt: -1 } },
-      { $limit: 10 },
-      { $project: { studentId: 1, amount: 1, reference: 1, term:1, academicYear:1, createdAt:1, 'student.name': 1, 'student.admission': 1 } }
-    ]);
-
-    const recentSchools = await School.find().sort({ createdAt: -1 }).limit(10).select('name adminEmail createdAt address');
-    const recentAdmins = await User.find({ role: 'admin' }).sort({ createdAt: -1 }).limit(10).select('name email createdAt').populate('schoolId', 'name');
-
-    return res.json({ recentPayments, recentSchools, recentAdmins, topLoginAttempt });
+    // Default: return only topLoginAttempt
+    return res.json({ topLoginAttempt });
   } catch (err) {
     console.error('Get Logs Error:', err);
     res.status(500).json({ message: 'Failed to fetch logs' });
@@ -507,6 +555,7 @@ export const toggleSchoolStatus = async (req, res) => {
     school.version += 1; // increment version on status change
     await school.save();
 
+    cache.clearByPattern('super_schools');
     res.json({ msg: `School ${school.status}`, school });
   } catch (err) {
     console.error("Toggle School Status Error:", err);

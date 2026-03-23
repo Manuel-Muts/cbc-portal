@@ -23,7 +23,8 @@ import { School } from "../models/school.js";
 
 
 import verifyToken from '../middleware/verifyToken.js';
-import { upload } from '../middleware/upload.js';
+// Use local upload middleware for temporary file processing (Base64 conversion)
+import { upload } from '../middleware/upload.js'; 
 const router = express.Router();
 
 // ============================

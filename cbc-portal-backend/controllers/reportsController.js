@@ -5,7 +5,9 @@ import { School } from "../models/school.js";
 import StudentEnrollment from "../models/StudentEnrollment.js";
 import { calculateBalance } from "../services/balanceService.js";
 import PDFDocument from 'pdfkit';
+import Payment from "../models/Payment.js";
 import { PassThrough } from 'stream';
+import cache from "../utils/simpleCache.js";
 
 export const generateFeeStructuresPDF = async (req, res) => {
   try {
@@ -382,85 +384,163 @@ export const getOutstandingFees = async (req, res) => {
       return res.status(400).json({ message: 'No school assigned' });
     }
 
-    const { name, class: classFilter, term } = req.query;
-    const currentAcademicYear = new Date().getFullYear();
-
-    // Get students with their balances
-    let students = await User.find({
-      role: "student",
-      schoolId: req.user.schoolId
-    }).select("name admission schoolId");
-
-    // Filter by name if specified
-    if (name) {
-      students = students.filter(s => s.name.toLowerCase().includes(name.toLowerCase()));
+    // Cache key specific to school and query parameters
+    const cacheKey = `outstanding_${req.user.schoolId}_${JSON.stringify(req.query)}`;
+    const cachedData = cache.get(cacheKey);
+    if (cachedData) {
+      return res.json(cachedData);
     }
 
-    // Get balance data for each student
-    let studentData = await Promise.all(
-      students.map(async (student) => {
-        // Try to get current academic year enrollment first
-        let enrollment = await StudentEnrollment.findOne({
-          studentId: student._id,
-          academicYear: currentAcademicYear,
-          status: "active"
-        }).select("grade stream");
+    const { name, class: classFilter, academicYear, term, page: pageQuery, limit: limitQuery, sort } = req.query;
+    const page = parseInt(pageQuery) || 1;
+    const limit = parseInt(limitQuery) || 10;
+    const yearToUse = parseInt(academicYear) || new Date().getFullYear();
 
-        // If not found, get the most recent enrollment
-        if (!enrollment) {
-          enrollment = await StudentEnrollment.findOne({
-            studentId: student._id
-          }).sort({ academicYear: -1 }).select("grade stream");
-        }
+    // 1. Fetch Students
+    const userQuery = {
+      role: "student",
+      schoolId: req.user.schoolId
+    };
+    if (name) {
+      userQuery.name = { $regex: name, $options: "i" };
+    }
+    const students = await User.find(userQuery).select("name admission _id").lean();
 
-        const balanceData = enrollment ? await calculateBalance(student, enrollment.grade, currentAcademicYear) : {
-          totalFee: 0,
-          totalPaid: 0,
-          balance: 0,
+    if (students.length === 0) {
+       return res.json({ students: [], total: 0, totalPages: 0, currentPage: page });
+    }
+
+    const studentIds = students.map(s => s._id);
+
+    // 2. Batch Fetch Enrollments (Active only, matching current logic)
+    const enrollments = await StudentEnrollment.find({
+      studentId: { $in: studentIds },
+      academicYear: yearToUse,
+      status: "active"
+    }).select("studentId grade stream").lean();
+
+    // 3. Batch Fetch Payments
+    const payments = await Payment.find({
+      studentId: { $in: studentIds },
+      academicYear: yearToUse
+    }).select("studentId amount term").lean();
+
+    // 4. Batch Fetch Fee Structures
+    const feeStructures = await FeeStructure.find({
+      schoolId: req.user.schoolId,
+      academicYear: yearToUse
+    }).lean();
+
+    // 5. Process in memory
+    let studentData = students.map(student => {
+      const sId = String(student._id);
+      const enrollment = enrollments.find(e => String(e.studentId) === sId);
+      
+      let balanceData;
+      
+      if (enrollment) {
+        // Calculate balance logic inline to avoid N+1 service calls
+        const fee = feeStructures.find(f => f.grade === enrollment.grade) || {};
+        const sPayments = payments.filter(p => String(p.studentId) === sId);
+        
+        // Group payments
+        const termPaid = { "Term 1": 0, "Term 2": 0, "Term 3": 0 };
+        sPayments.forEach(p => {
+          if (termPaid[p.term] !== undefined) termPaid[p.term] += p.amount;
+        });
+        
+        const totalPaid = Object.values(termPaid).reduce((a, b) => a + b, 0);
+        const totalFee = fee.totalFee || 0;
+        
+        balanceData = {
+          totalFee,
+          totalPaid,
+          balance: totalFee - totalPaid,
+          termBalances: {
+            term1: { fee: fee.term1Fee || 0, paid: termPaid["Term 1"], balance: (fee.term1Fee || 0) - termPaid["Term 1"] },
+            term2: { fee: fee.term2Fee || 0, paid: termPaid["Term 2"], balance: (fee.term2Fee || 0) - termPaid["Term 2"] },
+            term3: { fee: fee.term3Fee || 0, paid: termPaid["Term 3"], balance: (fee.term3Fee || 0) - termPaid["Term 3"] }
+          }
+        };
+      } else {
+        balanceData = {
+          totalFee: 0, totalPaid: 0, balance: 0,
           termBalances: {
             term1: { fee: 0, paid: 0, balance: 0 },
             term2: { fee: 0, paid: 0, balance: 0 },
             term3: { fee: 0, paid: 0, balance: 0 }
           }
         };
+      }
 
-        // Format className with stream if present
-        let className = "Not Enrolled";
-        if (enrollment) {
-          className = enrollment.stream ? `${enrollment.grade}${enrollment.stream}` : enrollment.grade;
-        }
+      let className = "Not Enrolled";
+      if (enrollment) {
+        className = enrollment.stream ? `${enrollment.grade}${enrollment.stream}` : enrollment.grade;
+      }
 
-        return {
-          studentId: student._id,
-          admission: student.admission,
-          className: className,
-          studentName: student.name,
-          expected: balanceData.totalFee,
-          paid: balanceData.totalPaid,
-          balance: balanceData.balance,
-          termBalances: balanceData.termBalances
-        };
-      })
-    );
+      return {
+        studentId: student._id,
+        admission: student.admission,
+        className: className,
+        studentName: student.name,
+        expected: balanceData.totalFee,
+        paid: balanceData.totalPaid,
+        balance: balanceData.balance,
+        termBalances: balanceData.termBalances
+      };
+    });
 
     // Filter by class if specified (supports both with and without stream)
     if (classFilter) {
       studentData = studentData.filter(s => {
         // Match exact format or partial match (for backward compatibility)
-        return s.className === classFilter || s.className.startsWith(classFilter);
+        if (!s.className.startsWith(classFilter)) return false;
+        // Ensure we don't match "Grade 10" when filtering "Grade 1"
+        const nextChar = s.className.charAt(classFilter.length);
+        return !/\d/.test(nextChar); // True if next char is NOT a digit (e.g. space, letter, or empty)
       });
     }
 
-    // Filter students with outstanding balance > 0
-    let outstandingStudents = studentData.filter(s => s.balance > 0);
-
-    // Filter by term if specified
+    let outstandingStudents;
     if (term) {
       const termKey = term.toLowerCase().replace(/\s+/g, '');
-      outstandingStudents = outstandingStudents.filter(s => s.termBalances[termKey] && s.termBalances[termKey].balance > 0);
+      outstandingStudents = studentData.filter(s => s.termBalances && s.termBalances[termKey] && s.termBalances[termKey].balance > 0);
+    } else {
+      // Filter students with outstanding balance > 0 (Annual)
+      outstandingStudents = studentData.filter(s => s.balance > 0);
     }
 
-    res.json(outstandingStudents);
+    // Sorting Logic
+    if (sort) {
+      const [field, order] = sort.split('_'); // e.g. "balance_desc" -> field="balance", order="desc"
+      const multiplier = order === 'desc' ? -1 : 1;
+
+      outstandingStudents.sort((a, b) => {
+        if (field === 'balance') {
+          return (a.balance - b.balance) * multiplier;
+        }
+        if (field === 'name') {
+          return a.studentName.localeCompare(b.studentName) * multiplier;
+        }
+        if (field === 'admission') {
+          // numeric comparison for admission strings if possible
+          return a.admission.localeCompare(b.admission, undefined, { numeric: true }) * multiplier;
+        }
+        return 0;
+      });
+    }
+
+    // Server-side pagination of the result set
+    const total = outstandingStudents.length;
+    const totalPages = Math.ceil(total / limit);
+    const startIndex = (page - 1) * limit;
+    const endIndex = startIndex + limit;
+    const paginatedStudents = outstandingStudents.slice(startIndex, endIndex);
+
+    // Return structure matching pagination standards
+    const response = { students: paginatedStudents, total, totalPages, currentPage: page };
+    cache.set(cacheKey, response, 120); // Cache for 2 minutes
+    res.json(response);
 
   } catch (err) {
     console.error('Get Outstanding Fees Error:', err);
@@ -494,48 +574,82 @@ export const generateOutstandingFeesPDF = async (req, res) => {
       students = students.filter(s => s.name.toLowerCase().includes(name.toLowerCase()));
     }
 
-    // Get balance data for each student
-    let studentData = [];
-    for (const student of students) {
-      try {
-        let enrollment = await StudentEnrollment.findOne({
-          studentId: student._id,
-          academicYear: currentAcademicYear,
-          status: "active"
-        }).select("grade");
+    if (students.length === 0) {
+      // Return empty report immediately if no students
+    }
 
-        if (!enrollment) {
-          enrollment = await StudentEnrollment.findOne({
-            studentId: student._id
-          }).sort({ academicYear: -1 }).select("grade");
-        }
+    const studentIds = students.map(s => s._id);
 
-        const balanceData = enrollment ? await calculateBalance(student, enrollment.grade, currentAcademicYear) : {
-          totalFee: 0,
-          totalPaid: 0,
-          balance: 0,
+    // 1. Batch Fetch Enrollments
+    const enrollments = await StudentEnrollment.find({
+      studentId: { $in: studentIds },
+      academicYear: currentAcademicYear,
+      status: "active"
+    }).select("studentId grade stream").lean();
+
+    // 2. Batch Fetch Payments
+    const payments = await Payment.find({
+      studentId: { $in: studentIds },
+      academicYear: currentAcademicYear
+    }).select("studentId amount term").lean();
+
+    // 3. Batch Fetch Fee Structures
+    const feeStructures = await FeeStructure.find({
+      schoolId: req.user.schoolId,
+      academicYear: currentAcademicYear
+    }).lean();
+
+    // 4. Process in Memory
+    let studentData = students.map(student => {
+      const sId = String(student._id);
+      const enrollment = enrollments.find(e => String(e.studentId) === sId);
+      let balanceData;
+
+      if (enrollment) {
+        const fee = feeStructures.find(f => f.grade === enrollment.grade) || {};
+        const sPayments = payments.filter(p => String(p.studentId) === sId);
+        
+        const termPaid = { "Term 1": 0, "Term 2": 0, "Term 3": 0 };
+        sPayments.forEach(p => {
+          if (termPaid[p.term] !== undefined) termPaid[p.term] += p.amount;
+        });
+        
+        const totalPaid = Object.values(termPaid).reduce((a, b) => a + b, 0);
+        const totalFee = fee.totalFee || 0;
+        
+        balanceData = {
+          totalFee,
+          totalPaid,
+          balance: totalFee - totalPaid,
           termBalances: {
-            term1: { fee: 0, paid: 0, balance: 0 },
-            term2: { fee: 0, paid: 0, balance: 0 },
-            term3: { fee: 0, paid: 0, balance: 0 }
+            term1: { fee: fee.term1Fee || 0, paid: termPaid["Term 1"], balance: (fee.term1Fee || 0) - termPaid["Term 1"] },
+            term2: { fee: fee.term2Fee || 0, paid: termPaid["Term 2"], balance: (fee.term2Fee || 0) - termPaid["Term 2"] },
+            term3: { fee: fee.term3Fee || 0, paid: termPaid["Term 3"], balance: (fee.term3Fee || 0) - termPaid["Term 3"] }
           }
         };
-
-        studentData.push({
-          studentId: student._id,
-          admission: student.admission,
-          className: enrollment ? enrollment.grade : "Not Enrolled",
-          studentName: student.name,
-          expected: balanceData.totalFee,
-          paid: balanceData.totalPaid,
-          balance: balanceData.balance,
-          termBalances: balanceData.termBalances
-        });
-      } catch (err) {
-        console.error(`Error calculating balance for student ${student.name}:`, err);
-        // Skip this student but continue with others
+      } else {
+        balanceData = {
+          totalFee: 0, totalPaid: 0, balance: 0,
+          termBalances: { term1: { fee: 0, paid: 0, balance: 0 }, term2: { fee: 0, paid: 0, balance: 0 }, term3: { fee: 0, paid: 0, balance: 0 } }
+        };
       }
-    }
+
+      let className = "Not Enrolled";
+      if (enrollment) {
+        className = enrollment.stream ? `${enrollment.grade}${enrollment.stream}` : enrollment.grade;
+      }
+
+      return {
+        studentId: student._id,
+        admission: student.admission,
+        className: className,
+        studentName: student.name,
+        expected: balanceData.totalFee,
+        paid: balanceData.totalPaid,
+        balance: balanceData.balance,
+        termBalances: balanceData.termBalances
+      };
+    });
 
     // Filter by class if specified
     if (classFilter) {

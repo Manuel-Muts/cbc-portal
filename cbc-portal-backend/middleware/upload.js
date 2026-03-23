@@ -2,23 +2,37 @@ import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
 
-// Ensure folder exists
-const uploadPath = path.join(process.cwd(), 'uploads/school-logos');
-if (!fs.existsSync(uploadPath)) fs.mkdirSync(uploadPath, { recursive: true });
+// Ensure upload directory exists for temporary processing
+const uploadDir = 'uploads/';
+if (!fs.existsSync(uploadDir)) {
+  fs.mkdirSync(uploadDir, { recursive: true });
+}
 
-// Multer storage config
+// Local disk storage configuration
 const storage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, uploadPath),
+  destination: (req, file, cb) => {
+    cb(null, uploadDir);
+  },
   filename: (req, file, cb) => {
-    const ext = path.extname(file.originalname);
-    cb(null, `school_${Date.now()}${ext}`);
+    // Sanitize filename and add timestamp
+    const name = file.originalname.toLowerCase().split(' ').join('-');
+    const ext = path.extname(name);
+    const fileName = name.replace(ext, '');
+    cb(null, `${fileName}-${Date.now()}${ext}`);
   }
 });
 
-// Filter for images only
+// Filter to allow only images
 const fileFilter = (req, file, cb) => {
-  if (file.mimetype.startsWith('image/')) cb(null, true);
-  else cb(new Error('Only image files are allowed!'), false);
+  if (file.mimetype.startsWith('image/')) {
+    cb(null, true);
+  } else {
+    cb(new Error('Only image files are allowed!'), false);
+  }
 };
 
-export const upload = multer({ storage, fileFilter });
+export const upload = multer({
+  storage: storage,
+  fileFilter: fileFilter,
+  limits: { fileSize: 5 * 1024 * 1024 } // 5MB limit
+});

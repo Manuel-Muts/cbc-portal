@@ -1,5 +1,4 @@
 import mongoose from "mongoose";
-
 const markSchema = new mongoose.Schema({
   admissionNo: { type: String, required: true },
   studentName: { type: String, required: true },

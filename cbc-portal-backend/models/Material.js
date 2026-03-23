@@ -16,6 +16,8 @@ const materialSchema = new mongoose.Schema({
   schoolId: { type: String, required: true },   
   file: { type: String },            // full URL to access the file
   teacherId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+  downloadCount: { type: Number, default: 0 },
+  readBy: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }] // Track students who read this
 }, { timestamps: true });
 
 // ------------------------------------

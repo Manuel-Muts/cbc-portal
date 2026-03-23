@@ -7,7 +7,8 @@ import {
   deleteMark,
   getStudentMarks,
   getMarksByGrade,
-  getClassMarks
+  getClassMarks,
+  getPaginatedMarksByGrade
 } from "../controllers/MarkController.js";
 
 import VerifyToken from "../middleware/verifyToken.js";
@@ -32,6 +33,7 @@ router.delete("/:id", VerifyToken, deleteMark);
 
 // Class teacher route
 router.get("/by-grade", VerifyToken, isClassTeacher, getMarksByGrade);
+router.get("/paginated-by-grade", VerifyToken, isClassTeacher, getPaginatedMarksByGrade);
 
 // Student routes
 router.get("/student", VerifyToken, isStudent, getStudentMarks);

@@ -22,10 +22,11 @@ const paymentSchema = new mongoose.Schema(
         validator: function (v) {
           // Allow negative amounts only for reversal entries
           if (this.method === 'reversal') return v < 0;
+          if (this.method === 'fund_transfer') return true; // Allow negative (debt) or positive (credit)
           return v >= 0;
         },
         message: function (props) {
-          if (this.method === 'reversal') return `Reversal payments must be negative`; 
+          if (this.method === 'reversal') return `Reversal payments must be negative`;
           return `Amount must be non-negative`;
         }
       }
@@ -33,7 +34,7 @@ const paymentSchema = new mongoose.Schema(
 
     method: {
       type: String,
-      enum: ["cash", "mpesa", "bank", "cheque", "reversal"],
+      enum: ["cash", "mpesa", "bank", "cheque", "reversal", "fund_transfer"],
       required: true
     },
 
@@ -77,5 +78,7 @@ paymentSchema.pre("findOneAndUpdate", function () {
 paymentSchema.pre("deleteOne", function () {
   throw new Error("Payments cannot be deleted.");
 });
-
+paymentSchema.index({ studentId: 1, academicYear: 1 });
+paymentSchema.index({ createdAt: -1 });
+paymentSchema.index({ studentId: 1, createdAt: -1 });
 export default mongoose.model("Payment", paymentSchema);
