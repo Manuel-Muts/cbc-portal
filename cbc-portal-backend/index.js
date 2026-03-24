@@ -149,7 +149,8 @@ const pathMap = {
   '/teacher-dashboard': 'teacher-dashboard.html',
   '/student': 'student-dashboard.html',
   '/student-dashboard': 'student-dashboard.html',
-  '/study-materials': 'studentstudymaterial.html',
+  '/studymaterial': 'studentstudymaterial.html',
+  '/teacher-materials': 'teacher-materials.html',
   '/analysis': 'analysis.html',
   '/report': 'report.html',
   '/reset': 'reset.html',
@@ -169,7 +170,10 @@ app.use((req, res, next) => {
   }
   
   // Extract the path without leading slash and query params
-  const requestedPath = req.path;
+  let requestedPath = req.path;
+  if (requestedPath.length > 1 && requestedPath.endsWith('/')) {
+    requestedPath = requestedPath.slice(0, -1);
+  }
   
   // Determine which file to serve
   let htmlFile = pathMap[requestedPath] || 'index.html';
