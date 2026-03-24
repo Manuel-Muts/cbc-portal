@@ -101,9 +101,30 @@ document.addEventListener("DOMContentLoaded", () => {
   function setLoading(btn, loading = true) {
     if (!btn) return;
     if (loading) {
+      // Store original text content if not already stored
+      if (!btn.dataset.originalText) {
+        // Get current text, removing any existing spinner's text if present
+        const existingSpinner = btn.querySelector(".btn-spinner");
+        btn.dataset.originalText = btn.textContent.replace(existingSpinner?.textContent || '', '').trim();
+      }
+      // Add spinner if it doesn't exist
+      let spinner = btn.querySelector(".btn-spinner");
+      if (!spinner) {
+        spinner = document.createElement("span");
+        spinner.classList.add("btn-spinner");
+        btn.prepend(spinner); // Add spinner to the beginning
+      }
+      btn.textContent = "Loading..."; // Update text
+      btn.prepend(spinner); // Ensure spinner is always first child after textContent change
       btn.classList.add("loading");
       btn.setAttribute("disabled", "true");
     } else {
+      let spinner = btn.querySelector(".btn-spinner");
+      if (spinner) spinner.remove(); // Remove spinner
+      if (btn.dataset.originalText) {
+        btn.textContent = btn.dataset.originalText; // Restore original text
+        delete btn.dataset.originalText;
+      }
       btn.classList.remove("loading");
       btn.removeAttribute("disabled");
     }
@@ -385,29 +406,45 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 
   // -------------------------
-  // Resend button
-  // -------------------------
-  resendBtn.addEventListener("click", withLoading(resendBtn, async () => {
-    const email = emailInput.value.trim();
-    if (!email) { setFeedback(feedbackCode, "No email to resend to.", "error"); return; }
-    if (!canRequestNow()) { setFeedback(feedbackCode, "Too many requests. Please wait.", "error"); return; }
-    try {
-      const res = await fetch(`${API_BASE}/request`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email })
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) { setFeedback(feedbackCode, data.msg || "Failed to resend", "error"); return; }
-      pushReqHistory();
-      startResendCooldown(RESEND_COOLDOWN);
-      setFeedback(feedbackCode, "Code resent. Check your email.", "success");
-      setTimeout(() => otpBoxes[0].focus(), 200);
-    } catch (err) {
-      console.error("Resend error:", err);
-      setFeedback(feedbackCode, "Network error.", "error");
+// Resend button
+// -------------------------
+resendBtn.addEventListener("click", withLoading(resendBtn, async () => {
+  const email = emailInput.value.trim();
+  if (!email) {
+    setFeedback(feedbackCode, "No email to resend to.", "error");
+    return;
+  }
+  if (!canRequestNow()) {
+    setFeedback(feedbackCode, "Too many requests. Please wait.", "error");
+    return;
+  }
+
+  try {
+    // 1️⃣ Regenerate code in backend
+    const res = await fetch(`${API_BASE}/request`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email })
+    });
+
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      setFeedback(feedbackCode, data.msg || "Failed to resend", "error");
+      return;
     }
-  }));
+
+    // 2️⃣ Track request in frontend for cooldown
+    pushReqHistory();
+    startResendCooldown(RESEND_COOLDOWN);
+
+    setFeedback(feedbackCode, "Code resent. Check your email.", "success");
+    setTimeout(() => otpBoxes[0].focus(), 200);
+
+  } catch (err) {
+    console.error("Resend error:", err);
+    setFeedback(feedbackCode, "Network error.", "error");
+  }
+}));
 
   // -------------------------
   // Verify code

@@ -182,6 +182,14 @@ h3 {
   animation: fadeIn 0.4s ease-in-out;
 }
 
+/* Scrollable wrapper for tables */
+.table-scroll-wrapper {
+  width: 100%;
+  overflow-x: auto;
+  overflow-y: auto;
+  max-height: 60vh;
+}
+
 .marks-group-header {
   background: #eff6ff;
   padding: 0.75rem 1rem;
@@ -210,12 +218,16 @@ th, td {
   padding: 0.75rem;
   text-align: left;
   border-bottom: 1px solid #eee;
+  white-space: nowrap; /* Prevent wrapping for horizontal scroll */
 }
 
 th {
   background: #f1f5f9;
   color: #1e293b;
   font-weight: 600;
+  position: sticky; /* Sticky header */
+  top: 0;
+  z-index: 5;
 }
 
 tr:hover { background: #f9fafb; }

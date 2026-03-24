@@ -273,3 +273,59 @@ button,
     margin-top: 30px;
   }
 }
+.table-wrapper {
+  width: 100%;
+  overflow-x: auto; /* Horizontal scroll if needed */
+}
+
+.table-wrapper table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 600px; /* ensures table doesn’t shrink too much */
+}
+
+@media screen and (max-width: 768px) {
+  body {
+    padding: 0;
+  }
+
+  .report-container {
+    width: 100%;
+    padding: 15px;
+    margin: 0;
+    border: none;
+    border-radius: 0;
+  }
+
+  .report-layout-container {
+    flex-direction: column;
+  }
+
+  #performanceKeySide {
+    width: 100%;
+    flex: none;
+    margin-top: 15px;
+  }
+
+  .marks-section {
+    width: 100%;
+    overflow-x: auto;
+    display: block;
+  }
+
+  .marks-section table {
+    min-width: 600px; /* Force horizontal scroll */
+    font-size: 12px;
+  }
+
+  .summary {
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .signatures {
+    flex-direction: column;
+    gap: 40px;
+    margin-top: 30px;
+  }
+}

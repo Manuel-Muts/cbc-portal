@@ -97,6 +97,7 @@ form {
   border-radius: 6px;
   outline: none;
   transition: border 0.3s;
+  width: 100%;
 }
 
 .form-group input:focus,
@@ -639,6 +640,11 @@ form {
 .marks-controls {
   background: linear-gradient(135deg, #f5f7fa 0%, #e8ecf1 100%);
   border-left: 5px solid #2b6cb0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 15px;
+  align-items: flex-end;
+  padding: 15px;
 }
 
 .marks-controls h3 {
@@ -658,6 +664,7 @@ form {
   border-radius: 6px;
   font-size: 0.95rem;
   background: white;
+  max-width: 100%;
 }
 
 .marks-controls select:focus,
@@ -702,11 +709,29 @@ form {
 }
 
 .marks-entry-table th {
-  padding: 14px 12px;
+  padding: 10px 8px;
   text-align: center;
   font-weight: 600;
   border-right: 1px solid rgba(255, 255, 255, 0.2);
   white-space: nowrap;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background-color: #2b6cb0;
+}
+
+/* Sticky First Column (Admission No) */
+.marks-entry-table th:first-child {
+  left: 0;
+  z-index: 12;
+}
+
+.marks-entry-table td:first-child {
+  position: sticky;
+  left: 0;
+  z-index: 5;
+  background-color: #fff;
+  border-right: 1px solid #e2e8f0; /* Visual separator */
 }
 
 .marks-entry-table th:last-child {
@@ -714,7 +739,7 @@ form {
 }
 
 .marks-entry-table td {
-  padding: 12px;
+  padding: 6px 8px;
   text-align: center;
   border-bottom: 1px solid #e8e8e8;
   font-size: 0.95rem;
@@ -724,17 +749,26 @@ form {
   background-color: #f9f9f9;
 }
 
+.marks-entry-table tbody tr:hover td:first-child {
+  background-color: #f9f9f9;
+}
+
 .marks-entry-table tbody tr:nth-child(even) {
+  background-color: #f5f7fa;
+}
+
+.marks-entry-table tbody tr:nth-child(even) td:first-child {
   background-color: #f5f7fa;
 }
 
 .marks-entry-table select,
 .marks-entry-table input {
   width: 100%;
-  padding: 8px 6px;
+  padding: 6px 4px;
   border: 1px solid #ccc;
   border-radius: 4px;
   font-size: 0.9rem;
+  height: 34px;
   background: white;
   transition: all 0.2s;
 }
@@ -774,6 +808,14 @@ form {
   color: #2b6cb0;
 }
 
+/* Grid layout for Senior School Marks to align with Header */
+.marks-input-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr 1fr;
+  gap: 5px;
+  align-items: center;
+}
+
 /* Row highlighting for required fields */
 .marks-entry-table td:has(select:invalid),
 .marks-entry-table td:has(input:invalid) {
@@ -785,6 +827,10 @@ form {
   padding: 20px;
   border-radius: 8px;
   margin-bottom: 20px;
+  overflow-x: auto;
+  overflow-y: auto;
+  max-height: 80vh;
+  -webkit-overflow-scrolling: touch;
 }
 
 /* Submit Button Group */
@@ -832,9 +878,10 @@ form {
   }
   
   .marks-controls {
-    display: grid;
-    grid-template-columns: 1fr;
-    gap: 12px;
+    /* Switch to a vertical layout on smaller screens */
+    flex-direction: column;
+    align-items: stretch; /* Make all items full-width */
+    gap: 15px;
   }
 }
 
@@ -842,11 +889,6 @@ form {
   .marks-section {
     max-width: 95% !important;
     padding: 20px 15px !important;
-  }
-  
-  .marks-controls > div {
-    display: grid;
-    grid-template-columns: 1fr;
   }
   
   .marks-entry-table {

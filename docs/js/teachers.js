@@ -1494,30 +1494,6 @@ if (!marksAssessmentSelect.value) {
   });
 
   // ---------------------------
-  // RESPONSIVE STYLING FIXES
-  // ---------------------------
-  function applyResponsiveStyles() {
-    console.log("🎨 Applying responsive styles for mobile...");
-    // Make the controls section (filters, load button) wrap on smaller screens
-    const marksControlsSection = document.querySelector('.marks-controls');
-    if (marksControlsSection) {
-      // This ensures that on small screens, the filter dropdowns and buttons
-      // will wrap to the next line instead of overflowing the container.
-      marksControlsSection.style.display = 'flex';
-      marksControlsSection.style.flexWrap = 'wrap';
-      marksControlsSection.style.gap = '10px';
-      marksControlsSection.style.alignItems = 'flex-end'; // Align items to the bottom for a cleaner look
-    }
-
-    // Make the marks entry table horizontally scrollable on smaller screens
-    // This prevents the wide table from breaking the page layout.
-    if (marksTableContainer) {
-      marksTableContainer.style.overflowX = 'auto';
-      marksTableContainer.style.webkitOverflowScrolling = 'touch'; // Smooth scrolling on iOS
-    }
-  }
-
-  // ---------------------------
   // TOAST
   // ---------------------------
   function showToast(msg, type = "success") {
@@ -1533,7 +1509,6 @@ if (!marksAssessmentSelect.value) {
   // ---------------------------
   (async function init() {
     console.log("🚀 Dashboard initialization started");
-    applyResponsiveStyles(); // Apply styles right away
     console.log("📝 Step 1: Loading teacher profile...");
     await loadTeacherProfile();
     console.log("✅ Step 1 complete");

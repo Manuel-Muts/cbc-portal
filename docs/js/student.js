@@ -707,7 +707,12 @@ Object.entries(grouped).forEach(([key, list]) => {
   }
 
   table.append(thead, tbody);
-  wrapper.appendChild(table);
+  
+  // Wrap table in a scrollable container
+  const tableWrapper = document.createElement("div");
+  tableWrapper.classList.add("table-scroll-wrapper");
+  tableWrapper.appendChild(table);
+  wrapper.appendChild(tableWrapper);
 
   // ==========================
   // ANALYSIS SUMMARY - DIFFERENT FOR JUNIOR vs SENIOR SCHOOL
@@ -799,6 +804,8 @@ Object.entries(grouped).forEach(([key, list]) => {
       }
     });
 
+    
+
     const caAvg = caCount > 0 ? (caSum / caCount).toFixed(1) : 0;
     const pwAvg = pwCount > 0 ? (pwSum / pwCount).toFixed(1) : 0;
     const etAvg = etCount > 0 ? (etSum / etCount).toFixed(1) : 0;
@@ -837,6 +844,7 @@ Object.entries(grouped).forEach(([key, list]) => {
       <p><strong>Overall Final Score:</strong> ${fsAvg}%</p>
       <p><strong>Overall Performance Level:</strong> ${overallSubLevel} (${getPerformanceLevelLabel(overallMainLevel)})</p>
       <br>
+      <div class="table-scroll-wrapper">
       <table style="width:100%;border-collapse:collapse;margin:10px 0;">
         <tr style="background:#f5f5f5;">
           <th style="border:1px solid #ddd;padding:8px;text-align:left;">Component</th>
@@ -859,6 +867,7 @@ Object.entries(grouped).forEach(([key, list]) => {
           <td style="border:1px solid #ddd;padding:8px;text-align:center;">50%</td>
         </tr>
       </table>
+      </div>
       <br>
       <p><strong>✅ TOP STRENGTHS (Courses Above 80%):</strong><br>${strengthsHtml}</p>
       <br>

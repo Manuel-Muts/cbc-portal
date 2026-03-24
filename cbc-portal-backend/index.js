@@ -134,11 +134,11 @@ app.use("/api/reports", reportsRoutes);
 
 
 // -------------------------
-// STATIC FILES & FRONTEND SPA
+// SPA ROUTING (PRODUCTION-PROOF)
 // -------------------------
 const frontendPath = path.join(__dirname, '../docs');
 
-// Map clean URLs to their HTML files
+// Central route map (ONLY define once, clean names)
 const pathMap = {
   '/': 'index.html',
   '/home': 'index.html',
@@ -149,7 +149,10 @@ const pathMap = {
   '/teacher-dashboard': 'teacher-dashboard.html',
   '/student': 'student-dashboard.html',
   '/student-dashboard': 'student-dashboard.html',
-  '/studymaterial': 'studentstudymaterial.html',
+
+  // ✅ STANDARDIZED ROUTE (IMPORTANT)
+  '/study-materials': 'studentstudymaterial.html',
+
   '/teacher-materials': 'teacher-materials.html',
   '/analysis': 'analysis.html',
   '/report': 'report.html',
@@ -157,44 +160,50 @@ const pathMap = {
   '/contact': 'contact.html',
   '/accounts': 'accounts.html'
 };
-// SPA fallback: serve the appropriate HTML file for routes - BEFORE static files
-app.use((req, res, next) => {
-  // Skip API routes
+
+// Serve static frontend files FIRST (important)
+app.use(express.static(frontendPath));
+
+// SPA fallback handler
+app.use((req, res) => {
+  // Ignore API routes
   if (req.path.startsWith('/api')) {
-    return next();
+    return res.status(404).json({ message: 'API route not found' });
   }
-  
-  // Skip file requests (has extension like .js, .css, .png, etc.)
+
+  // Ignore real file requests (.js, .css, .png, etc.)
   if (req.path.includes('.')) {
-    return next();
+    return res.status(404).send('File not found');
   }
-  
-  // Extract the path without leading slash and query params
-  let requestedPath = req.path;
+
+  // Normalize path
+  let requestedPath = req.path.split('?')[0].toLowerCase();
+
+  // Remove trailing slash
   if (requestedPath.length > 1 && requestedPath.endsWith('/')) {
     requestedPath = requestedPath.slice(0, -1);
   }
-  
-  // Determine which file to serve
-  let htmlFile = pathMap[requestedPath] || 'index.html';
-  
+
+  // Match route
+  let htmlFile = pathMap[requestedPath];
+
+  // Fallback logic
+  if (!htmlFile) {
+    console.warn(`⚠️ Unknown route: ${requestedPath} → serving index.html`);
+    htmlFile = 'index.html';
+  } else {
+    console.log(`📄 Serving: ${requestedPath} → ${htmlFile}`);
+  }
+
   const filePath = path.join(frontendPath, htmlFile);
-  console.log(`📄 Serving SPA route: ${requestedPath} -> ${htmlFile}`);
-  
+
   res.sendFile(filePath, (err) => {
     if (err) {
-      console.error(`❌ Error serving ${filePath}:`, err.message);
-      // Fallback to index.html if file not found
-      res.sendFile(path.join(frontendPath, 'index.html'), (fallbackErr) => {
-        if (fallbackErr) {
-          console.error(`❌ Error serving fallback index.html:`, fallbackErr.message);
-          res.status(404).send('Page not found');
-        }
-      });
+      console.error(`❌ Error serving ${htmlFile}:`, err.message);
+      res.status(500).send('Server error');
     }
   });
 });
-
 // Serve static files (CSS, JS, images, etc.) - AFTER SPA routes
 app.use(express.static(frontendPath));
 

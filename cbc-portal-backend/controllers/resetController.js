@@ -1,5 +1,4 @@
 // controllers/resetController.js
-import nodemailer from "nodemailer";
 import bcrypt from "bcryptjs";
 import { User } from "../models/User.js";
 
@@ -10,21 +9,7 @@ import { User } from "../models/User.js";
 const generateCode = () =>
   Math.floor(100000 + Math.random() * 900000).toString();
 
-// ------------------------
-// Create transporter
-// ------------------------
-const transporter = nodemailer.createTransport({
-  host: process.env.EMAIL_HOST,
-  port: Number(process.env.EMAIL_PORT),
-  secure: Number(process.env.EMAIL_PORT) === 465, // true if using SSL port 465
-  auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS,
-  },
-  tls: {
-    rejectUnauthorized: false, // ✅ allow self-signed certificates
-  },
-});
+
 // ============================================================
 // 0️⃣ VERIFY USER (role + name + email)
 // ============================================================
@@ -63,31 +48,36 @@ export const verifyUser = async (req, res) => {
 };
 
 // ============================================================
-// 1️⃣ REQUEST RESET CODE
+// 1️⃣ REQUEST RESET CODE (via Brevo API) with logging
 // ============================================================
+import fetch from "node-fetch"; // or native fetch if Node >=18
+
 export const requestReset = async (req, res) => {
   const { email } = req.body;
-  if (!email)
-    return res.status(400).json({ msg: "Email is required" });
+  if (!email) return res.status(400).json({ msg: "Email is required" });
 
   try {
     const user = await User.findOne({ email });
-    if (!user)
-      return res.status(404).json({ msg: "No account with that email" });
+    if (!user) return res.status(404).json({ msg: "No account with that email" });
 
+    // Generate 6-digit OTP
     const code = generateCode();
     const hashed = await bcrypt.hash(code, 10);
 
+    // Save reset info in DB
     user.resetCode = hashed;
     user.resetAttempts = 0;
     user.resetCodeExpires = Date.now() + 10 * 60 * 1000; // 10 mins
     await user.save();
 
-    await transporter.sendMail({
-      from: `"CBC Portal" <${process.env.EMAIL_USER}>`,
-      to: user.email,
+    // -------------------------
+    // Send email via Brevo API
+    // -------------------------
+    const payload = {
+      sender: { name: "CBC Portal", email: process.env.EMAIL_USER },
+      to: [{ email: user.email, name: user.firstname || user.name }],
       subject: "Portal Password Reset",
-      html: `
+      htmlContent: `
         <h3>Hello ${user.firstname || user.name}</h3>
         <p>Your password reset code is:</p>
         <div style="
@@ -98,16 +88,41 @@ export const requestReset = async (req, res) => {
         ">${code}</div>
         <p>This code expires in <b>10 minutes</b>.</p>
         <p>If you didn’t request this, ignore this email.</p>
-      `,
+      `
+    };
+
+    const brevoRes = await fetch("https://api.brevo.com/v3/smtp/email", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "api-key": process.env.BREVO_API_KEY
+      },
+      body: JSON.stringify(payload)
     });
 
+    const brevoData = await brevoRes.json().catch(() => null);
+
+    // Log full Brevo response for debugging
+    console.log("Brevo API response:", {
+      status: brevoRes.status,
+      ok: brevoRes.ok,
+      body: brevoData
+    });
+
+    if (!brevoRes.ok) {
+      return res.status(500).json({
+        msg: "Failed to send reset code",
+        brevo: brevoData // include Brevo error message
+      });
+    }
+
     res.json({ msg: "Reset code sent to your email" });
+
   } catch (err) {
     console.error("requestReset error:", err);
-    res.status(500).json({ msg: "Failed to send reset code" });
+    res.status(500).json({ msg: "Failed to send reset code", error: err.message });
   }
 };
-
 // ============================================================
 // 2️⃣ VERIFY RESET CODE
 // ============================================================
