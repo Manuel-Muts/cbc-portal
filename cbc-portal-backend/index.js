@@ -149,16 +149,13 @@ const pathMap = {
   '/teacher-dashboard': 'teacher-dashboard.html',
   '/student': 'student-dashboard.html',
   '/student-dashboard': 'student-dashboard.html',
-  '/materials': 'studentstudymaterial.html',
-  '/study-materials': 'studentstudymaterial.html',
-  '/studentstudymaterial': 'studentstudymaterial.html',
+  '/study-materials': 'studentstudymaterial.html', // ✅ keep only lowercase
   '/analysis': 'analysis.html',
   '/report': 'report.html',
   '/reset': 'reset.html',
   '/contact': 'contact.html',
   '/accounts': 'accounts.html'
 };
-
 // SPA fallback: serve the appropriate HTML file for routes - BEFORE static files
 app.use((req, res, next) => {
   // Skip API routes
