@@ -149,7 +149,7 @@ const pathMap = {
   '/teacher-dashboard': 'teacher-dashboard.html',
   '/student': 'student-dashboard.html',
   '/student-dashboard': 'student-dashboard.html',
-  '/study-materials': 'studentstudymaterial.html', // ✅ keep only lowercase
+  '/study-materials': 'studentstudymaterial.html',
   '/analysis': 'analysis.html',
   '/report': 'report.html',
   '/reset': 'reset.html',

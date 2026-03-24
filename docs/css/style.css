@@ -561,6 +561,13 @@ footer {
   background: #f9f9f9;
 }
 
+/* Marks Input Grid (Desktop) */
+.marks-input-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr 1fr;
+  gap: 5px;
+}
+
 /* Responsive */
 @media (max-width: 768px) {
   .dashboard-body {
@@ -570,6 +577,84 @@ footer {
     width: 100%;
     flex-direction: row;
     justify-content: space-around;
+  }
+
+  /* Mobile Optimized Tables (Card View) */
+  #marksEntryTable, 
+  .marks-table table,
+  .marks-table {
+    display: block;
+    width: 100%;
+  }
+
+  #marksEntryTable thead,
+  .marks-table thead {
+    display: none; /* Hide headers */
+  }
+
+  #marksEntryTable tbody,
+  #marksEntryTable tr,
+  #marksEntryTable td,
+  .marks-table tbody,
+  .marks-table tr,
+  .marks-table td {
+    display: block;
+    width: 100%;
+    box-sizing: border-box;
+  }
+
+  #marksEntryTable tr,
+  .marks-table tr {
+    margin-bottom: 15px;
+    background: #fff;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    padding: 10px;
+  }
+
+  #marksEntryTable td,
+  .marks-table td {
+    text-align: right;
+    padding: 8px 5px;
+    border-bottom: 1px solid #eee;
+    position: relative;
+    min-height: 35px;
+  }
+
+  #marksEntryTable td:last-child,
+  .marks-table td:last-child {
+    border-bottom: none;
+  }
+
+  #marksEntryTable td::before,
+  .marks-table td::before {
+    content: attr(data-label);
+    float: left;
+    font-weight: bold;
+    color: #555;
+  }
+
+  /* Adjust Input Grid for Mobile */
+  .marks-input-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr; /* 2x2 grid on mobile */
+    gap: 8px;
+    margin-top: 5px;
+    clear: both; /* Ensure it drops below label */
+    width: 100%;
+  }
+  
+  /* Specific tweak for Marks cell which contains the grid */
+  #marksEntryTable td[data-label="Marks"] {
+    text-align: left;
+    padding-top: 10px;
+  }
+  
+  #marksEntryTable td[data-label="Marks"]::before {
+    float: none;
+    display: block;
+    margin-bottom: 5px;
   }
 }
 @media (max-width: 480px) {

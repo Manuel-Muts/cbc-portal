@@ -511,11 +511,11 @@
       
       // ADM and Name columns
      row.innerHTML = `
-  <td>${sanitize(student.admissionNo || student.admission)}</td>
-  <td>${sanitize(student.name)}</td>
-  <td>
+  <td data-label="Admission">${sanitize(student.admissionNo || student.admission)}</td>
+  <td data-label="Name">${sanitize(student.name)}</td>
+  <td data-label="Marks">
     ${isSeniorSchool ? `
-      <div style="display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 5px;">
+      <div class="marks-input-grid">
         <input type="number" class="ca-input" min="0" max="100" placeholder="CA" />
         <input type="number" class="pw-input" min="0" max="100" placeholder="PW" />
         <input type="number" class="exam-input" min="0" max="100" placeholder="Exam" />
@@ -1293,20 +1293,20 @@ if (!marksAssessmentSelect.value) {
           const pw = m.projectWork ?? '-';
            const et = m.endTermExam ?? '-';
            const finalScore = m.finalScore ?? '-';
-          scoreCell = `<td>${sanitize(ca)}</td>
-               <td>${sanitize(pw)}</td>
-               <td>${sanitize(et)}</td>
-               <td><strong>${sanitize(finalScore)}</strong></td>`;
+          scoreCell = `<td data-label="Continuous Assessment">${sanitize(ca)}</td>
+               <td data-label="Project Work">${sanitize(pw)}</td>
+               <td data-label="End-Term Exam">${sanitize(et)}</td>
+               <td data-label="Final Score"><strong>${sanitize(finalScore)}</strong></td>`;
           } else {
-          scoreCell = `<td>${sanitize(m.score ?? '-')}</td>`;
+          scoreCell = `<td data-label="Score">${sanitize(m.score ?? '-')}</td>`;
          }
           
           return `<tr data-id="${m._id || ''}">
-                      <td>${sanitize(m.admissionNo ?? m.admission ?? '')}</td>
-                      <td>${sanitize(m.studentName)}</td>
-                      <td>${sanitize(subjectDisplay)}</td>
+                      <td data-label="Admission">${sanitize(m.admissionNo ?? m.admission ?? '')}</td>
+                      <td data-label="Name">${sanitize(m.studentName)}</td>
+                      <td data-label="Subject/Course">${sanitize(subjectDisplay)}</td>
                       ${scoreCell}
-                      <td>
+                      <td data-label="Actions">
                           <button class="btn-edit" data-action="edit">✏️</button>
                           <button class="btn-delete" data-action="delete">🗑️</button>
                       </td>

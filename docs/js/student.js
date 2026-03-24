@@ -663,9 +663,9 @@ Object.entries(grouped).forEach(([key, list]) => {
       const subLevel = getPerformanceSubdivision(m.score);
       const mainLevel = scoreToPerformanceLevel(m.score);
       tr.innerHTML = `
-        <td>${(m.subject || "").replace(/-/g, " ")}</td>
-        <td><strong>${m.score}%</strong></td>
-        <td>${subLevel} (${getPerformanceLevelLabel(mainLevel)})</td>
+        <td data-label="Subject">${(m.subject || "").replace(/-/g, " ")}</td>
+        <td data-label="Score"><strong>${m.score}%</strong></td>
+        <td data-label="Performance Level">${subLevel} (${getPerformanceLevelLabel(mainLevel)})</td>
       `;
       tbody.appendChild(tr);
     });
@@ -695,12 +695,12 @@ Object.entries(grouped).forEach(([key, list]) => {
       const fs = finalScore ? `${finalScore}%` : "-";
       
       tr.innerHTML = `
-        <td><strong>${(m.course || "").replace(/-/g, " ")}</strong></td>
-        <td>${ca}</td>
-        <td>${pw}</td>
-        <td>${et}</td>
-        <td><strong>${fs}</strong></td>
-        <td>${subLevel}${finalScore ? ` (${getPerformanceLevelLabel(mainLevel)})` : ''}</td>
+        <td data-label="Course"><strong>${(m.course || "").replace(/-/g, " ")}</strong></td>
+        <td data-label="Continuous Assessment">${ca}</td>
+        <td data-label="Project Work">${pw}</td>
+        <td data-label="End-Term Exam">${et}</td>
+        <td data-label="Final Score"><strong>${fs}</strong></td>
+        <td data-label="Performance Level">${subLevel}${finalScore ? ` (${getPerformanceLevelLabel(mainLevel)})` : ''}</td>
       `;
       tbody.appendChild(tr);
     });

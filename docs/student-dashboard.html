@@ -7,6 +7,97 @@
   <link rel="stylesheet" href="css/style.css" />
   <link rel="stylesheet" href="css/student.css" />
   <link rel="icon" href="https://cdn-icons-png.flaticon.com/512/1077/1077012.png" />
+  <style>
+    /* Mobile Responsive Optimizations for Dashboard */
+    @media screen and (max-width: 768px) {
+      /* Stack Filter Bar elements vertically */
+      .filter-bar {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        align-items: stretch;
+      }
+      
+      .filter-bar label, 
+      .filter-bar select, 
+      .filter-bar button {
+        width: 100%;
+        margin: 0 !important;
+      }
+
+      /* Dashboard Header adjustments */
+      .dashboard-header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 15px;
+      }
+
+      .dashboard-header .toolbar {
+        width: 100%;
+        display: flex;
+        justify-content: space-between;
+        gap: 8px;
+      }
+
+      .dashboard-header .toolbar button {
+        flex: 1;
+        font-size: 13px;
+        padding: 8px 5px;
+        margin: 0 !important;
+      }
+
+      /* Responsive Table: Card View Transformation */
+      .marks-group table, 
+      .marks-group thead, 
+      .marks-group tbody, 
+      .marks-group th, 
+      .marks-group td, 
+      .marks-group tr {
+        display: block;
+      }
+      
+      /* Hide table headers visibly but keep for accessibility/structure */
+      .marks-group thead tr {
+        position: absolute;
+        top: -9999px;
+        left: -9999px;
+      }
+      
+      .marks-group tr {
+        margin-bottom: 15px;
+        border: 1px solid #ddd;
+        border-radius: 8px;
+        background: #fff;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+      }
+      
+      .marks-group td {
+        border: none;
+        border-bottom: 1px solid #f0f0f0;
+        position: relative;
+        padding: 10px 10px 10px 50%;
+        text-align: right;
+        min-height: 20px;
+      }
+      
+      .marks-group td:before {
+        position: absolute;
+        top: 10px;
+        left: 10px;
+        width: 45%;
+        padding-right: 10px;
+        white-space: nowrap;
+        content: attr(data-label); /* Uses the data-label we add in JS */
+        text-align: left;
+        font-weight: 600;
+        color: #555;
+      }
+
+      .marks-group td:last-child {
+        border-bottom: none;
+      }
+    }
+  </style>
 </head>
 <body>
   <div id="toastMessage" style="
