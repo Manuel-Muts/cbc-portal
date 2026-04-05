@@ -129,18 +129,6 @@ document.addEventListener("DOMContentLoaded", () => {
               <div class="card-item" id="totalStudents" style="flex:1; padding:10px; border:1px solid #ccc;">Students: -</div>
             </div><br>
 
-            <h3>Recent Schools Added</h3>
-            <table class="table" id="recentSchoolsTable">
-              <thead><tr><th>#</th><th>School Name</th><th>Admin Email</th><th>Status</th></tr></thead>
-              <tbody></tbody>
-            </table><br>
-
-            <h3>Recent Admins Added</h3>
-            <table class="table" id="recentAdminsTable">
-              <thead><tr><th>#</th><th>Name</th><th>Email</th><th>School</th><th>Status</th></tr></thead>
-              <tbody></tbody>
-            </table><br>
-
             <h3>Charts</h3>
             <div class="chart-scroll" id="teachersChartWrap">
               <canvas id="teachersStudentsPerSchoolChart" style="margin-bottom:20px;"></canvas>
@@ -165,28 +153,6 @@ document.addEventListener("DOMContentLoaded", () => {
         document.getElementById("totalTeachers").textContent = `Teachers: ${metrics.totalTeachers}`;
         document.getElementById("totalStudents").textContent = `Students: ${metrics.totalStudents}`;
 
-        const schoolTbody = document.querySelector("#recentSchoolsTable tbody");
-        schoolTbody.innerHTML = "";
-        metrics.recentSchools.forEach((s, i) => {
-          schoolTbody.innerHTML += `<tr>
-            <td>${i + 1}</td>
-            <td>${s.name}</td>
-            <td>${s.adminEmail}</td>
-            <td>${s.status || "Active"}</td>
-          </tr>`;
-        });
-
-        const adminTbody = document.querySelector("#recentAdminsTable tbody");
-        adminTbody.innerHTML = "";
-        metrics.recentAdmins.forEach((a, i) => {
-          adminTbody.innerHTML += `<tr>
-            <td>${i + 1}</td>
-            <td>${a.name}</td>
-            <td>${a.email}</td>
-            <td>${a.schoolName || "-"}</td>
-            <td>${a.status || "Active"}</td>
-          </tr>`;
-        });
 
         const ctx = document.getElementById("teachersStudentsPerSchoolChart");
         // Ensure a constant display height (CSS class ensures fixed height)
@@ -265,10 +231,15 @@ document.addEventListener("DOMContentLoaded", () => {
             <div id="analyticsSummary" style="display:flex; gap:12px; flex-wrap:wrap;"></div>
             <h3>Top Schools</h3>
             <table class="table" id="topSchoolsTable"><thead><tr><th>#</th><th>School</th><th>Students</th></tr></thead><tbody></tbody></table>
+            <div class="table-pagination" style="display:flex;justify-content:space-between;align-items:center;margin:12px 0 20px;">
+              <div><span id="topSchoolsPageInfo">Page 1</span></div>
+              <div>
+                <button id="topSchoolsPrevBtn" class="btn secondary-btn" disabled>Previous</button>
+                <button id="topSchoolsNextBtn" class="btn secondary-btn" disabled>Next</button>
+              </div>
+            </div>
             <h3>Registrations (last 12 months)</h3>
             <canvas id="registrationsChart"></canvas>
-            <h3>Payments (last 12 months)</h3>
-            <canvas id="paymentsChart"></canvas>
           </div>
         `;
 
@@ -278,11 +249,47 @@ document.addEventListener("DOMContentLoaded", () => {
           const data = await res.json();
 
           // Top schools
-          const tbody = document.querySelector('#topSchoolsTable tbody');
-          tbody.innerHTML = '';
-          data.topSchools.forEach((s, i) => {
-            tbody.innerHTML += `<tr><td>${i+1}</td><td>${s.schoolName||'Unknown'}</td><td>${s.students||0}</td></tr>`;
-          });
+          const topSchools = Array.isArray(data.topSchools) ? data.topSchools : [];
+          const topSchoolsTbody = document.querySelector('#topSchoolsTable tbody');
+          const topSchoolsPageInfo = document.getElementById('topSchoolsPageInfo');
+          const topSchoolsPrevBtn = document.getElementById('topSchoolsPrevBtn');
+          const topSchoolsNextBtn = document.getElementById('topSchoolsNextBtn');
+          const ITEMS_PER_PAGE = 10;
+          let topSchoolsPage = 1;
+          const totalTopSchoolPages = Math.max(1, Math.ceil(topSchools.length / ITEMS_PER_PAGE));
+
+          function renderTopSchoolsPage() {
+            const start = (topSchoolsPage - 1) * ITEMS_PER_PAGE;
+            const pageItems = topSchools.slice(start, start + ITEMS_PER_PAGE);
+            topSchoolsTbody.innerHTML = '';
+            if (!pageItems.length) {
+              topSchoolsTbody.innerHTML = `<tr><td colspan="3" style="text-align:center">No top schools available</td></tr>`;
+            } else {
+              pageItems.forEach((s, i) => {
+                const rowNumber = start + i + 1;
+                topSchoolsTbody.innerHTML += `<tr><td>${rowNumber}</td><td>${s.schoolName||'Unknown'}</td><td>${s.students||0}</td></tr>`;
+              });
+            }
+            topSchoolsPageInfo.textContent = `Page ${topSchoolsPage} of ${totalTopSchoolPages}`;
+            topSchoolsPrevBtn.disabled = topSchoolsPage <= 1;
+            topSchoolsNextBtn.disabled = topSchoolsPage >= totalTopSchoolPages;
+          }
+
+          topSchoolsPrevBtn.onclick = () => {
+            if (topSchoolsPage > 1) {
+              topSchoolsPage -= 1;
+              renderTopSchoolsPage();
+            }
+          };
+
+          topSchoolsNextBtn.onclick = () => {
+            if (topSchoolsPage < totalTopSchoolPages) {
+              topSchoolsPage += 1;
+              renderTopSchoolsPage();
+            }
+          };
+
+          renderTopSchoolsPage();
 
           // Registrations chart
           const regCtx = document.getElementById('registrationsChart');
@@ -294,15 +301,6 @@ document.addEventListener("DOMContentLoaded", () => {
             data: { labels: regLabels, datasets: [{ label: 'Registrations', data: regData, borderColor: 'rgba(54,162,235,0.8)', fill:false }] }
           });
 
-          // Payments chart
-          const payCtx = document.getElementById('paymentsChart');
-          const payLabels = data.payments.map(p => `${p._id.month}/${p._id.year}`);
-          const payData = data.payments.map(p => p.total);
-          if (window.payChart) window.payChart.destroy();
-          window.payChart = new Chart(payCtx, {
-            type: 'bar',
-            data: { labels: payLabels, datasets: [{ label: 'KES', data: payData, backgroundColor: 'rgba(75,192,192,0.6)' }] }
-          });
         })();
         break;
 
@@ -393,6 +391,7 @@ document.addEventListener("DOMContentLoaded", () => {
           <input type="text" id="newSchoolAddress">
           <label>Logo</label>
           <input type="file" id="newSchoolLogo" accept="image/*">
+          <label><input type="checkbox" id="newSchoolRegistrationOpen" checked> Allow Student Registrations</label>
           <button id="saveSchoolBtn" class="primary-btn">Save</button>
           <button class="close-btn" onclick="closeAddModal()">Cancel</button>
         </div>
@@ -409,8 +408,9 @@ document.addEventListener("DOMContentLoaded", () => {
           <input type="text" id="editSchoolAddress">
           <label>Logo</label>
           <input type="file" id="editSchoolLogo" accept="image/*">
+          <label><input type="checkbox" id="editSchoolRegistrationOpen"> Allow Student Registrations</label>
           <button id="updateSchoolBtn" class="primary-btn">Update</button>
-          <button class="close-btn" onclick="closeEditModal()">Cancel</button>
+          <button id="cancelEditSchoolBtn" class="close-btn">Cancel</button>
         </div>
       </div>
     `;
@@ -427,7 +427,12 @@ document.addEventListener("DOMContentLoaded", () => {
 
     addBtn.addEventListener("click", () => modal.classList.remove("hidden"));
     window.closeAddModal = () => modal.classList.add("hidden");
-    window.closeEditModal = () => document.getElementById("editSchoolModal").classList.add("hidden");
+    const editSchoolModal = document.getElementById("editSchoolModal");
+    const cancelEditSchoolBtn = document.getElementById("cancelEditSchoolBtn");
+    if (cancelEditSchoolBtn) {
+      cancelEditSchoolBtn.addEventListener("click", () => editSchoolModal.classList.add("hidden"));
+    }
+    window.closeEditModal = () => editSchoolModal.classList.add("hidden");
 
     // ---------------------------
     // ADD NEW SCHOOL
@@ -444,6 +449,7 @@ document.addEventListener("DOMContentLoaded", () => {
       formData.append("name", name);
       formData.append("adminEmail", adminEmail);
       formData.append("address", address);
+      formData.append("registrationOpen", document.getElementById("newSchoolRegistrationOpen").checked);
       if (logoFile) formData.append("logo", logoFile);
 
       await authFetch(`/schools`, {
@@ -516,6 +522,7 @@ document.addEventListener("DOMContentLoaded", () => {
           document.getElementById("editSchoolName").value = school.name;
           document.getElementById("editSchoolAdmin").value = school.adminEmail;
           document.getElementById("editSchoolAddress").value = school.address || '';
+          document.getElementById("editSchoolRegistrationOpen").checked = school.registrationOpen !== false;
           document.getElementById("editSchoolModal").classList.remove("hidden");
 
           // Show paybill modal if needed
@@ -533,6 +540,7 @@ document.addEventListener("DOMContentLoaded", () => {
             formData.append("name", name);
             formData.append("adminEmail", adminEmail);
             formData.append("address", address);
+            formData.append("registrationOpen", document.getElementById("editSchoolRegistrationOpen").checked);
             if (logoFile) formData.append("logo", logoFile);
 
             await authFetch(`/schools/${id}`, {

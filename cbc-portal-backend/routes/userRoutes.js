@@ -16,13 +16,13 @@ import {
   removeClassTeacher,
   getClassTeacherAllocations,
   getStudentByAdmission,
-  changePassword
+  changePassword,
+  toggleDeanStatus
 } from "../controllers/userController.js";
 
 import verifyToken from "../middleware/verifyToken.js";
 import { getMySchool } from '../controllers/schoolController.js';
 import { recordPayment, getStudentLedger, reversePayment, getMyFeeStructure, getMyBalance, getMyPayments } from "../controllers/paymentController.js";
-import { initiateSTK } from "../controllers/mpesaController.js";
 import { accountsOnly } from "../middleware/roleChecks.js";
 
 const router = express.Router();
@@ -67,6 +67,7 @@ router.post("/resend-credentials", requireAdmin, resendCredentials);
 router.get("/", requireAdmin, getAllUsers);
 router.put("/:id", requireAdmin, updateUser);
 router.delete("/:id", requireAdmin, deleteUser);
+router.post("/toggle-dean", requireAdmin, toggleDeanStatus);
 
 // ---------------------------
 // CLASS TEACHER MANAGEMENT
@@ -84,7 +85,6 @@ router.get('/my-fees', getMyFeeStructure);
 router.get('/my-balance', getMyBalance);
 router.get('/my-payments', getMyPayments);
 router.post("/reverse", accountsOnly, reversePayment);
-router.post("/stk-push", initiateSTK);
 
 // ---------------------------
 // SUBJECT MANAGEMENT

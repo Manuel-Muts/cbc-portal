@@ -47,6 +47,11 @@ const userSchema = new mongoose.Schema({
     sparse: true
   },
 
+  contact: {
+    type: String,
+    default: null
+  },
+
   // ------------------------------------
   // PASSWORDS
   // ------------------------------------
@@ -63,6 +68,7 @@ const userSchema = new mongoose.Schema({
   assignedClass: { type: String, default: null },
   assignedStream: { type: String, default: null }, // e.g., "W", "E", "A" for class stream
   isClassTeacher: { type: Boolean, default: false },
+  isDean: { type: Boolean, default: false },
 
   // ------------------------------------
   // STUDENT ENROLLMENT REFERENCE

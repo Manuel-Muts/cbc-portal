@@ -42,7 +42,7 @@ export const adminSearchStudent = async (req, res) => {
     const total = await User.countDocuments(searchQuery);
 
     const students = await User.find(searchQuery)
-      .select("name admission")
+      .select("name admission contact")
       .skip(skip)
       .limit(limit)
       .lean();
@@ -79,6 +79,7 @@ export const adminSearchStudent = async (req, res) => {
          enrollmentId: e?._id || null,
         name: s.name,
         admission: s.admission,
+        contact: s.contact || null,
         academicYear: e?.academicYear || null,
         grade: e?.grade || null,
         stream: e?.stream || null,

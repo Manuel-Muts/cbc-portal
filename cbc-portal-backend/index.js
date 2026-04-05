@@ -19,6 +19,7 @@ import promotionRoutes from "./routes/promotionRoutes.js";
 import enrollmentRoutes from "./routes/enrollmentRoutes.js";
 import accountsRoutes from "./routes/accountsRoutes.js";
 import reportsRoutes from "./routes/reportsRoutes.js";
+import { mpesaCallback } from './controllers/mpesaController.js';
 
 
 dotenv.config();
@@ -119,6 +120,7 @@ app.use('/uploads', express.static(path.join(__dirname, 'uploads'), {
 // -------------------------
 // API ROUTES
 // -------------------------
+app.post('/api/mpesa/callback', mpesaCallback);
 app.use('/api/users', userRoutes);
 app.use('/api/marks', markRoutes);
 app.use('/api/materials', materialRoutes);
@@ -147,6 +149,8 @@ const pathMap = {
   '/super-admin': 'super-admin.html',
   '/teacher': 'teacher-dashboard.html',
   '/teacher-dashboard': 'teacher-dashboard.html',
+  '/dean': 'dean-dashboard.html',
+  '/dean-dashboard': 'dean-dashboard.html',
   '/student': 'student-dashboard.html',
   '/student-dashboard': 'student-dashboard.html',
 

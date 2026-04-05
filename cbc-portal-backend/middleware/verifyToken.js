@@ -53,6 +53,7 @@ const verifyToken = async (req, res, next) => {
       ),
       schoolId: user.schoolId ? String(user.schoolId) : null,
       isClassTeacher: user.isClassTeacher || false,
+      isDean: user.isDean || false,
       classGrade: user.classGrade || null, // ✅ 
       isSuperAdmin: user.role === "super_admin",
       isSchoolAdmin: user.role === "admin",

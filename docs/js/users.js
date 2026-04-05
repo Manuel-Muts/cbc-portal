@@ -3,6 +3,23 @@
   const API_BASE = config.api.baseURL;
   const token = localStorage.getItem("token");
 
+  // Inject CSS to reduce row height in the users table
+  const compactUsersStyle = document.createElement("style");
+  compactUsersStyle.textContent = `
+    #usersTable td {
+      padding: 4px 10px !important;
+      vertical-align: middle !important;
+    }
+    #usersTable th {
+      padding: 8px 10px !important;
+      position: sticky;
+      top: 0;
+      background: #f8f9fa;
+      z-index: 10;
+    }
+  `;
+  document.head.appendChild(compactUsersStyle);
+
   if (!token) {
     alert("You must log in first.");
     window.location.href = "/login";
@@ -14,6 +31,7 @@
   const registerFeedback = document.getElementById("registerFeedback");
   const userRoleSelect = document.getElementById("userRole");
   const studentFields = document.getElementById("studentFields");
+  const emailGroup = document.getElementById("emailGroup");
   
   const usersTableBody = document.querySelector("#usersTable tbody");
   const userSearchInput = document.getElementById("userSearchInput");
@@ -92,8 +110,10 @@
     userRoleSelect.addEventListener("change", () => {
       if (userRoleSelect.value === "student") {
         studentFields.style.display = "flex";
+        if (emailGroup) emailGroup.style.display = "none";
       } else {
         studentFields.style.display = "none";
+        if (emailGroup) emailGroup.style.display = "block";
       }
     });
   }
@@ -106,7 +126,7 @@
     usersTableBody.innerHTML = "";
     
     if (data.length === 0) {
-      usersTableBody.innerHTML = `<tr><td colspan="4" style="text-align:center">No users found</td></tr>`;
+      usersTableBody.innerHTML = `<tr><td colspan="5" style="text-align:center">No users found</td></tr>`;
       return;
     }
 
@@ -120,6 +140,7 @@
         <td>${u.name}</td>
         <td>${u.role}</td>
         <td>${u.role === "student" ? (u.admission || "") : (u.email || "")}</td>
+        <td>${u.contact || ""}</td>
         <td>
           <button data-id="${u._id}" class="btn danger-btn delete-user-btn" style="padding: 4px 8px; font-size: 12px;">🗑️ Delete</button>
           ${u.role !== "student" ? `<button data-id="${u._id}" class="btn secondary-btn resend-creds-btn" style="padding: 4px 8px; font-size: 12px;">📧 Resend</button>` : ""}
@@ -166,7 +187,7 @@
       return;
     }
 
-    usersTableBody.innerHTML = `<tr><td colspan="4" style="text-align:center">Loading...</td></tr>`;
+    usersTableBody.innerHTML = `<tr><td colspan="5" style="text-align:center">Loading...</td></tr>`;
     const search = userSearchInput ? userSearchInput.value.trim() : "";
     
     const res = await secureFetch(`${API_BASE}/users?page=${page}&limit=${usersPerPage}&search=${encodeURIComponent(search)}`);
@@ -236,6 +257,7 @@ if (usersNextPageBtn) {
       const admission = document.getElementById("userAdmission").value.trim();
       const grade = document.getElementById("studentGrade").value;
       const stream = document.getElementById("studentStream").value.trim();
+      const contact = document.getElementById("studentContact").value.trim();
 
       // Validation
       if (!role || !name) {
@@ -259,6 +281,7 @@ if (usersNextPageBtn) {
         body.admission = admission;
         body.grade = grade;
         if (stream) body.stream = stream;
+        if (contact) body.contact = contact;
       } else {
         body.email = email;
       }

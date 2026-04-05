@@ -311,8 +311,28 @@ export const listSchoolFeeStructures = async (req, res) => {
   try {
     if (!req.user || !req.user.schoolId) return res.status(400).json({ message: 'No school assigned' });
 
-    const fees = await FeeStructure.find({ schoolId: req.user.schoolId }).sort({ academicYear: -1, grade: 1 }).select('grade academicYear term1Fee term2Fee term3Fee totalFee');
-    res.json(fees);
+    const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+    const limit = Math.max(1, Math.min(100, parseInt(req.query.limit, 10) || 10));
+    const skip = (page - 1) * limit;
+
+    const query = { schoolId: req.user.schoolId };
+    const total = await FeeStructure.countDocuments(query);
+    const fees = await FeeStructure.find(query)
+      .sort({ academicYear: -1, grade: 1 })
+      .select('grade academicYear term1Fee term2Fee term3Fee totalFee')
+      .skip(skip)
+      .limit(limit)
+      .lean();
+
+    res.json({
+      data: fees,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit)
+      }
+    });
   } catch (err) {
     console.error('List Fee Structures Error:', err);
     res.status(500).json({ message: err.message });

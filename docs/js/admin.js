@@ -37,6 +37,9 @@
   const classSearchInput = document.getElementById("classSearchInput");
   const exportSubjectsBtn = document.getElementById("exportSubjectsBtn");
   const exportClassBtn = document.getElementById("exportClassBtn");
+  const subjectAllocPrevBtn = document.getElementById("subjectAllocPrevBtn");
+  const subjectAllocNextBtn = document.getElementById("subjectAllocNextBtn");
+  const subjectAllocPageInfo = document.getElementById("subjectAllocPageInfo");
 
   // Pagination + caching for user list
 
@@ -60,6 +63,9 @@
   let promoPage = 1;
   const promoLimit = 20;
   let promoTotalPages = 1;
+  let subjectAllocPage = 1;
+  const SUBJECT_ALLOC_LIMIT = 5;
+  let subjectAllocTotalPages = 1;
   let isRefreshing = false;
 // ---------------------------
 // FETCH SCHOOL INFO
@@ -245,6 +251,9 @@ function renderSchoolInfo() {
       .toast { transition: opacity .35s ease; }
       tr.clickable-row { cursor: pointer; }
       .danger { background: #dc3545; color: #fff; border: none; padding: 4px 8px; border-radius:4px; cursor:pointer; }
+      /* Compact Table Styles */
+      table td { padding: 6px 10px !important; vertical-align: middle !important; }
+      table th { padding: 10px 10px !important; }
     `;
     document.head.appendChild(style);
   })();
@@ -542,6 +551,9 @@ confirmPromotionBtn.addEventListener("click", async () => {
           <td></td>
           <td></td>
           <td>
+            <input type="checkbox" class="dean-toggle" data-id="${item._id}" ${item.isDean ? 'checked' : ''}>
+          </td>
+          <td>
             <button class="danger" data-id="${item._id}" data-action="remove-subjects">Remove</button>
           </td>
         `;
@@ -554,6 +566,9 @@ confirmPromotionBtn.addEventListener("click", async () => {
             <td>${index === 0 ? item.name : ""}</td>
             <td>${gradeLabel}</td>
             <td>${Array.isArray(alloc.subjects) && alloc.subjects.length > 0 ? alloc.subjects.join(", ") : "No subjects allocated"}</td>
+            <td>
+              ${index === 0 ? `<input type="checkbox" class="dean-toggle" data-id="${item._id}" ${item.isDean ? 'checked' : ''}>` : ""}
+            </td>
             <td>
               <button class="danger" data-id="${item._id}" data-grade="${alloc.grade}" data-stream="${alloc.stream || ''}" data-action="remove-subjects">Remove</button>
             </td>
@@ -626,12 +641,20 @@ confirmPromotionBtn.addEventListener("click", async () => {
     populateTeacherSelects(teachersCache);
   }
 
-  async function loadSubjectAllocations() {
+  async function loadSubjectAllocations(page = subjectAllocPage, limit = SUBJECT_ALLOC_LIMIT) {
     if (!subjectAllocTableBody) return;
     subjectAllocTableBody.innerHTML = `<tr><td colspan="5" style="text-align:center">${createSpinner().outerHTML} Loading allocations...</td></tr>`;
-    const data = await secureFetch(`${API_BASE}/users/subjects/allocations`);
-    if (!data) { subjectAllocTableBody.innerHTML = ""; return; }
-    renderSubjectAllocations(data);
+    const response = await secureFetch(`${API_BASE}/users/subjects/allocations?page=${page}&limit=${limit}`);
+    if (!response) { subjectAllocTableBody.innerHTML = ""; return; }
+
+    const allocationData = Array.isArray(response) ? response : response.data || [];
+    const pagination = response.pagination || {};
+
+    subjectAllocPage = pagination.page || page;
+    subjectAllocTotalPages = pagination.totalPages || 1;
+
+    renderSubjectAllocations(allocationData);
+    updateSubjectAllocPaginationControls();
   }
 
   async function loadClassAllocations() {
@@ -682,9 +705,12 @@ confirmPromotionBtn.addEventListener("click", async () => {
   `;
   document.body.appendChild(modal);
 
-  document.getElementById("cancelEditBtn").onclick = () => modal.remove();
+  const cancelEditBtn = modal.querySelector("#cancelEditBtn");
+  const saveEditBtn = modal.querySelector("#saveEditBtn");
 
-  document.getElementById("saveEditBtn").onclick = async () => {
+  if (cancelEditBtn) cancelEditBtn.onclick = () => modal.remove();
+
+  if (saveEditBtn) saveEditBtn.onclick = async () => {
     const updated = {
       academicYear: document.getElementById("editAcademicYear").value,
       grade: document.getElementById("editGrade").value,
@@ -723,6 +749,10 @@ function openEditProfileModal(student) {
         <label>Admission Number:</label>
         <input type="text" id="editProfileAdmission" value="${student.admission || ''}" style="width:100%;padding:8px;border:1px solid #ccc;border-radius:4px;" />
       </div>
+      <div style="margin:15px 0;">
+        <label>Contact:</label>
+        <input type="text" id="editProfileContact" value="${student.contact || ''}" style="width:100%;padding:8px;border:1px solid #ccc;border-radius:4px;" />
+      </div>
       <div style="display:flex;gap:10px;margin-top:20px;">
         <button id="saveProfileBtn" style="flex:1;padding:10px;background:#2ecc71;color:#fff;border:none;border-radius:4px;cursor:pointer;">Save</button>
         <button id="cancelProfileBtn" style="flex:1;padding:10px;background:#95a5a6;color:#fff;border:none;border-radius:4px;cursor:pointer;">Cancel</button>
@@ -732,9 +762,12 @@ function openEditProfileModal(student) {
 
   document.body.appendChild(modal);
 
-  document.getElementById("cancelProfileBtn").onclick = () => modal.remove();
+  const cancelProfileBtn = modal.querySelector("#cancelProfileBtn");
+  const saveProfileBtn = modal.querySelector("#saveProfileBtn");
 
-  document.getElementById("saveProfileBtn").onclick = async () => {
+  if (cancelProfileBtn) cancelProfileBtn.onclick = () => modal.remove();
+
+  if (saveProfileBtn) saveProfileBtn.onclick = async () => {
     const saveBtn = document.getElementById("saveProfileBtn");
     const originalHTML = saveBtn.innerHTML;
     saveBtn.disabled = true;
@@ -742,7 +775,8 @@ function openEditProfileModal(student) {
 
     const payload = {
       name: document.getElementById("editProfileName").value.trim(),
-      admission: document.getElementById("editProfileAdmission").value.trim()
+      admission: document.getElementById("editProfileAdmission").value.trim(),
+      contact: document.getElementById("editProfileContact").value.trim() || null
     };
 
     try {
@@ -1026,6 +1060,36 @@ studentSearchBody.addEventListener("click", async (e) => {
   }
 });
 
+  // ---------------------------
+  // DEAN TOGGLE HANDLER
+  // ---------------------------
+  subjectAllocTableBody?.addEventListener("change", async (e) => {
+    if (e.target.classList.contains("dean-toggle")) {
+      const teacherId = e.target.dataset.id;
+      const isDean = e.target.checked;
+      
+      try {
+        const result = await secureFetch(`${API_BASE}/users/toggle-dean`, {
+          method: "POST",
+          body: JSON.stringify({ teacherId, isDean })
+        });
+        
+        if (!result) {
+          e.target.checked = !isDean; // Revert UI if update failed
+          return;
+        }
+        
+        showToast(result.message, "success");
+        // Force a reload of allocations to ensure cache is cleared and state is persisted
+        loadSubjectAllocations();
+      } catch (err) {
+        console.error("Toggle dean error:", err);
+        e.target.checked = !isDean; // Revert UI on failure
+        showToast("Error toggling Dean status", "error");
+      }
+    }
+  });
+
 // ---------------------------
 // EDIT PROFILE BUTTON HANDLER
 // ---------------------------
@@ -1042,13 +1106,14 @@ studentSearchBody.addEventListener("click", async (e) => {
     const studentId = tr?.dataset.studentId;
     const studentName = btn.dataset.studentName;
     const studentAdmission = btn.dataset.studentAdmission;
+    const studentContact = btn.dataset.studentContact;
 
     if (!studentId) {
       showToast("Student ID missing", "error");
       return;
     }
 
-    openEditProfileModal({ id: studentId, name: studentName, admission: studentAdmission });
+    openEditProfileModal({ id: studentId, name: studentName, admission: studentAdmission, contact: studentContact });
   } catch (err) {
     console.error("Edit profile error:", err);
     showToast(err.message || "Failed to open profile editor", "error");
@@ -1103,6 +1168,30 @@ studentSearchBody.addEventListener("click", async (e) => {
   // ---------------------------
   if (subjectSearchInput) subjectSearchInput.addEventListener("input", function () { const q = this.value.toLowerCase(); document.querySelectorAll("#subjectAllocTable tbody tr").forEach(r => r.style.display = r.textContent.toLowerCase().includes(q) ? "" : "none"); });
   if (classSearchInput) classSearchInput.addEventListener("input", function () { const q = this.value.toLowerCase(); document.querySelectorAll("#classAllocTable tbody tr").forEach(r => r.style.display = r.textContent.toLowerCase().includes(q) ? "" : "none"); });
+
+  function updateSubjectAllocPaginationControls() {
+    if (subjectAllocPageInfo) {
+      subjectAllocPageInfo.textContent = `Page ${subjectAllocPage} of ${subjectAllocTotalPages}`;
+    }
+    if (subjectAllocPrevBtn) {
+      subjectAllocPrevBtn.disabled = subjectAllocPage <= 1;
+    }
+    if (subjectAllocNextBtn) {
+      subjectAllocNextBtn.disabled = subjectAllocPage >= subjectAllocTotalPages;
+    }
+  }
+
+  if (subjectAllocPrevBtn) {
+    subjectAllocPrevBtn.addEventListener("click", () => {
+      if (subjectAllocPage > 1) loadSubjectAllocations(subjectAllocPage - 1);
+    });
+  }
+
+  if (subjectAllocNextBtn) {
+    subjectAllocNextBtn.addEventListener("click", () => {
+      if (subjectAllocPage < subjectAllocTotalPages) loadSubjectAllocations(subjectAllocPage + 1);
+    });
+  }
 
   // ---------------------------
   // DYNAMIC GRADE & SUBJECT MULTI-SELECT
@@ -1445,7 +1534,7 @@ studentSearchBtn.addEventListener("click", async () => {
 
     if (!res || !res.results.length) {
       studentSearchBody.innerHTML =
-        `<tr><td colspan="6" style="text-align:center">No student found</td></tr>`;
+        `<tr><td colspan="7" style="text-align:center">No student found</td></tr>`;
       return;
     }
 
@@ -1461,13 +1550,14 @@ studentSearchBtn.addEventListener("click", async () => {
       tr.innerHTML = `
         <td>${s.name}</td>
         <td>${s.admission}</td>
+        <td>${s.contact || "-"}</td>
         <td>${s.academicYear || "-"}</td>
         <td>${gradeLabel}</td>
         <td>${s.status}</td>
         <td>
           <button class="btn-history" data-student-id="${s.studentId}" data-student-name="${s.name}">📋 History</button>
           <button class="btn-edit" data-enrollment-id="${s.enrollmentId}" data-student-id="${s.studentId}">✏️ Edit Enrollment</button>
-          <button class="btn-edit-profile" data-student-id="${s.studentId}" data-student-name="${s.name}" data-student-admission="${s.admission}" data-student-grade="${s.grade}">👤 Edit Profile</button>
+          <button class="btn-edit-profile" data-student-id="${s.studentId}" data-student-name="${s.name}" data-student-admission="${s.admission}" data-student-grade="${s.grade}" data-student-contact="${s.contact || ''}">👤 Edit Profile</button>
         </td>
       `;
 

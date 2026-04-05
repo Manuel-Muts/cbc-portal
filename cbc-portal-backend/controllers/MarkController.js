@@ -390,10 +390,12 @@ export const getMarksByGrade = async (req, res) => {
     // NORMALIZE GRADE
     // ---------------------------
     const gradeStr = String(grade).trim();
-    const normalizedGrades = [
-      gradeStr,
-      `Grade ${gradeStr}`
-    ];
+    const numericPart = gradeStr.match(/\d+/)?.[0];
+    const normalizedGrades = [gradeStr];
+    if (numericPart) {
+      normalizedGrades.push(numericPart);
+      normalizedGrades.push(`Grade ${numericPart}`);
+    }
 
     const { term, year, assessment, subject, page, limit, search } = req.query;
 

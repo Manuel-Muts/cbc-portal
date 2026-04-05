@@ -90,6 +90,7 @@ const sharedConfig = {
     student: 'student-dashboard.html',
     learner: 'student-dashboard.html',
     teacher: 'teacher-dashboard.html',
+    dean: 'dean-dashboard.html',
     classteacher: 'analysis.html',
     accounts: 'accounts.html',
     admin: 'admin.html',

@@ -8,6 +8,7 @@ const schoolSchema = new mongoose.Schema({
   logo: { type: String, default: "" }, // Base64 encoded image or data URL
   logoMimeType: { type: String, default: "image/png" }, // MIME type of logo
   address: { type: String, default: "" },
+  registrationOpen: { type: Boolean, default: true },
   version: { type: Number, default: 1 },       // <-- version increments on suspension
   paybill: { type: String, default: "" },      // M-Pesa paybill number (for C2B manual payments)
   createdAt: { type: Date, default: Date.now }

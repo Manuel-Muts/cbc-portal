@@ -136,11 +136,19 @@ table {
     box-shadow: 0 2px 5px rgba(0,0,0,0.05);
     border: 1px solid #e0e0e0;
 }
+#usersTable {
+    table-layout: fixed;
+}
 th, td { 
     padding: 16px 18px; 
     text-align: left; 
     border-bottom: 1px solid var(--border-color); 
     vertical-align: middle;
+}
+#usersTable th, #usersTable td {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 th { 
     background: #34495e; /* Professional dark header */
@@ -150,6 +158,14 @@ th {
     font-size: 0.8rem;
     letter-spacing: 0.05em;
     border-bottom: none;
+}
+#usersTable thead th {
+    position: sticky;
+    top: 0;
+    z-index: 3;
+    background: #2c3e50;
+    color: #f8f9fa;
+    border-bottom: 1px solid rgba(255,255,255,0.12);
 }
 tr:hover {
     background-color: #e8f0fe; /* Slight blue tint on hover */
@@ -352,16 +368,19 @@ tr:nth-child(even) {
 
 /* RESPONSIVE TABLE COLUMNS */
 #usersTable th:nth-child(1),
-#usersTable td:nth-child(1) { width: 25%; }
+#usersTable td:nth-child(1) { width: 24%; }
 
 #usersTable th:nth-child(2),
-#usersTable td:nth-child(2) { width: 15%; }
+#usersTable td:nth-child(2) { width: 14%; }
 
 #usersTable th:nth-child(3),
-#usersTable td:nth-child(3) { width: 40%; }
+#usersTable td:nth-child(3) { width: 30%; }
 
 #usersTable th:nth-child(4),
-#usersTable td:nth-child(4) { width: 20%; }
+#usersTable td:nth-child(4) { width: 16%; }
+
+#usersTable th:nth-child(5),
+#usersTable td:nth-child(5) { width: 16%; }
 
 #subjectAllocTable th:nth-child(1),
 #subjectAllocTable td:nth-child(1) { width: 20%; }
@@ -699,18 +718,6 @@ button.resend-creds-btn:hover {
     font-size: 11px;
   }
 
-  #usersTable th:nth-child(1),
-  #usersTable td:nth-child(1) { width: 22%; }
-
-  #usersTable th:nth-child(2),
-  #usersTable td:nth-child(2) { width: 18%; }
-
-  #usersTable th:nth-child(3),
-  #usersTable td:nth-child(3) { width: 40%; }
-
-  #usersTable th:nth-child(4),
-  #usersTable td:nth-child(4) { width: 20%; }
-
   #promotionPreviewTable th:nth-child(1),
   #promotionPreviewTable td:nth-child(1) { width: 26%; }
 
@@ -753,18 +760,6 @@ button.resend-creds-btn:hover {
   th {
     font-size: 10px;
   }
-
-  #usersTable th:nth-child(1),
-  #usersTable td:nth-child(1) { width: 20%; }
-
-  #usersTable th:nth-child(2),
-  #usersTable td:nth-child(2) { width: 20%; }
-
-  #usersTable th:nth-child(3),
-  #usersTable td:nth-child(3) { width: 35%; }
-
-  #usersTable th:nth-child(4),
-  #usersTable td:nth-child(4) { width: 25%; }
 
   #subjectAllocTable th:nth-child(1),
   #subjectAllocTable td:nth-child(1) { width: 18%; }
@@ -841,7 +836,10 @@ button.resend-creds-btn:hover {
   #usersTable td:nth-child(2) { width: 25%; }
 
   #usersTable th:nth-child(4),
-  #usersTable td:nth-child(4) { width: 45%; }
+  #usersTable td:nth-child(4) { width: 20%; }
+
+  #usersTable th:nth-child(5),
+  #usersTable td:nth-child(5) { width: 25%; }
 
   #learnerSearchTable th:nth-child(3),
   #learnerSearchTable td:nth-child(3) { 

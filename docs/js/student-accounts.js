@@ -414,11 +414,12 @@
       // Fetch payments AND fee structures
       const [payRes, feesRes] = await Promise.all([
         fetch(`${API_BASE}/users/ledger/${admission}`, { headers: { "Authorization": `Bearer ${token}` } }),
-        fetch(`${API_BASE}/accounts/fee-structures`, { headers: { "Authorization": `Bearer ${token}` } })
+        fetch(`${API_BASE}/accounts/fee-structures?limit=1000`, { headers: { "Authorization": `Bearer ${token}` } })
       ]);
 
       const payData = payRes.ok ? await payRes.json() : { payments: [] };
-      const feesData = feesRes.ok ? await feesRes.json() : [];
+      const feesResData = feesRes.ok ? await feesRes.json() : [];
+      const feesData = Array.isArray(feesResData) ? feesResData : (feesResData.data || []);
       
       // Filter payments for the selected year only
       const allPayments = payData.payments || [];
@@ -446,7 +447,7 @@
         <div id="fee-details-content">
           <div class="report-header" style="text-align:center; margin-bottom:20px; border-bottom: 2px solid #eee; padding-bottom: 10px;">
              <h2 style="margin:0;">FEE STATEMENT</h2>
-             <p style="margin:5px 0;"><strong>Student:</strong> ${studentName}</p>
+             <p style="margin:5px 0;"><strong>Learner:</strong> ${studentName}</p>
              <p style="margin:0;"><strong>Grade:</strong> ${grade} | <strong>Year:</strong> ${year}</p>
           </div>
 

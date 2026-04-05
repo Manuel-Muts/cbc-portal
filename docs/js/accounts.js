@@ -8,10 +8,40 @@
     return;
   }
 
+  // ---------------------------
+  // Ensure jsPDF and autoTable are loaded for PDF exports
+  // This is a client-side check. The HTML file must include the scripts.
+  // <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  // <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.28/jspdf.plugin.autotable.min.js"></script>
+  // ---------------------------
+  function isPdfAutoTableReady() {
+    if (typeof window.jspdf === 'undefined' || typeof window.jspdf.jsPDF === 'undefined') {
+      return false;
+    }
+    if (typeof window.jspdf.jsPDF.API !== 'undefined' && typeof window.jspdf.jsPDF.API.autoTable !== 'undefined') {
+      return true;
+    }
+    return typeof window.jspdf.autoTable === 'function';
+  }
+
   const headers = {
     "Authorization": `Bearer ${token}`,
     "Content-Type": "application/json"
   };
+
+  // ---------------------------
+  // HELPERS
+  // ---------------------------
+  function showToast(message, type = "info") {
+    const t = document.createElement("div");
+    t.className = `toast toast-${type}`;
+    t.textContent = message;
+    document.body.appendChild(t);
+    setTimeout(() => {
+      t.classList.add('hiding');
+      t.addEventListener('transitionend', () => t.remove());
+    }, 3000);
+  }
 
   // Cache State
   let statsCache = null;
@@ -49,9 +79,11 @@
   const outstandingPageInfo = document.getElementById('outstandingPageInfo');
   let outstandingPage = 1;
   const outstandingLimit = 20;
-  let outstandingTotalPages = 1;
+  let outstandingTotalPages = 1; // Corrected: This was duplicated
 
   const downloadOutstandingPDF = document.getElementById('downloadOutstandingPDF');
+  const downloadAllFeeStructuresBtn = document.getElementById('downloadFeeStructuresPDF');
+  const exportBtn = document.getElementById('exportBtn');
 
   // Student Fee Details Modal Elements
   const studentFeeDetailsModal = document.getElementById('studentFeeDetailsModal');
@@ -59,7 +91,13 @@
   const studentFeeModalBody = document.getElementById('studentFeeModalBody');
   const dlStructureBtn = document.getElementById('dlStructureBtn');
   const dlStatementBtn = document.getElementById('dlStatementBtn');
+  const feeStructuresNextBtn = document.getElementById('feeStructuresNextBtn');
+  const feeStructuresPageInfo = document.getElementById('feeStructuresPageInfo');
   let currentStudentDetails = null; // Store current student for PDF naming
+  let feeStructuresPage = 1;
+  const FEE_STRUCTURES_LIMIT = 10;
+  let feeStructuresTotalPages = 1;
+  let feeStructuresCachePage = 1;
 
   // ---------------------------
   // LOAD DASHBOARD DATA
@@ -92,34 +130,52 @@
   async function loadStats(forceRefresh = false) {
       // Fetch a sample of accounts to calculate totals
       try {
-        if (!forceRefresh && statsCache && (Date.now() - statsLastFetch < CACHE_TTL)) {
-            calculateTotals(statsCache);
+        const grade = outstandingClassFilter.value;
+        const year = outstandingYearFilter.value;
+        const term = outstandingTermFilter ? outstandingTermFilter.value : "";
+        
+        // Cache key should include filters to avoid stale data when switching
+        const cacheKey = `stats_${grade}_${year}_${term}`;
+        
+        if (!forceRefresh && statsCache && statsCache.key === cacheKey && (Date.now() - statsLastFetch < CACHE_TTL)) {
+            calculateTotals(statsCache.data, term, statsCache.total);
             return;
         }
 
-        const res = await fetch(`${API_BASE}/accounts?page=1&limit=1000`, { headers });
+        const query = new URLSearchParams({ academicYear: year, limit: 1000, page: 1 });
+        if (grade) query.append("class", grade);
+
+        const res = await fetch(`${API_BASE}/accounts?${query.toString()}`, { headers });
         if(res.ok) {
             const data = await res.json();
             const accounts = data.students || data.accounts || [];
-            statsCache = accounts;
+            const total = data.total || accounts.length;
+            statsCache = { key: cacheKey, data: accounts, total: total };
             statsLastFetch = Date.now();
-            calculateTotals(accounts);
+            calculateTotals(accounts, term, total);
         }
       } catch (e) {
           console.error("Failed to load stats", e);
       }
   }
 
-  function calculateTotals(data) {
+  function calculateTotals(data, termFilter = "", totalCount = 0) {
     let expected = 0;
     let paid = 0;
+    const termKey = termFilter ? termFilter.toLowerCase().replace(/\s+/g, '') : null; // e.g. "term1"
 
     data.forEach(r => {
-      expected += (r.expected || 0);
-      paid += (r.paid || 0);
+      if (termKey && r.termBalances && r.termBalances[termKey]) {
+        expected += (r.termBalances[termKey].fee || 0);
+        paid += (r.termBalances[termKey].paid || 0);
+      } else {
+        expected += (r.expected || 0);
+        paid += (r.paid || 0);
+      }
     });
 
     // Update DOM
+    if(document.getElementById("totalLearners")) document.getElementById("totalLearners").textContent = totalCount.toLocaleString();
     if(document.getElementById("totalExpected")) document.getElementById("totalExpected").textContent = `KES ${expected.toLocaleString()}`;
     if(document.getElementById("totalPaid")) document.getElementById("totalPaid").textContent = `KES ${paid.toLocaleString()}`;
     if(document.getElementById("totalBalance")) document.getElementById("totalBalance").textContent = `KES ${(expected - paid).toLocaleString()}`;
@@ -171,12 +227,13 @@
   // ---------------------------
   async function loadFeeStructures(forceRefresh = false) {
     try {
-      if (!forceRefresh && feeStructuresCache && (Date.now() - feesLastFetch < CACHE_TTL)) {
-          renderFeeStructures(feeStructuresCache);
-          return;
+      if (!forceRefresh && feeStructuresCache && feeStructuresCachePage === feeStructuresPage && (Date.now() - feesLastFetch < CACHE_TTL)) {
+        renderFeeStructures(feeStructuresCache);
+        updateFeeStructuresPaginationControls();
+        return;
       }
 
-      const res = await fetch(`${API_BASE}/accounts/fee-structures`, { headers });
+      const res = await fetch(`${API_BASE}/accounts/fee-structures?page=${feeStructuresPage}&limit=${FEE_STRUCTURES_LIMIT}`, { headers });
       const tbody = document.getElementById('feeStructuresTableBody');
       if (!tbody) return;
 
@@ -184,11 +241,19 @@
         tbody.innerHTML = '<tr><td colspan="7" style="text-align: center; color: #dc3545;">Failed to load fee structures</td></tr>';
         return;
       }
-      
-      const list = await res.json();
+
+      const payload = await res.json();
+      const list = Array.isArray(payload) ? payload : payload.data || [];
+      const pagination = payload.pagination || {};
+
       feeStructuresCache = list;
+      feeStructuresCachePage = feeStructuresPage;
       feesLastFetch = Date.now();
+      feeStructuresTotalPages = pagination.totalPages || 1;
+      feeStructuresPage = pagination.page || feeStructuresPage;
+
       renderFeeStructures(list);
+      updateFeeStructuresPaginationControls();
 
     } catch (err) {
       console.error('Load fee structures error', err);
@@ -237,6 +302,36 @@
               }
           });
       });
+  }
+
+  function updateFeeStructuresPaginationControls() {
+    if (feeStructuresPageInfo) {
+      feeStructuresPageInfo.textContent = `Page ${feeStructuresPage} of ${feeStructuresTotalPages}`;
+    }
+    if (feeStructuresPrevBtn) {
+      feeStructuresPrevBtn.disabled = feeStructuresPage <= 1;
+    }
+    if (feeStructuresNextBtn) {
+      feeStructuresNextBtn.disabled = feeStructuresPage >= feeStructuresTotalPages;
+    }
+  }
+
+  if (feeStructuresPrevBtn) {
+    feeStructuresPrevBtn.addEventListener('click', () => {
+      if (feeStructuresPage > 1) {
+        feeStructuresPage -= 1;
+        loadFeeStructures(true);
+      }
+    });
+  }
+
+  if (feeStructuresNextBtn) {
+    feeStructuresNextBtn.addEventListener('click', () => {
+      if (feeStructuresPage < feeStructuresTotalPages) {
+        feeStructuresPage += 1;
+        loadFeeStructures(true);
+      }
+    });
   }
 
   // ---------------------------
@@ -376,11 +471,12 @@
       // Fetch payments AND fee structures
       const [payRes, feesRes] = await Promise.all([
         fetch(`${API_BASE}/users/ledger/${admission}`, { headers }),
-        fetch(`${API_BASE}/accounts/fee-structures`, { headers })
+        fetch(`${API_BASE}/accounts/fee-structures?limit=1000`, { headers })
       ]);
 
       const payData = payRes.ok ? await payRes.json() : { payments: [] };
-      const feesData = feesRes.ok ? await feesRes.json() : [];
+      const feesResData = feesRes.ok ? await feesRes.json() : [];
+      const feesData = Array.isArray(feesResData) ? feesResData : (feesResData.data || []);
       
       // Filter payments for the selected year only
       const allPayments = payData.payments || [];
@@ -408,7 +504,7 @@
         <div id="fee-details-content">
           <div class="report-header" style="text-align:center; margin-bottom:20px; border-bottom: 2px solid #eee; padding-bottom: 10px;">
              <h2 style="margin:0;">FEE STATEMENT</h2>
-             <p style="margin:5px 0;"><strong>Student:</strong> ${studentName}</p>
+             <p style="margin:5px 0;"><strong>Learner:</strong> ${studentName}</p>
              <p style="margin:0;"><strong>Grade:</strong> ${grade} | <strong>Year:</strong> ${year}</p>
           </div>
 
@@ -699,17 +795,24 @@
       });
   }
 
+  if (refreshBtn) {
+    refreshBtn.addEventListener('click', () => loadDashboardData(true));
+  }
+
+  if (logoutBtn) {
+    logoutBtn.addEventListener('click', () => {
+      localStorage.clear();
+      window.location.href = '/login';
+    });
+  }
+
   // ---------------------------
   // INIT
-  // ---------------------------
-  if(refreshBtn) refreshBtn.addEventListener("click", () => loadDashboardData(true));
-  if(logoutBtn) logoutBtn.addEventListener("click", () => { localStorage.clear(); window.location.href="/login"; });
-
   // Outstanding fees listeners
   if (outstandingYearFilter) {
     const currentYear = new Date().getFullYear();
     outstandingYearFilter.innerHTML = "";
-    for (let y = 2024; y <= 2130; y++) {
+    for (let y = 2026; y <= 2130; y++) {
         const opt = document.createElement("option");
         opt.value = y;
         opt.textContent = y;
@@ -718,9 +821,9 @@
     }
   }
 
-  outstandingClassFilter?.addEventListener('change', () => loadOutstandingFees(1));
-  outstandingYearFilter?.addEventListener('change', () => loadOutstandingFees(1));
-  outstandingTermFilter?.addEventListener('change', () => loadOutstandingFees(1));
+  outstandingClassFilter?.addEventListener('change', () => { loadOutstandingFees(1); loadStats(true); });
+  outstandingYearFilter?.addEventListener('change', () => { loadOutstandingFees(1); loadStats(true); });
+  outstandingTermFilter?.addEventListener('change', () => { loadOutstandingFees(1); loadStats(true); });
   outstandingSortFilter?.addEventListener('change', () => loadOutstandingFees(1));
 
   if (outstandingPrevBtn) outstandingPrevBtn.addEventListener('click', () => loadOutstandingFees(outstandingPage - 1));
@@ -732,9 +835,40 @@
       outstandingDebounce = setTimeout(() => loadOutstandingFees(1), 500);
   });
 
+  // Export PDF (accountsTable)
+  if (exportBtn) {
+    exportBtn.addEventListener("click", () => {
+      if (!isPdfAutoTableReady()) {
+        showToast("PDF AutoTable plugin not loaded. Ensure jspdf-autotable.min.js is included in accounts.html.", "error");
+        return;
+      }
+      const { jsPDF } = window.jspdf;
+      const doc = new jsPDF();
+      doc.text("Student Accounts Report", 14, 15);
+      
+      const rows = [];
+      document.querySelectorAll("#accountsTable tbody tr").forEach(tr => {
+        const cells = Array.from(tr.querySelectorAll("td")).map(td => td.textContent);
+        if (cells.length > 1) rows.push(cells.slice(0, 6)); // Exclude action col
+      });
+
+      doc.autoTable({
+        head: [["Admission", "Name", "Grade", "Total Fee", "Paid", "Balance"]],
+        body: rows,
+        startY: 20
+      });
+      doc.save("accounts_report.pdf");
+    });
+  }
+
+  // Download Outstanding Fees PDF
+  // This listener was duplicated in the provided context, keeping only one.
   downloadOutstandingPDF?.addEventListener('click', () => {
+    if (!isPdfAutoTableReady()) {
+      showToast("PDF AutoTable plugin not loaded. Ensure jspdf-autotable.min.js is included in accounts.html.", "error");
+      return;
+    }
     const { jsPDF } = window.jspdf;
-    if (!jsPDF) return alert("PDF library not loaded.");
     const doc = new jsPDF();
     doc.text("Outstanding Fees Report", 14, 15);
     
@@ -754,5 +888,36 @@
 
   // Initial Load
   loadDashboardData();
+
+  // Download All Fee Structures PDF (this handler was already correct)
+  if (downloadAllFeeStructuresBtn) {
+    downloadAllFeeStructuresBtn.addEventListener('click', async () => {
+      try {
+        showToast("Generating Fee Structures PDF...", "info");
+        const res = await fetch(`${API_BASE}/reports/fee-structures`, {
+          headers: { "Authorization": `Bearer ${token}` }
+        });
+
+        if (!res.ok) {
+          const errorText = await res.text();
+          throw new Error(`Failed to generate PDF: ${res.status} - ${errorText}`);
+        }
+
+        const blob = await res.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `fee_structures_report_${new Date().toISOString().split('T')[0]}.pdf`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        window.URL.revokeObjectURL(url);
+        showToast("Fee Structures PDF downloaded successfully!", "success");
+      } catch (err) {
+        console.error("Error generating Fee Structures PDF:", err);
+        showToast(err.message || "Failed to generate Fee Structures PDF.", "error");
+      }
+    });
+  }
 
 })();

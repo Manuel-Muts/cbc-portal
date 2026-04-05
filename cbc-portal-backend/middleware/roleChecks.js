@@ -29,9 +29,15 @@ export const isStudent = (req, res, next) => {
 // Class teacher guard
 export const isClassTeacher = (req, res, next) => {
   const roles = getRoles(req.user);
-  const ok = roles.includes("classteacher") || req.user?.isClassTeacher === true;
+  // Allow if classteacher OR Dean
+  const ok = roles.includes("classteacher") || req.user?.isClassTeacher === true || req.user?.isDean === true;
   if (!ok) {
     return res.status(403).json({ message: "Forbidden: class teacher role required" });
+  }
+
+  // If user is a Dean, they bypass the grade-specific scoping
+  if (req.user?.isDean === true) {
+    return next();
   }
 
   // Optional: enforce grade scoping

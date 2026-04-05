@@ -538,7 +538,13 @@ export const getOutstandingFees = async (req, res) => {
     const paginatedStudents = outstandingStudents.slice(startIndex, endIndex);
 
     // Return structure matching pagination standards
-    const response = { students: paginatedStudents, total, totalPages, currentPage: page };
+    const response = { 
+      students: paginatedStudents, 
+      total, 
+      totalPages, 
+      currentPage: page,
+      totalFilteredStudents: studentData.length 
+    };
     cache.set(cacheKey, response, 120); // Cache for 2 minutes
     res.json(response);
 

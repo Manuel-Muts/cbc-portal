@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Admin Dashboard</title>
+    <title>ADMIN</title>
     <link rel="stylesheet" href="css/admin.css" />
 </head>
 <body>
@@ -42,6 +42,7 @@
                 <tr>
                     <th>Name</th>
                     <th>Admission</th>
+                    <th>Contact</th>
                     <th>Year</th>
                     <th>Grade</th>
                     <th>Status</th>
@@ -103,11 +104,17 @@
                     <th>Teacher</th>
                     <th>Grade/Stream</th>
                     <th>Subjects</th>
+                    <th>Dean Role</th>
                     <th>Action</th>
                 </tr>
             </thead>
             <tbody></tbody>
         </table>
+        <div style="display:flex;justify-content:flex-end;align-items:center;gap:10px;margin-top:12px;">
+          <button id="subjectAllocPrevBtn" class="btn secondary-btn" disabled>Previous</button>
+          <span id="subjectAllocPageInfo" style="font-weight:600;">Page 1</span>
+          <button id="subjectAllocNextBtn" class="btn secondary-btn" disabled>Next</button>
+        </div>
     </div>
 
     <!-- 4. CLASS TEACHER ALLOCATION -->

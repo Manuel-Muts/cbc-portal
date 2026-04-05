@@ -1,18 +1,87 @@
-[build]
-  base = "."
-  publish = "docs"
-  command = "echo 'Build complete'"
+# netlify.toml for CBC Student Portal (Optimized for multi-page)
 
+[build]
+  publish = "docs"
+
+# -------------------------
+# Specific page redirects
+# -------------------------
 [[redirects]]
-  from = "/*"
+  from = "/"
   to = "/index.html"
   status = 200
 
-[context.production]
-  command = "echo 'Production deployment'"
+[[redirects]]
+  from = "/home"
+  to = "/index.html"
+  status = 200
 
-[context.deploy-preview]
-  command = "echo 'Deploy preview'"
+[[redirects]]
+  from = "/login"
+  to = "/login.html"
+  status = 200
 
-[context.branch-deploy]
-  command = "echo 'Branch deployment'"
+[[redirects]]
+  from = "/admin"
+  to = "/admin.html"
+  status = 200
+
+[[redirects]]
+  from = "/super-admin"
+  to = "/super-admin.html"
+  status = 200
+
+[[redirects]]
+  from = "/teacher"
+  to = "/teacher-dashboard.html"
+  status = 200
+
+[[redirects]]
+  from = "/teacher-dashboard"
+  to = "/teacher-dashboard.html"
+  status = 200
+
+[[redirects]]
+  from = "/student"
+  to = "/student-dashboard.html"
+  status = 200
+
+[[redirects]]
+  from = "/student-dashboard"
+  to = "/student-dashboard.html"
+  status = 200
+
+[[redirects]]
+  from = "/study-materials"
+  to = "/studentstudymaterial.html"
+  status = 200
+
+[[redirects]]
+  from = "/teacher-materials"
+  to = "/teacher-materials.html"
+  status = 200
+
+[[redirects]]
+  from = "/analysis"
+  to = "/analysis.html"
+  status = 200
+
+[[redirects]]
+  from = "/report"
+  to = "/report.html"
+  status = 200
+
+[[redirects]]
+  from = "/reset"
+  to = "/reset.html"
+  status = 200
+
+[[redirects]]
+  from = "/contact"
+  to = "/contact.html"
+  status = 200
+
+[[redirects]]
+  from = "/accounts"
+  to = "/accounts.html"
+  status = 200

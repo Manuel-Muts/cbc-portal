@@ -9,6 +9,14 @@ import LoginAttempt from '../models/LoginAttempt.js';
 import fs from 'fs';
 import cache from "../utils/simpleCache.js";
 
+const parseBoolean = (value) => {
+  if (typeof value === 'boolean') return value;
+  if (typeof value === 'string') {
+    return ['true', 'on', '1', 'yes'].includes(value.toLowerCase());
+  }
+  return false;
+};
+
 // ---------------------------
 // CREATE NEW SCHOOL
 // ---------------------------
@@ -41,6 +49,7 @@ export const createSchool = async (req, res) => {
       adminEmail, 
       address, 
       contactNumber,
+      registrationOpen: req.body.registrationOpen === undefined ? true : parseBoolean(req.body.registrationOpen),
       logo,
       logoMimeType 
     });
@@ -266,6 +275,9 @@ export const updateSchool = async (req, res) => {
     if (adminEmail) school.adminEmail = adminEmail;
     if (address) school.address = address;
     if (contactNumber) school.contactNumber = contactNumber;
+    if (req.body.registrationOpen !== undefined) {
+      school.registrationOpen = parseBoolean(req.body.registrationOpen);
+    }
 
     // Update logo if uploaded - convert to base64
     if (req.file) {

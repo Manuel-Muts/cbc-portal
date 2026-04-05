@@ -3,34 +3,16 @@ import Payment from "../models/Payment.js";
 import { User } from "../models/User.js";
 import { School } from "../models/school.js";
 import bcrypt from "bcryptjs";
-import axios from "axios";
-import base64 from "base-64";
-
 
 export const mpesaCallback = async (req, res) => {
   try {
     const callback = req.body;
 
-    // Handle both STK Push and C2B callbacks
-    let amount, receipt, phone, admission, businessShortCode, isC2B = false;
+    // Handle C2B callbacks only
+    let amount, receipt, phone, admission, businessShortCode;
 
-    if (callback.Body?.stkCallback) {
-      // STK PUSH CALLBACK
-      const resultCode = callback.Body.stkCallback.ResultCode;
-      if (resultCode !== 0) return res.json({ ResultCode: 0 });
-
-      const metadata = callback.Body.stkCallback.CallbackMetadata.Item;
-      const getItem = (name) => metadata.find(i => i.Name === name)?.Value;
-
-      amount = getItem("Amount");
-      receipt = getItem("MpesaReceiptNumber");
-      phone = getItem("PhoneNumber");
-      admission = getItem("AccountReference");
-      businessShortCode = getItem("BusinessShortCode");
-
-    } else if (callback.TransID) {
+    if (callback.TransID) {
       // C2B CALLBACK (Manual Paybill Payment)
-      isC2B = true;
       amount = callback.TransAmount;
       receipt = callback.TransID;
       phone = callback.MSISDN;
@@ -60,9 +42,22 @@ export const mpesaCallback = async (req, res) => {
     });
 
     if (!student) {
-      console.log(`No student found with admission: ${admission} in school: ${school.name}`);
-      return res.json({ ResultCode: 0 });
-    }
+  await Payment.create({
+    schoolId: school._id,
+    amount,
+    method: "mpesa",
+    reference: receipt,
+    admission,
+    phone,
+    status: "unmatched",
+    term: getCurrentTerm(),
+    academicYear: new Date().getFullYear()
+  });
+
+  console.log(`Unmatched payment: ${admission}`);
+
+  return res.json({ ResultCode: 0 });
+}
 
     // 🔐 Prevent duplicate recording
     const exists = await Payment.findOne({ reference: receipt });
@@ -110,7 +105,7 @@ export const mpesaCallback = async (req, res) => {
       recordedByRole: "accounts"
     });
 
-    console.log(`${isC2B ? 'C2B' : 'STK'} Payment recorded: ${amount} KES for student ${student.name} (${admission}) at ${school.name}`);
+    console.log(`C2B Payment recorded: ${amount} KES for student ${student.name} (${admission}) at ${school.name}`);
     return res.json({ ResultCode: 0 });
 
   } catch (err) {
@@ -125,64 +120,3 @@ function getCurrentTerm() {
   if (month <= 8) return "Term 2";
   return "Term 3";
 }
-
-// ---------------------------
-// INITIATE STK PUSH (Optional - only if you want push payments)
-// ---------------------------
-export const initiateSTK = async (req, res) => {
-  try {
-    const { phone, amount, admission, schoolId } = req.body;
-
-    if (!phone || !amount || !admission || !schoolId) {
-      return res.status(400).json({ message: "Missing fields" });
-    }
-
-    // 🔎 Get school paybill configuration
-    const school = await School.findById(schoolId);
-    if (!school || !school.paybill) {
-      return res.status(400).json({ message: "School paybill not configured" });
-    }
-
-    // For STK Push, you need separate shortcode and passkey
-    // This assumes paybill is also used as shortcode for STK
-    const timestamp = new Date().toISOString().replace(/[^0-9]/g, "").slice(0, 14);
-    const password = base64.encode(
-      school.paybill + // Using paybill as shortcode
-      process.env.MPESA_PASSKEY +
-      timestamp
-    );
-
-    const payload = {
-      BusinessShortCode: school.paybill,
-      Password: password,
-      Timestamp: timestamp,
-      TransactionType: "CustomerPayBillOnline",
-      Amount: amount,
-      PartyA: phone,
-      PartyB: school.paybill,
-      PhoneNumber: phone,
-      CallBackURL: `${process.env.BASE_URL}/api/mpesa/callback`,
-      AccountReference: admission,
-      TransactionDesc: `School Fees - ${admission}`
-    };
-
-    const response = await axios.post(
-      "https://sandbox.safaricom.co.ke/mpesa/stkpush/v1/processrequest",
-      payload,
-      {
-        headers: {
-          Authorization: `Bearer ${req.mpesaToken}`
-        }
-      }
-    );
-
-    res.json({
-      message: "STK push sent",
-      checkoutRequestId: response.data.CheckoutRequestID
-    });
-
-  } catch (err) {
-    console.error("STK ERROR:", err.response?.data || err.message);
-    res.status(500).json({ message: "Failed to initiate STK" });
-  }
-};

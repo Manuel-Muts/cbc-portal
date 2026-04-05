@@ -87,6 +87,31 @@
       console.error("❌ No token found in localStorage");
       return redirectToLogin();
     }
+
+    const CACHE_KEY = "teacher_profile_cache";
+    const CACHE_DURATION = 15 * 60 * 1000; // 15 minutes
+
+    const cached = localStorage.getItem(CACHE_KEY);
+    if (cached) {
+      try {
+        const { timestamp, data } = JSON.parse(cached);
+        if (Date.now() - timestamp < CACHE_DURATION) {
+          console.log("✅ Using cached teacher profile");
+          teacher = data;
+          teacherSchoolId = teacher.schoolId;
+          window.currentTeacher = teacher;
+          updateTeacherNameUI();
+
+          // 🆕 Dean Access Logic (from cache)
+          if (teacher.isDean) {
+            const deanBtn = document.getElementById("deanDashboardBtn");
+            if (deanBtn) deanBtn.style.display = "inline-block";
+          }
+          return;
+        }
+      } catch (e) { console.warn("Cache read error:", e); }
+    }
+
     try {
       console.log("📡 Fetching user profile from:", `${API_BASE}/users/user`);
       const res = await fetch(`${API_BASE}/users/user`, {
@@ -104,6 +129,11 @@
       
       const data = await res.json();
       console.log("✅ Teacher profile received:", data);
+
+      localStorage.setItem(CACHE_KEY, JSON.stringify({
+        timestamp: Date.now(),
+        data: data
+      }));
       
       teacher = data;
       teacherSchoolId = teacher.schoolId; // ✅ assign here
@@ -114,19 +144,29 @@
       const rolesArray = Array.isArray(teacher.roles) ? teacher.roles : [teacher.role];
       if (!rolesArray.includes("teacher") && !rolesArray.includes("classteacher"))
         throw new Error("Unauthorized");
-      // Display teacher name with proper formatting
-      const teacherNameEl = document.getElementById("teacherName");
-      if (teacherNameEl) {
-        const displayName = teacher.name ? teacher.name.toUpperCase() : "TEACHER";
-        teacherNameEl.textContent = displayName;
-        console.log("✅ Teacher name set to:", displayName);
-      } else {
-        console.warn("⚠️ teacherName element not found in DOM");
-      }
+      
+      updateTeacherNameUI();
       window.currentTeacher = teacher;
+
+      // 🆕 Dean Access Logic
+      if (teacher.isDean) {
+        const deanBtn = document.getElementById("deanDashboardBtn");
+        if (deanBtn) deanBtn.style.display = "inline-block";
+      }
     } catch (err) {
       console.error("Dashboard auth error:", err);
       redirectToLogin();
+    }
+  }
+
+  function updateTeacherNameUI() {
+    const teacherNameEl = document.getElementById("teacherName");
+    if (teacherNameEl) {
+      const displayName = teacher.name ? teacher.name.toUpperCase() : "TEACHER";
+      teacherNameEl.textContent = displayName;
+      console.log("✅ Teacher name set to:", displayName);
+    } else {
+      console.warn("⚠️ teacherName element not found in DOM");
     }
   }
 
@@ -135,6 +175,22 @@
   // ---------------------------
   async function loadSchoolName() {
     if (!token) return;
+    
+    const CACHE_KEY = "teacher_school_cache";
+    const CACHE_DURATION = 15 * 60 * 1000;
+
+    const cached = localStorage.getItem(CACHE_KEY);
+    if (cached) {
+      try {
+        const { timestamp, data } = JSON.parse(cached);
+        if (Date.now() - timestamp < CACHE_DURATION) {
+          updateSchoolNameUI(data);
+          window.currentSchool = data;
+          return;
+        }
+      } catch (e) {}
+    }
+
     try {
       const res = await fetch(`${API_BASE}/my-school`, {
         headers: {
@@ -143,14 +199,24 @@
       });
       if (!res.ok) throw new Error("Failed to fetch school");
       const school = await res.json();
-      const schoolNameEl = document.getElementById("schoolName");
-      if (schoolNameEl) {
-        schoolNameEl.textContent = (school.name || "").toUpperCase();
-      }
+      
+      localStorage.setItem(CACHE_KEY, JSON.stringify({
+        timestamp: Date.now(),
+        data: school
+      }));
+
+      updateSchoolNameUI(school);
       // Optional: expose globally if needed elsewhere
       window.currentSchool = school;
     } catch (err) {
       console.error("Load school error:", err);
+    }
+  }
+
+  function updateSchoolNameUI(school) {
+    const schoolNameEl = document.getElementById("schoolName");
+    if (schoolNameEl) {
+      schoolNameEl.textContent = (school.name || "").toUpperCase();
     }
   }
 
@@ -1071,7 +1137,7 @@ if (!marksAssessmentSelect.value) {
       showToast(`✅ Processed: ${successCount} mark(s) saved/updated, ${failureCount} failed`, successCount > 0 ? "success" : "error");
       
       if (successCount > 0) {
-        await loadSubmittedMarks();
+        await loadSubmittedMarks(true); // Force refresh after submission
         marksEntryTableBody.innerHTML = "";
         marksTableContainer.style.display = "none";
         subjectAllocationSelect.value = "";
@@ -1158,7 +1224,30 @@ if (!marksAssessmentSelect.value) {
 
 
 
-  async function loadSubmittedMarks() {
+  async function loadSubmittedMarks(forceRefresh = false) {
+    const CACHE_KEY = "teacher_marks_cache";
+    const CACHE_DURATION = 15 * 60 * 1000; // 15 minutes
+
+    if (!forceRefresh) {
+      const cached = localStorage.getItem(CACHE_KEY);
+      if (cached) {
+        try {
+          const { timestamp, data } = JSON.parse(cached);
+          if (Date.now() - timestamp < CACHE_DURATION) {
+            console.log("✅ Using cached submitted marks");
+            submittedMarks = data;
+            window.currentMarks = submittedMarks;
+            displayMarks(submittedMarks);
+            // Ensure all details are visible after loading
+            submittedMarksContainer.querySelectorAll("details").forEach(d => {
+              d.style.display = "";
+            });
+            return;
+          }
+        } catch (e) { console.warn("Cache read error:", e); }
+      }
+    }
+
     try {
       console.log("Fetching marks from:", `${API_BASE}/marks/teacher`);
       const res = await fetch(`${API_BASE}/marks/teacher`, {
@@ -1176,6 +1265,12 @@ if (!marksAssessmentSelect.value) {
       
       submittedMarks = await res.json();
       console.log("Loaded marks:", submittedMarks);
+
+      localStorage.setItem(CACHE_KEY, JSON.stringify({
+        timestamp: Date.now(),
+        data: submittedMarks
+      }));
+
       console.log("Marks array type:", Array.isArray(submittedMarks));
       console.log("Marks count:", submittedMarks.length);
       
@@ -1383,20 +1478,24 @@ if (!marksAssessmentSelect.value) {
       // 3. Trigger a 'change' on the allocation select to update internal state
       subjectAllocationSelect.dispatchEvent(new Event('change', { bubbles: true }));
 
-      // 4. "Click" the load students button programmatically
-      loadStudentsBtn.click();
+      // 4. Create a mock student object from the mark data
+      const studentToEdit = {
+        admissionNo: mark.admissionNo,
+        admission: mark.admissionNo, // for compatibility
+        name: mark.studentName,
+        grade: mark.grade
+      };
 
-      // 5. Find the student's row and populate the mark after a short delay for the DOM to update
+      // 5. Display just this one student in the table
+      displayStudentsInMarksTable([studentToEdit]);
+
+      // 6. Find the student's row and populate the mark after a short delay for the DOM to update
       setTimeout(() => {
-        const studentRow = Array.from(marksEntryTableBody.querySelectorAll("tr")).find(r =>
-          r.dataset.admission === mark.admissionNo
-        );
+        const studentRow = marksEntryTableBody.querySelector("tr"); // It will be the only row
 
-        if (!studentRow) {
-          return showToast("Could not find the student in the loaded class list.", "error");
-        }
+        if (!studentRow) return showToast("Could not find the student in the loaded class list.", "error");
 
-        // 6. Populate the mark inputs in that specific row
+        // 7. Populate the mark inputs in that specific row
         if (isSeniorSchool) {
           const caInput = studentRow.querySelector(".ca-input");
           const pwInput = studentRow.querySelector(".pw-input");
@@ -1404,21 +1503,23 @@ if (!marksAssessmentSelect.value) {
           if (caInput) caInput.value = mark.continuousAssessment ?? '';
           if (pwInput) pwInput.value = mark.projectWork ?? '';
           if (examInput) examInput.value = mark.endTermExam ?? '';
-          caInput?.dispatchEvent(new Event('input', { bubbles: true })); // Trigger final score calculation
+          caInput?.dispatchEvent(new Event('input', {
+            bubbles: true
+          })); // Trigger final score calculation
         } else {
           const marksInput = studentRow.querySelector(".marks-input");
           if (marksInput) marksInput.value = mark.score ?? '';
         }
 
-        // 7. Scroll to the table and highlight the row
+        // 8. Scroll to the table and highlight the row
         marksTableContainer.scrollIntoView({ behavior: 'smooth', block: 'start' });
         studentRow.style.backgroundColor = "#d4edda"; // Light green to highlight
         setTimeout(() => {
           studentRow.style.backgroundColor = "#fffacd"; // Back to 'modified' color
         }, 5000);
 
-        showToast("Learner loaded. Please update the mark and submit.", "success");
-      }, 700); // Delay to allow async table population to complete
+        showToast("Learner loaded. Please update the mark and submit.", "success");      
+      }, 100); // Short delay for DOM render
     }
     if (btn.dataset.action === "delete") {
       if (!confirm("Delete this mark?")) return;
@@ -1432,7 +1533,7 @@ if (!marksAssessmentSelect.value) {
         if (res.status === 403) return showToast("Unauthorized", "error");
         if (!res.ok) throw new Error("Delete failed");
         showToast("Deleted successfully", "success");
-        await loadSubmittedMarks();
+        await loadSubmittedMarks(true); // Force refresh after delete
       } catch (err) {
         console.error("Delete error:", err);
         showToast("Failed to delete mark", "error");
@@ -1490,6 +1591,10 @@ if (!marksAssessmentSelect.value) {
   // ---------------------------
   smartRefreshBtn?.addEventListener("click", () => {
     localStorage.removeItem("teacher_allocations_cache");
+    localStorage.removeItem("teacher_profile_cache");
+    localStorage.removeItem("teacher_school_cache");
+    localStorage.removeItem("teacher_marks_cache");
+    localStorage.removeItem("teacher_materials_cache"); // Clear materials cache if it exists
     window.location.reload();
   });
 

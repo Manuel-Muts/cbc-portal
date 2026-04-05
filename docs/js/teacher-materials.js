@@ -136,6 +136,23 @@
   // AUTHENTICATION & INIT
   // ---------------------------
   async function loadTeacherProfile() {
+    const CACHE_KEY = "teacher_profile_cache";
+    const CACHE_DURATION = 15 * 60 * 1000; // 15 minutes
+
+    const cached = localStorage.getItem(CACHE_KEY);
+    if (cached) {
+      try {
+        const { timestamp, data } = JSON.parse(cached);
+        if (Date.now() - timestamp < CACHE_DURATION) {
+          console.log("✅ Using cached teacher profile");
+          const teacherNameEl = document.getElementById("teacherName");
+          if (teacherNameEl) teacherNameEl.textContent = (data.name || "TEACHER").toUpperCase();
+          loadSchoolName();
+          return;
+        }
+      } catch (e) { console.warn("Cache read error:", e); }
+    }
+
     try {
       const res = await fetch(`${API_BASE}/users/user`, {
         headers: { Authorization: `Bearer ${token}` }
@@ -143,6 +160,11 @@
       if (!res.ok) throw new Error("Unauthorized");
       
       const teacher = await res.json();
+      localStorage.setItem(CACHE_KEY, JSON.stringify({
+        timestamp: Date.now(),
+        data: teacher
+      }));
+
       const teacherNameEl = document.getElementById("teacherName");
       if (teacherNameEl) teacherNameEl.textContent = (teacher.name || "TEACHER").toUpperCase();
       
@@ -155,12 +177,32 @@
   }
 
   async function loadSchoolName() {
+    const CACHE_KEY = "teacher_school_cache";
+    const CACHE_DURATION = 15 * 60 * 1000;
+
+    const cached = localStorage.getItem(CACHE_KEY);
+    if (cached) {
+      try {
+        const { timestamp, data } = JSON.parse(cached);
+        if (Date.now() - timestamp < CACHE_DURATION) {
+          const schoolNameEl = document.getElementById("schoolName");
+          if (schoolNameEl) schoolNameEl.textContent = (data.name || "").toUpperCase();
+          return;
+        }
+      } catch (e) {}
+    }
+
     try {
       const res = await fetch(`${API_BASE}/my-school`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       if (res.ok) {
         const school = await res.json();
+        localStorage.setItem(CACHE_KEY, JSON.stringify({
+          timestamp: Date.now(),
+          data: school
+        }));
+
         const schoolNameEl = document.getElementById("schoolName");
         if (schoolNameEl) schoolNameEl.textContent = (school.name || "").toUpperCase();
       }
@@ -259,7 +301,26 @@
   // ---------------------------
   // LOAD MATERIALS
   // ---------------------------
-  async function loadMaterials(page = 1) {
+  async function loadMaterials(page = 1, forceRefresh = false) {
+    const CACHE_KEY = "teacher_materials_cache";
+    const CACHE_DURATION = 15 * 60 * 1000;
+    const queryKey = `p${page}`;
+
+    if (!forceRefresh) {
+      try {
+        const store = JSON.parse(localStorage.getItem(CACHE_KEY) || "{}");
+        const cached = store[queryKey];
+        if (cached && (Date.now() - cached.timestamp < CACHE_DURATION)) {
+          console.log(`✅ Using cached materials for page ${page}`);
+          const data = cached.data;
+          currentPage = data.currentPage || 1;
+          totalPages = data.totalPages || 1;
+          renderMaterials(data.materials || []);
+          return;
+        }
+      } catch (e) { }
+    }
+
     try {
       const res = await fetch(`${API_BASE}/materials/teacher?page=${page}&limit=${itemsPerPage}`, {
         headers: {
@@ -276,6 +337,13 @@
       const materials = data.materials || [];
       currentPage = data.currentPage || 1;
       totalPages = data.totalPages || 1;
+
+      // Update Cache
+      try {
+        const store = JSON.parse(localStorage.getItem(CACHE_KEY) || "{}");
+        store[queryKey] = { timestamp: Date.now(), data: data };
+        localStorage.setItem(CACHE_KEY, JSON.stringify(store));
+      } catch (e) { }
 
       renderMaterials(materials);
       
@@ -468,8 +536,12 @@
     xhr.onload = () => {
       if (xhr.status >= 200 && xhr.status < 300) {
         materialsForm.reset();
+
+        // Clear cache on new upload
+        localStorage.removeItem("teacher_materials_cache");
+
         showToast("✅ Material uploaded successfully!", "success");
-        loadMaterials();
+        loadMaterials(1, true); // Force refresh and reset to page 1
         
         // Reset UI
         setTimeout(() => {
@@ -515,8 +587,12 @@
       });
       
       if (!res.ok) throw new Error("Delete failed");
+
+      // Clear cache on delete
+      localStorage.removeItem("teacher_materials_cache");
+
       showToast("Material deleted", "success");
-      loadMaterials();
+      loadMaterials(currentPage, true);
     } catch (err) {
       showToast("Failed to delete: " + err.message, "error");
     }
@@ -526,6 +602,9 @@
   // CONTROLS
   // ---------------------------
   smartRefreshBtn?.addEventListener("click", () => {
+    localStorage.removeItem("teacher_profile_cache");
+    localStorage.removeItem("teacher_school_cache");
+    localStorage.removeItem("teacher_materials_cache");
     window.location.reload();
   });
 

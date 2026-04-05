@@ -245,11 +245,20 @@ export const downloadMaterial = async (req, res) => {
       return res.status(403).json({ message: "Unauthorized file access" });
     }
 
-    // Update download count AND mark as read
-    await Material.findByIdAndUpdate(req.params.id, {
-      $inc: { downloadCount: 1 },
-      $addToSet: { readBy: req.user.id }
-    });
+    // Only count student downloads once per material
+    const alreadyDownloaded = Array.isArray(material.readBy) && material.readBy.some(id => id.toString() === req.user.id.toString());
+    if (req.user.role === "student") {
+      if (!alreadyDownloaded) {
+        await Material.findByIdAndUpdate(req.params.id, {
+          $inc: { downloadCount: 1 },
+          $addToSet: { readBy: req.user.id }
+        });
+      } else {
+        await Material.findByIdAndUpdate(req.params.id, {
+          $addToSet: { readBy: req.user.id }
+        });
+      }
+    }
 
     // Generate signed URL to bypass Cloudinary ACL/Strict restrictions
     let resourceType = 'image';

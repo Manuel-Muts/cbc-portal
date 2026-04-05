@@ -4,7 +4,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>User Management - Admin Portal</title>
+  <title>User Management</title>
   <link rel="stylesheet" href="css/admin.css" />
 </head>
 <body>
@@ -65,7 +65,11 @@
         </div>
         <div class="col form-group">
           <label>Stream (Optional)</label>
-          <input type="text" id="studentStream" placeholder="e.g. Blue">
+          <input type="text" id="studentStream" placeholder="e.g. B">
+        </div>
+        <div class="col form-group">
+          <label>Parent Contact (Optional)</label>
+          <input type="text" id="studentContact" placeholder="e.g. 0712 345 678">
         </div>
       </div>
 
@@ -104,6 +108,7 @@
           <th>Name</th>
           <th>Role</th>
           <th>Email / Admission</th>
+          <th>Parent's Contact</th>
           <th>Action</th>
         </tr>
       </thead>

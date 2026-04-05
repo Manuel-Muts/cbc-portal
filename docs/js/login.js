@@ -20,6 +20,7 @@ document.addEventListener("DOMContentLoaded", function () {
   student: "/student-dashboard",
   learner: "/student-dashboard",
   teacher: "/teacher-dashboard",
+  dean: "/dean-dashboard",
   classteacher: "/analysis",
   accounts: "/accounts",
   admin: "/admin",

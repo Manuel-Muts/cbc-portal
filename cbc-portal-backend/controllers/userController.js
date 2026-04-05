@@ -38,7 +38,7 @@ export const registerUser = async (req, res) => {
       return res.status(403).json({ msg: "Only admins can register users" });
     }
 
-    const { name, email, role, admission, schoolId, grade, academicYear, stream } = req.body;
+    const { name, email, role, admission, schoolId, grade, academicYear, stream, contact } = req.body;
 
     if (!name || !role)
       return res.status(400).json({ msg: "Name and role are required" });
@@ -93,6 +93,17 @@ if (!allowedRoles.includes(role)) {
       return res.status(400).json({ msg: "This role must be assigned to a school" });
     }
 
+    // Student registration can be restricted per school
+    if (role === "student" && schoolIdToAssign) {
+      const targetSchool = await School.findById(schoolIdToAssign);
+      if (!targetSchool) {
+        return res.status(404).json({ msg: "School not found" });
+      }
+      if (targetSchool.registrationOpen === false && admin.role !== 'super_admin') {
+        return res.status(403).json({ msg: "You have been restricted to register new learners, please contact MutsTech ltd." });
+      }
+    }
+
     // ----------------------------
     // EMAIL CHECK
     // ----------------------------
@@ -118,6 +129,7 @@ if (!allowedRoles.includes(role)) {
       email: role !== "student" ? email : undefined,
       password: hashedPassword,
       ...(role === "student" && { admission }),
+      contact: contact || null,
       passwordMustChange: ["teacher", "classteacher", "accounts"].includes(role),
       schoolId: schoolIdToAssign,
       createdBy: admin._id
@@ -326,7 +338,8 @@ export const loginUser = async (req, res) => {
         classStream: user.role === "classteacher" ? classStream : null, // 🆕 Include stream in JWT
         schoolStatus: school ? school.status : null,
         schoolVersion: school ? school.version : null,
-        isClassTeacher: user.isClassTeacher
+        isClassTeacher: user.isClassTeacher,
+        isDean: user.isDean
       },
       process.env.JWT_SECRET,
       { expiresIn: "1d" }
@@ -520,31 +533,48 @@ export const assignSubjects = async (req, res) => {
 // ---------------------------
 export const getSubjectAllocations = async (req, res) => {
   try {
-    const cacheKey = `sub_alloc_${req.user.schoolId || 'global'}`;
+    const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+    const limit = Math.max(1, Math.min(100, parseInt(req.query.limit, 10) || 5));
+    const skip = (page - 1) * limit;
+    const cacheKey = `sub_alloc_${req.user.schoolId || 'global'}_${page}_${limit}`;
     const cached = cache.get(cacheKey);
-    if (cached) {
-      return res.json(cached);
-    }
 
-    const query = {};
+    const query = { role: 'teacher' };
     if (req.user.role === 'admin') {
       query.schoolId = req.user.schoolId;
     }
 
-    const teachers = await User.find({ role: 'teacher', ...query })
-      .select('name allocations schoolId')
+    if (cached) {
+      return res.json(cached);
+    }
+
+    const total = await User.countDocuments(query);
+    const teachers = await User.find(query)
+      .select('name allocations schoolId isDean')
+      .skip(skip)
+      .limit(limit)
       .lean();
 
-    teachers.forEach(t => {
-      t.allocations = (t.allocations || []).map(a => ({
+    const formattedTeachers = teachers.map(t => ({
+      ...t,
+      isDean: !!t.isDean, // Explicitly cast to boolean for frontend safety
+      allocations: (t.allocations || []).map(a => ({
         grade: a.grade,
         stream: a.stream || null,
         subjects: Array.isArray(a.subjects) ? a.subjects : []
-      }));
-    });
+      }))
+    }));
 
-    cache.set(cacheKey, teachers, 120); // Cache for 2 minutes
-    res.json(teachers); // Return formatted data
+    const pagination = {
+      page,
+      limit,
+      total,
+      totalPages: Math.ceil(total / limit)
+    };
+
+    const response = { data: formattedTeachers, pagination };
+    cache.set(cacheKey, response, 120); // Cache page-specific results for 2 minutes
+    res.json(response);
   } catch (err) {
     console.error("Get Subject Allocations Error:", err);
     res.status(500).json({ error: err.message });
@@ -561,7 +591,7 @@ export const getMyAllocations = async (req, res) => {
     }
 
     const teacher = await User.findById(req.user.id)
-      .select('name allocations assignedClass assignedStream')
+      .select('name allocations assignedClass assignedStream isDean')
       .lean();
 
     if (!teacher) {
@@ -587,6 +617,7 @@ export const getMyAllocations = async (req, res) => {
 
     res.json({
       name: teacher.name,
+      isDean: !!teacher.isDean,
       subjectAllocations: allocations,
       classTeacherAssignment: classTeacherInfo
     });
@@ -685,16 +716,17 @@ export const getClassTeacherAllocations = async (req, res) => {
     const query = { assignedClass: { $ne: null }, role: 'teacher' };
     if (req.user.role === 'admin') query.schoolId = req.user.schoolId;
 
-    const classTeachers = await User.find(query).select('name email admission assignedClass assignedStream isClassTeacher');
+    const classTeachers = await User.find(query).select('name email admission assignedClass assignedStream isClassTeacher isDean');
 
     const allocations = classTeachers.map(t => ({
       teacherId: t._id.toString(),
-      teacherName: t.name,
-      teacherAdmission: t.admission,
+      teacherName: t.name, // Required for admin UI
+      teacherAdmission: t.admission, // Required for admin UI
       assignedClass: t.assignedClass || '',
       assignedStream: t.assignedStream || null,
       classLabel: t.assignedStream ? `Grade ${t.assignedClass}${t.assignedStream}` : `Grade ${t.assignedClass}`,
-      isClassTeacher: !!t.isClassTeacher
+      isClassTeacher: !!t.isClassTeacher,
+      isDean: !!t.isDean
     }));
 
     cache.set(cacheKey, allocations, 120);
@@ -718,6 +750,7 @@ export const getUser = async (req, res) => {
 
     return res.status(200).json({
       ...user,
+      isDean: !!user.isDean,
       // normalize for frontend safety
       classGrade: user.assignedClass || user.classGrade || null
     });
@@ -931,6 +964,7 @@ export const changePassword = async (req, res) => {
           classGrade: user.assignedClass || null,
           classStream: user.assignedStream || null, // 🆕 Include stream
           isClassTeacher: true,
+          isDean: user.isDean,
           schoolVersion
         },
         process.env.JWT_SECRET,
@@ -975,6 +1009,7 @@ export const changePassword = async (req, res) => {
         classGrade: user.assignedClass || null,
         classStream: user.assignedStream || null, // 🆕 Include stream
         isClassTeacher: user.isClassTeacher,
+        isDean: user.isDean,
         schoolVersion
       },
       process.env.JWT_SECRET,
@@ -990,6 +1025,42 @@ export const changePassword = async (req, res) => {
   } catch (err) {
     console.error("ChangePassword Error:", err);
     res.status(500).json({ message: "Server error" });
+  }
+};
+
+// ---------------------------
+// TOGGLE DEAN STATUS (Admin Only)
+// ---------------------------
+export const toggleDeanStatus = async (req, res) => {
+  try {
+    if (req.user.role !== 'admin' && req.user.role !== 'super_admin') {
+      return res.status(403).json({ message: 'Only admins can toggle Dean status' });
+    }
+
+    const { teacherId, isDean } = req.body;
+    if (!teacherId) return res.status(400).json({ message: 'teacherId is required' });
+
+    const teacher = await User.findById(teacherId);
+    if (!teacher) return res.status(404).json({ message: 'Teacher not found' });
+
+    // Ensure teacher belongs to same school
+    if (req.user.role === 'admin' && String(teacher.schoolId) !== String(req.user.schoolId)) {
+      return res.status(403).json({ message: 'Unauthorized' });
+    }
+
+    teacher.isDean = isDean;
+    await teacher.save();
+    
+    // Invalidate cache
+    if (teacher.schoolId) cache.clearByPattern(String(teacher.schoolId));
+
+    res.json({ 
+      message: `Dean role ${isDean ? 'granted' : 'revoked'} to ${teacher.name}`, 
+      isDean: teacher.isDean 
+    });
+  } catch (err) {
+    console.error("ToggleDeanStatus Error:", err);
+    res.status(500).json({ error: err.message });
   }
 };
 
@@ -1025,7 +1096,7 @@ export const updateUser = async (req, res) => {
     }
 
     // Assign allowed fields
-    const allowed = ["name", "email", "role"];
+    const allowed = ["name", "email", "role", "contact"];
 
     // Allow admission to be updated for students
     if (targetUser.role === "student") {
