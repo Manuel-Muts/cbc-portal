@@ -136,13 +136,17 @@ function renderSchoolInfo() {
   }
 
   schoolNameDisplay.innerHTML = `
-  <div class="school-header">
-    ${logoURL ? `<img src="${logoURL}" class="school-logo" crossorigin="anonymous">` : ""}
-    <h1 class="school-name">${schoolInfo.name || "School Name"}</h1>
-    <p class="school-address">${schoolInfo.address || ""}</p>
-  </div>
-`;
+    <div class="school-header" style="display: flex; align-items: center; gap: 20px;">
+      ${logoURL ? `<img src="${logoURL}" class="school-logo" crossorigin="anonymous" style="height: 110px; width: auto; object-fit: contain;">` : ""}
+      <div class="school-meta">
+        <h1 class="school-name" style="margin: 0; font-size: 1.9rem; color: #1a202c;">${schoolInfo.name || "School Name"}</h1>
+        <p class="school-address" style="margin: 0; color: #718096; font-size: 0.99rem;">${schoolInfo.address || ""}</p>
+      </div>
+    </div>
+  `;
 
+  renderAdminSignature();
+  attachAdminSignatureLogic();
 
   // For PDF export
   if (window.schoolLogoElem && logoURL) {
@@ -151,6 +155,95 @@ function renderSchoolInfo() {
   }
 }
 
+function renderAdminSignature() {
+  if (!schoolInfo || schoolInfo.allowSignatureUpload === false) return;
+
+  // Try to find a professional placement in the User Management area
+  let sigContainer = document.getElementById("adminSignatureSection");
+  
+  if (!sigContainer) {
+    // Look for User Management header and Manage User buttons to insert between
+    const headers = Array.from(document.querySelectorAll('h1, h2, h3'));
+    const userMgmtHeader = headers.find(h => h.textContent.toLowerCase().includes('user management'));
+    const manageUserBtn = Array.from(document.querySelectorAll('button')).find(b => b.textContent.toLowerCase().includes('manage user'));
+
+    if (userMgmtHeader) {
+      sigContainer = document.createElement('div');
+      sigContainer.id = "adminSignatureSection";
+      
+      // Create a horizontal row wrapper for the section header elements
+      const headerRow = document.createElement('div');
+      headerRow.className = "admin-section-header-row";
+      
+      // Move existing elements into the new flex container
+      userMgmtHeader.parentNode.insertBefore(headerRow, userMgmtHeader);
+      headerRow.appendChild(userMgmtHeader);
+      headerRow.appendChild(sigContainer);
+      
+      // Move the action button into the row if it exists as a sibling
+      if (manageUserBtn && manageUserBtn.parentNode === headerRow.parentNode) {
+        headerRow.appendChild(manageUserBtn);
+      }
+    }
+  }
+
+  if (!sigContainer) return;
+
+  sigContainer.innerHTML = `
+    <div class="headteacher-sig-box">
+      <p class="sig-label">Official Authority Signature</p>
+      <div id="adminSigPreview" class="sig-preview-area">
+        ${schoolInfo.headteacherSignatureUrl ? 
+          `<img src="${schoolInfo.headteacherSignatureUrl}" style="max-height: 45px; max-width: 100px; filter: contrast(1.05);">` : 
+          `<span style="font-size: 0.75rem; color: #a0aec0; font-style: italic;">No signature uploaded</span>`
+        }
+      </div>
+      <button class="btn secondary-btn" id="uploadAdminSigBtn" style="font-size: 0.65rem; padding: 2px 19px; margin-top: 8px; border-radius: 6px; font-weight: 600;">Update Digital Signature</button>
+      <input type="file" id="adminSigInput" style="display:none;" accept="image/*">
+    </div>
+  `;
+}
+
+function attachAdminSignatureLogic() {
+    const btn = document.getElementById("uploadAdminSigBtn");
+    const input = document.getElementById("adminSigInput");
+    if (!btn || !input) return;
+
+    btn.onclick = () => input.click();
+
+    input.onchange = async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        showToast("Uploading official signature...", "info");
+        const formData = new FormData();
+        formData.append("file", file);
+
+        try {
+            const res = await fetch(`${API_BASE}/materials/upload-raw`, {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${token}` },
+                body: formData
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.message);
+
+            console.log("Admin uploading signature. Cloudinary URL received:", data.url);
+            await fetch(`${API_BASE}/update-school-signature`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                body: JSON.stringify({ signatureUrl: data.url })
+            });
+
+            showToast("✅ Official signature updated", "success");
+            // Clear cache so the new signature is displayed immediately
+            localStorage.removeItem("admin_school_info_cache");
+            loadSchoolInfo(true);
+        } catch (err) {
+            showToast(err.message, "error");
+        }
+    };
+}
 
 
   // ---------------------------
@@ -254,6 +347,16 @@ function renderSchoolInfo() {
       /* Compact Table Styles */
       table td { padding: 6px 10px !important; vertical-align: middle !important; }
       table th { padding: 10px 10px !important; }
+      
+      /* Professional Signature Box */
+      .admin-section-header-row { display: flex; align-items: center; gap: 24px; flex-wrap: wrap; margin-bottom: 25px; width: 100%; border-bottom: 1px solid #f1f5f9; padding-bottom: 15px; }
+      .admin-section-header-row h1, .admin-section-header-row h2, .admin-section-header-row h3 { margin: 0 !important; font-size: 1.4rem; color: #1e293b; }
+      #adminSignatureSection { margin-left: auto; }
+      .admin-section-header-row button { margin-left: 12px; }
+      
+      .headteacher-sig-box { display: flex; flex-direction: column; align-items: center; background: #ffffff; border: 1px solid #e2e8f0; padding: 8px 16px; border-radius: 10px; margin: 0; width: fit-content; min-width: 180px; box-shadow: 0 1px 2px rgba(0,0,0,0.05); }
+      .sig-label { font-size: 0.6rem; font-weight: 800; color: #64748b; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.05em; border-bottom: 1px solid #f1f5f9; width: 100%; text-align: center; padding-bottom: 2px; }
+      .sig-preview-area { min-height: 50px; display: flex; align-items: center; justify-content: center; width: 100%; background: #fafafa; border-radius: 6px; }
     `;
     document.head.appendChild(style);
   })();
@@ -853,9 +956,49 @@ async function openHistoryModal(studentId) {
   document.getElementById("closeHistoryBtn").onclick = () => modal.remove();
 }
 
+  // ---------------------------
+  // NAVIGATION / TAB SWITCHING
+  // ---------------------------
+  function setupNavigation() {
+    const tabs = document.querySelectorAll(".menu li");
+    const sections = document.querySelectorAll(".tab-section");
+
+    if (tabs.length === 0) {
+      console.warn("Tab Navigation: No .menu li elements found in HTML.");
+      return;
+    }
+
+    tabs.forEach(tab => {
+      tab.addEventListener("click", () => {
+        const targetId = tab.getAttribute("data-section");
+        if (!targetId) {
+          console.error("Tab Navigation: Missing data-section attribute on tab", tab);
+          return;
+        }
+
+        // Update active tab styling
+        tabs.forEach(t => t.classList.remove("active"));
+        tab.classList.add("active");
+
+        // Toggle visibility of sections
+        sections.forEach((sec) => {
+          const isTarget = sec.id === targetId;
+          sec.style.display = isTarget ? "block" : "none";
+          if (isTarget) sec.classList.remove("hidden");
+          else sec.classList.add("hidden");
+        });
+      });
+    });
+
+    // Initialize: Activate the first tab (or existing active one) on load
+    const active = document.querySelector(".menu li.active") || tabs[0];
+    if (active) active.click();
+  }
+
 (async function initialLoad() {
   if (isRefreshing) return;
   try { 
+    setupNavigation();
     await Promise.all([
       loadTeacherOptions(),
       loadSubjectAllocations(),

@@ -17,6 +17,25 @@
       background: #f8f9fa;
       z-index: 10;
     }
+    .user-type-tabs {
+      display: flex;
+      list-style: none;
+      padding: 0;
+      margin: 15px 0;
+      border-bottom: 1px solid #dee2e6;
+    }
+    .user-type-tabs li {
+      padding: 10px 20px;
+      cursor: pointer;
+      border-bottom: 3px solid transparent;
+      color: #6c757d;
+      font-weight: 600;
+      transition: all 0.2s;
+    }
+    .user-type-tabs li.active {
+      border-bottom-color: #2563eb;
+      color: #2563eb;
+    }
   `;
   document.head.appendChild(compactUsersStyle);
 
@@ -51,7 +70,18 @@
   let usersPage = 1;
   const usersPerPage = 10;
   let usersTotalRecords = 0;
+  let usersTotalPages = 1;
   const usersCache = {};
+  let currentRoleTab = "student"; // Default view: Learners (Students)
+
+  // 🆕 Helper for consistent labels across tabs and headings
+  function getRoleLabel(role) {
+    if (role === "student") return "Registered Learners";
+    if (role === "teacher") return "Registered Teachers";
+    if (role === "accounts") return "Accounts Staff";
+    if (role === "admin") return "Admins";
+    return "";
+  }
 
   // ---------------------------
   // HELPERS (Copied/Shared Logic)
@@ -123,10 +153,35 @@
   // ---------------------------
   function renderUsers(data = []) {
     if (!usersTableBody) return;
+    
+    const table = document.querySelector("#usersTable");
+    const thead = table.querySelector("thead tr");
+    const isStudentView = currentRoleTab === "student";
+    const colCount = isStudentView ? 6 : 4;
+
+    // 🆕 Dynamically Update Headers
+    if (isStudentView) {
+      thead.innerHTML = `
+        <th>Name</th>
+        <th>Role</th>
+        <th>Admission</th>
+        <th>Grade</th>
+        <th>Parent's Contact</th>
+        <th>Action</th>
+      `;
+    } else {
+      thead.innerHTML = `
+        <th>Name</th>
+        <th>Role</th>
+        <th>Email</th>
+        <th>Action</th>
+      `;
+    }
+
     usersTableBody.innerHTML = "";
     
     if (data.length === 0) {
-      usersTableBody.innerHTML = `<tr><td colspan="5" style="text-align:center">No users found</td></tr>`;
+      usersTableBody.innerHTML = `<tr><td colspan="${colCount}" style="text-align:center">No users found</td></tr>`;
       return;
     }
 
@@ -136,16 +191,54 @@
       if (u.role === "super_admin" || u.isSuperAdmin === true) return;
 
       const tr = document.createElement("tr");
-      tr.innerHTML = `
-        <td>${u.name}</td>
-        <td>${u.role}</td>
-        <td>${u.role === "student" ? (u.admission || "") : (u.email || "")}</td>
-        <td>${u.contact || ""}</td>
-        <td>
-          <button data-id="${u._id}" class="btn danger-btn delete-user-btn" style="padding: 4px 8px; font-size: 12px;">🗑️ Delete</button>
-          ${u.role !== "student" ? `<button data-id="${u._id}" class="btn secondary-btn resend-creds-btn" style="padding: 4px 8px; font-size: 12px;">📧 Resend</button>` : ""}
-        </td>
-      `;
+      if (isStudentView) {
+        // 🧪 DEBUG LOG: Check console to see the available properties
+        console.log(`[DEBUG] Raw Learner Data (${u.admission || u.name}):`, u);
+
+        // Ultra-Robust Grade Detection: Check every possible field and variation used in the system
+        let rawGrade = u.grade || u.currentGrade || u.classGrade || u.assignedClass || u.className || u.assignedGrade || u.classLabel || u.gradeName || u['class'] || u.assignedGradeLevel || "";
+
+        // Handle cases where the grade is nested inside a populated enrollment object
+        if (rawGrade && typeof rawGrade === 'object') rawGrade = rawGrade.grade || rawGrade.name || rawGrade.label || rawGrade.gradeName || "";
+        if (!rawGrade && u.enrollmentId) rawGrade = (typeof u.enrollmentId === 'object') ? u.enrollmentId.grade : "";
+        if (!rawGrade && u.enrollment) rawGrade = (typeof u.enrollment === 'object') ? u.enrollment.grade : "";
+        if (!rawGrade && u.allocations && u.allocations.length > 0) rawGrade = u.allocations[0].grade || u.allocations[0].gradeLevel || "";
+        if (!rawGrade && u.studentId && typeof u.studentId === 'object') rawGrade = u.studentId.grade;
+
+        let gradeDisplay = "N/A";
+
+        if (rawGrade) {
+          const gStr = String(rawGrade).trim();
+          gradeDisplay = gStr.toLowerCase().startsWith("grade") ? gStr : `Grade ${gStr}`;
+          
+          // Append stream if it exists and isn't already part of the grade string
+          let stream = (u.stream || u.assignedStream || u.classStream || u.currentStream || "").trim();
+          if (!stream && u.enrollmentId && typeof u.enrollmentId === 'object') stream = u.enrollmentId.stream || "";
+          
+          if (stream && !gradeDisplay.toLowerCase().includes(String(stream).toLowerCase())) gradeDisplay += ` ${stream}`;
+        }
+
+        tr.innerHTML = `
+          <td>${u.name}</td>
+          <td>${u.role}</td>
+          <td>${u.admission || u.admissionNo || ""}</td>
+          <td>${gradeDisplay}</td>
+          <td>${u.contact || ""}</td>
+          <td>
+            <button data-id="${u._id}" class="btn danger-btn delete-user-btn" style="padding: 4px 8px; font-size: 12px;">🗑️ Delete</button>
+          </td>
+        `;
+      } else {
+        tr.innerHTML = `
+          <td>${u.name}</td>
+          <td>${u.role}</td>
+          <td>${u.email || (u.role === "student" ? u.admission : "")}</td>
+          <td>
+            <button data-id="${u._id}" class="btn danger-btn delete-user-btn" style="padding: 4px 8px; font-size: 12px;">🗑️ Delete</button>
+            ${u.role !== "student" ? `<button data-id="${u._id}" class="btn secondary-btn resend-creds-btn" style="padding: 4px 8px; font-size: 12px;">📧 Resend</button>` : ""}
+          </td>
+        `;
+      }
       frag.appendChild(tr);
     });
     usersTableBody.appendChild(frag);
@@ -181,23 +274,41 @@
   async function loadUsers(page = 1, forceReload = false) {
     if (!usersTableBody) return;
     
-    if (!forceReload && usersCache[page]) {
-      renderUsers(usersCache[page]);
+    const cacheKey = `${currentRoleTab}_${page}`;
+
+    if (!forceReload && usersCache[cacheKey]) {
+      renderUsers(usersCache[cacheKey]);
       updateUsersPagination(page, usersTotalPages);
       return;
     }
 
-    usersTableBody.innerHTML = `<tr><td colspan="5" style="text-align:center">Loading...</td></tr>`;
+    const colCount = currentRoleTab === "student" ? 6 : 4;
+    usersTableBody.innerHTML = `<tr><td colspan="${colCount}" style="text-align:center">Loading ${currentRoleTab} records...</td></tr>`;
     const search = userSearchInput ? userSearchInput.value.trim() : "";
     
-    const res = await secureFetch(`${API_BASE}/users?page=${page}&limit=${usersPerPage}&search=${encodeURIComponent(search)}`);
+    // Filter by the active role tab at the API level
+    const roleQuery = `&role=${currentRoleTab}`;
+    const res = await secureFetch(`${API_BASE}/users?page=${page}&limit=${usersPerPage}&search=${encodeURIComponent(search)}${roleQuery}`);
+    
     if (res) {
       const { users = [], total = 0, pages = 1 } = res;
       usersTotalPages = pages;
       usersTotalRecords = total;
-      usersCache[page] = users;
+      usersCache[cacheKey] = users;
       renderUsers(users);
       updateUsersPagination(page, pages);
+
+      // 🆕 Update Tab Label with count (only when not searching)
+      if (!search) {
+        const tab = document.querySelector(`.user-type-tabs li[data-role="${currentRoleTab}"]`);
+        if (tab) {
+          const label = getRoleLabel(currentRoleTab);
+          tab.textContent = `${label} (${total})`;
+          
+          const heading = document.querySelector(".tab-section#userManagement h3") || document.querySelector(".card h3");
+          if (heading && tab.classList.contains("active")) heading.textContent = tab.textContent;
+        }
+      }
     }
   }
 
@@ -320,18 +431,24 @@ if (usersNextPageBtn) {
       const { jsPDF } = window.jspdf;
       if (!jsPDF) { showToast("PDF Library not loaded", "error"); return; }
       const doc = new jsPDF();
-      doc.text("Registered Users List", 14, 15);
+      const title = `${currentRoleTab.charAt(0).toUpperCase() + currentRoleTab.slice(1)}s List`;
+      doc.text(title, 14, 15);
       
+      const isStudentView = currentRoleTab === "student";
       const rows = [];
       document.querySelectorAll("#usersTable tbody tr").forEach(tr => {
         const cells = tr.querySelectorAll("td");
         if (cells.length > 0) {
-          rows.push([cells[0].textContent, cells[1].textContent, cells[2].textContent]);
+          if (isStudentView) {
+            rows.push([cells[0].textContent, cells[1].textContent, cells[2].textContent, cells[3].textContent, cells[4].textContent]);
+          } else {
+            rows.push([cells[0].textContent, cells[1].textContent, cells[2].textContent]);
+          }
         }
       });
 
       doc.autoTable({
-        head: [["Name", "Role", "Email/Admission"]],
+        head: [isStudentView ? ["Name", "Role", "Admission", "Grade", "Contact"] : ["Name", "Role", "Email"]],
         body: rows,
         startY: 20
       });
@@ -546,8 +663,96 @@ if (usersNextPageBtn) {
     });
   }
 
+  // ---------------------------
+  // USER TYPE TABS (🆕)
+  // ---------------------------
+  function setupUserTypeTabs() {
+    const userTabs = document.querySelectorAll(".user-type-tabs li");
+    const heading = document.querySelector(".tab-section#userManagement h3") || document.querySelector(".card h3");
+
+    if (userTabs.length === 0) return;
+
+    // Update existing tab labels to match the request
+    userTabs.forEach(tab => {
+      tab.textContent = getRoleLabel(tab.getAttribute("data-role"));
+    });
+
+    // Set the initial heading based on the default active tab
+    const activeTab = document.querySelector(".user-type-tabs li.active");
+    if (heading && activeTab) heading.textContent = activeTab.textContent;
+
+    userTabs.forEach(tab => {
+      tab.addEventListener("click", () => {
+        const role = tab.getAttribute("data-role");
+        if (!role) return;
+
+        userTabs.forEach(t => t.classList.remove("active"));
+        tab.classList.add("active");
+
+        // Update heading text dynamically when a tab is clicked
+        if (heading) heading.textContent = tab.textContent;
+
+        currentRoleTab = role;
+        usersPage = 1; // Reset to first page when switching views
+        loadUsers(1, true); // Force refresh for current role
+      });
+    });
+
+    // 🆕 Fetch all counts once to populate labels for all tabs
+    refreshAllTabCounts();
+  }
+
+  // 🆕 Initialize all tab labels with current system counts
+  async function refreshAllTabCounts() {
+    const roles = ["student", "teacher", "accounts", "admin"];
+    roles.forEach(async (role) => {
+      const res = await secureFetch(`${API_BASE}/users?page=1&limit=1&role=${role}`);
+      if (res && res.total !== undefined) {
+        const tab = document.querySelector(`.user-type-tabs li[data-role="${role}"]`);
+        if (tab) {
+          tab.textContent = `${getRoleLabel(role)} (${res.total})`;
+          const heading = document.querySelector(".tab-section#userManagement h3") || document.querySelector(".card h3");
+          if (heading && tab.classList.contains("active")) heading.textContent = tab.textContent;
+        }
+      }
+    });
+  }
+
+  // ---------------------------
+  // NAVIGATION / TAB SWITCHING
+  // ---------------------------
+  function setupNavigation() {
+    const tabs = document.querySelectorAll(".menu li");
+    const sections = document.querySelectorAll(".tab-section");
+
+    if (tabs.length === 0) return;
+
+    tabs.forEach(tab => {
+      tab.addEventListener("click", () => {
+        const targetId = tab.getAttribute("data-section");
+        if (!targetId) return;
+
+        // Update active tab styling
+        tabs.forEach(t => t.classList.remove("active"));
+        tab.classList.add("active");
+
+        // Toggle visibility of sections
+        sections.forEach(sec => {
+          const isTarget = sec.id === targetId;
+          sec.style.display = isTarget ? "block" : "none";
+          if (isTarget) sec.classList.remove("hidden");
+          else sec.classList.add("hidden");
+        });
+      });
+    });
+
+    // Initialize: Activate the first tab on load
+    const active = document.querySelector(".menu li.active") || tabs[0];
+    if (active) active.click();
+  }
+
   // Initialize
+  setupNavigation();
+  setupUserTypeTabs();
   loadUsers();
-
-
 })();

@@ -33,7 +33,7 @@ const userSchema = new mongoose.Schema({
   lowercase: true,
   trim: true,
   required: function () {
-    return ["teacher", "classteacher", "accounts","admin", "super_admin"].includes(this.role);
+    return ["teacher", "classteacher", "accounts", "admin", "super_admin"].includes(this.role);
   },
   unique: true,
   sparse: true
@@ -57,7 +57,6 @@ const userSchema = new mongoose.Schema({
   // ------------------------------------
   password: { type: String, required: true },
   classTeacherPassword: { type: String, default: null },
-  admissionNumber: { type: String },
   grade: { type: String, default: null }, // Current grade for students
   passwordMustChange: { type: Boolean, default: false },
 
@@ -69,6 +68,9 @@ const userSchema = new mongoose.Schema({
   assignedStream: { type: String, default: null }, // e.g., "W", "E", "A" for class stream
   isClassTeacher: { type: Boolean, default: false },
   isDean: { type: Boolean, default: false },
+
+  signatureUrl: { type: String, default: "" },          // Cloudinary URL for digital signature
+  signaturePublicId: { type: String, default: "" },     // Cloudinary public ID for deletion
 
   // ------------------------------------
   // STUDENT ENROLLMENT REFERENCE

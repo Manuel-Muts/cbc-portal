@@ -15,7 +15,7 @@ export const getMySchool = async (req, res) => {
     }
 
     const school = await School.findById(req.user.schoolId)
-  .select("name logo logoMimeType address status paybill mpesaShortcode");
+  .select("name logo logoMimeType address status paybill mpesaShortcode headteacherSignatureUrl allowSignatureUpload");
 
 if (!school) return res.status(404).json({ msg: "School not found" });
 
@@ -28,7 +28,9 @@ const response = {
   address: school.address,
   logo: logoPath,
   logoMimeType: school.logoMimeType,
-  paybill: school.paybill || ""
+  paybill: school.paybill || "",
+  headteacherSignatureUrl: school.headteacherSignatureUrl || "",
+  allowSignatureUpload: school.allowSignatureUpload !== false
 };
 cache.set(cacheKey, response, 300); // Cache for 5 minutes
 res.json(response);
@@ -94,4 +96,45 @@ export const updateSchoolPaybill = async (req, res) => {
     console.error("Update School Paybill Error:", err);
     res.status(500).json({ msg: err.message || "Failed to update paybill" });
   }
-}; 
+};
+
+// ---------------------------
+// UPDATE SCHOOL SIGNATURE (Admin)
+// ---------------------------
+export const updateSchoolSignature = async (req, res) => {
+  try {
+    const { signatureUrl } = req.body;
+    const schoolId = req.user.schoolId;
+
+    if (!schoolId) {
+      return res.status(400).json({ msg: "No school assigned" });
+    }
+
+    if (!signatureUrl) {
+      return res.status(400).json({ msg: "Signature URL is required" });
+    }
+
+    const school = await School.findByIdAndUpdate(
+      schoolId,
+      {
+        headteacherSignatureUrl: signatureUrl
+      },
+      { new: true }
+    ).select("headteacherSignatureUrl");
+
+    if (!school) {
+      return res.status(404).json({ msg: "School not found" });
+    }
+
+    // Invalidate cache for this school profile
+    cache.clearByPattern(`school_profile_${schoolId}`);
+
+    res.json({
+      msg: "Official signature updated successfully",
+      headteacherSignatureUrl: school.headteacherSignatureUrl
+    });
+  } catch (err) {
+    console.error("Update School Signature Error:", err);
+    res.status(500).json({ msg: "Failed to update signature" });
+  }
+};

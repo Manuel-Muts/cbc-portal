@@ -2,6 +2,7 @@ const API_BASE = config.api.baseURL;
 const token = localStorage.getItem("token");
 
 const deanRoleTextEl = document.getElementById("deanRoleText");
+let deanProfileData = null; // Global storage for signature access
 const deanStatusEl = document.getElementById("deanStatus");
 const logoutBtn = document.getElementById("logoutBtn");
 
@@ -68,27 +69,24 @@ async function fetchWithAuth(endpoint, options = {}) {
   return data;
 }
 
+// Helper to convert image URL to base64 for reliable PDF embedding
+async function getImageBase64(url) {
+  try {
+    const response = await fetch(url);
+    const blob = await response.blob();
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onloadend = () => resolve(reader.result);
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+  } catch (e) {
+    return null;
+  }
+}
+
 function setText(element, text) {
   if (element) element.textContent = text;
-}
-
-// --- CBC GRADING HELPERS (for analysis) ---
-const CBC_WEIGHTS = { continuousAssessment: 0.30, projectWork: 0.20, endTermExam: 0.50 };
-
-function getScorePoints(score) {
-  if (score >= 90) return 8; if (score >= 75) return 7; if (score >= 58) return 6; if (score >= 41) return 5;
-  if (score >= 31) return 4; if (score >= 21) return 3; if (score >= 11) return 2; return 1;
-}
-function getPerformanceSubdivision(score) {
-  if (score >= 90) return "EE1"; if (score >= 75) return "EE2"; if (score >= 58) return "ME1"; if (score >= 41) return "ME2";
-  if (score >= 31) return "AE1"; if (score >= 21) return "AE2"; if (score >= 11) return "BE1"; return "BE2";
-}
-function calculateSeniorSchoolFinalScore(mark) {
-  if (!mark) return null;
-  const ca = mark.continuousAssessment; const pw = mark.projectWork; const et = mark.endTermExam;
-  if (ca === null && pw === null && et === null) return null;
-  const final = (Number(ca||0) * 0.3) + (Number(pw||0) * 0.2) + (Number(et||0) * 0.5);
-  return Math.round(final * 10) / 10;
 }
 
 async function generateReport() {
@@ -160,7 +158,7 @@ function processAnalysisData(raw, isSenior, assessment) {
       const subName = isSenior ? sub.course : sub.subject;
       if (!subName) return;
       subjectsSet.add(subName);
-      const score = isSenior ? calculateSeniorSchoolFinalScore(sub) : sub.score;
+      const score = isSenior ? cbcUtils.calculateFinalScore(sub.continuousAssessment, sub.projectWork, sub.endTermExam) : sub.score;
       if (score !== null) {
         studentsMap[key].subjects[subName] = score;
         subjectTotals[subName] = (subjectTotals[subName] || 0) + score;
@@ -173,7 +171,7 @@ function processAnalysisData(raw, isSenior, assessment) {
     const scores = Object.values(s.subjects);
     const total = scores.reduce((a, b) => a + b, 0);
     const mean = scores.length ? total / scores.length : 0;
-    const points = scores.reduce((sum, sc) => sum + getScorePoints(sc), 0);
+    const points = scores.reduce((sum, sc) => sum + cbcUtils.getPoints(sc), 0);
     return { ...s, total, mean, points };
   }).sort((a, b) => b.mean - a.mean);
 
@@ -255,7 +253,7 @@ function renderRankingTable(students, subjects, isSenior) {
       <td>${s.rank}</td><td>${s.name}</td><td>${s.adm}</td>
       ${subjects.map(sub => `<td>${s.subjects[sub] !== undefined ? s.subjects[sub] : "-"}</td>`).join("")}
       ${totalCell}
-      <td>${s.mean.toFixed(1)}%</td><td>${s.points}</td><td>${getPerformanceSubdivision(s.mean)}</td>
+      <td>${s.mean.toFixed(1)}%</td><td>${s.points}</td><td>${cbcUtils.getSubdivision(s.mean)}</td>
     </tr>`;
   });
   html += "</tbody></table>";
@@ -346,6 +344,16 @@ async function downloadRankingAsPDF() {
       // Printed date (right)
       const dateStr = `Printed: ${new Date().toLocaleString()}`;
       doc.text(dateStr, pageWidth - 14, footerY, { align: "right" });
+
+      // Dean's digital signature image
+       if (deanProfileData && deanProfileData.signatureBase64) {
+        try {
+          // Parameters: Image, Format, X, Y, Width, Height
+          doc.addImage(deanProfileData.signatureBase64, 'PNG', pageWidth - 54, footerY + 1, 40, 8);
+        } catch (e) {
+          console.warn("Could not embed Dean signature in PDF:", e);
+        }
+      }
 
       // Dean signature space (right, below date)
       doc.text("__________________________", pageWidth - 14, footerY + 10, { align: "right" });
@@ -454,6 +462,13 @@ async function downloadSubjectPerformanceAsPDF() {
       if (data.pageNumber !== 1) return; // Only draw footer on the first page
 
       const footerY = pageHeight - 20;
+      if (deanProfileData && deanProfileData.signatureBase64) {
+        try {
+           doc.addImage(deanProfileData.signatureBase64, 'PNG', pageWidth - 54, footerY + 1, 40, 8);
+        } catch (e) {
+          console.warn("Could not embed Dean signature in PDF:", e);
+        }
+      }
       doc.setFontSize(9);
       const dateStr = `Printed: ${new Date().toLocaleString()}`;
       doc.text(dateStr, pageWidth - 14, footerY, { align: "right" });
@@ -494,7 +509,7 @@ function renderTrendChart(raw, isSenior) {
     }
 
     m.subjects.forEach(sub => {
-      const score = isSenior ? calculateSeniorSchoolFinalScore(sub) : sub.score;
+      const score = isSenior ? cbcUtils.calculateFinalScore(sub.continuousAssessment, sub.projectWork, sub.endTermExam) : sub.score;
       if (score !== null) {
         assessmentData[assess].total += score;
         assessmentData[assess].count += 1;
@@ -582,16 +597,20 @@ function initFilters() {
 
 async function loadDeanProfile() {
   try {
-    const profile = await fetchWithAuth(`${API_BASE}/users/user`);
-    if (!profile) return;
+    deanProfileData = await fetchWithAuth(`${API_BASE}/users/user`);
+    if (!deanProfileData) return;
 
-    if (!profile.isDean) {
+    if (!deanProfileData.isDean) {
       alert("Only Deans can access this page.");
       return redirectToTeacherDashboard();
     }
+    setText(deanRoleTextEl, deanProfileData.isDean ? "Authorized Dean access enabled." : "No dean authorization detected.");
+    setText(deanStatusEl, deanProfileData.isDean ? "Authorized" : "Unauthorized");
 
-    setText(deanRoleTextEl, profile.isDean ? "Authorized Dean access enabled." : "No dean authorization detected.");
-    setText(deanStatusEl, profile.isDean ? "Authorized" : "Unauthorized");
+    // Pre-load signature for PDF generation
+    if (deanProfileData.signatureUrl) {
+      deanProfileData.signatureBase64 = await getImageBase64(deanProfileData.signatureUrl);
+    }
 
     initFilters();
   } catch (error) {

@@ -11,6 +11,7 @@
 <div class="container">
     <div class="header">
         <div id="schoolNameDisplay">
+            
             <h1>Admin Dashboard</h1>
         </div>
         <div>
@@ -30,31 +31,17 @@
         </div>
     </div>
 
-    <!-- 2. STUDENT SEARCH -->
-    <div class="card">
-        <h3>Learner Search & Management</h3>
-        <div class="flex-row">
-            <input type="text" id="studentSearchInput" placeholder="Search learner by name or admission..." style="flex:1;">
-            <button id="studentSearchBtn" class="btn primary-btn">Search</button>
-        </div>
-        <table>
-            <thead>
-                <tr>
-                    <th>Name</th>
-                    <th>Admission</th>
-                    <th>Contact</th>
-                    <th>Year</th>
-                    <th>Grade</th>
-                    <th>Status</th>
-                    <th>Action</th>
-                </tr>
-            </thead>
-            <tbody id="studentSearchBody"></tbody>
-        </table>
-    </div>
+    <!-- Tab Navigation Menu -->
+    <ul class="menu">
+      <li data-section="subjectAllocSection" class="active">Subject Allocations</li>
+      <li data-section="classAllocSection">Class Teacher Allocations</li>
+      <li data-section="searchSection">Learner Search</li>
+      <li data-section="promotionSection">Learner Promotion</li>
+    </ul>
 
-    <!-- 3. SUBJECT ALLOCATION -->
-    <div class="card">
+    <!-- 1. Subject Allocation Tab -->
+    <div id="subjectAllocSection" class="tab-section">
+      <div class="card">
         <h3>Subject Allocation</h3>
         <form id="subjectAllocForm">
             <div class="flex-row">
@@ -116,9 +103,11 @@
           <button id="subjectAllocNextBtn" class="btn secondary-btn" disabled>Next</button>
         </div>
     </div>
+    </div>
 
-    <!-- 4. CLASS TEACHER ALLOCATION -->
-    <div class="card">
+    <!-- 2. Class Teacher Tab -->
+    <div id="classAllocSection" class="tab-section" style="display:none;">
+      <div class="card">
         <h3>Class Teacher Allocation</h3>
         <form id="classAllocForm">
             <div class="flex-row">
@@ -170,10 +159,37 @@
             <tbody></tbody>
         </table>
     </div>
+    </div>
 
-    <!-- 5. PROMOTION -->
-    <div class="card">
-        <h3>Learner Promotion</h3>
+    <!-- 3. Learner Search Tab -->
+    <div id="searchSection" class="tab-section" style="display:none;">
+        <div class="card">
+            <h3>Learner Search & Management</h3>
+            <div class="flex-row">
+                <input type="text" id="studentSearchInput" placeholder="Search learner by name or admission..." style="flex:1;">
+                <button id="studentSearchBtn" class="btn primary-btn">Search</button>
+            </div>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Name</th>
+                        <th>Admission</th>
+                        <th>Contact</th>
+                        <th>Year</th>
+                        <th>Grade</th>
+                        <th>Status</th>
+                        <th>Action</th>
+                    </tr>
+                </thead>
+                <tbody id="studentSearchBody"></tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- 4. Learner Promotion Tab -->
+    <div id="promotionSection" class="tab-section" style="display:none;">
+        <div class="card">
+            <h3>Learner Promotion</h3>
         <div class="flex-row">
             <div class="col form-group">
                 <label>From Academic Year</label>
@@ -204,6 +220,7 @@
         <div style="margin-top:15px; text-align:right;">
             <button id="confirmPromotionBtn" class="btn primary-btn" disabled>Confirm & Promote All</button>
         </div>
+    </div>
     </div>
 
 </div>

@@ -4,9 +4,10 @@ import {
   addMaterial, 
   getMaterials, 
   getStudentMaterials, 
-  deleteMaterial, 
+  deleteMaterial,
   downloadMaterial,
-  markAsRead 
+  markAsRead,
+  uploadRaw // ⬅️ Add uploadRaw here
 } from '../controllers/materialController.js';
 import upload from '../utils/multer.js'; // Import the Cloudinary multer config
 
@@ -26,6 +27,9 @@ const uploadMiddleware = (req, res, next) => {
     next();
   });
 };
+
+// Shared: Upload raw file (e.g., for signatures)
+router.post('/upload-raw', verifyToken, uploadMiddleware, uploadRaw); // ⬅️ Change to use direct import
 
 // Teacher: Add material
 router.post('/add', verifyToken, uploadMiddleware, addMaterial);

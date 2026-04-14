@@ -14,30 +14,36 @@
 </head>
 <body>
   
-
-  <header>
-    <h1>WELCOME, <span id="teacherName"></span></h1>
-    <a href="dean-dashboard.html" id="deanDashboardBtn" class="btn" style="display:none; background: #8e44ad; margin-right: 10px; text-decoration: none;">🎓 Dean Dashboard</a>
-    <button id="logoutBtn">Logout</button>
-  
+  <header style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; padding: 12px 20px; gap: 15px; border-bottom: 1px solid #edf2f7; background: #fff; position: sticky; top: 0; z-index: 100;">
+    <div style="display: flex; align-items: center; gap: 12px; flex: 1;">
+      <h1 style="margin: 0; font-size: 1.1rem; color: #2d3748; white-space: nowrap;">WELCOME, <span id="teacherName"></span></h1>
+      <span id="schoolName" style="background: #ebf8ff; color: #2b6cb0; padding: 4px 12px; border-radius: 20px; font-weight: 600; font-size: 0.8rem; border: 1px solid #bee3f8; text-transform: uppercase;"></span>
+    </div>
+    <div style="display: flex; align-items: center; gap: 10px;">
+      <a href="dean-dashboard.html" id="deanDashboardBtn" class="btn" style="display:none; background: #8e44ad; text-decoration: none; margin: 0; padding: 8px 15px; font-size: 0.9rem;">🎓 Dean Dashboard</a>
+      <button id="logoutBtn" style="margin: 0; padding: 8px 15px; font-size: 0.9rem;">Logout</button>
+    </div>
   </header>
-  
 
 <div id="toastContainer"></div>
   <main>
-    <span id="schoolName"></span>
-
     <!-- =================== MY ALLOCATIONS =================== -->
     <section class="allocations-section">
-      <h3>📚 Class Allocations</h3>
-      <div id="allocationsContainer" style="margin-bottom: 20px; padding: 15px; background: #f5f5f5; border-radius: 8px;">
-        <p>Loading your allocations...</p>
+      <div id="allocationsContainer" style="margin-bottom: 20px; display: flex; gap: 12px; flex-wrap: wrap; align-items: stretch;">
       </div>
     </section>
 
+    <!-- TABS NAVIGATION -->
+    <div class="tabs-nav">
+      <button class="tab-btn active" data-tab="enterMarks">📊 Enter Marks</button>
+      <button class="tab-btn" data-tab="submittedMarks">📋 Submitted Marks</button>
+      <button class="tab-btn" data-tab="studyMaterials">📚 Study Materials</button>
+    </div>
+
+    <div id="enterMarks" class="tab-pane active">
     <!-- =================== MARKS ENTRY (TABLE-BASED) =================== -->
     <section class="marks-section">
-      <h2>📊 Enter Learners Marks</h2>
+      <h2>📊 ENTER LEARNERS MARKS</h2>
       
       <!-- Step 1: Select Subject/Class Allocation -->
       <div class="marks-controls" style="margin-bottom: 20px; padding: 15px; background: #f9f9f9; border-radius: 8px;">
@@ -106,20 +112,30 @@
         </div>
       </div>
     </section>
-           <button id="smartRefreshBtn" class="smart-refresh">⟳ Refresh</button>
-         <!-- =================== SUBMITTED MARKS TABLES =================== -->
-     
-    <section class="marks-table">
-      <input 
-  type="text" 
-  id="marksSearchBox" 
-  placeholder="Search by name, admission, subject, grade, term..."
-  class="search-input"
-/>
-      <h2>Submitted Marks</h2>
-      <div id="submittedMarksContainer"></div>
-    </section>
+    </div>
 
+    <div id="submittedMarks" class="tab-pane">
+    <!-- =================== SUBMITTED MARKS TABLES =================== -->
+    <section class="marks-table">
+      <details open style="background: #fff; border-radius: 8px; border: 1px solid #e2e8f0; padding: 15px;">
+        <summary style="cursor: pointer; list-style: none; display: flex; align-items: center; justify-content: space-between;">
+          <h2 style="margin: 0;">📊 SUBMITTED MARKS</h2>
+          <span style="font-size: 0.85rem; color: #718096; font-weight: 500;">(Click to Collapse/Expand)</span>
+        </summary>
+        <div style="margin-top: 20px; border-top: 1px solid #edf2f7; padding-top: 15px;">
+          <input 
+            type="text" 
+            id="marksSearchBox" 
+            placeholder="Search by name, admission, subject, grade, term..."
+            class="search-input"
+          />
+          <div id="submittedMarksContainer"></div>
+        </div>
+      </details>
+    </section>
+    </div>
+
+    <div id="studyMaterials" class="tab-pane">
     <!-- =================== STUDY MATERIALS =================== -->
     <section class="materials-section">
       <div class="card" style="text-align: center; padding: 40px; border: 1px dashed #ccc;">
@@ -129,9 +145,11 @@
         </a>
       </div>
     </section>
+    </div>
   </main>
 
   <script src="js/config.js"></script>
   <script src="js/teachers.js"></script>
+  <script src="js/cbc-utils.js"></script>
 </body>
 </html>

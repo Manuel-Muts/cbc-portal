@@ -141,9 +141,20 @@
   <button id="applyFiltersBtn" class="btn small primary">Apply Filters</button>
 </div>
 
-      <div id="learnerMarks">Loading...</div>
-      </div>
-    </section>
+    <!-- TABS NAVIGATION -->
+    <div class="tabs-nav" style="margin-top: 20px;">
+      <button class="tab-btn active" data-tab="performanceTab">📈 My Performance</button>
+      <button class="tab-btn" data-tab="analysisTab">📊 Component Analysis</button>
+    </div>
+
+    <div id="performanceTab" class="tab-pane active">
+      <div id="learnerMarks" style="padding-top: 10px;">Loading marks...</div>
+    </div>
+
+    <div id="analysisTab" class="tab-pane">
+      <div id="learnerAnalysis" style="padding-top: 10px; color: #777; text-align: center;">Apply filters to see performance analysis.</div>
+    </div>
+
   </main>
 
   <!-- Fee modal -->
@@ -174,5 +185,6 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
   <script src="js/config.js"></script>
   <script src="js/student.js"></script>
+  <script src="js/cbc-utils.js"></script>
 </body>
 </html>

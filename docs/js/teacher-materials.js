@@ -27,6 +27,40 @@
   const logoutBtn = document.getElementById("logoutBtn");
 
   // ---------------------------
+  // HELPER FUNCTIONS (Logic Consolidation)
+  // ---------------------------
+  const getGradeNum = (grade) => {
+    const match = (grade || "").toString().match(/\d+/);
+    return match ? parseInt(match[0]) : 0;
+  };
+
+  const isSeniorGrade = (grade) => {
+    const num = getGradeNum(grade);
+    return num >= 10 && num <= 12;
+  };
+
+  // ---------------------------
+  // TAB LOGIC
+  // ---------------------------
+  function setupTabs() {
+    const tabBtns = document.querySelectorAll(".tab-btn");
+    const tabPanes = document.querySelectorAll(".tab-pane");
+
+    tabBtns.forEach(btn => {
+      btn.addEventListener("click", () => {
+        const target = btn.dataset.tab;
+
+        tabBtns.forEach(b => b.classList.remove("active"));
+        tabPanes.forEach(p => p.classList.remove("active"));
+
+        btn.classList.add("active");
+        const activePane = document.getElementById(target);
+        if (activePane) activePane.classList.add("active");
+      });
+    });
+  }
+
+  // ---------------------------
   // CONSTANTS
   // ---------------------------
   // Pagination State
@@ -229,7 +263,7 @@
 
   function populateMaterialGradeFields(grade) {
     if (!grade) return;
-    const isSeniorSchool = grade >= 10 && grade <= 12;
+    const isSeniorSchool = isSeniorGrade(grade);
     const seniorMaterialFields = document.querySelectorAll('.senior-material-fields');
     
     if (isSeniorSchool) {
@@ -279,8 +313,7 @@
   // EVENT LISTENERS
   // ---------------------------
   materialGrade?.addEventListener("change", () => {
-    const grade = Number(materialGrade.value);
-    populateMaterialGradeFields(grade);
+    populateMaterialGradeFields(materialGrade.value);
   });
 
   materialPathway?.addEventListener("change", () => {
@@ -383,8 +416,7 @@
 
     materials.forEach(mat => {
       const row = document.createElement("tr");
-      const gradeNum = parseInt(mat.grade);
-      const isSeniorSchool = gradeNum >= 10 && gradeNum <= 12;
+      const isSeniorSchool = isSeniorGrade(mat.grade);
       
       const fileCellContent = mat._id && mat.file ? 
         `<a href="${mat.file}" target="_blank" class="file-link" style="color:#007bff;text-decoration:none;">📥 ${sanitize(mat.fileName)}</a>` : 
@@ -402,14 +434,14 @@
       }
 
       row.innerHTML = `
-        <td>${sanitize(mat.grade)}</td>
+        <td style="text-align:center; font-weight:600;">${sanitize(mat.grade)}</td>
         <td>${col2}</td>
         <td>${col3}</td>
-        <td>${sanitize(mat.title)}</td>
-        <td>${sanitize(mat.description.substring(0, 40))}${mat.description.length > 40 ? '...' : ''}</td>
-        <td>${fileCellContent}</td>
+        <td style="font-weight:500; color:#2d3748;">${sanitize(mat.title)}</td>
+        <td title="${sanitize(mat.description)}">${sanitize(mat.description.substring(0, 35))}${mat.description.length > 35 ? '...' : ''}</td>
+        <td style="white-space:nowrap;">${fileCellContent}</td>
         <td style="text-align: center;">${mat.downloadCount || 0}</td>
-        <td><button data-action="delete-material" data-id="${mat._id}" class="btn-delete" style="background:none;border:none;cursor:pointer;font-size:1.2em;">🗑️</button></td>
+        <td style="text-align: center;"><button data-action="delete-material" data-id="${mat._id}" class="btn-delete" style="background:none;border:none;cursor:pointer;" title="Delete">🗑️</button></td>
       `;
       materialsListEl.appendChild(row);
     });
@@ -456,8 +488,7 @@
   materialsForm?.addEventListener('submit', async e => {
     e.preventDefault();
     
-    const grade = Number(materialGrade.value);
-    const isSeniorSchool = grade >= 10 && grade <= 12;
+    const isSeniorSchool = isSeniorGrade(materialGrade.value);
     const fileInput = materialsForm.querySelector('input[type="file"]');
 
     if (!materialGrade.value || !materialTitle.value.trim() || !materialDescription.value.trim() || !fileInput?.files[0]) {
@@ -543,6 +574,10 @@
         showToast("✅ Material uploaded successfully!", "success");
         loadMaterials(1, true); // Force refresh and reset to page 1
         
+        // Auto-switch to Uploaded Materials tab
+        const listTabBtn = document.querySelector('[data-tab="listTab"]');
+        if (listTabBtn) listTabBtn.click();
+
         // Reset UI
         setTimeout(() => {
           progressContainer.style.display = "none";
@@ -617,6 +652,7 @@
   // INITIALIZE
   // ---------------------------
   (async function init() {
+    setupTabs();
     await loadTeacherProfile();
     await loadMaterials();
   })();

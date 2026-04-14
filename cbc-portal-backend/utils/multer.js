@@ -8,7 +8,7 @@ const storage = new CloudinaryStorage({
   params: async (req, file) => {
     return {
       folder: 'cbc-portal-materials',
-      resource_type: 'raw', // Always raw for docs/PDFs
+      resource_type: 'auto', // Auto-detect type (image vs raw) for mixed uploads
       type: "upload",
       access_mode: "public",
       public_id: file.originalname.split('.')[0].replace(/[^a-zA-Z0-9]/g, "_") + "-" + Date.now(),
@@ -22,13 +22,16 @@ const fileFilter = (req, file, cb) => {
   const allowedMimes = [
     'application/pdf', 
     'application/msword', 
-    'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    'image/png',
+    'image/jpeg',
+    'image/jpg'
   ];
 
   if (allowedMimes.includes(file.mimetype)) {
     cb(null, true);
   } else {
-    cb(new Error('Invalid file type. Only PDF and Word documents are allowed.'), false);
+    cb(new Error('Invalid file type. Only PDF, Word documents, and images (PNG/JPEG) are allowed.'), false);
   }
 };
 

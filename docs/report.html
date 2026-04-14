@@ -83,22 +83,34 @@
     <!-- Remarks -->
     <section class="remarks-section">
       <h2>Remarks</h2>
-      <p><strong>Class Teacher's Comment:</strong> <span id="teacherComment">Loading...</span></p>
-      <p><strong>Headteacher's Comment:</strong> <span id="headComment">Loading...</span></p>
+      <div class="remarks-container">
+        <div class="remark-item">
+          <strong>Class Teacher's Comment</strong>
+          <p id="teacherComment">Loading...</p>
+        </div>
+        <div class="remark-item">
+          <strong id="headCommentLabel">Headteacher's Comment</strong>
+          <p id="headComment">Loading...</p>
+        </div>
+      </div>
     </section>
   
     <!-- Signatures -->
     <section class="signatures">
       <div class="signature-line">
+        <img id="classTeacherSig" src=""  style="display:none;">
         <span>__________________________</span>
-        <p>Class Teacher</p>
+        <p id="classTeacherRoleLabel">Class Teacher</p>
       </div>
       <div class="signature-line">
+        <img id="headteacherSig" src=""  style="display:none;">
         <span>__________________________</span>
-        <p>Head Teacher</p>
+        <p id="headteacherRoleLabel">Headteacher</p>
       </div>
-      <p class="date-line">Date: <span id="reportDate">Loading...</span></p>
     </section>
+    <div style="text-align: center; margin-top: 10px;">
+      <p class="date-line" style="font-size: 12px; color: #666;">Date: <span id="reportDate">Loading...</span></p>
+    </div>
 
   </div>
 
@@ -116,5 +128,6 @@
 
   <script src="js/config.js"></script>
   <script src="js/report.js"></script>
+  <script src="js/cbc-utils.js"></script>
 </body>
 </html>

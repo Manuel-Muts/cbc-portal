@@ -2,63 +2,21 @@
 // API_BASE is now loaded from config.js
 // To change the API endpoint, update config.js
 const API_BASE = config.api.baseURL;
-const CBC_WEIGHTS = {
-  continuousAssessment: 0.30,
-  projectWork: 0.20,
-  endTermExam: 0.50
-};
-
-function scoreToPerformanceLevel(score) {
-  if (score >= 75) return "EE";
-  if (score >= 41) return "ME";
-  if (score >= 21) return "AE";
-  return "BE";
-}
-
-function getPerformanceLevelLabel(level) {
-  const labels = {
-    EE: "Exceeding Expectations",
-    ME: "Meeting Expectations",
-    AE: "Approaching Expectations",
-    BE: "Below Expectations"
-  };
-  return labels[level] || "Unknown";
-}
-
-function getPerformanceSubdivision(score) {
-  if (score >= 90) return "EE1";
-  if (score >= 75) return "EE2";
-  if (score >= 58) return "ME1";
-  if (score >= 41) return "ME2";
-  if (score >= 31) return "AE1";
-  if (score >= 21) return "AE2";
-  if (score >= 11) return "BE1";
-  return "BE2";
-}
-
-function calculateSeniorSchoolFinalScore(mark) {
-  if (!mark || mark.grade < 10 || mark.grade > 12) return null;
-  
-  const ca = mark.continuousAssessment;
-  const pw = mark.projectWork;
-  const et = mark.endTermExam;
-
-  if ((ca === null || ca === undefined) && (pw === null || pw === undefined) && (et === null || et === undefined)) {
-    return null;
-  }
-
-  const caVal = ca !== null && ca !== undefined ? Number(ca) : 0;
-  const pwVal = pw !== null && pw !== undefined ? Number(pw) : 0;
-  const etVal = et !== null && et !== undefined ? Number(et) : 0;
-
-  const finalScore = (caVal * CBC_WEIGHTS.continuousAssessment) +
-                     (pwVal * CBC_WEIGHTS.projectWork) +
-                     (etVal * CBC_WEIGHTS.endTermExam);
-
-  return Math.round(finalScore * 10) / 10;
-}
 
 document.addEventListener("DOMContentLoaded", async () => {
+  // ---------------------------
+  // STYLES FOR COMPACTNESS
+  // ---------------------------
+  const compactStyle = document.createElement("style");
+  compactStyle.textContent = `
+    .marks-table th, .marks-table td { padding: 6px 10px !important; font-size: 0.85rem !important; text-align: center; }
+    .marks-table td:first-child, .marks-table th:first-child { text-align: left !important; }
+    .analysis-summary table th, .analysis-summary table td { padding: 4px 8px !important; font-size: 0.8rem !important; }
+    .marks-header p { font-size: 0.85rem !important; }
+    .card { padding: 15px !important; margin-bottom: 20px !important; }
+  `;
+  document.head.appendChild(compactStyle);
+
   // ---------------------------
   // AUTHENTICATION WITH TOKEN
   // ---------------------------
@@ -76,17 +34,15 @@ document.addEventListener("DOMContentLoaded", async () => {
     });
 
     if (!res.ok) {
-      localStorage.removeItem("token");
-      localStorage.removeItem("loggedInUser");
+      localStorage.clear();
       window.location.href = "/login";
       return;
     }
 
     user = await res.json();
 
-    if (!user || (user.role !== "student" && user.role !== "learner")) {
-      localStorage.removeItem("token");
-      localStorage.removeItem("loggedInUser");
+    if (!user || !["student", "learner"].includes(user.role)) {
+      localStorage.clear();
       window.location.href = "/login";
       return;
     }
@@ -98,6 +54,25 @@ document.addEventListener("DOMContentLoaded", async () => {
     console.error("Auth error:", err);
     alert("Could not verify session. Please refresh or log in again.");
     return;
+  }
+
+  // ---------------------------
+  // TAB LOGIC
+  // ---------------------------
+  function setupTabs() {
+    const tabBtns = document.querySelectorAll(".tab-btn");
+    const tabPanes = document.querySelectorAll(".tab-pane");
+
+    tabBtns.forEach(btn => {
+      btn.addEventListener("click", () => {
+        const target = btn.dataset.tab;
+        tabBtns.forEach(b => b.classList.remove("active"));
+        tabPanes.forEach(p => p.classList.remove("active"));
+        btn.classList.add("active");
+        const activePane = document.getElementById(target);
+        if (activePane) activePane.classList.add("active");
+      });
+    });
   }
 
   // ---------------------------
@@ -494,6 +469,7 @@ if (downloadFeeStatementPDF) {
 
 const displayStudentTables = async () => {
   const marksContainer = document.getElementById("learnerMarks");
+  const analysisContainer = document.getElementById("learnerAnalysis");
   const spinner = document.getElementById("loadingSpinner");
 
   const showSpinner = () => spinner && (spinner.style.display = "block");
@@ -501,6 +477,7 @@ const displayStudentTables = async () => {
 
   showSpinner();
   marksContainer.innerHTML = "";
+  if (analysisContainer) analysisContainer.innerHTML = "";
 
   try {
     // Get filter values
@@ -550,6 +527,7 @@ const displayStudentTables = async () => {
 
     if (!studentMarks.length) {
       marksContainer.textContent = "No marks found for the selected filters.";
+      if (analysisContainer) analysisContainer.textContent = "No analysis data available.";
       hideSpinner();
       return;
     }
@@ -611,281 +589,233 @@ const displayStudentTables = async () => {
       if (!grouped[key]) grouped[key] = [];
       grouped[key].push(m);
     });
-Object.entries(grouped).forEach(([key, list]) => {
-  const [grade, term, year, assess] = key.split("_");
 
-  const wrapper = document.createElement("div");
-  wrapper.classList.add("marks-group");
+    Object.entries(grouped).forEach(([key, list]) => {
+      const [grade, term, year, assess] = key.split("_");
+      const gradeNum = parseInt(grade.match(/\d+/)?.[0] || grade);
+      const isSenior = gradeNum >= 10 && gradeNum <= 12;
 
-  wrapper.innerHTML = `
-    <div class="marks-header">
-      <p><strong>Full Name:</strong> ${user.name}</p>
-      <p><strong>Admission No:</strong> ${user.admission}</p>
-      <p><strong>Grade/Class:</strong> ${grade}</p>
-      <p><strong>Term:</strong> ${term}</p>
-      <p><strong>Year:</strong> ${year}</p>
-      <p><strong>Assessment:</strong> ${getAssessmentLabel(assess)}</p>
-      <p><strong>Date:</strong> ${new Date().toLocaleDateString()}</p>
-    </div>
-  `;
+      // Sort subjects/courses alphabetically for a clean, consistent list
+      list.sort((a, b) => {
+        const subA = (isSenior ? (a.course || "") : (a.subject || "")).toLowerCase().replace(/-/g, " ");
+        const subB = (isSenior ? (b.course || "") : (b.subject || "")).toLowerCase().replace(/-/g, " ");
+        return subA.localeCompare(subB);
+      });
 
-  // ===========================
-  // SYNC BUTTON
-  // ===========================
-  const syncBtn = document.createElement("button");
-  syncBtn.textContent = "📄 Sync Button";
-  syncBtn.classList.add("sync-btn");
-  syncBtn.addEventListener("click", () => {
-    // Save this assessment's marks to localStorage
-    localStorage.setItem("studentReportMarks", JSON.stringify(list));
-
-    // Optionally show toast
-    showToast("✅ Marks synced to report form.");
-
-    // Open report.html in a new tab
-    window.open("report.html", "_blank");
-  });
-
-  wrapper.appendChild(syncBtn);
-
-  const table = document.createElement("table");
-  const thead = document.createElement("thead");
-  const tbody = document.createElement("tbody");
-  const gradeNum = parseInt(String(grade).match(/\d+/)?.[0] || 0);
-  const isSeniorSchool = gradeNum >= 10 && gradeNum <= 12;
-
-  // ===== JUNIOR SCHOOL (1-9): Simple Score Display =====
-  if (!isSeniorSchool) {
-    thead.innerHTML = `<tr><th>Subject</th><th>Score</th><th>Performance Level</th></tr>`;
-    
-    list.forEach((m) => {
-      const tr = document.createElement("tr");
-      const subLevel = getPerformanceSubdivision(m.score);
-      const mainLevel = scoreToPerformanceLevel(m.score);
-      tr.innerHTML = `
-        <td data-label="Subject">${(m.subject || "").replace(/-/g, " ")}</td>
-        <td data-label="Score"><strong>${m.score}%</strong></td>
-        <td data-label="Performance Level">${subLevel} (${getPerformanceLevelLabel(mainLevel)})</td>
+      // Define Shared Header Template
+      const headerHtml = `
+        <div class="marks-header" style="margin-bottom: 15px; border-bottom: 2px solid #eee; padding-bottom: 10px; display: flex; flex-wrap: wrap; gap: 10px 25px; font-size: 0.95rem;">
+          <p style="margin: 0;"><strong>Full Name:</strong> ${user.name}</p>
+          <p style="margin: 0;"><strong>Admission No:</strong> ${user.admission}</p>
+          <p style="margin: 0;"><strong>Grade/Class:</strong> ${grade}</p>
+          <p style="margin: 0;"><strong>Term:</strong> ${term}</p>
+          <p style="margin: 0;"><strong>Year:</strong> ${year}</p>
+          <p style="margin: 0;"><strong>Assessment:</strong> ${getAssessmentLabel(assess)}</p>
+        </div>
       `;
-      tbody.appendChild(tr);
-    });
-  }
-  // ===== SENIOR SCHOOL (10-12): Component Breakdown =====
-  else {
-    thead.innerHTML = `
-      <tr>
-        <th>Course</th>
-        <th>Continuous Assessment</th>
-        <th>Project Work</th>
-        <th>End-Term Exam</th>
-        <th>Final Score</th>
-        <th>Performance Level</th>
-      </tr>
-    `;
-    
-    list.forEach((m) => {
-      const tr = document.createElement("tr");
-      const finalScore = calculateSeniorSchoolFinalScore(m);
-      const subLevel = finalScore ? getPerformanceSubdivision(finalScore) : "N/A";
-      const mainLevel = finalScore ? scoreToPerformanceLevel(finalScore) : "N/A";
+
+      // 1. MARKS TABLE WRAPPER
+      const marksWrapper = document.createElement("div");
+      marksWrapper.className = "card marks-report-card";
+      marksWrapper.style.marginBottom = "30px";
+      marksWrapper.innerHTML = headerHtml;
+
+      const table = document.createElement("table");
+      table.className = "marks-table";
+      table.style.width = "100%";
       
-      const ca = m.continuousAssessment !== null && m.continuousAssessment !== undefined ? `${m.continuousAssessment}%` : "-";
-      const pw = m.projectWork !== null && m.projectWork !== undefined ? `${m.projectWork}%` : "-";
-      const et = m.endTermExam !== null && m.endTermExam !== undefined ? `${m.endTermExam}%` : "-";
-      const fs = finalScore ? `${finalScore}%` : "-";
-      
-      tr.innerHTML = `
-        <td data-label="Course"><strong>${(m.course || "").replace(/-/g, " ")}</strong></td>
-        <td data-label="Continuous Assessment">${ca}</td>
-        <td data-label="Project Work">${pw}</td>
-        <td data-label="End-Term Exam">${et}</td>
-        <td data-label="Final Score"><strong>${fs}</strong></td>
-        <td data-label="Performance Level">${subLevel}${finalScore ? ` (${getPerformanceLevelLabel(mainLevel)})` : ''}</td>
-      `;
-      tbody.appendChild(tr);
+      let thead = "";
+      if (isSenior) {
+        thead = `
+          <thead>
+            <tr>
+              <th>Course</th>
+              <th>CA (30%)</th>
+              <th>PW (20%)</th>
+              <th>Exam (50%)</th>
+              <th>Final</th>
+              <th>Level</th>
+            </tr>
+          </thead>`;
+      } else {
+        thead = `
+          <thead>
+            <tr>
+              <th>Subject</th>
+              <th>Score (%)</th>
+              <th>Level</th>
+            </tr>
+          </thead>`;
+      }
+
+      let tbody = "<tbody>";
+      list.forEach(m => {
+        if (isSenior) {
+          const final = cbcUtils.calculateFinalScore(m.continuousAssessment, m.projectWork, m.endTermExam);
+          tbody += `
+            <tr>
+              <td>${(m.course || "Unknown").replace(/-/g, " ")}</td>
+              <td>${m.continuousAssessment ?? "-"}</td>
+              <td>${m.projectWork ?? "-"}</td>
+              <td>${m.endTermExam ?? "-"}</td>
+              <td><strong>${final !== null ? final + "%" : "-"}</strong></td>
+              <td>${final !== null ? cbcUtils.getSubdivision(final) : "-"}</td>
+            </tr>`;
+        } else {
+          tbody += `
+            <tr>
+              <td>${(m.subject || "Unknown").replace(/-/g, " ")}</td>
+              <td>${m.score ?? 0}%</td>
+              <td>${cbcUtils.getSubdivision(m.score || 0)}</td>
+            </tr>`;
+        }
+      });
+      tbody += "</tbody>";
+      table.innerHTML = thead + tbody;
+
+      // SYNC REPORT BUTTON
+      const syncBtn = document.createElement("button");
+      syncBtn.className = "btn primary-btn sync-report-btn";
+      syncBtn.innerHTML = "🔄 Sync & Generate Report";
+      syncBtn.style.marginBottom = "15px";
+      syncBtn.onclick = () => {
+        localStorage.setItem("studentReportMarks", JSON.stringify(list));
+        showToast("✅ Data synced. Opening report form...");
+        setTimeout(() => { window.location.href = "report.html"; }, 1200);
+      };
+      marksWrapper.appendChild(syncBtn);
+
+      marksWrapper.appendChild(table);
+
+      marksContainer.appendChild(marksWrapper);
+
+      // 2. ANALYSIS WRAPPER (Component Analysis for Senior School)
+      if (analysisContainer) {
+        const analysisWrapper = document.createElement("div");
+        analysisWrapper.className = "card analysis-report-card";
+        analysisWrapper.style.marginBottom = "30px";
+        analysisWrapper.innerHTML = headerHtml;
+
+        const summary = document.createElement("div");
+        summary.className = "analysis-summary";
+
+        if (isSenior) {
+          let caSum = 0, caCount = 0;
+          let pwSum = 0, pwCount = 0;
+          let etSum = 0, etCount = 0;
+          let fsSum = 0, fsCount = 0;
+          const courseScores = [];
+
+          list.forEach(m => {
+            if (m.continuousAssessment !== null) { caSum += Number(m.continuousAssessment); caCount++; }
+            if (m.projectWork !== null) { pwSum += Number(m.projectWork); pwCount++; }
+            if (m.endTermExam !== null) { etSum += Number(m.endTermExam); etCount++; }
+            const fs = cbcUtils.calculateFinalScore(m.continuousAssessment, m.projectWork, m.endTermExam);
+            if (fs !== null) {
+              fsSum += fs;
+              fsCount++;
+              courseScores.push({ course: (m.course || "Unknown").replace(/-/g, " "), score: fs });
+            }
+          });
+
+          const caAvg = caCount > 0 ? (caSum / caCount).toFixed(1) : 0;
+          const pwAvg = pwCount > 0 ? (pwSum / pwCount).toFixed(1) : 0;
+          const etAvg = etCount > 0 ? (etSum / etCount).toFixed(1) : 0;
+          const fsAvg = fsCount > 0 ? (fsSum / fsCount).toFixed(1) : 0;
+
+          const createProgressBar = (score, color) => `
+            <div style="width:100%; background:#eee; border-radius:10px; height:6px; margin-top:3px;">
+              <div style="width:${score}%; background:${color}; height:100%; border-radius:10px;"></div>
+          </div>
+        `;
+
+        const topStrengths = courseScores.filter(s => s.score >= 80).sort((a, b) => b.score - a.score);
+        const areasToImprove = courseScores.filter(s => s.score < 50).sort((a, b) => a.score - b.score);
+
+        let strengthsHtml = topStrengths.length 
+          ? topStrengths.map(s => `<div style="margin-bottom: 5px;"><span style="color:green;font-weight:bold;">${s.course} (${s.score}%)</span>${createProgressBar(s.score, "green")}</div>`).join("") 
+          : "No courses above 80%.";
+        
+        let improveHtml = areasToImprove.length 
+          ? areasToImprove.map(s => `<div style="margin-bottom: 5px;"><span style="color:red;font-weight:bold;">${s.course} (${s.score}%)</span>${createProgressBar(s.score, "red")}</div>`).join("") 
+          : "Great work! No courses below 50%.";
+
+        summary.innerHTML = `
+          <hr style="margin: 10px 0;">
+          <h4 style="text-align:center; color:#2563eb; margin: 5px 0; font-size: 1rem;">📊 COMPONENT ANALYSIS</h4>
+          <p style="font-size:0.95rem; text-align:center; margin-bottom:10px;"><strong>Overall Final Score:</strong> <span style="color:#2563eb;">${fsAvg}%</span></p>
+          
+          <div class="table-scroll-wrapper">
+            <table style="width:100%; border-collapse:collapse; margin:5px 0; font-size: 0.85rem;">
+              <thead>
+                <tr style="background:#f8fafc;">
+                  <th style="border:1px solid #ddd; padding:6px 8px; text-align:left;">Component</th>
+                  <th style="border:1px solid #ddd; padding:6px 8px; text-align:center;">Avg. Score</th>
+                  <th style="border:1px solid #ddd; padding:6px 8px; text-align:center;">Weight</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td style="border:1px solid #ddd; padding:6px 8px;">Continuous Assessment</td>
+                  <td style="border:1px solid #ddd; padding:6px 8px; text-align:center;"><strong>${caAvg}%</strong> ${createProgressBar(caAvg, "orange")}</td>
+                  <td style="border:1px solid #ddd; padding:6px 8px; text-align:center;">30%</td>
+                </tr>
+                <tr>
+                  <td style="border:1px solid #ddd; padding:6px 8px;">Project Work</td>
+                  <td style="border:1px solid #ddd; padding:6px 8px; text-align:center;"><strong>${pwAvg}%</strong> ${createProgressBar(pwAvg, "#34d399")}</td>
+                  <td style="border:1px solid #ddd; padding:6px 8px; text-align:center;">20%</td>
+                </tr>
+                <tr>
+                  <td style="border:1px solid #ddd; padding:6px 8px;">End-Term Exam</td>
+                  <td style="border:1px solid #ddd; padding:6px 8px; text-align:center;"><strong>${etAvg}%</strong> ${createProgressBar(etAvg, "#2563eb")}</td>
+                  <td style="border:1px solid #ddd; padding:6px 8px; text-align:center;">50%</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div style="display:grid; grid-template-columns: 1fr 1fr; gap:15px; margin-top: 10px;">
+            <div>
+              <p style="margin-bottom: 5px; font-size: 0.9rem;"><strong>✅ TOP STRENGTHS:</strong></p>
+              <div style="font-size:0.85rem;">${strengthsHtml}</div>
+            </div>
+            <div>
+              <p style="margin-bottom: 5px; font-size: 0.9rem;"><strong>⚠️ AREAS TO IMPROVE:</strong></p>
+              <div style="font-size:0.85rem;">${improveHtml}</div>
+            </div>
+          </div>
+        `;
+        } else {
+          // Junior School Analysis (1-9)
+          const averages = getSubjectAverages(list);
+          const classMean = (averages.reduce((a, b) => a + b.avg, 0) / (averages.length || 1)).toFixed(1);
+
+          summary.innerHTML = `
+            <hr style="margin: 10px 0;">
+            <h4 style="text-align:center; color:#2563eb; margin: 5px 0; font-size: 1rem;">📊 SUBJECT PERFORMANCE ANALYSIS</h4>
+            <p style="font-size:0.95rem; text-align:center; margin-bottom:10px;"><strong>Overall Mean Score:</strong> <span style="color:#2563eb;">${classMean}%</span></p>
+            
+            <div style="display:grid; grid-template-columns: 1fr 1fr; gap:15px; margin-top: 10px;">
+              <div>
+                <p style="margin-bottom: 5px; font-size: 0.9rem;"><strong>✅ TOP SUBJECTS:</strong></p>
+                <div style="font-size:0.85rem; color:green; font-weight:bold;">${averages.slice(0, 2).map(a => `${a.subject} (${a.avg.toFixed(1)}%)`).join('<br>')}</div>
+              </div>
+              <div>
+                <p style="margin-bottom: 5px; font-size: 0.9rem;"><strong>⚠️ NEEDS IMPROVEMENT:</strong></p>
+                <div style="font-size:0.85rem; color:red; font-weight:bold;">${averages.slice(-2).filter(a => a.avg < 50).reverse().map(a => `${a.subject} (${a.avg.toFixed(1)}%)`).join('<br>') || 'None'}</div>
+              </div>
+            </div>
+          `;
+        }
+        analysisWrapper.appendChild(summary);
+        analysisContainer.appendChild(analysisWrapper);
+      }
     });
-  }
-
-  table.append(thead, tbody);
-  
-  // Wrap table in a scrollable container
-  const tableWrapper = document.createElement("div");
-  tableWrapper.classList.add("table-scroll-wrapper");
-  tableWrapper.appendChild(table);
-  wrapper.appendChild(tableWrapper);
-
-  // ==========================
-  // ANALYSIS SUMMARY - DIFFERENT FOR JUNIOR vs SENIOR SCHOOL
-  // ==========================
- 
-  const summary = document.createElement("div");
-  summary.classList.add("marks-summary");
-
-  // Helper function to create a progress bar
-  const createProgressBar = (score, color) => `
-    <div style="background:#eee;border-radius:6px;overflow:hidden;width:150px;height:14px;display:inline-block;margin-left:5px;vertical-align:middle;">
-      <div style="width:${Math.min(score, 100)}%;background:${color};height:100%;"></div>
-    </div>
-  `;
-
-  // ===== JUNIOR SCHOOL (1-9): Subject-Based Analysis =====
-  if (!isSeniorSchool) {
-    const allScores = list.map((m) => Number(m.score || 0));
-    const avg = allScores.length > 0 ? allScores.reduce((a, b) => a + b, 0) / allScores.length : 0;
-
-    // Get subject averages
-    const subjectAvgs = getSubjectAverages(list);
-    // Any subject above 80% is a strength
-    const topStrengths = subjectAvgs.filter(s => s.avg >= 80);
-    // Any subject below 50% needs improvement, sorted with the lowest first
-    const areasToImprove = subjectAvgs.filter(s => s.avg < 50).sort((a, b) => a.avg - b.avg);
-
-    // Build HTML for strengths
-    let strengthsHtml = topStrengths.length
-      ? topStrengths.map(s => `
-          <span style="color:green;font-weight:bold;">
-            ${s.subject} (${s.avg.toFixed(0)}%)
-            ${createProgressBar(s.avg, "green")}
-          </span>
-        `).join("<br>")
-      : "No subjects above 80%.";
-
-    // Build HTML for areas to improve
-    let improveHtml = areasToImprove.length
-      ? areasToImprove.map(s => `
-          <span style="color:red;font-weight:bold;">
-            ${s.subject} (${s.avg.toFixed(0)}%)
-            ${createProgressBar(s.avg, "red")}
-          </span>
-        `).join("<br>")
-      : "No subjects below 50%.";
-
-    summary.innerHTML = `
-      <hr>
-      <h4 style="text-align:center;">📊 RESULTS OVERVIEW</h4>
-      <p><strong>Average Score:</strong> ${avg.toFixed(2)}%</p>
-      <p><strong>Overall Performance Level:</strong> ${getPerformanceSubdivision(avg)} (${getPerformanceLevelLabel(scoreToPerformanceLevel(avg))})</p>
-      <br>
-      <p><strong>✅ TOP STRENGTHS (Subjects Above 80%):</strong><br>${strengthsHtml}</p>
-      <br>
-      <p><strong>⚠️ AREAS TO IMPROVE (Subjects Below 50%):</strong><br>${improveHtml}</p>
-    `;
-  }
-  // ===== SENIOR SCHOOL (10-12): Component-Based Analysis =====
-  else {
-    // Calculate component averages across all courses
-    let caSum = 0, pwSum = 0, etSum = 0, fsSum = 0;
-    let caCount = 0, pwCount = 0, etCount = 0, fsCount = 0;
-    
-    // Track course scores for ranking
-    const courseScores = [];
-
-    list.forEach(m => {
-      if (m.continuousAssessment !== null && m.continuousAssessment !== undefined) {
-        caSum += Number(m.continuousAssessment);
-        caCount++;
-      }
-      if (m.projectWork !== null && m.projectWork !== undefined) {
-        pwSum += Number(m.projectWork);
-        pwCount++;
-      }
-      if (m.endTermExam !== null && m.endTermExam !== undefined) {
-        etSum += Number(m.endTermExam);
-        etCount++;
-      }
-      const fs = calculateSeniorSchoolFinalScore(m);
-      if (fs !== null) {
-        fsSum += fs;
-        fsCount++;
-        courseScores.push({
-          course: (m.course || "Unknown").replace(/-/g, " "),
-          score: fs
-        });
-      }
-    });
-
-    
-
-    const caAvg = caCount > 0 ? (caSum / caCount).toFixed(1) : 0;
-    const pwAvg = pwCount > 0 ? (pwSum / pwCount).toFixed(1) : 0;
-    const etAvg = etCount > 0 ? (etSum / etCount).toFixed(1) : 0;
-    const fsAvg = fsCount > 0 ? (fsSum / fsCount).toFixed(2) : 0;
-    const overallSubLevel = getPerformanceSubdivision(fsAvg);
-    const overallMainLevel = scoreToPerformanceLevel(fsAvg);
-
-    // Identify strongest and weakest subjects (courses) based on score thresholds
-    courseScores.sort((a, b) => b.score - a.score); // Sort descending for strengths
-    const topStrengths = courseScores.filter(s => s.score >= 80);
-    const areasToImprove = courseScores.filter(s => s.score < 50).sort((a, b) => a.score - b.score); // Sort ascending for weaknesses
-
-    // Build HTML for strengths
-    let strengthsHtml = topStrengths.length
-      ? topStrengths.map(s => `
-          <span style="color:green;font-weight:bold;">
-            ${s.course} (${s.score}%)
-            ${createProgressBar(s.score, "green")}
-          </span>
-        `).join("<br>")
-      : "No courses above 80%.";
-
-    // Build HTML for areas to improve
-    let improveHtml = areasToImprove.length
-      ? areasToImprove.map(s => `
-          <span style="color:red;font-weight:bold;">
-            ${s.course} (${s.score}%)
-            ${createProgressBar(s.score, "red")}
-          </span>
-        `).join("<br>")
-      : "No courses below 50%.";
-
-    summary.innerHTML = `
-      <hr>
-      <h4 style="text-align:center;">📊 COMPONENT ANALYSIS (Weighted Assessment)</h4>
-      <p><strong>Overall Final Score:</strong> ${fsAvg}%</p>
-      <p><strong>Overall Performance Level:</strong> ${overallSubLevel} (${getPerformanceLevelLabel(overallMainLevel)})</p>
-      <br>
-      <div class="table-scroll-wrapper">
-      <table style="width:100%;border-collapse:collapse;margin:10px 0;">
-        <tr style="background:#f5f5f5;">
-          <th style="border:1px solid #ddd;padding:8px;text-align:left;">Component</th>
-          <th style="border:1px solid #ddd;padding:8px;text-align:center;">Your Average</th>
-          <th style="border:1px solid #ddd;padding:8px;text-align:center;">Weight</th>
-        </tr>
-        <tr>
-          <td style="border:1px solid #ddd;padding:8px;">Continuous Assessment (CATs, Quizzes)</td>
-          <td style="border:1px solid #ddd;padding:8px;text-align:center;"><strong>${caAvg}%</strong> ${createProgressBar(caAvg, caAvg >= 65 ? "green" : "orange")}</td>
-          <td style="border:1px solid #ddd;padding:8px;text-align:center;">30%</td>
-        </tr>
-        <tr>
-          <td style="border:1px solid #ddd;padding:8px;">Project Work / Performance Tasks</td>
-          <td style="border:1px solid #ddd;padding:8px;text-align:center;"><strong>${pwAvg}%</strong> ${createProgressBar(pwAvg, pwAvg >= 65 ? "green" : "orange")}</td>
-          <td style="border:1px solid #ddd;padding:8px;text-align:center;">20%</td>
-        </tr>
-        <tr>
-          <td style="border:1px solid #ddd;padding:8px;">End-Term Examination</td>
-          <td style="border:1px solid #ddd;padding:8px;text-align:center;"><strong>${etAvg}%</strong> ${createProgressBar(etAvg, etAvg >= 65 ? "green" : "orange")}</td>
-          <td style="border:1px solid #ddd;padding:8px;text-align:center;">50%</td>
-        </tr>
-      </table>
-      </div>
-      <br>
-      <p><strong>✅ TOP STRENGTHS (Courses Above 80%):</strong><br>${strengthsHtml}</p>
-      <br>
-      <p><strong>⚠️ AREAS TO IMPROVE (Courses Below 50%):</strong><br>${improveHtml}</p>
-    `;
-  }
-
-  wrapper.appendChild(summary);
-
-  marksContainer.appendChild(wrapper);
-});
-
   } catch (err) {
-    console.error("Error fetching marks:", err);
+    console.error("Display tables error:", err);
     marksContainer.textContent = "Error fetching marks. Please try again later.";
+  } finally {
+    hideSpinner();
   }
-
-  hideSpinner();
 };
 
 
@@ -893,37 +823,28 @@ Object.entries(grouped).forEach(([key, list]) => {
   // FILTER & REFRESH BUTTONS
   // ---------------------------
   document.getElementById("applyFiltersBtn")?.addEventListener("click", displayStudentTables);
+  
   const refreshBtnEl = document.getElementById("refreshBtn");
-  refreshBtnEl?.addEventListener("click", () => {
-    localStorage.removeItem("student_dashboard_cache"); // Clear cache on explicit refresh
-    refreshBtnEl.disabled = true;
-    refreshBtnEl.classList.add("spinning");
-    setTimeout(() => {
-      displayStudentTables();
-      refreshBtnEl.disabled = false;
-      refreshBtnEl.classList.remove("spinning");
-    }, 1000);
-  });
+  if (refreshBtnEl) {
+    refreshBtnEl.addEventListener("click", () => {
+      localStorage.removeItem(CACHE_KEY); // Clear cache on explicit refresh
+      refreshBtnEl.disabled = true;
+      refreshBtnEl.classList.add("spinning");
+      window.location.reload();
+    });
+  }
 
   // ---------------------------
   // LOGOUT
   // ---------------------------
   document.getElementById("logoutBtn")?.addEventListener("click", () => {
-    localStorage.removeItem("token");
-    localStorage.removeItem("loggedInUser");
-    localStorage.removeItem("student_dashboard_cache"); // Clear cache on logout
+    localStorage.clear();
     window.location.href = "/login";
   });
 
   // ---------------------------
-  // INITIAL DISPLAY
+  // INITIALIZATION
   // ---------------------------
-  console.log("📊 Dashboard Initialization Complete!");
-  console.log("Data Loaded:", {
-    user: user?.name,
-    enrollment: studentEnrollment?.grade,
-    school: schoolNameEl?.textContent,
-    fees: feeInfoEl?.textContent
-  });
+  setupTabs();
   displayStudentTables();
 });

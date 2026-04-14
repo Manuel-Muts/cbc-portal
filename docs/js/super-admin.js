@@ -392,6 +392,7 @@ document.addEventListener("DOMContentLoaded", () => {
           <label>Logo</label>
           <input type="file" id="newSchoolLogo" accept="image/*">
           <label><input type="checkbox" id="newSchoolRegistrationOpen" checked> Allow Student Registrations</label>
+          <label><input type="checkbox" id="newSchoolAllowSignatureUpload" checked> Allow Signature Uploads</label>
           <button id="saveSchoolBtn" class="primary-btn">Save</button>
           <button class="close-btn" onclick="closeAddModal()">Cancel</button>
         </div>
@@ -409,6 +410,7 @@ document.addEventListener("DOMContentLoaded", () => {
           <label>Logo</label>
           <input type="file" id="editSchoolLogo" accept="image/*">
           <label><input type="checkbox" id="editSchoolRegistrationOpen"> Allow Student Registrations</label>
+          <label><input type="checkbox" id="editSchoolAllowSignatureUpload"> Allow Signature Uploads</label>
           <button id="updateSchoolBtn" class="primary-btn">Update</button>
           <button id="cancelEditSchoolBtn" class="close-btn">Cancel</button>
         </div>
@@ -450,6 +452,7 @@ document.addEventListener("DOMContentLoaded", () => {
       formData.append("adminEmail", adminEmail);
       formData.append("address", address);
       formData.append("registrationOpen", document.getElementById("newSchoolRegistrationOpen").checked);
+      formData.append("allowSignatureUpload", document.getElementById("newSchoolAllowSignatureUpload").checked);
       if (logoFile) formData.append("logo", logoFile);
 
       await authFetch(`/schools`, {
@@ -523,6 +526,7 @@ document.addEventListener("DOMContentLoaded", () => {
           document.getElementById("editSchoolAdmin").value = school.adminEmail;
           document.getElementById("editSchoolAddress").value = school.address || '';
           document.getElementById("editSchoolRegistrationOpen").checked = school.registrationOpen !== false;
+          document.getElementById("editSchoolAllowSignatureUpload").checked = school.allowSignatureUpload !== false;
           document.getElementById("editSchoolModal").classList.remove("hidden");
 
           // Show paybill modal if needed
@@ -541,6 +545,7 @@ document.addEventListener("DOMContentLoaded", () => {
             formData.append("adminEmail", adminEmail);
             formData.append("address", address);
             formData.append("registrationOpen", document.getElementById("editSchoolRegistrationOpen").checked);
+            formData.append("allowSignatureUpload", document.getElementById("editSchoolAllowSignatureUpload").checked);
             if (logoFile) formData.append("logo", logoFile);
 
             await authFetch(`/schools/${id}`, {

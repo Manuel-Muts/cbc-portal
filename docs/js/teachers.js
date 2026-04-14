@@ -9,15 +9,13 @@
   
   const API_BASE = config.api.baseURL;
   const token = localStorage.getItem("token");
-  
+
   console.log("🔑 Token from localStorage:", token ? `${token.substring(0, 20)}...` : "NOT FOUND");
   console.log("📍 API Base URL:", API_BASE);
   
   let submittedMarks = []; // in-memory marks list
   let editingMarkId = null;
   let teacher = null;
-  let teacherSchoolId = null; // ✅ declared globally
-  let selectedStudentStream = null; // 🆕 Store the student's stream when selected
 
   // ---------------------------
   // DOM ELEMENTS
@@ -43,8 +41,29 @@
   const logoutBtn = document.getElementById("logoutBtn");
   const submittedMarksContainer = document.getElementById("submittedMarksContainer");
 
-  // Smart refresh & toast elements
-  const smartRefreshBtn = document.getElementById("smartRefreshBtn");
+  // ---------------------------
+  // HELPER FUNCTIONS (Logic Consolidation)
+  // ---------------------------
+  // ---------------------------
+  // TAB LOGIC
+  // ---------------------------
+  function setupTabs() {
+    const tabBtns = document.querySelectorAll(".tab-btn");
+    const tabPanes = document.querySelectorAll(".tab-pane");
+
+    tabBtns.forEach(btn => {
+      btn.addEventListener("click", () => {
+        const target = btn.dataset.tab;
+
+        tabBtns.forEach(b => b.classList.remove("active"));
+        tabPanes.forEach(p => p.classList.remove("active"));
+
+        btn.classList.add("active");
+        const activePane = document.getElementById(target);
+        if (activePane) activePane.classList.add("active");
+      });
+    });
+  }
 
   // ---------------------------
   // SET DEFAULT YEAR TO CURRENT YEAR (AUTO & READ-ONLY)
@@ -98,18 +117,19 @@
         if (Date.now() - timestamp < CACHE_DURATION) {
           console.log("✅ Using cached teacher profile");
           teacher = data;
-          teacherSchoolId = teacher.schoolId;
           window.currentTeacher = teacher;
           updateTeacherNameUI();
 
-          // 🆕 Dean Access Logic (from cache)
           if (teacher.isDean) {
             const deanBtn = document.getElementById("deanDashboardBtn");
             if (deanBtn) deanBtn.style.display = "inline-block";
           }
-          return;
+
+          return; // ✅ IMPORTANT: stop execution here
         }
-      } catch (e) { console.warn("Cache read error:", e); }
+      } catch (e) {
+        console.warn("Cache parse error:", e);
+      }
     }
 
     try {
@@ -136,8 +156,7 @@
       }));
       
       teacher = data;
-      teacherSchoolId = teacher.schoolId; // ✅ assign here
-      if (!teacherSchoolId) {
+      if (!teacher.schoolId) {
         console.error("Teacher profile missing schoolId:", teacher);
         return redirectToLogin();
       }
@@ -153,21 +172,109 @@
         const deanBtn = document.getElementById("deanDashboardBtn");
         if (deanBtn) deanBtn.style.display = "inline-block";
       }
+
     } catch (err) {
-      console.error("Dashboard auth error:", err);
+      console.error("❌ Error loading teacher profile:", err);
       redirectToLogin();
     }
   }
 
-  function updateTeacherNameUI() {
+    function updateTeacherNameUI() {
     const teacherNameEl = document.getElementById("teacherName");
-    if (teacherNameEl) {
-      const displayName = teacher.name ? teacher.name.toUpperCase() : "TEACHER";
-      teacherNameEl.textContent = displayName;
-      console.log("✅ Teacher name set to:", displayName);
-    } else {
-      console.warn("⚠️ teacherName element not found in DOM");
+    if (teacherNameEl && teacher) {
+      teacherNameEl.innerHTML = `
+        <span>${(teacher.name || "TEACHER").toUpperCase()}</span>
+        <button id="headerRefreshBtn" title="Refresh Dashboard" style="background:none; border:none; cursor:pointer; margin-left:10px; font-size:1.1rem; color:inherit; vertical-align:middle; transition: transform 0.5s ease;">
+          🔄
+        </button>
+      `;
+
+      document.getElementById("headerRefreshBtn")?.addEventListener("click", (e) => {
+        const btn = e.currentTarget;
+        btn.style.transform = "rotate(360deg)";
+        
+        setTimeout(() => {
+          localStorage.removeItem("teacher_allocations_cache");
+          localStorage.removeItem("teacher_profile_cache");
+          localStorage.removeItem("teacher_school_cache");
+          localStorage.removeItem("teacher_marks_cache");
+          localStorage.removeItem("teacher_materials_cache");
+          window.location.reload();
+        }, 500);
+      });
     }
+  }
+
+  function renderSignatureUI(user) {
+    const container = document.getElementById("allocationsContainer");
+    if (!container || !user) return;
+
+    // Check if signature UI already exists
+    if (document.getElementById("signatureUploadContainer")) return;
+
+    const sigHtml = `
+      <div id="signatureUploadContainer" style="flex: 0 0 auto; text-align: center; border: 1px solid #cbd5e0; padding: 12px; border-radius: 8px; background: #fff;">
+        <p style="font-size: 0.75rem; font-weight: bold; color: #4a5568; margin-bottom: 8px; text-transform: uppercase;">Digital Signature</p>
+        <div id="signaturePreview" style="margin-bottom: 10px; min-height: 40px; display: flex; align-items: center; justify-content: center;">
+          ${user.signatureUrl ? 
+            `<img src="${user.signatureUrl}" style="max-height: 40px; border-bottom: 1px solid #eee;">` : 
+            `<span style="font-size: 0.75rem; color: #a0aec0; font-style: italic;">No signature set</span>`
+          }
+        </div>
+        
+        <input type="file" id="signatureUploadInput" accept="image/*" style="display:none">
+        <button type="button" id="triggerSignatureUpload" class="btn secondary-btn" style="padding: 5px 12px; font-size: 0.85rem;">
+          ${user.signatureUrl ? 'Change Signature' : 'Upload Signature'}
+        </button>
+      </div>
+    `;
+    container.insertAdjacentHTML('beforeend', sigHtml);
+
+
+    // Add listener for the button to trigger input click (Fixes CSP script-src-attr violation)
+    document.getElementById('triggerSignatureUpload')?.addEventListener('click', () => {
+        document.getElementById('signatureUploadInput')?.click();
+    });
+
+    document.getElementById('signatureUploadInput')?.addEventListener('change', async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        if (file.size > 2 * 1024 * 1024) {
+            return showToast("Signature image must be under 2MB", "error");
+        }
+
+        showToast("Uploading signature...", "info");
+        
+        const formData = new FormData();
+        formData.append("file", file);
+
+        try {
+            // Upload file to Cloudinary
+            const res = await fetch(`${API_BASE}/materials/upload-raw`, {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${token}` },
+                body: formData
+            });
+
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.message || "Upload failed");
+
+            // Save the Cloudinary URL to the user profile
+            await fetch(`${API_BASE}/users/profile/signature`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                body: JSON.stringify({ signatureUrl: data.url, signaturePublicId: data.public_id })
+            });
+
+            // Clear cache so the new signature is fetched on reload
+            localStorage.removeItem("teacher_profile_cache");
+            showToast("✅ Signature updated successfully!", "success");
+            setTimeout(() => window.location.reload(), 1500);
+        } catch (err) {
+            showToast(err.message, "error");
+        }
+    });
   }
 
   // ---------------------------
@@ -184,8 +291,9 @@
       try {
         const { timestamp, data } = JSON.parse(cached);
         if (Date.now() - timestamp < CACHE_DURATION) {
-          updateSchoolNameUI(data);
           window.currentSchool = data;
+          updateSchoolNameUI(data);
+          updateTeacherNameUI();
           return;
         }
       } catch (e) {}
@@ -205,9 +313,10 @@
         data: school
       }));
 
-      updateSchoolNameUI(school);
-      // Optional: expose globally if needed elsewhere
       window.currentSchool = school;
+      updateSchoolNameUI(school);
+      // Refresh teacher UI to include the school name in the unified header
+      updateTeacherNameUI();
     } catch (err) {
       console.error("Load school error:", err);
     }
@@ -274,7 +383,13 @@
       console.error("❌ Load allocations error:", err);
       const container = document.getElementById("allocationsContainer");
       if (container) {
-        container.innerHTML = `<p style="color: red;">❌ Failed to load allocations: ${err.message}</p><p style="font-size: 0.8rem; color: #666;">Check browser console for details</p>`;
+        let errorEl = document.getElementById("allocationsErrorDisplay");
+        if (!errorEl) {
+            errorEl = document.createElement("div");
+            errorEl.id = "allocationsErrorDisplay";
+            container.prepend(errorEl);
+        }
+        errorEl.innerHTML = `<p style="color: red;">❌ Failed to load allocations: ${err.message}</p>`;
       }
     }
   }
@@ -297,7 +412,22 @@
     const container = document.getElementById("allocationsContainer");
     if (!container) return;
 
-    let html = '<div style="margin-top: 10px;">';
+    // Use a sub-container for allocations info to avoid wiping siblings like signature UI
+    let infoWrapper = document.getElementById("allocationsInfoDisplay");
+    if (!infoWrapper) {
+      infoWrapper = document.createElement("div");
+      infoWrapper.id = "allocationsInfoDisplay";
+      infoWrapper.style.flex = "1";
+      infoWrapper.style.minWidth = "250px";
+      infoWrapper.style.padding = "12px";
+      infoWrapper.style.border = "1px solid #cbd5e0";
+      infoWrapper.style.borderRadius = "8px";
+      infoWrapper.style.background = "#ffffff";
+      infoWrapper.style.boxShadow = "0 2px 4px rgba(0,0,0,0.05)";
+      container.prepend(infoWrapper);
+    }
+
+    let html = '<div style="height: 100%;">';
 
     // Class Teacher Assignment
     if (data.classTeacherAssignment) {
@@ -312,7 +442,7 @@
     }
 
     html += '</div>';
-    container.innerHTML = html;
+    infoWrapper.innerHTML = html;
   }
 
   function redirectToLogin() {
@@ -443,9 +573,30 @@
   // ---------------------------
   // NEW: LOAD STUDENTS FOR SELECTED SUBJECT
   // ---------------------------
-  async function loadStudentsForSubject(classLabel, page = 1) {
+  async function loadStudentsForSubject(classLabel, page = 1, forceRefresh = false) {
     try {
       console.log(`📚 Loading students for class: ${classLabel} (Page ${page})`);
+
+      const CACHE_KEY = `students_cache_${classLabel}_p${page}`;
+      const CACHE_DURATION = 10 * 60 * 1000; // 10 minutes
+
+      if (!forceRefresh) {
+        const cached = localStorage.getItem(CACHE_KEY);
+        if (cached) {
+          try {
+            const { timestamp, data } = JSON.parse(cached);
+            if (Date.now() - timestamp < CACHE_DURATION) {
+              console.log("✅ Using cached student list");
+              loadedStudents = data.students || data;
+              currentStudentPage = data.currentPage || page;
+              return data;
+            }
+          } catch (e) {
+            console.warn("Student cache parse error:", e);
+          }
+        }
+      }
+
       console.log("📝 Academic Year:", new Date().getFullYear());
       
       const res = await fetch(`${API_BASE}/enrollments/class/${classLabel}?page=${page}&limit=${STUDENTS_PER_PAGE}`, {
@@ -464,6 +615,12 @@
       
       const data = await res.json();
       
+      // Save to cache
+      localStorage.setItem(CACHE_KEY, JSON.stringify({
+        timestamp: Date.now(),
+        data: data
+      }));
+
       // Handle paginated response
       if (data.students) {
         loadedStudents = data.students;
@@ -536,9 +693,7 @@
     }
 
     // Determine if senior school based on first student's grade
-    const gradeMatch = (students[0].grade || "").toString().match(/\d+/);
-    const gradeNum = gradeMatch ? parseInt(gradeMatch[0]) : 0;
-    const isSeniorSchool = gradeNum >= 10 && gradeNum <= 12;
+    const isSeniorSchool = cbcUtils.isSeniorGrade(students[0].grade);
 
     // 🆕 Update table title to show selected subject
     const marksControlsSection = document.querySelector('.marks-controls');
@@ -601,32 +756,8 @@
         const finalInput = row.querySelector(".final-input");
 
         const updateFinal = () => {
-          const ca = caInput.value ? parseFloat(caInput.value) : null;
-          const pw = pwInput.value ? parseFloat(pwInput.value) : null;
-          const exam = examInput.value ? parseFloat(examInput.value) : null;
-
-          let totalScore = 0;
-          let totalWeight = 0;
-
-          if (ca !== null) {
-            totalScore += ca * 0.3;
-            totalWeight += 0.3;
-          }
-          if (pw !== null) {
-            totalScore += pw * 0.2;
-            totalWeight += 0.2;
-          }
-          if (exam !== null) {
-            totalScore += exam * 0.5;
-            totalWeight += 0.5;
-          }
-
-          if (totalWeight === 0) {
-            finalInput.value = "";
-          } else {
-            const final = totalScore / totalWeight;
-            finalInput.value = final.toFixed(2);
-          }
+          const score = cbcUtils.calculateFinalScore(caInput.value, pwInput.value, examInput.value);
+          finalInput.value = score > 0 ? score : "";
         };
 
         caInput.addEventListener("input", updateFinal);
@@ -897,37 +1028,35 @@ if (!marksAssessmentSelect.value) {
   }
 
   async function loadStudentsWithPage(page) {
-  try {
-    const response = await loadStudentsForSubject(selectedAllocationData.classLabel, page);
-    const students = response.students || response;
-    const totalPages = response.totalPages || 1;
+    try {
+      const response = await loadStudentsForSubject(selectedAllocationData.classLabel, page);
+      const students = response.students || response;
+      const totalPages = response.totalPages || 1;
 
-    displayStudentsInMarksTable(students);
+      displayStudentsInMarksTable(students);
 
-    // Update pagination UI explicitly
-    let paginationEl = document.getElementById("studentsPagination");
-    if (paginationEl) {
-      const prevBtn = document.getElementById("prevStudentsBtn");
-      const nextBtn = document.getElementById("nextStudentsBtn");
-      const span = paginationEl.querySelector("span");
-      
-      if (prevBtn) prevBtn.disabled = page <= 1;
-      if (nextBtn) nextBtn.disabled = page >= totalPages;
-      if (span) span.textContent = `Page ${page} of ${totalPages}`;
-      currentStudentPage = page;
-    }
-
-  if (students.length > 0) {
-    showToast(`✅ Loaded ${students.length} Learner(s) from ${selectedAllocationData.classLabel}`, "success");
-  } else {
-    showToast(`⚠️ No Learners found in ${selectedAllocationData.classLabel}`, "warning");
-  }
-
-} catch (err) {
-  showToast("❌ Failed to load Learners: " + err.message, "error");
-
+      // Update pagination UI explicitly
+      let paginationEl = document.getElementById("studentsPagination");
+      if (paginationEl) {
+        const prevBtn = document.getElementById("prevStudentsBtn");
+        const nextBtn = document.getElementById("nextStudentsBtn");
+        const span = paginationEl.querySelector("span");
+        
+        if (prevBtn) prevBtn.disabled = page <= 1;
+        if (nextBtn) nextBtn.disabled = page >= totalPages;
+        if (span) span.textContent = `Page ${page} of ${totalPages}`;
+        currentStudentPage = page;
       }
-}
+
+      if (students.length > 0) {
+        showToast(`✅ Loaded ${students.length} Learner(s) from ${selectedAllocationData.classLabel}`, "success");
+      } else {
+        showToast(`⚠️ No Learners found in ${selectedAllocationData.classLabel}`, "warning");
+      }
+    } catch (err) {
+      showToast("❌ Failed to load Learners: " + err.message, "error");
+    }
+  }
 
   // ---------------------------
   // NEW: SUBMIT ALL MARKS
@@ -961,10 +1090,7 @@ if (!marksAssessmentSelect.value) {
       const term = marksTermSelect.value;
       const assessment = marksAssessmentSelect.value;
 
-      // Get marks based on school level
-      const gradeMatch = (grade || "").toString().match(/\d+/);
-      const gradeNum = gradeMatch ? parseInt(gradeMatch[0]) : 0;
-      const isSeniorSchool = gradeNum >= 10 && gradeNum <= 12;
+      const isSeniorSchool = isSeniorGrade(grade);
 
       let mark = {
         admissionNo: admission,
@@ -1009,27 +1135,7 @@ if (!marksAssessmentSelect.value) {
         mark.continuousAssessment = ca ? Number(ca) : null;
         mark.projectWork = pw ? Number(pw) : null;
         mark.endTermExam = exam ? Number(exam) : null;
-
-        // Calculate final score
-        let totalScore = 0;
-        let totalWeight = 0;
-        if (mark.continuousAssessment !== null) {
-          totalScore += mark.continuousAssessment * 0.3;
-          totalWeight += 0.3;
-        }
-        if (mark.projectWork !== null) {
-          totalScore += mark.projectWork * 0.2;
-          totalWeight += 0.2;
-        }
-        if (mark.endTermExam !== null) {
-          totalScore += mark.endTermExam * 0.5;
-          totalWeight += 0.5;
-        }
-        if (totalWeight > 0) {
-          mark.finalScore = (totalScore / totalWeight).toFixed(2);
-        } else {
-          mark.finalScore = null;
-        }
+        mark.finalScore = cbcUtils.calculateFinalScore(ca, pw, exam) || null;
 
         // Validate component scores
         if (ca && (isNaN(Number(ca)) || Number(ca) < 0 || Number(ca) > 100)) {
@@ -1142,6 +1248,10 @@ if (!marksAssessmentSelect.value) {
         marksTableContainer.style.display = "none";
         subjectAllocationSelect.value = "";
         clearDraft(); // Clear saved draft after successful submission
+
+        // Auto-switch to Submitted Marks tab
+        const submittedTabBtn = document.querySelector('[data-tab="submittedMarks"]');
+        if (submittedTabBtn) submittedTabBtn.click();
       }
     } catch (err) {
       console.error("Submit marks error:", err);
@@ -1276,11 +1386,6 @@ if (!marksAssessmentSelect.value) {
       
       window.currentMarks = submittedMarks;
       displayMarks(submittedMarks);
-      
-      // Ensure all details are visible after loading
-      submittedMarksContainer.querySelectorAll("details").forEach(d => {
-        d.style.display = "";
-      });
     } catch (err) {
       console.error("Load marks error:", err);
       console.error("Error stack:", err.stack);
@@ -1343,9 +1448,6 @@ if (!marksAssessmentSelect.value) {
         pdfBtn.className = 'pdf-btn';
         pdfBtn.textContent = '📄 Download PDF';
         pdfBtn.dataset.key = key;
-        pdfBtn.style.margin = '8px 0';
-        pdfBtn.style.padding = '4px 8px';
-        pdfBtn.style.cursor = 'pointer';
         
         // Determine if senior school to show appropriate table headers
         const gradeMatch = headerInfo.grade.toString().match(/\d+/);
@@ -1374,12 +1476,9 @@ if (!marksAssessmentSelect.value) {
         thead += `<th>Actions</th>
               </tr>
           </thead>`;
-        
         let tbody = `<tbody>
               ${groupMarks.map(m => {
-          const gradeMatch = m.grade.toString().match(/\d+/);
-          const gradeNum = gradeMatch ? parseInt(gradeMatch[0]) : 0;
-          const isSeniorSchool = gradeNum >= 10 && gradeNum <= 12;
+          const isSeniorSchool = cbcUtils.isSeniorGrade(m.grade);
           const subjectDisplay = isSeniorSchool ? `${m.pathway || 'N/A'} - ${m.course || 'N/A'}` : (m.subject || '').replace(/-/g, ' ');
           
           let scoreCell = '';
@@ -1587,18 +1686,6 @@ if (!marksAssessmentSelect.value) {
   });
 
   // ---------------------------
-  // SMART REFRESH
-  // ---------------------------
-  smartRefreshBtn?.addEventListener("click", () => {
-    localStorage.removeItem("teacher_allocations_cache");
-    localStorage.removeItem("teacher_profile_cache");
-    localStorage.removeItem("teacher_school_cache");
-    localStorage.removeItem("teacher_marks_cache");
-    localStorage.removeItem("teacher_materials_cache"); // Clear materials cache if it exists
-    window.location.reload();
-  });
-
-  // ---------------------------
   // TOAST
   // ---------------------------
   function showToast(msg, type = "success") {
@@ -1617,10 +1704,16 @@ if (!marksAssessmentSelect.value) {
     console.log("📝 Step 1: Loading teacher profile...");
     await loadTeacherProfile();
     console.log("✅ Step 1 complete");
+
+    // Initialize Tabs
+    setupTabs();
     
     console.log("📝 Step 2: Loading school name...");
     await loadSchoolName();
     console.log("✅ Step 2 complete");
+
+    // Step 2.5: Render signature UI now that school info is available
+    renderSignatureUI(teacher);
     
     console.log("📝 Step 3: Loading teacher allocations...");
     await loadTeacherAllocations();

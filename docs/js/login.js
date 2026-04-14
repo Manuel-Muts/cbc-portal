@@ -16,19 +16,6 @@ document.addEventListener("DOMContentLoaded", function () {
   const emailLabel = document.getElementById("emailLabel");
   const passwordField = admissionField;
 
-  const redirectPaths = {
-  student: "/student-dashboard",
-  learner: "/student-dashboard",
-  teacher: "/teacher-dashboard",
-  dean: "/dean-dashboard",
-  classteacher: "/analysis",
-  accounts: "/accounts",
-  admin: "/admin",
-  superAdmin: "/super-admin",
-  super_admin: "/super-admin"
-};
-
-
   // ---------------------------
   // ROLE SWITCHING UI
   // ---------------------------
@@ -114,6 +101,9 @@ document.addEventListener("DOMContentLoaded", function () {
       // Login and fetch user + token + schoolId
       const data = await apiRequest("login", "POST", payload);
 
+      // Clear any existing session/cache data from previous users to prevent data leakage
+      localStorage.clear();
+
       // Save user + token + schoolId in localStorage
       localStorage.setItem("token", data.token);
       localStorage.setItem("loggedInUser", JSON.stringify(data.user));
@@ -129,7 +119,8 @@ document.addEventListener("DOMContentLoaded", function () {
       }
 
       // Redirect based on role
-      window.location.href = redirectPaths[selectedRole];
+      const redirectUrl = config.redirects[selectedRole] || config.redirects.learner;
+      window.location.href = redirectUrl;
     } catch (err) {
       console.error(err);
       alert(err.message);
@@ -184,7 +175,8 @@ document.addEventListener("DOMContentLoaded", function () {
 
       alert("Password changed successfully!");
       changePasswordModal.classList.add("hidden");
-      window.location.href = redirectPaths[selectedRole];
+      const redirectUrl = config.redirects[selectedRole] || config.redirects.learner;
+      window.location.href = redirectUrl;
     } catch (err) {
       console.error("Change password error:", err);
       alert(err.message);
@@ -198,13 +190,8 @@ document.addEventListener("DOMContentLoaded", function () {
   // LOGOUT FUNCTION
   // ---------------------------
   function logoutUser() {
-    localStorage.removeItem("token");
-    localStorage.removeItem("loggedInUser");
-    localStorage.removeItem("userRole");
-    localStorage.removeItem("schoolId");
+    localStorage.clear();
     window.location.href = "/login";
   }
-
-  const logoutBtn = document.getElementById("logoutBtn");
-  if (logoutBtn) logoutBtn.addEventListener("click", logoutUser);
+  document.getElementById("logoutBtn")?.addEventListener("click", logoutUser);
 });

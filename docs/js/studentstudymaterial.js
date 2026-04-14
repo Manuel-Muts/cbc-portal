@@ -1,4 +1,17 @@
 document.addEventListener("DOMContentLoaded", () => {
+  // ---------------------------
+  // STYLES FOR COMPACTNESS
+  // ---------------------------
+  const compactStyle = document.createElement("style");
+  compactStyle.textContent = `
+    .materials-table-container table { font-size: 0.82rem !important; border-collapse: collapse; width: 100%; border: 1px solid #e2e8f0; }
+    .materials-table-container th, .materials-table-container td { padding: 5px 8px !important; border: 1px solid #e2e8f0; text-align: left; }
+    .materials-table-container th { background-color: #f8fafc; font-weight: 600; color: #475569; text-transform: uppercase; font-size: 0.72rem; }
+    .download-btn { padding: 3px 6px !important; font-size: 0.7rem !important; border-radius: 4px !important; margin-top: 2px; }
+    .mark-read-link { font-size: 0.75rem !important; display: block; }
+  `;
+  document.head.appendChild(compactStyle);
+
   const gradeFilter = document.getElementById("materialGradeFilter");
   const subjectFilter = document.getElementById("materialSubjectFilter");
   const materialsList = document.getElementById("studyMaterialsList");
@@ -237,16 +250,16 @@ document.addEventListener("DOMContentLoaded", () => {
         
         tableHtml += `
           <tr ${rowStyle}>
-            <td><strong>${m.title}</strong> ${newBadge} ${readBadge}</td>
-            <td>${m.grade}</td>
+            <td><div style="font-weight:600;">${m.title}</div> ${newBadge} ${readBadge}</td>
+            <td style="text-align:center;">${m.grade}</td>
             <td>${m.subject ? m.subject.replace(/-/g, ' ') : '-'}</td>
-            <td>${m.description ? m.description.substring(0, 50) : ''}${m.description && m.description.length > 50 ? '...' : ''}</td>
-            <td>${date}</td>
-            <td>
+            <td title="${m.description || ''}">${m.description ? m.description.substring(0, 40) : ''}${m.description && m.description.length > 40 ? '...' : ''}</td>
+            <td style="white-space:nowrap;">${date}</td>
+            <td style="text-align:center;">
               ${m.file ? `
                 <div class="file-actions">
-                  <a href="${m.file}" target="_blank" class="file-name mark-read-link" data-id="${m._id}" style="color:${isRead ? '#666' : '#007bff'};text-decoration:none;">📄 ${m.fileName || "Download"}</a><br/>
-                  <button class="download-btn" data-id="${m._id}" style="background:#007bff;color:white;border:none;padding:5px 10px;cursor:pointer;border-radius:4px;">⬇️ Download</button>
+                  <a href="${m.file}" target="_blank" class="file-name mark-read-link" data-id="${m._id}" style="color:${isRead ? '#666' : '#007bff'};text-decoration:none;">📄 File</a>
+                  <button class="download-btn" data-id="${m._id}" style="background:#007bff;color:white;border:none;cursor:pointer;">Download</button>
                 </div>
               ` : `<span style="color:#888;">No file</span>`}
             </td>
@@ -293,17 +306,17 @@ document.addEventListener("DOMContentLoaded", () => {
         
         tableHtml += `
           <tr ${rowStyle}>
-            <td><strong>${m.title}</strong> ${newBadge} ${readBadge}</td>
-            <td>${m.grade}</td>
+            <td><div style="font-weight:600;">${m.title}</div> ${newBadge} ${readBadge}</td>
+            <td style="text-align:center;">${m.grade}</td>
             <td>${m.pathway ? m.pathway : '-'}</td>
             <td><strong>${m.course ? m.course.replace(/-/g, ' ') : (m.subject || '-')}</strong></td>
-            <td>${m.description ? m.description.substring(0, 40) : ''}${m.description && m.description.length > 40 ? '...' : ''}</td>
-            <td>${date}</td>
-            <td>
+            <td title="${m.description || ''}">${m.description ? m.description.substring(0, 35) : ''}${m.description && m.description.length > 35 ? '...' : ''}</td>
+            <td style="white-space:nowrap;">${date}</td>
+            <td style="text-align:center;">
               ${m.file ? `
                 <div class="file-actions">
-                  <a href="${m.file}" target="_blank" class="file-name mark-read-link" data-id="${m._id}" style="color:${isRead ? '#666' : '#007bff'};text-decoration:none;">📄 ${m.fileName || "Download"}</a><br/>
-                  <button class="download-btn" data-id="${m._id}" style="background:#007bff;color:white;border:none;padding:5px 10px;cursor:pointer;border-radius:4px;">⬇️ Download</button>
+                  <a href="${m.file}" target="_blank" class="file-name mark-read-link" data-id="${m._id}" style="color:${isRead ? '#666' : '#007bff'};text-decoration:none;">📄 File</a>
+                  <button class="download-btn" data-id="${m._id}" style="background:#007bff;color:white;border:none;cursor:pointer;">Download</button>
                 </div>
               ` : `<span style="color:#888;">No file</span>`}
             </td>

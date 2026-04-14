@@ -50,6 +50,7 @@ export const createSchool = async (req, res) => {
       address, 
       contactNumber,
       registrationOpen: req.body.registrationOpen === undefined ? true : parseBoolean(req.body.registrationOpen),
+      allowSignatureUpload: req.body.allowSignatureUpload === undefined ? true : parseBoolean(req.body.allowSignatureUpload),
       logo,
       logoMimeType 
     });
@@ -277,6 +278,9 @@ export const updateSchool = async (req, res) => {
     if (contactNumber) school.contactNumber = contactNumber;
     if (req.body.registrationOpen !== undefined) {
       school.registrationOpen = parseBoolean(req.body.registrationOpen);
+    }
+    if (req.body.allowSignatureUpload !== undefined) {
+      school.allowSignatureUpload = parseBoolean(req.body.allowSignatureUpload);
     }
 
     // Update logo if uploaded - convert to base64

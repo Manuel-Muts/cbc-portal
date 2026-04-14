@@ -16,8 +16,10 @@ import {
   removeClassTeacher,
   getClassTeacherAllocations,
   getStudentByAdmission,
+  getClassTeacher,
   changePassword,
-  toggleDeanStatus
+  toggleDeanStatus,
+  updateSignature
 } from "../controllers/userController.js";
 
 import verifyToken from "../middleware/verifyToken.js";
@@ -49,6 +51,7 @@ router.use(verifyToken);
 
 router.get("/user", getUser);
 router.put("/change-password", changePassword);
+router.put("/profile/signature", updateSignature);
 
 // ---------------------------
 // STUDENT ROUTES
@@ -75,6 +78,7 @@ router.post("/toggle-dean", requireAdmin, toggleDeanStatus);
 router.post("/classes/assign-teacher", requireAdmin, assignClassTeacher);
 router.post("/classes/remove", requireAdmin, removeClassTeacher);
 router.get("/allocations", getClassTeacherAllocations);
+router.get("/class-teacher", getClassTeacher);
 
 // ---------------------------
 // ACCOUNTS ROUTES

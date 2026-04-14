@@ -7,6 +7,23 @@ import axios from "axios";
 
 // ---------------------------
 // ADD STUDY MATERIAL (Teacher)
+export const uploadRaw = async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ message: "No file uploaded" });
+    }
+
+    // When using multer-storage-cloudinary, req.file contains 'path' (URL) and 'filename' (public_id)
+    res.json({
+      url: req.file.path,
+      public_id: req.file.filename
+    });
+  } catch (err) {
+    console.error("uploadRaw error:", err);
+    res.status(500).json({ message: "Upload processing failed" });
+  }
+};
+
 export const addMaterial = async (req, res) => {
   try {
     const { grade, subject, pathway, course, title, description } = req.body;
@@ -21,10 +38,13 @@ export const addMaterial = async (req, res) => {
       const allowedTypes = [
         "application/pdf",
         "application/msword",
-        "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "image/png",
+        "image/jpeg",
+        "image/jpg"
       ];
       if (!allowedTypes.includes(req.file.mimetype)) {
-        return res.status(400).json({ message: "Only PDF or Word files are allowed" });
+        return res.status(400).json({ message: "Only PDF, Word, or Image files are allowed" });
       }
     }
 

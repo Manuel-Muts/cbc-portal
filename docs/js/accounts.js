@@ -3,6 +3,22 @@
   const API_BASE = config.api.baseURL;
   const token = localStorage.getItem("token");
 
+  // ---------------------------
+  // STYLES FOR COMPACTNESS
+  // ---------------------------
+  const compactStyle = document.createElement("style");
+  compactStyle.textContent = `
+    #feeStructuresTable th, #feeStructuresTable td, 
+    #outstandingFeesTable th, #outstandingFeesTable td { padding: 5px 8px !important; font-size: 0.82rem !important; vertical-align: middle; border-bottom: 1px solid #edf2f7; }
+    #feeStructuresTable th, #outstandingFeesTable th { background-color: #f8fafc; font-weight: 700; color: #64748b; text-transform: uppercase; font-size: 0.7rem; letter-spacing: 0.025em; }
+    .status-badge { padding: 2px 6px !important; font-size: 0.7rem !important; font-weight: 600 !important; border-radius: 4px !important; display: inline-block; }
+    .stat-card { padding: 12px !important; }
+    .stat-card p { font-size: 1.3rem !important; }
+    .card { padding: 15px !important; }
+    .btn { padding: 3px 8px !important; font-size: 0.75rem !important; }
+  `;
+  document.head.appendChild(compactStyle);
+
   if (!token) {
     window.location.href = "/login";
     return;
@@ -54,6 +70,25 @@
   const refreshBtn = document.getElementById("refreshBtn");
   const logoutBtn = document.getElementById("logoutBtn");
   
+  // Tab Logic
+  function setupTabs() {
+    const tabBtns = document.querySelectorAll(".tab-btn");
+    const tabPanes = document.querySelectorAll(".tab-pane");
+
+    tabBtns.forEach(btn => {
+      btn.addEventListener("click", () => {
+        const target = btn.dataset.tab;
+
+        tabBtns.forEach(b => b.classList.remove("active"));
+        tabPanes.forEach(p => p.classList.remove("active"));
+
+        btn.classList.add("active");
+        const activePane = document.getElementById(target);
+        if (activePane) activePane.classList.add("active");
+      });
+    });
+  }
+
   // Post Fee Modal Elements
   const openPostFeeBtn = document.getElementById('openPostFeeBtn');
   const postFeeModal = document.getElementById('postFeeModal');
@@ -277,9 +312,9 @@
           <td>KES ${f.term2Fee.toLocaleString()}</td>
           <td>KES ${f.term3Fee.toLocaleString()}</td>
           <td><strong>KES ${f.totalFee.toLocaleString()}</strong></td>
-          <td>
-            <button class="btn secondary-btn edit-fee-btn" data-id="${f._id}" style="padding: 4px 8px; font-size: 12px; margin-right: 5px;">Edit</button>
-            <button class="btn danger-btn delete-fee-btn" data-id="${f._id}" style="padding: 4px 8px; font-size: 12px;">Delete</button>
+          <td style="white-space: nowrap;">
+            <button class="btn secondary-btn edit-fee-btn" data-id="${f._id}">Edit</button>
+            <button class="btn danger-btn delete-fee-btn" data-id="${f._id}">Delete</button>
           </td>
         </tr>
       `).join('');
@@ -413,11 +448,11 @@
         const totalFee = s.expected || 0;
 
         if (balance <= 0) {
-            statusBadge = `<span class="status-badge status-paid" style="background:#d1fae5; color:#065f46; padding:4px 8px; border-radius:4px; font-size:12px; font-weight:600;">Paid</span>`;
+            statusBadge = `<span class="status-badge status-paid" style="background:#d1fae5; color:#065f46;">Paid</span>`;
         } else if (paidAmount > 0 && balance > 0) {
-            statusBadge = `<span class="status-badge status-partial" style="background:#fef3c7; color:#92400e; padding:4px 8px; border-radius:4px; font-size:12px; font-weight:600;">Partial</span>`;
+            statusBadge = `<span class="status-badge status-partial" style="background:#fef3c7; color:#92400e;">Partial</span>`;
         } else {
-            statusBadge = `<span class="status-badge status-unpaid" style="background:#fee2e2; color:#991b1b; padding:4px 8px; border-radius:4px; font-size:12px; font-weight:600;">Unpaid</span>`;
+            statusBadge = `<span class="status-badge status-unpaid" style="background:#fee2e2; color:#991b1b;">Unpaid</span>`;
         }
 
         return `
@@ -427,7 +462,7 @@
                 <td>${s.className || s.grade || '-'}</td>
                 <td style="text-align: right; font-weight: bold; color: #dc3545;">${balance.toLocaleString('en-KE', { style: 'currency', currency: 'KES' })}</td>
                 <td style="text-align: center;">${statusBadge}</td>
-                <td style="text-align: center;"><button class="btn secondary-btn view-fee-btn" data-id="${studentId}" data-admission="${admission}" data-name="${safeName}" data-grade="${s.className || s.grade || ''}" style="padding: 4px 10px; font-size: 12px;">View</button></td>
+                <td style="text-align: center;"><button class="btn secondary-btn view-fee-btn" data-id="${studentId}" data-admission="${admission}" data-name="${safeName}" data-grade="${s.className || s.grade || ''}">View</button></td>
             </tr>
         `;
     }).join('');
@@ -887,6 +922,7 @@
   });
 
   // Initial Load
+  setupTabs();
   loadDashboardData();
 
   // Download All Fee Structures PDF (this handler was already correct)

@@ -6,6 +6,7 @@
   <title>Teacher Materials</title>
   <!-- Link to your main stylesheet -->
   <link rel="stylesheet" href="css/styles.css" />
+  <link rel="stylesheet" href="css/teachers.css" />
   <style>
     /* Inline styles for dashboard-specific elements */
     body {
@@ -144,6 +145,13 @@
       <p style="color: #7f8c8d; margin-top: 5px;">Upload notes, assignments, and resources for your classes.</p>
     </div>
 
+    <!-- TABS NAVIGATION -->
+    <div class="tabs-nav" style="margin: 0 0 20px 0;">
+      <button class="tab-btn active" data-tab="uploadTab">📤 Upload New Material</button>
+      <button class="tab-btn" data-tab="listTab">📁 Uploaded Materials</button>
+    </div>
+
+    <div id="uploadTab" class="tab-pane active">
     <!-- UPLOAD FORM -->
     <div class="card">
       <h3>📤 Upload New Material</h3>
@@ -218,7 +226,9 @@
         </div>
       </form>
     </div>
+    </div>
 
+    <div id="listTab" class="tab-pane">
     <!-- MATERIALS LIST -->
     <div class="card">
       <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
@@ -249,6 +259,7 @@
           </tbody>
         </table>
       </div>
+    </div>
     </div>
 
   </div>

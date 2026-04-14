@@ -84,14 +84,14 @@ router.get('/school-info', allowSchoolAccess, async (req, res) => {
 
     // Super admin can fetch any school by query ?id=xxxx
     if (req.user.role === "super_admin" && req.query.id) {
-      school = await School.findById(req.query.id).select("name logo logoMimeType address status");
+      school = await School.findById(req.query.id).select("name logo logoMimeType address status signature signatureMimeType");
       if (!school) return res.status(404).json({ message: "School not found" });
     } else {
       // Admin, teacher, classteacher fetch their assigned school
       if (!req.user.schoolId) {
         return res.status(403).json({ message: "No school assigned" });
       }
-      school = await School.findById(req.user.schoolId).select("name logo logoMimeType address status");
+      school = await School.findById(req.user.schoolId).select("name logo logoMimeType address status signature signatureMimeType");
       if (!school) return res.status(404).json({ message: "School not found" });
     }
 
@@ -100,7 +100,9 @@ router.get('/school-info', allowSchoolAccess, async (req, res) => {
       logo: school.logo,
       logoMimeType: school.logoMimeType,
       address: school.address,
-      status: school.status
+      status: school.status,
+      signature: school.signature,
+      signatureMimeType: school.signatureMimeType
     });
   } catch (err) {
     console.error("Fetch School Info Error:", err);

@@ -15,8 +15,15 @@
     <a href="/admin" class="btn secondary-btn">&larr; Back to Dashboard</a>
   </div>
 
+  <!-- Tab Navigation Menu -->
+  <ul class="menu">
+    <li data-section="registerTab" class="active">Register New User</li>
+    <li data-section="userManagement">Registered Users List</li>
+  </ul>
+
   <!-- REGISTER USER CARD -->
-  <div class="card">
+  <div id="registerTab" class="tab-section">
+    <div class="card">
     <h3>Register New User</h3>
     <form id="registerForm">
       <div class="form-group">
@@ -77,9 +84,17 @@
       <div id="registerFeedback" class="feedback"></div>
     </form>
   </div>
+  </div>
 
   <!-- USERS LIST CARD -->
-  <div class="card">
+  <div id="userManagement" class="tab-section" style="display:none;">
+    <div class="card">
+    <ul class="user-type-tabs">
+      <li class="active" data-role="student">Registered Learners</li>
+      <li data-role="teacher">Registered Teachers</li>
+      <li data-role="accounts">Accounts Staff</li>
+      <li data-role="admin">Admins</li>
+    </ul>
     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
       <h3>Registered Users</h3>
       <div style="display:flex; gap: 10px;">
@@ -122,6 +137,7 @@
       <span id="usersPageInfo">Page 1</span>
       <button id="usersNextPage" class="btn secondary-btn" disabled>Next</button>
     </div>
+  </div>
   </div>
 </div>
 

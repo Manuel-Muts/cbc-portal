@@ -372,3 +372,35 @@ tr:hover { background: #f9fafb; }
   color: #2980b9;
   text-align: center;
 }
+
+/* ==========================
+   TABS NAVIGATION
+========================== */
+.tabs-nav {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 15px;
+  border-bottom: 2px solid #e2e8f0;
+  padding-bottom: 8px;
+}
+
+.tab-btn {
+  padding: 10px 20px;
+  border: none;
+  background: #edf2f7;
+  color: #4a5568;
+  border-radius: 8px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.tab-btn:hover { background: #e2e8f0; }
+
+.tab-btn.active {
+  background: #2563eb;
+  color: #fff;
+}
+
+.tab-pane { display: none; }
+.tab-pane.active { display: block; }

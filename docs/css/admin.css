@@ -47,6 +47,39 @@ body {
     border-top: 4px solid var(--primary-color); /* Professional accent border */
 }
 
+/* --- Tabbed Navigation --- */
+.menu {
+    display: flex;
+    list-style: none;
+    padding: 0;
+    margin: 0 0 20px 0;
+    background: #fff;
+    border-bottom: 2px solid var(--border-color);
+    gap: 10px;
+    overflow-x: auto;
+}
+
+.menu li {
+    padding: 12px 24px;
+    cursor: pointer;
+    font-weight: 600;
+    color: var(--secondary-color);
+    border-bottom: 3px solid transparent;
+    transition: all 0.3s ease;
+    white-space: nowrap;
+}
+
+.menu li:hover {
+    color: var(--primary-color);
+    background: rgba(0, 120, 212, 0.05);
+}
+
+.menu li.active {
+    color: var(--primary-color);
+    border-bottom-color: var(--primary-color);
+    background: transparent;
+}
+
 /* Header Buttons Container */
 .header > div:last-child {
     position: absolute;
@@ -169,6 +202,16 @@ th {
 }
 tr:hover {
     background-color: #e8f0fe; /* Slight blue tint on hover */
+}
+
+/* --- Content Transitions --- */
+#contentArea {
+    animation: fadeIn 0.3s ease-in-out;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(5px); }
+    to { opacity: 1; transform: translateY(0); }
 }
 
 /* --- Layout Helpers --- */

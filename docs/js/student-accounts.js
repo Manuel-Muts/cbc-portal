@@ -3,6 +3,19 @@
   const API_BASE = config.api.baseURL;
   const token = localStorage.getItem("token");
 
+  // ---------------------------
+  // STYLES FOR COMPACTNESS
+  // ---------------------------
+  const compactStyle = document.createElement("style");
+  compactStyle.textContent = `
+    #accountsTable th, #accountsTable td { padding: 5px 10px !important; font-size: 0.82rem !important; vertical-align: middle; border-bottom: 1px solid #edf2f7; }
+    #accountsTable th { background-color: #f8fafc; font-weight: 700; color: #64748b; text-transform: uppercase; font-size: 0.7rem; letter-spacing: 0.025em; }
+    .money-col { font-weight: 700 !important; color: #0f172a !important; }
+    .bf-badge { font-size: 0.65rem !important; padding: 1px 4px !important; border-radius: 3px !important; margin-left: 4px; }
+    .btn { padding: 3px 8px !important; font-size: 0.75rem !important; }
+  `;
+  document.head.appendChild(compactStyle);
+
   if (!token) {
     window.location.href = "/login";
     return;
@@ -201,14 +214,14 @@
         <td>${cls}</td>
         <td class="money-col">${formatMoney(expected)}</td>
         <td class="money-col">${formatMoney(paid)}</td>
-        <td class="money-col" style="font-weight:bold; color:${balance > 0 ? '#dc3545' : '#28a745'}">
+        <td class="money-col" style="font-weight:bold; color:${balance > 0 ? '#dc3545' : '#15803d'}">
           ${formatMoney(balance)}
           ${bfBadge}
         </td>
-        <td>
-          <button class="btn primary-btn pay-btn" data-admission="${adm}" data-name="${name.replace(/'/g, "\\'")}" data-balance="${balance}" style="padding:4px 8px; font-size:12px;">Pay</button>
-          <button class="btn secondary-btn ledger-btn" data-admission="${adm}" data-name="${name.replace(/'/g, "\\'")}" style="padding:4px 8px; font-size:12px;">Ledger</button>
-          ${balance <= 0 ? `<button class="btn secondary-btn view-fee-btn" data-admission="${adm}" data-name="${name.replace(/'/g, "\\'")}" data-grade="${cls}" style="padding:4px 8px; font-size:12px;">View</button>` : ''}
+        <td style="white-space: nowrap;">
+          <button class="btn primary-btn pay-btn" data-admission="${adm}" data-name="${name.replace(/'/g, "\\'")}" data-balance="${balance}">Pay</button>
+          <button class="btn secondary-btn ledger-btn" data-admission="${adm}" data-name="${name.replace(/'/g, "\\'")}">Ledger</button>
+          ${balance <= 0 ? `<button class="btn secondary-btn view-fee-btn" data-admission="${adm}" data-name="${name.replace(/'/g, "\\'")}" data-grade="${cls}">View</button>` : ''}
         </td>
       `;
       frag.appendChild(tr);

@@ -5,6 +5,7 @@ import { School } from "../models/school.js";
 import StudentEnrollment from "../models/StudentEnrollment.js";
 import { calculateBalance } from "../services/balanceService.js";
 import PDFDocument from 'pdfkit';
+import axios from "axios"; // Import axios
 import Payment from "../models/Payment.js";
 import { PassThrough } from 'stream';
 import cache from "../utils/simpleCache.js";
@@ -152,6 +153,11 @@ export const generateStudentFeesPDF = async (req, res) => {
       return res.status(404).json({ message: 'School not found' });
     }
 
+    // --- Fetch Headteacher Signature (once) ---
+    let headteacherSignatureBase64 = null;
+    if (school.headteacherSignatureUrl) {
+      headteacherSignatureBase64 = await getImageBase64FromUrl(school.headteacherSignatureUrl);
+    }
     const { class: classFilter, term } = req.query;
     const currentAcademicYear = new Date().getFullYear();
 
@@ -263,6 +269,31 @@ export const generateStudentFeesPDF = async (req, res) => {
     }
     doc.moveDown(2);
 
+    // Helper to parse classLabel into grade and stream
+    const parseClassLabel = (label) => {
+      const match = label.match(/Grade\s*(\d+)([A-Z])?/i);
+      if (match) {
+        return { grade: match[1], stream: match[2] || null };
+      }
+      return { grade: label, stream: null }; // Fallback
+    };
+
+    // --- Fetch Class Teacher Signature (if classFilter is present) ---
+    let classTeacherSignatureBase64 = null;
+    let classTeacherName = null;
+    if (classFilter) {
+      const { grade: parsedGrade, stream: parsedStream } = parseClassLabel(classFilter);
+      const classTeacher = await User.findOne({
+        schoolId: req.user.schoolId,
+        assignedClass: parsedGrade,
+        assignedStream: parsedStream,
+        isClassTeacher: true
+      }).select("name signatureUrl");
+      if (classTeacher && classTeacher.signatureUrl) {
+        classTeacherSignatureBase64 = await getImageBase64FromUrl(classTeacher.signatureUrl);
+        classTeacherName = classTeacher.name;
+      }
+    }
     if (studentData.length === 0) {
       doc.fontSize(12).text('No students found.', { align: 'center' });
     } else {
@@ -353,6 +384,30 @@ export const generateStudentFeesPDF = async (req, res) => {
         console.error('Error generating student fees PDF rows:', err);
         // Continue with summary even if row generation fails
       }
+
+      // --- Add Signatures to the last page ---
+      doc.addPage(); // Ensure signatures are on a new page
+      let signatureY = doc.y + 50; // Starting Y position for signatures
+
+      // Headteacher Signature
+      if (headteacherSignatureBase64) {
+        doc.image(headteacherSignatureBase64, doc.page.width / 2 - 75, signatureY, { width: 150 });
+        signatureY += 50; // Move down for text
+        doc.fontSize(10).text('__________________________', doc.page.width / 2 - 75, signatureY, { align: 'center' });
+        signatureY += 15;
+        doc.fontSize(10).text('Headteacher/Principal Signature', doc.page.width / 2 - 75, signatureY, { align: 'center' });
+        signatureY += 30;
+      }
+
+      // Class Teacher Signature
+      if (classTeacherSignatureBase64) {
+        doc.image(classTeacherSignatureBase64, doc.page.width / 2 - 75, signatureY, { width: 150 });
+        signatureY += 50;
+        doc.fontSize(10).text('__________________________', doc.page.width / 2 - 75, signatureY, { align: 'center' });
+        signatureY += 15;
+        doc.fontSize(10).text(`Class Teacher: ${classTeacherName || ''}`, doc.page.width / 2 - 75, signatureY, { align: 'center' });
+      }
+
 
       // Summary section on new page
       doc.addPage();
@@ -566,6 +621,11 @@ export const generateOutstandingFeesPDF = async (req, res) => {
       return res.status(404).json({ message: 'School not found' });
     }
 
+    // --- Fetch Headteacher Signature (once) ---
+    let headteacherSignatureBase64 = null;
+    if (school.headteacherSignatureUrl) {
+      headteacherSignatureBase64 = await getImageBase64FromUrl(school.headteacherSignatureUrl);
+    }
     const { name, class: classFilter, term } = req.query;
     const currentAcademicYear = new Date().getFullYear();
 
@@ -709,6 +769,32 @@ export const generateOutstandingFeesPDF = async (req, res) => {
     }
     doc.moveDown(2);
 
+    // Helper to parse classLabel into grade and stream
+    const parseClassLabel = (label) => {
+      const match = label.match(/Grade\s*(\d+)([A-Z])?/i);
+      if (match) {
+        return { grade: match[1], stream: match[2] || null };
+      }
+      return { grade: label, stream: null }; // Fallback
+    };
+
+    // --- Fetch Class Teacher Signature (if classFilter is present) ---
+    let classTeacherSignatureBase64 = null;
+    let classTeacherName = null;
+    if (classFilter) {
+      const { grade: parsedGrade, stream: parsedStream } = parseClassLabel(classFilter);
+      const classTeacher = await User.findOne({
+        schoolId: req.user.schoolId,
+        assignedClass: parsedGrade,
+        assignedStream: parsedStream,
+        isClassTeacher: true
+      }).select("name signatureUrl");
+      if (classTeacher && classTeacher.signatureUrl) {
+        classTeacherSignatureBase64 = await getImageBase64FromUrl(classTeacher.signatureUrl);
+        classTeacherName = classTeacher.name;
+      }
+    }
+
     if (outstandingStudents.length === 0) {
       doc.fontSize(12).text('No students with outstanding fees found.', { align: 'center' });
     } else {
@@ -799,6 +885,29 @@ export const generateOutstandingFeesPDF = async (req, res) => {
         // Continue with summary even if row generation fails
       }
 
+      // --- Add Signatures to the last page ---
+      doc.addPage(); // Ensure signatures are on a new page
+      let signatureY = doc.y + 50; // Starting Y position for signatures
+
+      // Headteacher Signature
+      if (headteacherSignatureBase64) {
+        doc.image(headteacherSignatureBase64, doc.page.width / 2 - 75, signatureY, { width: 150 });
+        signatureY += 50; // Move down for text
+        doc.fontSize(10).text('__________________________', doc.page.width / 2 - 75, signatureY, { align: 'center' });
+        signatureY += 15;
+        doc.fontSize(10).text('Headteacher/Principal Signature', doc.page.width / 2 - 75, signatureY, { align: 'center' });
+        signatureY += 30;
+      }
+
+      // Class Teacher Signature
+      if (classTeacherSignatureBase64) {
+        doc.image(classTeacherSignatureBase64, doc.page.width / 2 - 75, signatureY, { width: 150 });
+        signatureY += 50;
+        doc.fontSize(10).text('__________________________', doc.page.width / 2 - 75, signatureY, { align: 'center' });
+        signatureY += 15;
+        doc.fontSize(10).text(`Class Teacher: ${classTeacherName || ''}`, doc.page.width / 2 - 75, signatureY, { align: 'center' });
+      }
+
       // Summary
       doc.addPage();
       doc.fontSize(14).font('Helvetica-Bold').text('SUMMARY', { align: 'center' });
@@ -836,6 +945,11 @@ export const generateOutstandingFeesPDFFromData = async (req, res) => {
       return res.status(404).json({ message: 'School not found' });
     }
 
+    // --- Fetch Headteacher Signature (once) ---
+    let headteacherSignatureBase64 = null;
+    if (school.headteacherSignatureUrl) {
+      headteacherSignatureBase64 = await getImageBase64FromUrl(school.headteacherSignatureUrl);
+    }
     // Get the student data from request body (already filtered on frontend)
     const outstandingStudents = req.body || [];
 
@@ -876,6 +990,31 @@ export const generateOutstandingFeesPDFFromData = async (req, res) => {
     doc.fontSize(10).text(`Academic Year: ${currentAcademicYear} | Generated on: ${new Date().toLocaleDateString()} ${new Date().toLocaleTimeString()}`, { align: 'center' });
     doc.moveDown(2);
 
+    // Helper to parse classLabel into grade and stream
+    const parseClassLabel = (label) => {
+      const match = label.match(/Grade\s*(\d+)([A-Z])?/i);
+      if (match) {
+        return { grade: match[1], stream: match[2] || null };
+      }
+      return { grade: label, stream: null }; // Fallback
+    };
+
+    // --- Fetch Class Teacher Signature (if a common class can be determined from students) ---
+    let classTeacherSignatureBase64 = null;
+    let classTeacherName = null;
+    if (outstandingStudents.length > 0 && outstandingStudents[0].className) {
+      const { grade: parsedGrade, stream: parsedStream } = parseClassLabel(outstandingStudents[0].className);
+      const classTeacher = await User.findOne({
+        schoolId: req.user.schoolId,
+        assignedClass: parsedGrade,
+        assignedStream: parsedStream,
+        isClassTeacher: true
+      }).select("name signatureUrl");
+      if (classTeacher && classTeacher.signatureUrl) {
+        classTeacherSignatureBase64 = await getImageBase64FromUrl(classTeacher.signatureUrl);
+        classTeacherName = classTeacher.name;
+      }
+    }
     if (outstandingStudents.length === 0) {
       doc.fontSize(12).text('No students with outstanding fees found.', { align: 'center' });
       doc.end();
@@ -965,6 +1104,29 @@ export const generateOutstandingFeesPDFFromData = async (req, res) => {
     }
 
     console.log(`PDF Generation: Completed rendering ${rowIndex} rows`);
+
+    // --- Add Signatures to the last page ---
+    doc.addPage(); // Ensure signatures are on a new page
+    let signatureY = doc.y + 50; // Starting Y position for signatures
+
+    // Headteacher Signature
+    if (headteacherSignatureBase64) {
+      doc.image(headteacherSignatureBase64, doc.page.width / 2 - 75, signatureY, { width: 150 });
+      signatureY += 50; // Move down for text
+      doc.fontSize(10).text('__________________________', doc.page.width / 2 - 75, signatureY, { align: 'center' });
+      signatureY += 15;
+      doc.fontSize(10).text('Headteacher/Principal Signature', doc.page.width / 2 - 75, signatureY, { align: 'center' });
+      signatureY += 30;
+    }
+
+    // Class Teacher Signature
+    if (classTeacherSignatureBase64) {
+      doc.image(classTeacherSignatureBase64, doc.page.width / 2 - 75, signatureY, { width: 150 });
+      signatureY += 50;
+      doc.fontSize(10).text('__________________________', doc.page.width / 2 - 75, signatureY, { align: 'center' });
+      signatureY += 15;
+      doc.fontSize(10).text(`Class Teacher: ${classTeacherName || ''}`, doc.page.width / 2 - 75, signatureY, { align: 'center' });
+    }
 
     // Summary page
     doc.addPage();

@@ -123,12 +123,22 @@ if (!allowedRoles.includes(role)) {
     const rawPassword = generateRawPassword(role, admission);
     const hashedPassword = await bcrypt.hash(rawPassword, 10);
 
+    // Normalize grade to "Grade X" format helper
+    const normalizeGrade = (g) => {
+      if (!g) return null;
+      if (!isNaN(g)) {
+        return `Grade ${g}`;
+      }
+      return g;
+    };
+
     const newUser = new User({
       name,
       role,
       email: role !== "student" ? email : undefined,
       password: hashedPassword,
       ...(role === "student" && { admission }),
+      grade: role === "student" ? normalizeGrade(grade) : null, // Store grade on user directly
       contact: contact || null,
       passwordMustChange: ["teacher", "classteacher", "accounts"].includes(role),
       schoolId: schoolIdToAssign,
@@ -145,15 +155,6 @@ if (!allowedRoles.includes(role)) {
     // ----------------------------
     if (role === "student") {
       try {
-        // Normalize grade to "Grade X" format
-        const normalizeGrade = (grade) => {
-          if (!grade) return null;
-          if (!isNaN(grade)) {
-            return `Grade ${grade}`;
-          }
-          return grade;
-        };
-
         const enrollment = new StudentEnrollment({
           studentId: newUser._id,
           schoolId: schoolIdToAssign,
@@ -455,6 +456,7 @@ export const getAllUsers = async (req, res) => {
     const total = await User.countDocuments(query);
     const users = await User.find(query)
       .select(projection)
+      .populate('enrollmentId', 'grade stream') // Fetch grade/stream from enrollment table
       .sort(sort)
       .skip(skip)
       .limit(limit);
@@ -716,7 +718,7 @@ export const getClassTeacherAllocations = async (req, res) => {
     const query = { assignedClass: { $ne: null }, role: 'teacher' };
     if (req.user.role === 'admin') query.schoolId = req.user.schoolId;
 
-    const classTeachers = await User.find(query).select('name email admission assignedClass assignedStream isClassTeacher isDean');
+    const classTeachers = await User.find(query).select('name email admission assignedClass assignedStream isClassTeacher isDean signatureUrl');
 
     const allocations = classTeachers.map(t => ({
       teacherId: t._id.toString(),
@@ -726,7 +728,8 @@ export const getClassTeacherAllocations = async (req, res) => {
       assignedStream: t.assignedStream || null,
       classLabel: t.assignedStream ? `Grade ${t.assignedClass}${t.assignedStream}` : `Grade ${t.assignedClass}`,
       isClassTeacher: !!t.isClassTeacher,
-      isDean: !!t.isDean
+      isDean: !!t.isDean,
+      signatureUrl: t.signatureUrl || ""
     }));
 
     cache.set(cacheKey, allocations, 120);
@@ -1158,5 +1161,79 @@ export const deleteUser = async (req, res) => {
   } catch (err) {
     console.error("Delete User Error:", err);
     res.status(500).json({ error: err.message });
+  }
+};
+
+// ---------------------------
+// UPDATE SIGNATURE (Teacher/Dean)
+// ---------------------------
+export const updateSignature = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { signatureUrl, signaturePublicId } = req.body; // Sent after frontend Cloudinary upload
+
+    if (!signatureUrl) return res.status(400).json({ message: "Signature URL is required" });
+
+    const user = await User.findByIdAndUpdate(
+      userId,
+      { signatureUrl, signaturePublicId },
+      { new: true }
+    ).select("-password");
+    
+    // Invalidate caches that might hold teacher details
+    cache.clearByPattern(`class_alloc_${req.user.schoolId}`);
+
+    res.json({ message: "Signature updated successfully", user });
+  } catch (err) {
+    console.error("Update Signature Error:", err);
+    res.status(500).json({ error: err.message });
+  }
+};
+
+// ---------------------------
+// GET CLASS TEACHER FOR A GRADE (Reports)
+// ---------------------------
+export const getClassTeacher = async (req, res) => {
+  try {
+    let { grade, stream } = req.query;
+    if (!grade) return res.status(400).json({ message: "Grade is required" });
+
+    // Normalize grade: handle formats like "Grade 2W", "2W", "Grade 2", "2"
+    grade = grade.trim();
+    let requestedStream = (stream === "null" || stream === "undefined" || !stream) ? null : stream.trim();
+
+    // Parse grade string to handle formats like "Grade 2W" or "2W"
+    const gradeParts = grade.match(/^(?:Grade\s+)?(\d+)([A-Z])?$/i);
+    let numericGrade = grade;
+
+    if (gradeParts) {
+      numericGrade = gradeParts[1];
+      // If stream is missing from query but present in grade string, extract it
+      if (!requestedStream && gradeParts[2]) {
+        requestedStream = gradeParts[2].toUpperCase();
+      }
+    }
+
+    const query = {
+      schoolId: req.user.schoolId,
+      assignedClass: { $in: [grade, numericGrade, `Grade ${numericGrade}`] },
+      assignedStream: requestedStream,
+      isClassTeacher: true
+    };
+
+    let teacher = await User.findOne(query).select("name signatureUrl");
+
+    // 🆕 FALLBACK: If specific stream teacher not found, try finding one for the grade with NO stream
+    if (!teacher && requestedStream) {
+      query.assignedStream = null;
+      teacher = await User.findOne(query).select("name signatureUrl");
+    }
+
+    if (!teacher) return res.status(404).json({ message: "Class teacher not found" });
+
+    res.json(teacher);
+  } catch (err) {
+    console.error("GetClassTeacher Error:", err);
+    res.status(500).json({ message: "Server error" });
   }
 };

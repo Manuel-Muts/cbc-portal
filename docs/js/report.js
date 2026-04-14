@@ -8,102 +8,136 @@ document.addEventListener("DOMContentLoaded", async () => {
     return;
   }
 
-// -----------------------------
-// Fetch School Info
-// -----------------------------
-// Set backend URL dynamically (adjust for production via env variable if needed)
-// Using API_BASE from config.js instead of BACKEND_URL
-const BACKEND_URL = config.api.baseURL.replace('/api', ''); // Remove /api suffix to get base URL
-
-if (token) {
-  try {
-    const schoolRes = await fetch(`${BACKEND_URL}/api/users/my-school`, {
-      headers: {
-        Authorization: `Bearer ${token}`
-      }
-    });
-
-    if (schoolRes.ok) {
-      const school = await schoolRes.json();
-
-      const schoolNameElem = document.getElementById("schoolName");
-      const schoolLogoElem = document.getElementById("schoolLogo");
-      const schoolAddressElem = document.getElementById("schoolAddress");
-
-      // Display school name
-      if (schoolNameElem) {
-        schoolNameElem.textContent = school.name.toUpperCase();
-      }
-
-      // Display school logo
-      if (schoolLogoElem) {
-       schoolLogoElem.crossOrigin = "anonymous";
-         let logoPath = school.logo || "";
-
-       // Detect logo format: file path (legacy), HTTP URL, or base64 (new)
-        if (logoPath.startsWith('/') || logoPath.includes('uploads/')) {
-          // Legacy file path
-          if (!logoPath.startsWith("/")) logoPath = "/" + logoPath;
-          if (!logoPath.startsWith("/uploads")) logoPath = "/uploads" + logoPath;
-          schoolLogoElem.src = `${BACKEND_URL}${logoPath}?t=${Date.now()}`;
-        } else if (logoPath.startsWith("http")) {
-          // Absolute URL
-          schoolLogoElem.src = logoPath;
-        } else if (logoPath) {
-          // New base64 format - convert to data URL
-          const mimeType = school.logoMimeType || 'image/png';
-          schoolLogoElem.src = `data:${mimeType};base64,${logoPath}`;
-        }
-
-        schoolLogoElem.alt = school.name;
-      }
-
-
-      // Display school address
-      if (schoolAddressElem) {
-        schoolAddressElem.textContent = school.address || "";
-      }
-
-    } else {
-      console.error("Failed to fetch school info:", schoolRes.status, schoolRes.statusText);
+  // Inject CSS to ensure signatures are visible and properly sized for embedding
+  const sigStyle = document.createElement('style');
+  sigStyle.textContent = `
+    .report-container {
+      padding: 10px 20px !important;
     }
-  } catch (err) {
-    console.error("Error fetching school info:", err);
+    h2 { margin: 10px 0 5px 0 !important; font-size: 16px !important; }
+    .student-info { margin-bottom: 10px !important; display: grid; grid-template-columns: 1fr 1fr; gap: 5px; }
+    .student-info p { margin: 2px 0 !important; font-size: 13px !important; }
+    
+    .signatures {
+      margin-top: 15px !important;
+      gap: 10px !important;
+    }
+    .signature-line {
+      display: flex !important;
+      flex-direction: column !important;
+      align-items: center !important;
+      justify-content: flex-end !important;
+      min-height: 50px !important;
+      text-align: center !important;
+      border-top: none !important; /* Remove the CSS border-top to use the span line instead */
+    }
+    .signature-line img {
+      max-height: 40px !important;
+      max-width: 150px !important;
+      display: block !important;
+      margin: 0 auto 2px auto !important;
+      opacity: 1 !important;
+      visibility: visible !important;
+      object-fit: contain;
+    }
+    .signature-line span {
+      display: block !important;
+      margin: 0 !important;
+      line-height: 0.8 !important;
+    }
+    .signature-line p {
+      margin: 2px 0 0 0 !important;
+      font-size: 12px !important;
+      font-weight: 500 !important;
+    }
+
+    /* side-by-side Marks & Key Layout */
+    .report-layout-container {
+      display: flex !important;
+      gap: 15px !important;
+      align-items: flex-start !important;
+      margin-bottom: 10px !important;
+    }
+    #performanceKeySide {
+      flex: 0 0 140px !important;
+      font-size: 10px !important;
+    }
+    #performanceKeySide table { width: 100%; border-collapse: collapse; }
+    #performanceKeySide th, #performanceKeySide td { border: 1px solid #ccc; padding: 2px; text-align: center; }
+    
+    .marks-section { flex: 1 !important; margin: 0 !important; }
+    #marksTable { font-size: 12px !important; text-align: center !important; }
+    #marksTable th, #marksTable td { padding: 4px 8px !important; }
+    #marksTable td:first-child, #marksTable th:first-child { text-align: left !important; }
+
+    .remarks-container {
+      display: flex !important;
+      gap: 10px !important;
+      margin-top: 5px !important;
+      align-items: stretch !important;
+    }
+    .remark-item {
+      flex: 1 !important;
+      font-size: 12px !important;
+      padding: 8px !important;
+      background: #f9f9f9 !important;
+      border-radius: 6px !important;
+      border-left: 3px solid #1a237e !important;
+    }
+    .remark-item strong {
+      display: block !important;
+      margin-bottom: 3px !important;
+      color: #1a237e !important;
+      font-size: 11px !important;
+      text-transform: uppercase !important;
+      letter-spacing: 0.5px !important;
+    }
+    .remark-item p {
+      margin: 0 !important;
+      line-height: 1.4 !important;
+      border-left: none !important; /* Override external styles */
+      padding-left: 0 !important;
+    }
+  `;
+  document.head.appendChild(sigStyle);
+
+  // -----------------------------
+  // Helper Functions (Moved up to prevent 'before initialization' errors)
+  // -----------------------------
+  const setText = (id, value) => { const el = document.getElementById(id); if(el) el.textContent = value; };
+  const capitalizeWords = str => str.split(" ").map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(" ");
+
+// Helper to convert image URL to base64 for reliable PDF embedding
+async function getImageBase64(url) {
+  if (!url) return null;
+  try {
+    // Prepend backend URL if the path is relative (e.g., /uploads/...)
+    const absoluteUrl = (url.startsWith('http') || url.startsWith('data:')) 
+      ? url 
+      : `${config.api.baseURL.replace('/api', '')}${url.startsWith('/') ? '' : '/'}${url}`;
+
+    const response = await fetch(absoluteUrl, { mode: 'cors' });
+    if (!response.ok) return null;
+    const blob = await response.blob();
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onloadend = () => resolve(reader.result);
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+  } catch (e) {
+    console.error("Error converting image to Base64:", e);
+    return null;
   }
 }
+  // -----------------------------
+  // Data Resolution (Marks, Enrollment, School)
+  // -----------------------------
+  const BACKEND_URL = config.api.baseURL.replace('/api', '');
+  let reportGrade = user.grade || "N/A";
+  let reportStream = "";
 
-  // ---------------------------
-  // FETCH STUDENT ENROLLMENT (Grade & Stream)
-  // ---------------------------
-  let studentEnrollment = null;
-  try {
-    const enrollmentRes = await fetch(`${BACKEND_URL}/api/enrollments/my-enrollment`, {
-      headers: { Authorization: `Bearer ${token}` }
-    });
-    if (enrollmentRes.ok) {
-      studentEnrollment = await enrollmentRes.json();
-      
-      // Update user grade if available
-      if (studentEnrollment.grade && !user.grade) {
-        user.grade = studentEnrollment.grade;
-        localStorage.setItem("loggedInUser", JSON.stringify(user));
-      }
-      
-      // Display stream in student info if element exists
-      const streamEl = document.getElementById("studentStream");
-      if (streamEl) {
-        streamEl.textContent = studentEnrollment.stream || "N/A";
-      }
-    } else {
-      console.warn("Failed to fetch enrollment:", enrollmentRes.status);
-    }
-  } catch (err) {
-    console.error("Enrollment fetch error:", err);
-  }
-
-  // ---------------------------
-  // FETCH STUDENT MARKS
-  // ---------------------------
+  // 1. Fetch Local Marks (baseline data)
   let marks = JSON.parse(localStorage.getItem("studentReportMarks") || "[]");
   if (!marks.length) marks = JSON.parse(localStorage.getItem("submittedMarks") || "[]");
 
@@ -113,38 +147,98 @@ if (token) {
     return;
   }
 
+  // Set baseline from marks (especially important for non-student users viewing reports)
+  const latestMarkRecord = studentMarks[0];
+  if (latestMarkRecord.grade) reportGrade = latestMarkRecord.grade;
+  if (latestMarkRecord.stream) reportStream = latestMarkRecord.stream;
+
+  // 2. Fetch School and Enrollment info in parallel for better performance
+  try {
+    const [schoolRes, enrollmentRes] = await Promise.all([
+      fetch(`${BACKEND_URL}/api/users/my-school`, { headers: { Authorization: `Bearer ${token}` } }),
+      fetch(`${BACKEND_URL}/api/enrollments/my-enrollment`, { headers: { Authorization: `Bearer ${token}` } }).catch(() => null)
+    ]);
+
+    // Process School Info & Headteacher Signature
+    if (schoolRes && schoolRes.ok) {
+      const school = await schoolRes.json();
+      setText("schoolName", school.name.toUpperCase());
+      setText("schoolAddress", school.address || "");
+
+      const schoolLogoElem = document.getElementById("schoolLogo");
+      if (schoolLogoElem && school.logo) {
+        schoolLogoElem.crossOrigin = "anonymous";
+        let logoPath = school.logo;
+        if (logoPath.startsWith('/') || logoPath.includes('uploads/')) {
+          logoPath = logoPath.startsWith("/uploads") ? logoPath : `/uploads${logoPath.startsWith("/") ? "" : "/"}${logoPath}`;
+          schoolLogoElem.src = `${BACKEND_URL}${logoPath}`;
+        } else if (logoPath.startsWith("http")) {
+          schoolLogoElem.src = logoPath;
+        } else {
+          const mimeType = school.logoMimeType || 'image/png';
+          schoolLogoElem.src = `data:${mimeType};base64,${logoPath}`;
+        }
+      }
+
+      // Display Headteacher/Principal Signature
+      const headSigElem = document.getElementById("headteacherSig");
+      if (headSigElem && school.headteacherSignatureUrl) {
+        const base64 = await getImageBase64(school.headteacherSignatureUrl);
+        if (base64) {
+          headSigElem.src = base64;
+          headSigElem.style.display = "block";
+        } else {
+          headSigElem.src = school.headteacherSignatureUrl.startsWith('http') ? school.headteacherSignatureUrl : `${BACKEND_URL}${school.headteacherSignatureUrl.startsWith('/') ? '' : '/'}${school.headteacherSignatureUrl}`;
+          headSigElem.style.display = "block";
+        }
+      }
+    }
+
+    // Process Enrollment (Refines grade/stream from official record)
+    if (enrollmentRes && enrollmentRes.ok) {
+      const enrollment = await enrollmentRes.json();
+      if (enrollment.grade) reportGrade = enrollment.grade;
+      if (enrollment.stream) reportStream = enrollment.stream;
+      
+      const streamEl = document.getElementById("studentStream");
+      if (streamEl) streamEl.textContent = reportStream || "N/A";
+    }
+
+    // Sync user grade if it changed
+    if (reportGrade !== user.grade && reportGrade !== "N/A") {
+      user.grade = reportGrade;
+      localStorage.setItem("loggedInUser", JSON.stringify(user));
+    }
+
+    // 3. Fetch Class Teacher Signature using determined grade/stream
+    // The backend endpoint handles variant formats (e.g. "Grade 2W" or "2")
+    if (reportGrade && reportGrade !== "N/A") {
+      const teacherRes = await fetch(`${BACKEND_URL}/api/users/class-teacher?grade=${encodeURIComponent(reportGrade)}&stream=${encodeURIComponent(reportStream)}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (teacherRes.ok) {
+        const teacher = await teacherRes.json();
+        const teacherSigElem = document.getElementById("classTeacherSig");
+        if (teacherSigElem && teacher.signatureUrl) {
+          const base64 = await getImageBase64(teacher.signatureUrl);
+          if (base64) {
+            teacherSigElem.src = base64;
+            teacherSigElem.style.display = "block";
+          } else {
+            teacherSigElem.src = teacher.signatureUrl.startsWith('http') ? teacher.signatureUrl : `${BACKEND_URL}${teacher.signatureUrl.startsWith('/') ? '' : '/'}${teacher.signatureUrl}`;
+            teacherSigElem.style.display = "block";
+          }
+        }
+        setText("classTeacherNameLabel", teacher.name);
+      }
+    }
+  } catch (err) {
+    console.error("Error fetching report context data:", err);
+  }
+
   // -----------------------------
   // Helper Functions
   // -----------------------------
-  const setText = (id, value) => { const el = document.getElementById(id); if(el) el.textContent = value; };
-  const capitalizeWords = str => str.split(" ").map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(" ");
-  
-  const getPerformanceSubdivision = score => {
-    if (score >= 90) return "EE1";
-    if (score >= 75) return "EE2";
-    if (score >= 58) return "ME1";
-    if (score >= 41) return "ME2";
-    if (score >= 31) return "AE1";
-    if (score >= 21) return "AE2";
-    if (score >= 11) return "BE1";
-    return "BE2";
-  };
-  const getScorePoints = score => {
-    if (score >= 90) return 8;
-    if (score >= 75) return 7;
-    if (score >= 58) return 6;
-    if (score >= 41) return 5;
-    if (score >= 31) return 4;
-    if (score >= 21) return 3;
-    if (score >= 11) return 2;
-    return 1;
-  };
-  const getPerformanceLevel = score => {
-    const sub = getPerformanceSubdivision(score);
-    const label = score >= 75 ? "Exceeding Expectation" : score >= 41 ? "Meeting Expectation" : score >= 21 ? "Approaching Expectation" : "Below Expectation";
-    return `${label} (${sub})`;
-  };
-
   const getSubjectRemark = score => score >= 75 ? "Excellent" : score >= 41 ? "Good" : score >= 21 ? "Average" : "Needs Improvement";
   const getTeacherComment = mean => mean >= 75 ? "Great progress this term!" : mean >= 41 ? "Good effort, stay focused." : mean >= 21 ? "You can do better with more effort." : "Work harder next term.";
   const getHeadteacherComment = mean => mean >= 75 ? "Keep up the outstanding work." : mean >= 41 ? "A commendable performance." : mean >= 21 ? "Needs improvement in some areas." : "Put in more effort to improve.";
@@ -155,7 +249,7 @@ if (token) {
       summaryEl.innerHTML = `
         <div style="text-align:center;">
           <p style="font-size: 12px; color: #555; text-transform: uppercase; margin-bottom: 5px;">PERFORMANCE LEVEL</p>
-          <p style="font-size: 14px; font-weight: bold; color: #1a237e; margin: 0;">${getPerformanceLevel(mean)}</p>
+          <p style="font-size: 14px; font-weight: bold; color: #1a237e; margin: 0;">${cbcUtils.getPerformanceLabel(cbcUtils.getPerformanceLevel(mean))} (${cbcUtils.getSubdivision(mean)})</p>
         </div>
         <div style="border-left: 1px solid #ccc; margin: 0 15px;"></div>
         <div style="text-align:center;">
@@ -164,8 +258,8 @@ if (token) {
         </div>
       `;
     }
-    setText("teacherComment", getTeacherComment(mean));
-    setText("headComment", getHeadteacherComment(mean));
+    setText("teacherComment", cbcUtils.getTeacherComment(mean));
+    setText("headComment", cbcUtils.getHeadteacherComment(mean));
   };
 
   // -----------------------------
@@ -214,7 +308,8 @@ if (token) {
   // -----------------------------
   const termOrder = { "Term 1": 1, "Term 2": 2, "Term 3": 3 };
   const sortedMarks = [...studentMarks].sort(
-    (a, b) => (b.year - a.year) || ((termOrder[b.term] || 0) - (termOrder[a.term] || 0))
+    (a, b) => (b.year - a.year) || ((termOrder[b.term] || 0) - (termOrder[a.term] || 0)) ||
+              (a.subject || a.course || "").localeCompare(b.subject || b.course || "")
   );
 
   const latestMark = sortedMarks[0];
@@ -232,40 +327,26 @@ if (token) {
   // Update report titles based on level (Head Teacher vs Principal)
   if (isSeniorSchool) {
     const sigLines = document.querySelectorAll(".signatures .signature-line p");
-    if (sigLines.length > 1) sigLines[1].textContent = "Principal";
+    if (sigLines.length > 1) sigLines[1].textContent = "Principal's Signature";
 
-    const headCommentEl = document.getElementById("headComment");
-    if (headCommentEl && headCommentEl.parentElement) {
-      const labelStrong = headCommentEl.parentElement.querySelector("strong");
-      if (labelStrong) labelStrong.textContent = "Principal's Comment:";
-    }
-  }
-
-  // CBC Weights for senior school calculation
-  const CBC_WEIGHTS = {
-    continuousAssessment: 0.30,
-    projectWork: 0.20,
-    endTermExam: 0.50
-  };
-
-  function calculateSeniorSchoolFinalScore(mark) {
-    const ca = mark.continuousAssessment;
-    const pw = mark.projectWork;
-    const et = mark.endTermExam;
-
-    if ((ca === null || ca === undefined) && (pw === null || pw === undefined) && (et === null || et === undefined)) {
-      return null;
+    const headteacherRoleLabel = document.getElementById("headteacherRoleLabel");
+    if (headteacherRoleLabel) {
+      headteacherRoleLabel.textContent = "Principal";
     }
 
-    const caVal = ca !== null && ca !== undefined ? Number(ca) : 0;
-    const pwVal = pw !== null && pw !== undefined ? Number(pw) : 0;
-    const etVal = et !== null && et !== undefined ? Number(et) : 0;
-
-    const finalScore = (caVal * CBC_WEIGHTS.continuousAssessment) +
-                       (pwVal * CBC_WEIGHTS.projectWork) +
-                       (etVal * CBC_WEIGHTS.endTermExam);
-
-    return Math.round(finalScore * 10) / 10;
+    const headCommentLabel = document.getElementById("headCommentLabel");
+    if (headCommentLabel) {
+      headCommentLabel.textContent = "Principal's Comment";
+    }
+    
+    // Fallback: Search for the label by text if the specific ID is missing in report.html
+    const possibleLabels = document.querySelectorAll('h3, h4, h5, strong, p');
+    possibleLabels.forEach(el => {
+      const text = el.textContent.trim();
+      if (text.includes("Headteacher's Comment") || text.includes("Head Teacher's Comment")) {
+        el.textContent = "Principal's Comment";
+      }
+    });
   }
 
   // ===== SENIOR SCHOOL (10-12): Component-Based Report =====
@@ -290,10 +371,10 @@ if (token) {
     let totalPoints = 0;
 
     studentMarks.forEach(m => {
-      const finalScore = calculateSeniorSchoolFinalScore(m);
+      const finalScore = cbcUtils.calculateFinalScore(m.continuousAssessment, m.projectWork, m.endTermExam);
       const fs = finalScore !== null ? finalScore : "-";
-      const points = finalScore !== null ? getScorePoints(finalScore) : "-";
-      const perfLevel = finalScore !== null ? getPerformanceSubdivision(finalScore) : "N/A";
+      const points = finalScore !== null ? cbcUtils.getPoints(finalScore) : "-";
+      const perfLevel = finalScore !== null ? cbcUtils.getSubdivision(finalScore) : "N/A";
       const remark = finalScore !== null ? getSubjectRemark(finalScore) : "-";
 
       const tr = document.createElement("tr");
@@ -308,7 +389,7 @@ if (token) {
 
       if (finalScore !== null) {
         totalFinalScore += finalScore;
-        totalPoints += getScorePoints(finalScore);
+        totalPoints += cbcUtils.getPoints(finalScore);
         validScoreCount++;
       }
     });
@@ -335,13 +416,13 @@ if (token) {
 
     studentMarks.forEach(m => {
       const score = Number(m.score || 0);
-      const points = getScorePoints(score);
+      const points = cbcUtils.getPoints(score);
       const tr = document.createElement("tr");
       tr.innerHTML = `
         <td>${capitalizeWords((m.subject || "").replace(/-/g, " "))}</td>
         <td>${score}%</td>
         <td>${points}</td>
-        <td>${getPerformanceSubdivision(score)}</td>
+        <td>${cbcUtils.getSubdivision(score)}</td>
         <td>${getSubjectRemark(score)}</td>
       `;
       tbody.appendChild(tr);
@@ -365,17 +446,6 @@ if (token) {
     const layoutContainer = document.createElement('div');
     layoutContainer.className = 'report-layout-container';
 
-    const performanceKeyData = [
-        { subdivision: 'EE1', range: '90-100', points: 8 },
-        { subdivision: 'EE2', range: '75-89', points: 7 },
-        { subdivision: 'ME1', range: '58-74', points: 6 },
-        { subdivision: 'ME2', range: '41-57', points: 5 },
-        { subdivision: 'AE1', range: '31-40', points: 4 },
-        { subdivision: 'AE2', range: '21-30', points: 3 },
-        { subdivision: 'BE1', range: '11-20', points: 2 },
-        { subdivision: 'BE2', range: '0-10', points: 1 },
-    ];
-
     const keyPanel = document.createElement('div');
     keyPanel.id = 'performanceKeySide';
     let keyTableHTML = `
@@ -384,7 +454,7 @@ if (token) {
             <thead><tr><th>Level</th><th>Range</th><th>Pts</th></tr></thead>
             <tbody>
     `;
-    performanceKeyData.forEach(item => {
+    cbcUtils.PERFORMANCE_KEY.forEach(item => {
         keyTableHTML += `<tr><td>${item.subdivision}</td><td>${item.range}</td><td>${item.points}</td></tr>`;
     });
     keyTableHTML += `</tbody></table>`;
@@ -414,18 +484,20 @@ if (token) {
       document.querySelector(".report-controls").style.display = "none";
       const filename = `Report_${user.grade || "Grade"}_${latestMark.term || "Term"}_${currentYear}.pdf`;
 
-      html2pdf()
-        .set({
-          margin: [0.3, 0.3, 0.3, 0.3],
-          filename,
-          image: { type: "jpeg", quality: 1 },
-          html2canvas: { scale: 2, useCORS: true, scrollY: 0 },
-          jsPDF: { unit: "mm", format: "a4", orientation: "portrait" },
-          pagebreak: { mode: ["avoid-all", "css", "legacy"] },
-        })
-        .from(reportElement)
-        .save()
-        .then(() => document.querySelector(".report-controls").style.display = "block");
+      const opt = {
+        margin: [0.3, 0.3, 0.3, 0.3],
+        filename,
+        image: { type: "png", quality: 1 },
+        html2canvas: { scale: 2, useCORS: true, scrollY: 0, logging: false, letterRendering: true },
+        jsPDF: { unit: "mm", format: "a4", orientation: "portrait" },
+        pagebreak: { mode: ["avoid-all", "css", "legacy"] },
+      };
+
+      // Use worker-based approach to ensure images are ready
+      const worker = html2pdf().set(opt).from(reportElement).toPdf();
+      worker.save().then(() => {
+        document.querySelector(".report-controls").style.display = "block";
+      });
     });
   }
 });

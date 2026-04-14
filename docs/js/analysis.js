@@ -1,74 +1,5 @@
 // ===== ANALYSIS.JS(CLASSTEACHERS) =====
 
-// ===== CBC GRADING HELPERS =====
-const CBC_WEIGHTS = {
-  continuousAssessment: 0.30,
-  projectWork: 0.20,
-  endTermExam: 0.50
-};
-
-function scoreToPerformanceLevel(score) {
-  if (score >= 75) return "EE";
-  if (score >= 41) return "ME";
-  if (score >= 21) return "AE";
-  return "BE";
-}
-
-function getPerformanceLevelLabel(level) {
-  const labels = {
-    EE: "Exceeding Expectations",
-    ME: "Meeting Expectations",
-    AE: "Approaching Expectations",
-    BE: "Below Expectations"
-  };
-  return labels[level] || "Unknown";
-}
-
-function getScorePoints(score) {
-  if (score >= 90) return 8;
-  if (score >= 75) return 7;
-  if (score >= 58) return 6;
-  if (score >= 41) return 5;
-  if (score >= 31) return 4;
-  if (score >= 21) return 3;
-  if (score >= 11) return 2;
-  return 1;
-}
-
-function getPerformanceSubdivision(score) {
-  if (score >= 90) return "EE1";
-  if (score >= 75) return "EE2";
-  if (score >= 58) return "ME1";
-  if (score >= 41) return "ME2";
-  if (score >= 31) return "AE1";
-  if (score >= 21) return "AE2";
-  if (score >= 11) return "BE1";
-  return "BE2";
-}
-
-//JUNIOR SCHOOL
-function calculateSeniorSchoolFinalScore(mark) {
-  if (!mark) return null;
-  
-  const ca = mark.continuousAssessment;
-  const pw = mark.projectWork;
-  const et = mark.endTermExam;
-
-  if ((ca === null || ca === undefined) && (pw === null || pw === undefined) && (et === null || et === undefined)) {
-    return null;
-  }
-
-  const caVal = ca !== null && ca !== undefined ? Number(ca) : 0;
-  const pwVal = pw !== null && pw !== undefined ? Number(pw) : 0;
-  const etVal = et !== null && et !== undefined ? Number(et) : 0;
-
-  const finalScore = (caVal * CBC_WEIGHTS.continuousAssessment) +
-                     (pwVal * CBC_WEIGHTS.projectWork) +
-                     (etVal * CBC_WEIGHTS.endTermExam);
-
-  return Math.round(finalScore * 10) / 10;
-}
-
 document.addEventListener("DOMContentLoaded", () => {
   // ---------------------------
   // DOM ELEMENTS
@@ -128,10 +59,6 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   // ===== HELPERS =====
-  function getPerformanceLevel(mean) {
-    return getPerformanceSubdivision(mean);
-  }
-
   function generateAIFeedback(points) {
     if (points >= 7) return "🚀 Outstanding performance! Encourage advanced tasks and peer mentoring.";
     if (points >= 5) return "👍 Good performance. Reinforce collaborative learning and creative thinking.";
@@ -421,7 +348,7 @@ document.addEventListener("DOMContentLoaded", () => {
       const scores = Object.values(s.subjects);
       const total = scores.reduce((a, b) => a + b, 0);
       const mean = scores.length ? total / scores.length : 0;
-      const totalPoints = scores.reduce((sum, score) => sum + getScorePoints(score), 0);
+      const totalPoints = scores.reduce((sum, score) => sum + cbcUtils.getPoints(score), 0);
       const avgPoints = scores.length ? totalPoints / scores.length : 0;
       return { ...s, total, mean, totalPoints, avgPoints };
     });
@@ -511,7 +438,7 @@ document.addEventListener("DOMContentLoaded", () => {
         if (!subjectName || subjectName === 'null') return; // Skip if no name found or is the string 'null'
         
         subjectsSet.add(subjectName);
-        const finalScore = calculateSeniorSchoolFinalScore(sub);
+        const finalScore = cbcUtils.calculateFinalScore(sub.continuousAssessment, sub.projectWork, sub.endTermExam);
         
         if (finalScore !== null) {
           students[studentKey].subjects[subjectName] = finalScore;
@@ -526,7 +453,7 @@ document.addEventListener("DOMContentLoaded", () => {
       const scores = Object.values(s.subjects).filter(score => score !== null);
       const total = scores.reduce((a, b) => a + b, 0);
       const mean = scores.length ? total / scores.length : 0;
-      const totalPoints = scores.reduce((sum, score) => sum + getScorePoints(score), 0);
+      const totalPoints = scores.reduce((sum, score) => sum + cbcUtils.getPoints(score), 0);
       const avgPoints = scores.length ? totalPoints / scores.length : 0;
       
       return { ...s, total, mean, totalPoints, avgPoints };
@@ -616,7 +543,7 @@ document.addEventListener("DOMContentLoaded", () => {
         }
         html += `<tr><td>${s.rank}</td><td>${s.name}</td><td>${assessLabelRow}</td>`;
         stats.subjects.forEach(sub => html += `<td>${s.subjects[sub] ?? '-'}</td>`);
-        html += `<td>${s.total}</td><td><strong>${s.totalPoints}</strong></td><td>${s.avgPoints.toFixed(2)}</td><td>${getPerformanceLevel(s.mean)}</td></tr>`;
+        html += `<td>${s.total}</td><td><strong>${s.totalPoints}</strong></td><td>${s.avgPoints.toFixed(2)}</td><td>${cbcUtils.getSubdivision(s.mean)}</td></tr>`;
       });
       html += "</tbody></table>";
 
@@ -999,8 +926,8 @@ html += `
       // Render body
       html += "<tbody>";
       group.forEach(s => {
-        const subLevel = getPerformanceSubdivision(s.mean);
-        const mainLevel = scoreToPerformanceLevel(s.mean);
+        const subLevel = cbcUtils.getSubdivision(s.mean);
+        const mainLevel = cbcUtils.getPerformanceLevel(s.mean);
         const bg = s.rank % 2 === 0 ? "#f9f9f9" : "#fff";
         
         html += `<tr style='background:${bg};'>`;
@@ -1014,7 +941,7 @@ html += `
         });
         
         html += `<td style='border:1px solid #ddd;padding:8px;text-align:center;'><strong>${s.totalPoints}</strong></td>`;
-        html += `<td style='border:1px solid #ddd;padding:8px;'>${subLevel} (${getPerformanceLevelLabel(mainLevel)})</td>`;
+        html += `<td style='border:1px solid #ddd;padding:8px;'>${subLevel} (${cbcUtils.getPerformanceLabel(mainLevel)})</td>`;
         html += "</tr>";
       });
       html += "</tbody></table>";
@@ -1110,8 +1037,8 @@ async function exportPdf() {
                 const row = document.createElement("tr");
                 row.style.background = bg;
 
-                const subLevel = getPerformanceSubdivision(student.mean);
-                const mainLevel = scoreToPerformanceLevel(student.mean);
+                const subLevel = cbcUtils.getSubdivision(student.mean);
+                const mainLevel = cbcUtils.getPerformanceLevel(student.mean);
 
                 const rowData = [
                     student.rank ?? "-",
@@ -1166,7 +1093,7 @@ async function exportPdf() {
                 (student.total !== undefined) ? student.total : 0,
                 (student.totalPoints !== undefined) ? student.totalPoints : 0,
                 (student.avgPoints !== undefined) ? student.avgPoints.toFixed(2) : 0,
-                getPerformanceLevel(student.mean)
+                cbcUtils.getSubdivision(student.mean)
             ];
             rowData.forEach(val => {
               const td = document.createElement("td");
@@ -1234,7 +1161,7 @@ async function exportPdf() {
     // ===== SUMMARY SECTION (Level Distribution + Performance Key) =====
     const levelCounts = { EE1: 0, EE2: 0, ME1: 0, ME2: 0, AE1: 0, AE2: 0, BE1: 0, BE2: 0 };
     stats.studentArray.forEach(s => {
-      const lvl = getPerformanceSubdivision(s.mean);
+      const lvl = cbcUtils.getSubdivision(s.mean);
       if (levelCounts[lvl] !== undefined) levelCounts[lvl]++;
     });
 
