@@ -1,4 +1,4 @@
-(() => {
+document.addEventListener("DOMContentLoaded", () => {
   // ---------------------------
   // CONFIG + GLOBALS
   // ---------------------------
@@ -1090,7 +1090,8 @@ if (!marksAssessmentSelect.value) {
       const term = marksTermSelect.value;
       const assessment = marksAssessmentSelect.value;
 
-      const isSeniorSchool = isSeniorGrade(grade);
+      const isSeniorSchool = cbcUtils.isSeniorGrade(grade);
+      const gradeNum = parseInt(grade.match(/\d+/)?.[0] || grade);
 
       let mark = {
         admissionNo: admission,
@@ -1725,4 +1726,4 @@ if (!marksAssessmentSelect.value) {
     
     console.log("🎉 Dashboard initialization complete!");
   })();
-})();
+});

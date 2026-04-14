@@ -9,6 +9,28 @@
   
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.28/jspdf.plugin.autotable.min.js"></script>
+
+  <style>
+    @media (max-width: 640px) {
+      header {
+        flex-direction: column;
+        align-items: stretch !important;
+        padding: 15px !important;
+        gap: 12px !important;
+      }
+      header h1 {
+        white-space: normal !important;
+        font-size: 1rem !important;
+        line-height: 1.4;
+      }
+      header > div:first-child {
+        flex-direction: column;
+        align-items: flex-start !important;
+        gap: 8px !important;
+      }
+    }
+  </style>
+
   <!-- Google Font -->
   <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600&display=swap" rel="stylesheet">
 </head>
@@ -149,7 +171,7 @@
   </main>
 
   <script src="js/config.js"></script>
-  <script src="js/teachers.js"></script>
   <script src="js/cbc-utils.js"></script>
+  <script src="js/teachers.js"></script>
 </body>
 </html>
