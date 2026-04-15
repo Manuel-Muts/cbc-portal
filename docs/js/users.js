@@ -1,7 +1,6 @@
 // docs/js/users.js
 (function () {
   const API_BASE = config.api.baseURL;
-  const token = localStorage.getItem("token");
 
   // Inject CSS to reduce row height in the users table
   const compactUsersStyle = document.createElement("style");
@@ -39,12 +38,6 @@
   `;
   document.head.appendChild(compactUsersStyle);
 
-  if (!token) {
-    alert("You must log in first.");
-    window.location.href = "/login";
-    return;
-  }
-
   // DOM Elements
   const registerForm = document.getElementById("registerForm");
   const registerFeedback = document.getElementById("registerFeedback");
@@ -69,6 +62,7 @@
   const usersPageInfo = document.getElementById("usersPageInfo");
   let usersPage = 1;
   const usersPerPage = 10;
+  let userProfile = null;
   let usersTotalRecords = 0;
   let usersTotalPages = 1;
   const usersCache = {};
@@ -117,6 +111,7 @@
   }
 
   async function secureFetch(url, options = {}) {
+    const token = authService.getToken();
     options.headers = { ...options.headers, "Content-Type": "application/json", "Authorization": `Bearer ${token}` };
     try {
       const res = await fetch(url, options);
@@ -397,27 +392,19 @@ if (usersNextPageBtn) {
         body.email = email;
       }
 
-      const res = await fetch(`${API_BASE}/users/register`, {
+      const res = await secureFetch(`${API_BASE}/users/register`, {
         method: "POST",
-        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
         body: JSON.stringify(body)
       });
 
-      if (res.ok) {
+      if (res) {
         showFeedback(registerFeedback, "User registered successfully", "success");
         registerForm.reset();
         studentFields.style.display = "none";
         clearUsersCache();
         loadUsers(1, true);
       } else {
-        const err = await res.text();
-        // Try parsing json error
-        try {
-           const jsonErr = JSON.parse(err);
-           showFeedback(registerFeedback, jsonErr.msg || jsonErr.message || "Registration failed", "error");
-        } catch(e) {
-           showFeedback(registerFeedback, "Registration failed: " + err, "error");
-        }
+        showFeedback(registerFeedback, "Registration failed", "error");
       }
 
       submitBtn.disabled = false;
@@ -575,25 +562,16 @@ if (usersNextPageBtn) {
             };
 
             try {
-              const res = await fetch(`${API_BASE}/users/register`, {
+              const res = await secureFetch(`${API_BASE}/users/register`, {
                 method: "POST",
-                headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
                 body: JSON.stringify(body)
               });
 
-              if (res.ok) {
+              if (res) {
                 successCount++;
               } else {
                 failCount++;
-                const errText = await res.text();
-                let reason = "Unknown error";
-                try {
-                   const jsonErr = JSON.parse(errText);
-                   reason = jsonErr.msg || jsonErr.message || errText;
-                } catch(e) {
-                   reason = errText || res.statusText;
-                }
-                failedRecords.push({ name, admission, reason });
+                failedRecords.push({ name, admission, reason: "Registration failed" });
               }
             } catch (err) {
               failCount++;
@@ -705,16 +683,18 @@ if (usersNextPageBtn) {
   // 🆕 Initialize all tab labels with current system counts
   async function refreshAllTabCounts() {
     const roles = ["student", "teacher", "accounts", "admin"];
-    roles.forEach(async (role) => {
-      const res = await secureFetch(`${API_BASE}/users?page=1&limit=1&role=${role}`);
-      if (res && res.total !== undefined) {
-        const tab = document.querySelector(`.user-type-tabs li[data-role="${role}"]`);
-        if (tab) {
-          tab.textContent = `${getRoleLabel(role)} (${res.total})`;
-          const heading = document.querySelector(".tab-section#userManagement h3") || document.querySelector(".card h3");
-          if (heading && tab.classList.contains("active")) heading.textContent = tab.textContent;
-        }
-      }
+    
+    // Better approach: Call a single stats endpoint if available, 
+    // or at least wait for all requests to finish together
+    const results = await Promise.all(roles.map(role => 
+      secureFetch(`${API_BASE}/users?page=1&limit=1&role=${role}`)
+    ));
+
+    results.forEach((res, index) => {
+      if (!res) return;
+      const role = roles[index];
+      const tab = document.querySelector(`.user-type-tabs li[data-role="${role}"]`);
+      if (tab) tab.textContent = `${getRoleLabel(role)} (${res.total || 0})`;
     });
   }
 
@@ -752,7 +732,13 @@ if (usersNextPageBtn) {
   }
 
   // Initialize
-  setupNavigation();
-  setupUserTypeTabs();
-  loadUsers();
+  (async function init() {
+    userProfile = await authService.getUserProfile(["admin"]);
+    if (!userProfile) return;
+    authService.initLogout();
+
+    setupNavigation();
+    setupUserTypeTabs();
+    loadUsers();
+  })();
 })();

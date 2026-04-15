@@ -1,9 +1,4 @@
 const API_BASE = config.api.baseURL;
-const token = localStorage.getItem("token");
-
-const deanRoleTextEl = document.getElementById("deanRoleText");
-let deanProfileData = null; // Global storage for signature access
-const deanStatusEl = document.getElementById("deanStatus");
 const logoutBtn = document.getElementById("logoutBtn");
 
 const filterGradeEl = document.getElementById("filterGrade");
@@ -25,52 +20,29 @@ const recordsCountEl = document.getElementById("recordsCount");
 const rankingTableWrap = document.getElementById("rankingTableWrap");
 const subjectTableWrap = document.getElementById("subjectTableWrap");
 const subjectTableContainer = document.getElementById("subjectTableContainer");
-const darkModeToggle = document.getElementById("darkModeToggle");
 
 const gradeTrendChartEl = document.getElementById("gradeTrendChart");
 let gradeTrendChart = null;
+let deanProfileData = null;
 
-function redirectToLogin() {
-  window.location.href = "login.html";
-}
-
-function redirectToTeacherDashboard() {
-  window.location.href = "teacher-dashboard.html";
-}
-
-async function fetchWithAuth(endpoint, options = {}) {
-  if (!token) {
-    redirectToLogin();
-    return;
-  }
-
-  const url = endpoint.startsWith("http") ? endpoint : endpoint;
-  const finalOptions = {
-    headers: {
-      Authorization: `Bearer ${token}`,
-      "Content-Type": "application/json"
-    },
-    ...options
+async function fetchWithAuth(url, options = {}) {
+  const token = authService.getToken();
+  const headers = {
+    ...options.headers,
+    "Authorization": `Bearer ${token}`,
+    "Content-Type": "application/json"
   };
-
-  const res = await fetch(url, finalOptions);
-  if (res.status === 401 || res.status === 403) {
-    console.error("Unauthorized access to", url);
-    redirectToLogin();
-    return null;
-  }
-
-  const data = await res.json().catch(() => null);
+  const res = await fetch(url, { ...options, headers });
+  if (res.status === 401 || res.status === 403) return authService.redirectToLogin();
   if (!res.ok) {
-    const message = data?.message || data?.error || "Request failed";
-    throw new Error(message);
+    const error = await res.json().catch(() => ({}));
+    throw new Error(error.message || "Request failed");
   }
-
-  return data;
+  return res.json();
 }
 
-// Helper to convert image URL to base64 for reliable PDF embedding
 async function getImageBase64(url) {
+  if (!url) return null;
   try {
     const response = await fetch(url);
     const blob = await response.blob();
@@ -81,6 +53,7 @@ async function getImageBase64(url) {
       reader.readAsDataURL(blob);
     });
   } catch (e) {
+    console.error("Image conversion error:", e);
     return null;
   }
 }
@@ -88,7 +61,6 @@ async function getImageBase64(url) {
 function setText(element, text) {
   if (element) element.textContent = text;
 }
-
 async function generateReport() {
   const grade = filterGradeEl.value;
   const term = filterTermEl.value;
@@ -99,7 +71,6 @@ async function generateReport() {
   
   applyFiltersBtn.disabled = true;
   applyFiltersBtn.textContent = "Analyzing...";
-  
   try {
     const params = new URLSearchParams({ grade, term, year, assessment });
     const data = await fetchWithAuth(`${API_BASE}/marks/by-grade?${params}`);
@@ -527,7 +498,6 @@ function renderTrendChart(raw, isSenior) {
     dataset.push((assessmentData[a].total / (assessmentData[a].count || 1)).toFixed(2));
   });
 
-  const isDark = document.body.classList.contains("dark-mode");
 
   gradeTrendChart = new Chart(gradeTrendChartEl, {
     type: 'line',
@@ -549,15 +519,15 @@ function renderTrendChart(raw, isSenior) {
         y: { 
           beginAtZero: true, 
           max: 100,
-          grid: { color: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)' },
-          ticks: { color: isDark ? '#94a3b8' : '#666' }
+          grid: { color:  'rgba(255,255,255,0.1)'  },
+          ticks: { color:  '#666' }
         },
         x: {
-          grid: { color: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)' },
-          ticks: { color: isDark ? '#94a3b8' : '#666' }
+          grid: { color: 'rgba(255,255,255,0.1)'  },
+          ticks: { color:  '#94a3b8'  }
         }
       },
-      plugins: { legend: { labels: { color: isDark ? '#f8fafc' : '#666' } } }
+      plugins: { legend: { labels: { color: '#f8fafc'  } } }
     }
   });
 }
@@ -597,15 +567,16 @@ function initFilters() {
 
 async function loadDeanProfile() {
   try {
-    deanProfileData = await fetchWithAuth(`${API_BASE}/users/user`);
+    deanProfileData = await authService.getUserProfile(["teacher", "classteacher"]);
     if (!deanProfileData) return;
 
     if (!deanProfileData.isDean) {
       alert("Only Deans can access this page.");
-      return redirectToTeacherDashboard();
+      return window.location.href = "teacher-dashboard.html";
     }
-    setText(deanRoleTextEl, deanProfileData.isDean ? "Authorized Dean access enabled." : "No dean authorization detected.");
-    setText(deanStatusEl, deanProfileData.isDean ? "Authorized" : "Unauthorized");
+
+    setText(document.getElementById("deanRoleText"), "Authorized Dean access enabled.");
+    setText(document.getElementById("deanStatus"), "Authorized");
 
     // Pre-load signature for PDF generation
     if (deanProfileData.signatureUrl) {
@@ -614,9 +585,8 @@ async function loadDeanProfile() {
 
     initFilters();
   } catch (error) {
-    console.error("Dean profile error:", error);
-    alert(error.message || "Unable to load dean profile.");
-    redirectToTeacherDashboard();
+    console.error(error.message || "Unable to load dean profile.");
+    window.location.href = "teacher-dashboard.html";
   }
 }
 
@@ -632,46 +602,8 @@ if (printSubjectReportBtn) {
   printSubjectReportBtn.addEventListener("click", downloadSubjectPerformanceAsPDF);
 }
 
-function bindLogout() {
-  if (!logoutBtn) return;
-  logoutBtn.addEventListener("click", () => {
-    localStorage.removeItem("token");
-    localStorage.removeItem("loggedInUser");
-    localStorage.removeItem("userRole");
-    localStorage.removeItem("schoolId");
-    window.location.href = "login.html";
-  });
-}
-
-function initDarkMode() {
-  const isDark = localStorage.getItem("dean-dark-mode") === "true";
-  if (isDark) {
-    document.body.classList.add("dark-mode");
-    if (darkModeToggle) darkModeToggle.textContent = "☀️";
-  }
-  
-  darkModeToggle?.addEventListener("click", () => {
-    const currentlyDark = document.body.classList.toggle("dark-mode");
-    localStorage.setItem("dean-dark-mode", currentlyDark);
-    darkModeToggle.textContent = currentlyDark ? "☀️" : "🌙";
-    
-    if (gradeTrendChart) {
-      const gridColor = currentlyDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)';
-      const textColor = currentlyDark ? '#94a3b8' : '#666';
-      
-      gradeTrendChart.options.scales.y.grid.color = gridColor;
-      gradeTrendChart.options.scales.y.ticks.color = textColor;
-      gradeTrendChart.options.scales.x.grid.color = gridColor;
-      gradeTrendChart.options.scales.x.ticks.color = textColor;
-      gradeTrendChart.options.plugins.legend.labels.color = currentlyDark ? '#f8fafc' : '#666';
-      gradeTrendChart.update();
-    }
-  });
-}
 
 window.addEventListener("DOMContentLoaded", () => {
-  initDarkMode();
-  bindLogout();
-  if (!token) return redirectToLogin();
+  authService.initLogout();
   loadDeanProfile();
 });

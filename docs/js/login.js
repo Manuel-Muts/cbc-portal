@@ -16,6 +16,16 @@ document.addEventListener("DOMContentLoaded", function () {
   const emailLabel = document.getElementById("emailLabel");
   const passwordField = admissionField;
 
+  // Subtle Parallax Effect for Login Background
+  document.addEventListener("mousemove", (e) => {
+    const body = document.querySelector(".login-body");
+    if (!body) return;
+    const moveX = (e.clientX - window.innerWidth / 2) * 0.01;
+    const moveY = (e.clientY - window.innerHeight / 2) * 0.01;
+    body.style.setProperty("--parallax-x", `${moveX}px`);
+    body.style.setProperty("--parallax-y", `${moveY}px`);
+  });
+
   // ---------------------------
   // ROLE SWITCHING UI
   // ---------------------------

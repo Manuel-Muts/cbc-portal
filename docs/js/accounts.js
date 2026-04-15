@@ -1,7 +1,6 @@
 // docs/js/accounts.js
 (function () {
   const API_BASE = config.api.baseURL;
-  const token = localStorage.getItem("token");
 
   // ---------------------------
   // STYLES FOR COMPACTNESS
@@ -19,11 +18,6 @@
   `;
   document.head.appendChild(compactStyle);
 
-  if (!token) {
-    window.location.href = "/login";
-    return;
-  }
-
   // ---------------------------
   // Ensure jsPDF and autoTable are loaded for PDF exports
   // This is a client-side check. The HTML file must include the scripts.
@@ -40,11 +34,6 @@
     return typeof window.jspdf.autoTable === 'function';
   }
 
-  const headers = {
-    "Authorization": `Bearer ${token}`,
-    "Content-Type": "application/json"
-  };
-
   // ---------------------------
   // HELPERS
   // ---------------------------
@@ -60,10 +49,12 @@
   }
 
   // Cache State
+  let userProfile = null;
   let statsCache = null;
   let statsLastFetch = 0;
   let feeStructuresCache = null;
   let feesLastFetch = 0;
+  let schoolInfoCache = null;
   const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
   // DOM Elements
@@ -126,6 +117,7 @@
   const studentFeeModalBody = document.getElementById('studentFeeModalBody');
   const dlStructureBtn = document.getElementById('dlStructureBtn');
   const dlStatementBtn = document.getElementById('dlStatementBtn');
+  const feeStructuresPrevBtn = document.getElementById('feeStructuresPrevBtn');
   const feeStructuresNextBtn = document.getElementById('feeStructuresNextBtn');
   const feeStructuresPageInfo = document.getElementById('feeStructuresPageInfo');
   let currentStudentDetails = null; // Store current student for PDF naming
@@ -133,6 +125,33 @@
   const FEE_STRUCTURES_LIMIT = 10;
   let feeStructuresTotalPages = 1;
   let feeStructuresCachePage = 1;
+
+  async function secureFetch(url, options = {}) {
+    const token = authService.getToken();
+    const headers = {
+      ...options.headers,
+      "Authorization": `Bearer ${token}`,
+      "Content-Type": "application/json"
+    };
+    const res = await fetch(url, { ...options, headers });
+    if (res.status === 401 || res.status === 403) return authService.redirectToLogin();
+    if (!res.ok) {
+      const error = await res.json().catch(() => ({}));
+      throw new Error(error.message || "Request failed");
+    }
+    return res.json();
+  }
+
+  async function getSchoolInfo() {
+    if (schoolInfoCache) return schoolInfoCache;
+    try {
+      schoolInfoCache = await secureFetch(`${API_BASE}/my-school`);
+      return schoolInfoCache;
+    } catch (e) {
+      console.error("School info fetch failed", e);
+      return { name: "SCHOOL NAME" };
+    }
+  }
 
   // ---------------------------
   // LOAD DASHBOARD DATA
@@ -180,15 +199,12 @@
         const query = new URLSearchParams({ academicYear: year, limit: 1000, page: 1 });
         if (grade) query.append("class", grade);
 
-        const res = await fetch(`${API_BASE}/accounts?${query.toString()}`, { headers });
-        if(res.ok) {
-            const data = await res.json();
-            const accounts = data.students || data.accounts || [];
-            const total = data.total || accounts.length;
-            statsCache = { key: cacheKey, data: accounts, total: total };
-            statsLastFetch = Date.now();
-            calculateTotals(accounts, term, total);
-        }
+        const data = await secureFetch(`${API_BASE}/accounts?${query.toString()}`);
+        const accounts = data.students || data.accounts || [];
+        const total = data.total || accounts.length;
+        statsCache = { key: cacheKey, data: accounts, total: total };
+        statsLastFetch = Date.now();
+        calculateTotals(accounts, term, total);
       } catch (e) {
           console.error("Failed to load stats", e);
       }
@@ -268,18 +284,12 @@
         return;
       }
 
-      const res = await fetch(`${API_BASE}/accounts/fee-structures?page=${feeStructuresPage}&limit=${FEE_STRUCTURES_LIMIT}`, { headers });
-      const tbody = document.getElementById('feeStructuresTableBody');
-      if (!tbody) return;
-
-      if (!res.ok) {
-        tbody.innerHTML = '<tr><td colspan="7" style="text-align: center; color: #dc3545;">Failed to load fee structures</td></tr>';
-        return;
-      }
-
-      const payload = await res.json();
+      const payload = await secureFetch(`${API_BASE}/accounts/fee-structures?page=${feeStructuresPage}&limit=${FEE_STRUCTURES_LIMIT}`);
       const list = Array.isArray(payload) ? payload : payload.data || [];
       const pagination = payload.pagination || {};
+
+      const tbody = document.getElementById('feeStructuresTableBody');
+      if (!tbody) return;
 
       feeStructuresCache = list;
       feeStructuresCachePage = feeStructuresPage;
@@ -332,8 +342,8 @@
       tbody.querySelectorAll('.delete-fee-btn').forEach(btn => {
           btn.addEventListener('click', async () => {
               if(confirm("Delete this fee structure?")) {
-                  await fetch(`${API_BASE}/accounts/fee-structure/${btn.dataset.id}`, { method: 'DELETE', headers });
-                  loadFeeStructures(true); // Force refresh after delete
+                  await secureFetch(`${API_BASE}/accounts/fee-structure/${btn.dataset.id}`, { method: 'DELETE' });
+                  loadFeeStructures(true);
               }
           });
       });
@@ -389,10 +399,7 @@
     if (search) query.append("name", search);
 
     try {
-        const res = await fetch(`${API_BASE}/reports/outstanding-fees?${query.toString()}`, { headers });
-        if (!res.ok) throw new Error('Failed to fetch outstanding fees');
-        const data = await res.json();
-        
+        const data = await secureFetch(`${API_BASE}/reports/outstanding-fees?${query.toString()}`);
         renderOutstandingTable(data.students || []);
         
         // Update pagination state
@@ -488,6 +495,18 @@
       }
     });
   }
+  //----------------
+//logout button logic
+//-------------------
+if (logoutBtn) {
+  logoutBtn.addEventListener("click", () => {
+    try {
+      authService.logout(); // or signOut depending on your setup
+    } catch (e) {
+      console.error("Logout error:", e);
+    }
+  });
+}
 
   async function openStudentFeeDetails(studentId, admission, studentName, grade) {
     studentFeeModalBody.innerHTML = '<div style="text-align:center; padding:20px;">Loading details...</div>';
@@ -505,13 +524,12 @@
     try {
       // Fetch payments AND fee structures
       const [payRes, feesRes] = await Promise.all([
-        fetch(`${API_BASE}/users/ledger/${admission}`, { headers }),
-        fetch(`${API_BASE}/accounts/fee-structures?limit=1000`, { headers })
+        secureFetch(`${API_BASE}/users/ledger/${admission}`),
+        secureFetch(`${API_BASE}/accounts/fee-structures?limit=1000`)
       ]);
 
-      const payData = payRes.ok ? await payRes.json() : { payments: [] };
-      const feesResData = feesRes.ok ? await feesRes.json() : [];
-      const feesData = Array.isArray(feesResData) ? feesResData : (feesResData.data || []);
+      const payData = payRes || { payments: [] };
+      const feesData = Array.isArray(feesRes) ? feesRes : (feesRes.data || []);
       
       // Filter payments for the selected year only
       const allPayments = payData.payments || [];
@@ -647,16 +665,8 @@
     }
     
     // 1. Fetch school info to get the name
-    let schoolName = "SCHOOL NAME";
-    try {
-        const res = await fetch(`${API_BASE}/my-school`, { headers });
-        if (res.ok) {
-            const school = await res.json();
-            schoolName = (school.name || "SCHOOL NAME").toUpperCase();
-        }
-    } catch (e) {
-        console.error("Could not fetch school name for PDF", e);
-    }
+    const school = await getSchoolInfo();
+    const schoolName = (school.name || "SCHOOL NAME").toUpperCase();
 
     // 2. Create a temporary, off-screen container for printing
     const printContainer = document.createElement('div');
@@ -743,24 +753,17 @@
       updateFeeBtn.textContent = "Updating...";
 
       try {
-        const res = await fetch(`${API_BASE}/accounts/fee-structure/${id}`, {
+        await secureFetch(`${API_BASE}/accounts/fee-structure/${id}`, {
           method: 'PUT',
-          headers,
           body: JSON.stringify({ grade, academicYear: year, term1Fee: t1, term2Fee: t2, term3Fee: t3 })
         });
 
-        if (res.ok) {
-          alert("Fee structure updated successfully!");
-          editFeeModal.classList.remove('visible');
-          setTimeout(() => editFeeModal.style.display = "none", 200);
-          loadFeeStructures(true); // Force refresh after update
-        } else {
-          const err = await res.json();
-          alert("Error: " + (err.message || "Failed to update"));
-        }
+        alert("Fee structure updated successfully!");
+        editFeeModal.classList.remove('visible');
+        setTimeout(() => editFeeModal.style.display = "none", 200);
+        loadFeeStructures(true);
       } catch (e) {
-        console.error(e);
-        alert("Network error");
+        alert("Error: " + e.message);
       } finally {
         updateFeeBtn.disabled = false;
         updateFeeBtn.textContent = "Update Fee Structure";
@@ -806,23 +809,17 @@
           saveFeeBtn.textContent = "Saving...";
 
           try {
-              const res = await fetch(`${API_BASE}/accounts/fee-structure`, {
+              await secureFetch(`${API_BASE}/accounts/fee-structure`, {
                   method: 'POST',
-                  headers,
                   body: JSON.stringify(payload)
               });
               
-              if(res.ok) {
-                  alert("Fee structure saved!");
-                  postFeeModal.classList.remove('visible');
-                  setTimeout(() => postFeeModal.style.display = "none", 200);
-                  loadFeeStructures(true); // Force refresh after save
-              } else {
-                  const err = await res.json();
-                  alert("Error: " + (err.message || "Failed to save"));
-              }
+              alert("Fee structure saved!");
+              postFeeModal.classList.remove('visible');
+              setTimeout(() => postFeeModal.style.display = "none", 200);
+              loadFeeStructures(true);
           } catch(e) {
-              alert("Network error");
+              alert("Error: " + e.message);
           } finally {
               saveFeeBtn.disabled = false;
               saveFeeBtn.textContent = "Save Fee Structure";
@@ -832,13 +829,6 @@
 
   if (refreshBtn) {
     refreshBtn.addEventListener('click', () => loadDashboardData(true));
-  }
-
-  if (logoutBtn) {
-    logoutBtn.addEventListener('click', () => {
-      localStorage.clear();
-      window.location.href = '/login';
-    });
   }
 
   // ---------------------------

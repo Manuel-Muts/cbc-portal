@@ -7,7 +7,8 @@
   <link rel="stylesheet" href="css/teachers.css" />
   <link rel="stylesheet" href="css/dean.css" />
   <link rel="icon" href="https://cdn-icons-png.flaticon.com/512/1077/1077012.png" />
-  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600&display=swap" rel="stylesheet">
+ <meta http-equiv="Content-Security-Policy" 
+content="style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com;">
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.28/jspdf.plugin.autotable.min.js"></script>
@@ -19,7 +20,6 @@
       <a href="teacher-dashboard.html" class="btn secondary-btn" style="text-decoration: none;">← Teacher Dashboard</a>
     </div>
     <div style="display: flex; align-items: center; gap: 10px;">
-      <button id="darkModeToggle" class="btn secondary-btn" title="Toggle Dark Mode">🌙</button>
       <button id="logoutBtn">Logout</button>
     </div>
   </header>
@@ -121,7 +121,8 @@
   </main>
 
   <script src="js/config.js"></script>
-  <script src="js/dean.js"></script>
+  <script src="js/auth-service.js"></script>
   <script src="js/cbc-utils.js"></script>
+  <script src="js/dean.js"></script>
 </body>
 </html>

@@ -6,14 +6,6 @@
   // API_BASE is now loaded from config.js
   // To change the API endpoint, update config.js
   const API_BASE = config.api.baseURL;
-  const token = localStorage.getItem("token");
-
-  if (!token) {
-    alert("You must log in first.");
-    window.location.href = "/login";
-    return;
-  }
-  console.log("Stored token:", token);
 
   // DOM shortcuts
   const schoolNameDisplay = document.getElementById("schoolNameDisplay");
@@ -53,6 +45,7 @@
   const fromAcademicYearInput = document.getElementById("fromAcademicYear");
   const toAcademicYearInput = document.getElementById("toAcademicYear");
   const previewPromotionBtn = document.getElementById("previewPromotionBtn");
+  const archiveMarksBtn = document.getElementById("archiveMarksBtn");
   const confirmPromotionBtn = document.getElementById("confirmPromotionBtn");
   const promotionPreviewBody = document.querySelector("#promotionPreviewTable tbody");
   const studentSearchInput = document.getElementById("studentSearchInput");
@@ -94,6 +87,7 @@ async function loadSchoolInfo(forceReload = false) {
   }
 
   try {
+    const token = authService.getToken();
     const res = await fetch(`${API_BASE}/my-school`, {
       headers: { Authorization: `Bearer ${token}` }
     });
@@ -220,6 +214,7 @@ function attachAdminSignatureLogic() {
         formData.append("file", file);
 
         try {
+            const token = authService.getToken();
             const res = await fetch(`${API_BASE}/materials/upload-raw`, {
                 method: 'POST',
                 headers: { 'Authorization': `Bearer ${token}` },
@@ -529,6 +524,7 @@ confirmPromotionBtn.addEventListener("click", async () => {
   // API HELPER
   // ---------------------------
   async function secureFetch(url, options = {}) {
+    const token = authService.getToken();
     options.headers = { ...options.headers, "Content-Type": "application/json", "Authorization": `Bearer ${token}` };
     try {
       const res = await fetch(url, options);
@@ -731,6 +727,7 @@ confirmPromotionBtn.addEventListener("click", async () => {
       }
     }
 
+    const token = authService.getToken();
     const res = await secureFetch(`${API_BASE}/users?role=teacher&limit=500`);
     if (!res || !res.users) return;
 
@@ -744,8 +741,24 @@ confirmPromotionBtn.addEventListener("click", async () => {
     populateTeacherSelects(teachersCache);
   }
 
-  async function loadSubjectAllocations(page = subjectAllocPage, limit = SUBJECT_ALLOC_LIMIT) {
+  async function loadSubjectAllocations(page = subjectAllocPage, limit = SUBJECT_ALLOC_LIMIT, force = false) {
     if (!subjectAllocTableBody) return;
+    
+    const CACHE_KEY = `subject_allocations_p${page}`;
+    if (!force) {
+      const cached = localStorage.getItem(CACHE_KEY);
+      if (cached) {
+        const { timestamp, data } = JSON.parse(cached);
+        if (Date.now() - timestamp < 5 * 60 * 1000) {
+          subjectAllocPage = data.pagination?.page || page;
+          subjectAllocTotalPages = data.pagination?.totalPages || 1;
+          renderSubjectAllocations(data.data || data);
+          updateSubjectAllocPaginationControls();
+          return;
+        }
+      }
+    }
+
     subjectAllocTableBody.innerHTML = `<tr><td colspan="5" style="text-align:center">${createSpinner().outerHTML} Loading allocations...</td></tr>`;
     const response = await secureFetch(`${API_BASE}/users/subjects/allocations?page=${page}&limit=${limit}`);
     if (!response) { subjectAllocTableBody.innerHTML = ""; return; }
@@ -756,6 +769,7 @@ confirmPromotionBtn.addEventListener("click", async () => {
     subjectAllocPage = pagination.page || page;
     subjectAllocTotalPages = pagination.totalPages || 1;
 
+    localStorage.setItem(CACHE_KEY, JSON.stringify({ timestamp: Date.now(), data: response }));
     renderSubjectAllocations(allocationData);
     updateSubjectAllocPaginationControls();
   }
@@ -998,6 +1012,10 @@ async function openHistoryModal(studentId) {
 (async function initialLoad() {
   if (isRefreshing) return;
   try { 
+    const user = await authService.getUserProfile(["admin"]);
+    if (!user) return;
+    authService.initLogout();
+
     setupNavigation();
     await Promise.all([
       loadTeacherOptions(),
@@ -1028,6 +1046,7 @@ const grade = grades.length > 0 ? grades[0] : ""; // ✅ fix here
 const stream = streamInput?.value?.trim() || null; // 🆕 Get stream from input
 const subjects = subjectsSelect ? Array.from(subjectsSelect.selectedOptions).map(opt => opt.value) : [];
 
+const token = authService.getToken();
 const res = await fetch(`${API_BASE}/users/subjects/assign`, {
   method: 'POST',
   headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
@@ -1051,6 +1070,7 @@ const res = await fetch(`${API_BASE}/users/subjects/assign`, {
     const assignedClass = classGradeSelect?.value || "";
     const assignedStream = classStreamInput?.value?.trim() || null; // 🆕 Get stream from input
 
+    const token = authService.getToken();
     const res = await fetch(`${API_BASE}/users/classes/assign-teacher`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
@@ -1088,6 +1108,7 @@ const res = await fetch(`${API_BASE}/users/subjects/assign`, {
     if (!ok) return;
 
     try {
+      const token = authService.getToken();
       console.log(`[DEBUG] Sending remove request with:`, { teacherId, grade, stream });
       
       const result = await secureFetch(`${API_BASE}/users/subjects/remove`, {
@@ -1122,6 +1143,7 @@ const res = await fetch(`${API_BASE}/users/subjects/assign`, {
       if (!ok) return;
       
       try {
+        const token = authService.getToken();
         const result = await secureFetch(`${API_BASE}/users/classes/remove`, { 
           method: "POST",
           headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
@@ -1640,18 +1662,6 @@ if (exportClassBtn) {
     }
   });
 }
-
-  // ---------------------------
-  // LOGOUT
-  // ---------------------------
-  if (logoutBtn) {
-    logoutBtn.addEventListener("click", async () => {
-      const ok = await showConfirm({ message: "Are you sure you want to logout?" });
-      if (!ok) return;
-      localStorage.clear();
-      window.location.href = "/login";
-    });
-  }
 
   // ---------------------------
 // PROMOTION TABLE FILTER

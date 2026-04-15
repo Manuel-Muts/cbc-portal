@@ -89,5 +89,31 @@ window.cbcUtils = {
         const match = (grade || "").toString().match(/\d+/);
         const num = match ? parseInt(match[0]) : 0;
         return num >= 10 && num <= 12;
+    },
+
+    /**
+     * Centralized Toast Notification
+     */
+    showToast: (msg, type = "success") => {
+        let container = document.getElementById("toastContainer");
+        if (!container) {
+            container = document.createElement("div");
+            container.id = "toastContainer";
+            document.body.appendChild(container);
+        }
+        const toast = document.createElement("div");
+        toast.className = `toast ${type}`;
+        toast.textContent = msg;
+        container.appendChild(toast);
+        setTimeout(() => toast.remove(), 3000);
+    },
+
+    /**
+     * Centralized logout
+     */
+    logout: () => {
+        localStorage.clear();
+        sessionStorage.clear();
+        window.location.href = "/login";
     }
 };

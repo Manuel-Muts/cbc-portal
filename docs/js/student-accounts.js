@@ -1,7 +1,6 @@
 // docs/js/student-accounts.js
 (function () {
   const API_BASE = config.api.baseURL;
-  const token = localStorage.getItem("token");
 
   // ---------------------------
   // STYLES FOR COMPACTNESS
@@ -15,11 +14,6 @@
     .btn { padding: 3px 8px !important; font-size: 0.75rem !important; }
   `;
   document.head.appendChild(compactStyle);
-
-  if (!token) {
-    window.location.href = "/login";
-    return;
-  }
 
   // DOM Elements
   const tableBody = document.querySelector("#accountsTable tbody");
@@ -39,6 +33,8 @@
   let totalPages = 1;
 
   // Cache State
+  let userProfile = null;
+  let schoolInfoCache = null;
   const accountsCache = new Map();
   const ledgerCache = new Map();
   const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
@@ -103,7 +99,10 @@
   }
 
   async function secureFetch(url, options = {}) {
-    options.headers = { ...options.headers, "Content-Type": "application/json", "Authorization": `Bearer ${token}` };
+    const token = authService.getToken();
+    options.headers = { ...options.headers,
+       "Content-Type": "application/json", 
+       "Authorization": `Bearer ${token}` };
     try {
       const res = await fetch(url, options);
       if (!res.ok) {
@@ -117,6 +116,17 @@
       try { msg = JSON.parse(err.message).message; } catch(e){}
       showToast(msg || "Request failed", "error");
       return null;
+    }
+  }
+
+  async function getSchoolInfo() {
+    if (schoolInfoCache) return schoolInfoCache;
+    try {
+      schoolInfoCache = await secureFetch(`${API_BASE}/my-school`);
+      return schoolInfoCache;
+    } catch (e) {
+      console.error("School info fetch failed", e);
+      return { name: "SCHOOL NAME" };
     }
   }
 
@@ -426,13 +436,12 @@
     try {
       // Fetch payments AND fee structures
       const [payRes, feesRes] = await Promise.all([
-        fetch(`${API_BASE}/users/ledger/${admission}`, { headers: { "Authorization": `Bearer ${token}` } }),
-        fetch(`${API_BASE}/accounts/fee-structures?limit=1000`, { headers: { "Authorization": `Bearer ${token}` } })
+        secureFetch(`${API_BASE}/users/ledger/${admission}`),
+        secureFetch(`${API_BASE}/accounts/fee-structures?limit=1000`)
       ]);
 
-      const payData = payRes.ok ? await payRes.json() : { payments: [] };
-      const feesResData = feesRes.ok ? await feesRes.json() : [];
-      const feesData = Array.isArray(feesResData) ? feesResData : (feesResData.data || []);
+      const payData = payRes || { payments: [] };
+      const feesData = Array.isArray(feesRes) ? feesRes : (feesRes.data || []);
       
       // Filter payments for the selected year only
       const allPayments = payData.payments || [];
@@ -568,16 +577,8 @@
     }
     
     // 1. Fetch school info to get the name
-    let schoolName = "SCHOOL NAME";
-    try {
-        const res = await fetch(`${API_BASE}/my-school`, { headers: { "Authorization": `Bearer ${token}` } });
-        if (res.ok) {
-            const school = await res.json();
-            schoolName = (school.name || "SCHOOL NAME").toUpperCase();
-        }
-    } catch (e) {
-        console.error("Could not fetch school name for PDF", e);
-    }
+    const school = await getSchoolInfo();
+    const schoolName = (school.name || "SCHOOL NAME").toUpperCase();
 
     // 2. Create a temporary, off-screen container for printing
     const printContainer = document.createElement('div');
@@ -629,14 +630,8 @@
     if (!jsPDF) return alert("PDF library not loaded.");
     const doc = new jsPDF();
 
-    let schoolName = "SCHOOL NAME";
-    try {
-      const res = await fetch(`${API_BASE}/my-school`, { headers: { "Authorization": `Bearer ${token}` } });
-      if (res.ok) {
-          const school = await res.json();
-          schoolName = (school.name || "SCHOOL NAME").toUpperCase();
-      }
-    } catch (e) {}
+    const school = await getSchoolInfo();
+    const schoolName = (school.name || "SCHOOL NAME").toUpperCase();
 
     doc.setFontSize(16);
     doc.text(schoolName, 105, 20, { align: "center" });
@@ -860,5 +855,10 @@
   }
 
   // Init
-  loadAccounts();
+  (async function init() {
+    userProfile = await authService.getUserProfile(["accounts", "admin"]);
+    if (!userProfile) return;
+    authService.initLogout();
+    loadAccounts();
+  })();
 })();

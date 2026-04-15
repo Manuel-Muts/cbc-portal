@@ -20,41 +20,13 @@ document.addEventListener("DOMContentLoaded", async () => {
   // ---------------------------
   // AUTHENTICATION WITH TOKEN
   // ---------------------------
-  const token = localStorage.getItem("token");
-  if (!token) {
-    console.warn("No token found in localStorage, redirecting to login.");
-    window.location.href = "/login";
-    return;
-  }
+  const user = await authService.getUserProfile(["student", "learner"]);
+  if (!user) return;
 
-  let user;
-  try {
-    const res = await fetch(`${API_BASE}/users/user`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-
-    if (!res.ok) {
-      localStorage.clear();
-      window.location.href = "/login";
-      return;
-    }
-
-    user = await res.json();
-
-    if (!user || !["student", "learner"].includes(user.role)) {
-      localStorage.clear();
-      window.location.href = "/login";
-      return;
-    }
-
-    window.currentUser = user;
-    localStorage.setItem("loggedInUser", JSON.stringify(user));
-    console.log("✅ User authenticated:", user);
-  } catch (err) {
-    console.error("Auth error:", err);
-    alert("Could not verify session. Please refresh or log in again.");
-    return;
-  }
+  const token = authService.getToken();
+  window.currentUser = user;
+  console.log("✅ Student authenticated:", user.name);
+  authService.initLogout();
 
   // ---------------------------
   // TAB LOGIC
@@ -834,13 +806,6 @@ const displayStudentTables = async () => {
     });
   }
 
-  // ---------------------------
-  // LOGOUT
-  // ---------------------------
-  document.getElementById("logoutBtn")?.addEventListener("click", () => {
-    localStorage.clear();
-    window.location.href = "/login";
-  });
 
   // ---------------------------
   // INITIALIZATION

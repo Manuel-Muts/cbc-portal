@@ -8,11 +8,7 @@ document.addEventListener("DOMContentLoaded", () => {
   console.log("📦 Window.config available:", !!window.config);
   
   const API_BASE = config.api.baseURL;
-  const token = localStorage.getItem("token");
 
-  console.log("🔑 Token from localStorage:", token ? `${token.substring(0, 20)}...` : "NOT FOUND");
-  console.log("📍 API Base URL:", API_BASE);
-  
   let submittedMarks = []; // in-memory marks list
   let editingMarkId = null;
   let teacher = null;
@@ -101,82 +97,18 @@ document.addEventListener("DOMContentLoaded", () => {
   // AUTHENTICATION
   // ---------------------------
   async function loadTeacherProfile() {
-    console.log("🔐 Loading teacher profile...");
-    if (!token) {
-      console.error("❌ No token found in localStorage");
-      return redirectToLogin();
-    }
+    teacher = await authService.getUserProfile(["teacher", "classteacher"]);
+    if (!teacher) return;
 
-    const CACHE_KEY = "teacher_profile_cache";
-    const CACHE_DURATION = 15 * 60 * 1000; // 15 minutes
+    console.log("✅ Teacher authenticated:", teacher.name);
+    window.currentTeacher = teacher;
+    updateTeacherNameUI();
+    authService.initLogout();
 
-    const cached = localStorage.getItem(CACHE_KEY);
-    if (cached) {
-      try {
-        const { timestamp, data } = JSON.parse(cached);
-        if (Date.now() - timestamp < CACHE_DURATION) {
-          console.log("✅ Using cached teacher profile");
-          teacher = data;
-          window.currentTeacher = teacher;
-          updateTeacherNameUI();
-
-          if (teacher.isDean) {
-            const deanBtn = document.getElementById("deanDashboardBtn");
-            if (deanBtn) deanBtn.style.display = "inline-block";
-          }
-
-          return; // ✅ IMPORTANT: stop execution here
-        }
-      } catch (e) {
-        console.warn("Cache parse error:", e);
-      }
-    }
-
-    try {
-      console.log("📡 Fetching user profile from:", `${API_BASE}/users/user`);
-      const res = await fetch(`${API_BASE}/users/user`, {
-        headers: {
-          Authorization: `Bearer ${token}`
-        }
-      });
-      console.log("📨 Profile API Response Status:", res.status);
-      
-      if (!res.ok) {
-        const errorData = await res.json().catch(() => ({}));
-        console.error("❌ Profile fetch error:", errorData);
-        throw new Error("Unauthorized");
-      }
-      
-      const data = await res.json();
-      console.log("✅ Teacher profile received:", data);
-
-      localStorage.setItem(CACHE_KEY, JSON.stringify({
-        timestamp: Date.now(),
-        data: data
-      }));
-      
-      teacher = data;
-      if (!teacher.schoolId) {
+    if (!teacher.schoolId) {
         console.error("Teacher profile missing schoolId:", teacher);
-        return redirectToLogin();
+        return authService.redirectToLogin();
       }
-      const rolesArray = Array.isArray(teacher.roles) ? teacher.roles : [teacher.role];
-      if (!rolesArray.includes("teacher") && !rolesArray.includes("classteacher"))
-        throw new Error("Unauthorized");
-      
-      updateTeacherNameUI();
-      window.currentTeacher = teacher;
-
-      // 🆕 Dean Access Logic
-      if (teacher.isDean) {
-        const deanBtn = document.getElementById("deanDashboardBtn");
-        if (deanBtn) deanBtn.style.display = "inline-block";
-      }
-
-    } catch (err) {
-      console.error("❌ Error loading teacher profile:", err);
-      redirectToLogin();
-    }
   }
 
     function updateTeacherNameUI() {
@@ -184,6 +116,11 @@ document.addEventListener("DOMContentLoaded", () => {
     if (teacherNameEl && teacher) {
       teacherNameEl.innerHTML = `
         <span>${(teacher.name || "TEACHER").toUpperCase()}</span>
+        ${teacher.isDean ? `
+          <a href="dean-dashboard.html" class="btn secondary-btn" style="margin-left:15px; font-size:0.75rem; padding:5px 12px; text-decoration:none; display:inline-block; vertical-align:middle; border-radius:6px; font-weight:600; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
+            🎓 DEAN PANEL
+          </a>
+        ` : ''}
         <button id="headerRefreshBtn" title="Refresh Dashboard" style="background:none; border:none; cursor:pointer; margin-left:10px; font-size:1.1rem; color:inherit; vertical-align:middle; transition: transform 0.5s ease;">
           🔄
         </button>
@@ -195,7 +132,7 @@ document.addEventListener("DOMContentLoaded", () => {
         
         setTimeout(() => {
           localStorage.removeItem("teacher_allocations_cache");
-          localStorage.removeItem("teacher_profile_cache");
+          localStorage.removeItem("user_profile_cache");
           localStorage.removeItem("teacher_school_cache");
           localStorage.removeItem("teacher_marks_cache");
           localStorage.removeItem("teacher_materials_cache");
@@ -238,6 +175,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     document.getElementById('signatureUploadInput')?.addEventListener('change', async (e) => {
         const file = e.target.files[0];
+        const token = authService.getToken();
         if (!file) return;
 
         if (file.size > 2 * 1024 * 1024) {
@@ -268,7 +206,7 @@ document.addEventListener("DOMContentLoaded", () => {
             });
 
             // Clear cache so the new signature is fetched on reload
-            localStorage.removeItem("teacher_profile_cache");
+            localStorage.removeItem("user_profile_cache");
             showToast("✅ Signature updated successfully!", "success");
             setTimeout(() => window.location.reload(), 1500);
         } catch (err) {
@@ -281,6 +219,7 @@ document.addEventListener("DOMContentLoaded", () => {
   // FETCH SCHOOL NAME
   // ---------------------------
   async function loadSchoolName() {
+    const token = authService.getToken();
     if (!token) return;
     
     const CACHE_KEY = "teacher_school_cache";
@@ -353,7 +292,7 @@ document.addEventListener("DOMContentLoaded", () => {
     try {
       console.log("🔍 Starting to load teacher allocations...");
       console.log("📡 API Base URL:", API_BASE);
-      console.log("🔑 Token present:", !!token);
+      const token = authService.getToken();
       
       const res = await fetch(`${API_BASE}/users/subjects/my-allocations`, {
         headers: {
@@ -445,18 +384,6 @@ document.addEventListener("DOMContentLoaded", () => {
     infoWrapper.innerHTML = html;
   }
 
-  function redirectToLogin() {
-    localStorage.clear();
-    window.location.href = "/login";
-  }
-
-  // ---------------------------
-  // LOGOUT
-  // ---------------------------
-  logoutBtn?.addEventListener("click", () => {
-    localStorage.clear();
-    window.location.href = "/login";
-  });
 
   // ---------------------------
   // ASSESSMENT SELECT POPULATE
@@ -599,6 +526,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
       console.log("📝 Academic Year:", new Date().getFullYear());
       
+      const token = authService.getToken();
       const res = await fetch(`${API_BASE}/enrollments/class/${classLabel}?page=${page}&limit=${STUDENTS_PER_PAGE}`, {
         headers: {
           Authorization: `Bearer ${token}`
@@ -1210,6 +1138,7 @@ if (!marksAssessmentSelect.value) {
     try {
       let successCount = 0;
       let failureCount = 0;
+      const token = authService.getToken();
 
       for (const mark of marks) {
         try {
@@ -1361,6 +1290,7 @@ if (!marksAssessmentSelect.value) {
 
     try {
       console.log("Fetching marks from:", `${API_BASE}/marks/teacher`);
+      const token = authService.getToken();
       const res = await fetch(`${API_BASE}/marks/teacher`, {
         headers: {
           Authorization: `Bearer ${token}`
@@ -1624,6 +1554,7 @@ if (!marksAssessmentSelect.value) {
     if (btn.dataset.action === "delete") {
       if (!confirm("Delete this mark?")) return;
       try {
+        const token = authService.getToken();
         const res = await fetch(`${API_BASE}/marks/${id}`, {
           method: "DELETE",
           headers: {
