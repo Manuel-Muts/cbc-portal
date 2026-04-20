@@ -30,8 +30,19 @@ document.addEventListener("DOMContentLoaded", function () {
   // ROLE SWITCHING UI
   // ---------------------------
   function updateRoleUI(selectedRole) {
-    const show = (el) => { el.style.display = "block"; el.required = true; };
-    const hide = (el) => { el.style.display = "none"; el.required = false; };
+    const show = (el) => { 
+      el.style.display = "block"; 
+      el.required = true;
+      // Trigger the fade-in animation
+      el.classList.remove("field-fade-in");
+      void el.offsetWidth; // Force reflow to restart animation
+      el.classList.add("field-fade-in");
+    };
+    const hide = (el) => { 
+      el.style.display = "none"; 
+      el.required = false;
+      el.classList.remove("field-fade-in");
+    };
 
     if (selectedRole === "student" || selectedRole === "learner") {
       show(firstnameField); show(firstnameLabel);

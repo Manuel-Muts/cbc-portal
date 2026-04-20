@@ -5,11 +5,13 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Login</title>
   <link rel="stylesheet" href="css/style.css" />
-  <link rel="icon" href="https://cdn-icons-png.flaticon.com/512/1077/1077012.png" />
+   <link rel="icon" type="image/png" href="/images/favicon.png"/> 
 </head>
 <body class="login-body">
   <div class="login-container">
-    <h2>Login</h2>
+    <div class="logo-container">
+  <img src="/images/favicon.png" alt="Competence Hub Logo" class="login-logo">
+  <div class="brand-name">Competence Hub</div><br>
 
     <form id="loginForm" class="login-form">
       <label for="role">Select Role</label>
@@ -23,9 +25,11 @@
       </select>
 
       <!-- LEARNER FIELD -->
+          <div class="form-group">
       <label for="firstname" id="firstnameLabel" style="display:none;">Full Name</label>
       <input type="text" id="firstname" name="firstname" placeholder="Enter your full name" style="display:none;">
-
+          </div>
+          
       <!-- EMAIL FOR TEACHERS/ADMIN -->
       <label for="email" id="emailLabel" style="display:none;">Email</label>
       <input type="email" id="email" name="email" placeholder="Enter your email" style="display:none;">
@@ -34,12 +38,12 @@
       <label for="admission" id="admissionLabel">Password</label>
       <input type="password" id="admission" name="admission" placeholder="Enter your password" required>
       
-      <button type="submit" class="btn">Login</button><br><br>
+      <button type="submit" class="btn" >Login</button><br><br>
 
       <p style="margin-top:10px; text-align: center;">
         <a href="/reset" id="forgotPassword">Forgot Password?</a>
       </p><br>
-      <p class="support"><a href="/home">Back to Home</a></p>
+      <p class="support"><a href="/home" style="font-size: 1.2rem;">Back to Home</a></p>
     </form>
   </div>
 
@@ -58,15 +62,27 @@
     </div>
   </div>
 
-  <footer>
+<script src="https://competence-hub.onrender.com/js/xlsx.full.min.js"></script>
+  <script src="js/config.js"></script>
+  <script src="js/login.js"></script>
+  <script>
+    // Logic to handle auto-selecting role from URL parameters
+    document.addEventListener("DOMContentLoaded", () => {
+      const params = new URLSearchParams(window.location.search);
+      const role = params.get('role');
+      if (role) {
+        const roleSelect = document.getElementById('role');
+        roleSelect.value = role;
+        // Dispatch change event so login.js updates the UI (hides/shows Email vs Name)
+        roleSelect.dispatchEvent(new Event('change'));
+      }
+    });
+  </script>
+    <footer>
     <p>
 © Muts Tech Ltd · Secure CBE Education Platform ·
 <script>document.write(new Date().getFullYear());</script>
 </p>
   </footer>
-  
-  <script src="https://competence-hub.onrender.com/js/xlsx.full.min.js"></script>
-  <script src="js/config.js"></script>
-  <script src="js/login.js"></script>
 </body>
 </html>

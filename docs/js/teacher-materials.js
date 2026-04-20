@@ -167,83 +167,6 @@
   };
 
   // ---------------------------
-  // AUTHENTICATION & INIT
-  // ---------------------------
-  async function loadTeacherProfile() {
-    const CACHE_KEY = "teacher_profile_cache";
-    const CACHE_DURATION = 15 * 60 * 1000; // 15 minutes
-
-    const cached = localStorage.getItem(CACHE_KEY);
-    if (cached) {
-      try {
-        const { timestamp, data } = JSON.parse(cached);
-        if (Date.now() - timestamp < CACHE_DURATION) {
-          console.log("✅ Using cached teacher profile");
-          const teacherNameEl = document.getElementById("teacherName");
-          if (teacherNameEl) teacherNameEl.textContent = (data.name || "TEACHER").toUpperCase();
-          loadSchoolName();
-          return;
-        }
-      } catch (e) { console.warn("Cache read error:", e); }
-    }
-
-    try {
-      const res = await fetch(`${API_BASE}/users/user`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      if (!res.ok) throw new Error("Unauthorized");
-      
-      const teacher = await res.json();
-      localStorage.setItem(CACHE_KEY, JSON.stringify({
-        timestamp: Date.now(),
-        data: teacher
-      }));
-
-      const teacherNameEl = document.getElementById("teacherName");
-      if (teacherNameEl) teacherNameEl.textContent = (teacher.name || "TEACHER").toUpperCase();
-      
-      // Load School Name
-      loadSchoolName();
-    } catch (err) {
-      console.error("Auth error:", err);
-      window.location.href = "/login";
-    }
-  }
-
-  async function loadSchoolName() {
-    const CACHE_KEY = "teacher_school_cache";
-    const CACHE_DURATION = 15 * 60 * 1000;
-
-    const cached = localStorage.getItem(CACHE_KEY);
-    if (cached) {
-      try {
-        const { timestamp, data } = JSON.parse(cached);
-        if (Date.now() - timestamp < CACHE_DURATION) {
-          const schoolNameEl = document.getElementById("schoolName");
-          if (schoolNameEl) schoolNameEl.textContent = (data.name || "").toUpperCase();
-          return;
-        }
-      } catch (e) {}
-    }
-
-    try {
-      const res = await fetch(`${API_BASE}/my-school`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      if (res.ok) {
-        const school = await res.json();
-        localStorage.setItem(CACHE_KEY, JSON.stringify({
-          timestamp: Date.now(),
-          data: school
-        }));
-
-        const schoolNameEl = document.getElementById("schoolName");
-        if (schoolNameEl) schoolNameEl.textContent = (school.name || "").toUpperCase();
-      }
-    } catch (err) {}
-  }
-
-  // ---------------------------
   // HELPERS
   // ---------------------------
   function showToast(msg, type = "success") {
@@ -637,8 +560,6 @@
   // CONTROLS
   // ---------------------------
   smartRefreshBtn?.addEventListener("click", () => {
-    localStorage.removeItem("teacher_profile_cache");
-    localStorage.removeItem("teacher_school_cache");
     localStorage.removeItem("teacher_materials_cache");
     window.location.reload();
   });
@@ -653,7 +574,6 @@
   // ---------------------------
   (async function init() {
     setupTabs();
-    await loadTeacherProfile();
     await loadMaterials();
   })();
 

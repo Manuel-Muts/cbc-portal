@@ -8,13 +8,33 @@ document.addEventListener("DOMContentLoaded", () => {
   const API_BASE = config.api.baseURL; // backend base URL
 
   // Cache state for overview page
-  let overviewCache = null;
+  const OVERVIEW_CACHE_KEY = "overview_cache";
   let overviewLastFetch = 0;
   const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
   // ---------------------------
-  // SESSION CHECK
-  // ---------------------------
+// GENERIC CACHE HELPER
+// ---------------------------
+function getCache(key) {
+  const cached = JSON.parse(localStorage.getItem(key) || "null");
+  if (!cached) return null;
+
+  if (Date.now() - cached.timestamp > CACHE_TTL) {
+    localStorage.removeItem(key);
+    return null;
+  }
+
+  return cached.data;
+}
+
+function setCache(key, data) {
+  localStorage.setItem(key, JSON.stringify({
+    timestamp: Date.now(),
+    data
+  }));
+}
+
+  //OVERVIEW CACHE LOGI
   // ---------------------------
   // JWT FETCH HELPER
   // ---------------------------
@@ -135,18 +155,20 @@ document.addEventListener("DOMContentLoaded", () => {
             </div>
           </div>
         `;
+let metrics;
 
-        let metrics;
-        // Use cache if available, valid, and not forced to refresh
-        if (!forceRefresh && overviewCache && (Date.now() - overviewLastFetch < CACHE_TTL)) {
-          metrics = overviewCache;
-        } else {
-          const overviewRes = await authFetch(`/overview`);
-          if (!overviewRes) break;
-          metrics = await overviewRes.json();
-          overviewCache = metrics;
-          overviewLastFetch = Date.now();
-        }
+const cacheKey = "overview_cache";
+const cached = getCache(cacheKey);
+
+if (!forceRefresh && cached) {
+  metrics = cached;
+} else {
+  const overviewRes = await authFetch(`/overview`);
+  if (!overviewRes) break;
+
+  metrics = await overviewRes.json();
+  setCache(cacheKey, metrics);
+}
 
         document.getElementById("totalSchools").textContent = `Schools: ${metrics.totalSchools}`;
         document.getElementById("totalAdmins").textContent = `Admins: ${metrics.totalAdmins}`;
@@ -244,9 +266,18 @@ document.addEventListener("DOMContentLoaded", () => {
         `;
 
         (async () => {
-          const res = await authFetch(`/analytics`);
-          if (!res) return;
-          const data = await res.json();
+          let data;
+          const cacheKey = "analytics_cache";
+          const cached = getCache(cacheKey);
+
+          if (!forceRefresh && cached) {
+            data = cached;
+          } else {
+            const res = await authFetch(`/analytics`);
+            if (!res) return;
+            data = await res.json();
+            setCache(cacheKey, data);
+          }
 
           // Top schools
           const topSchools = Array.isArray(data.topSchools) ? data.topSchools : [];

@@ -481,13 +481,7 @@ const displayStudentTables = async () => {
       });
 
       if (!res.ok) {
-        if (res.status === 404) {
-          marksContainer.textContent = "No marks found for the selected filters.";
-          hideSpinner();
-          return;
-        } else {
-          throw new Error(`Error fetching marks: ${res.status}`);
-        }
+       throw new Error(`Error fetching marks: ${res.status}`);
       }
       data = await res.json();
       setCached(cacheKey, data);
@@ -513,7 +507,7 @@ const displayStudentTables = async () => {
 
     // Show latest info
     showToast(
-      `📊 Latest: Term ${latest.term}, ${latest.year} (${latest.assessment == 5 ? "End Term" : "Assessment " + latest.assessment})`
+      `📊 Latest: Term ${latest.term}, ${latest.year} (${getAssessmentLabel(latest.assessment)})`
     );
 
     // ===== Show pathway for Grade 10-12 students =====

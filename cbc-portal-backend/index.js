@@ -46,11 +46,11 @@ app.use(helmet({
   contentSecurityPolicy: {
     directives: {
       defaultSrc: ["'self'"],
-      scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'", "https://cdnjs.cloudflare.com", "https://cdn.jsdelivr.net"],
-      styleSrc: ["'self'", "'unsafe-inline'"],
+      scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'", "https://cdnjs.cloudflare.com", "https://cdn.jsdelivr.net", "https://kit.fontawesome.com"],
+      styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com", "https://fonts.gstatic.com", "https://cdnjs.cloudflare.com"],
       imgSrc: ["'self'", "data:", "https:", "http://localhost:*", "http://127.0.0.1:*"],
       connectSrc: ["'self'", "http://localhost:*", "http://127.0.0.1:*", "https:"],
-      fontSrc: ["'self'", "data:", "https:"],
+      fontSrc: ["'self'", "data:", "https:", "https://fonts.gstatic.com", "https://cdnjs.cloudflare.com"],
       objectSrc: ["'none'"],
       mediaSrc: ["'self'"],
       frameSrc: ["'self'"]
@@ -153,6 +153,7 @@ const pathMap = {
   '/dean-dashboard': 'dean-dashboard.html',
   '/student': 'student-dashboard.html',
   '/student-dashboard': 'student-dashboard.html',
+  '/performance': 'performance.html',
 
   // ✅ STANDARDIZED ROUTE (IMPORTANT)
   '/study-materials': 'studentstudymaterial.html',

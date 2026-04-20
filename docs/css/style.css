@@ -17,240 +17,95 @@
   font-family: "Poppins", sans-serif;
 }
 
-/* Body */
-body {
-  font-family: "Inter", "Poppins", system-ui, sans-serif;
-  color: var(--text);
-  background-color: var(--bg);
-  line-height: 1.6;
-}
-
-
-/* Header */
 header {
- background: linear-gradient(90deg, var(--primary), var(--primary-dark));
-  box-shadow: 0 4px 20px rgba(0,0,0,0.08);
-  color: #fff;
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 15px 40px;
-  position: fixed;
+  padding: 15px 5%;
+  background: #ffffff !important;
+  position: sticky;
   top: 0;
   width: 100%;
-  z-index: 100;
+  z-index: 1000;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.1);
 }
 
 .logo {
-  font-weight: bold;
-  font-size: 22px;
+  font-weight: 800;
+  font-size: 1.4rem;
+  color: #2563eb !important;
+  letter-spacing: 1px;
 }
 
-nav ul {
+/* Navigation */
+.role-nav ul {
   display: flex;
   list-style: none;
-  gap: 20px;
+  gap: 10px;
 }
 
-nav ul li a {
-  color: white;
+.role-link {
   text-decoration: none;
-  transition: color 0.3s;
+  font-weight: 600;
+  font-size: 0.85rem;
+  padding: 8px 16px;
+  border-radius: 6px;
+  color: white !important;
+  transition: transform 0.2s, opacity 0.2s;
 }
 
-nav ul li a:hover,
-nav ul li a.active {
-  color: #ffdd57;
+.role-link:hover {
+  transform: translateY(-2px);
+  opacity: 0.9;
+}
+
+/* Classic Role Colors */
+.role-link.learner { background-color: #10b981; }      /* Green */
+.role-link.teacher { background-color: #3b82f6; }      /* Blue */
+.role-link.classteacher { background-color: #8b5cf6; } /* Purple */
+.role-link.accounts { background-color: #f59e0b; }     /* Orange */
+.role-link.admin { background-color: #ef4444; }        /* Red */
+
+.contact-link {
+  text-decoration: none;
+  color: #2563eb !important;
+  font-weight: 600;
+  padding: 8px 20px;
+  border: 2px solid #2563eb;
+  border-radius: 8px;
+  transition: all 0.3s;
+}
+
+.contact-link:hover {
+  background: #2563eb;
+  color: #ffffff !important;
 }
 
 .menu-toggle {
-  display: none;
+  color: #2563eb;
   font-size: 26px;
-  cursor: pointer;
 }
 
-/* Hero Section */
-.hero {
-  height: 90vh;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  text-align: center;
-  padding: 0 20px;
-  color: #fff;
-  position: relative;
-  overflow: hidden;
-
-  animation: heroSlider 24s infinite;
-  background-size: cover;
-  background-position: center;
-  background-repeat: no-repeat;
-}
-
-.hero::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background: rgba(0,0,0,0.6);
-  z-index: 1;
-}
-
-.hero-content {
-  position: relative;
-  z-index: 2;
-  animation: contentZoom 24s infinite;
-}
-
-/* HERO IMAGE SLIDER */
-@keyframes heroSlider {
-  0% {
-    background-image: linear-gradient(rgba(0,0,0,.6), rgba(0,0,0,.6)),
-      url("https://images.unsplash.com/photo-1588072432836-e10032774350");
+/* Mobile Responsive Updates */
+@media (max-width: 1024px) {
+  .role-nav ul {
+    gap: 5px;
   }
-  33% {
-    background-image: linear-gradient(rgba(0,0,0,.6), rgba(0,0,0,.6)),
-      url("https://images.unsplash.com/photo-1524995997946-a1c2e315a42f");
-  }
-  66% {
-    background-image: linear-gradient(rgba(0,0,0,.6), rgba(0,0,0,.6)),
-      url("https://images.unsplash.com/photo-1509062522246-3755977927d7");
-  }
-  100% {
-    background-image: linear-gradient(rgba(0,0,0,.6), rgba(0,0,0,.6)),
-      url("https://images.unsplash.com/photo-1588072432836-e10032774350");
+  .role-link {
+    padding: 6px 10px;
+    font-size: 0.75rem;
   }
 }
 
-/* CONTENT ZOOM EFFECT */
-@keyframes contentZoom {
-  0%, 33% {
-    transform: scale(1);
-  }
-  16% {
-    transform: scale(1.03);
-  }
-  50%, 66% {
-    transform: scale(1);
-  }
-  83% {
-    transform: scale(1.03);
-  }
-  100% {
-    transform: scale(1);
-  }
-}
-
-/* HERO TEXT */
-.hero h1 {
-  font-size: 2.2em;
-  margin-bottom: 10px;
-  transition: all 0.5s ease;
-}
-
-.hero p {
-  font-size: 1.1em;
-  margin-bottom: 20px;
-  transition: all 0.5s ease;
-}
-
-/* CTA BUTTON ANIMATION */
-.btn {
-  display: inline-block;
-  background: #ffdd57;
-  color: #004aad;
-  padding: 10px 25px;
-  border-radius: 25px;
-  text-decoration: none;
-  font-weight: bold;
-  transition: all 0.3s ease;
-  position: relative;
-  overflow: hidden;
-}
-
-/* Subtle glow effect */
-.btn::after {
-  content: "";
-  position: absolute;
-  top: -50%;
-  left: -50%;
-  width: 200%;
-  height: 200%;
-  background: rgba(255, 255, 255, 0.15);
-  transform: rotate(45deg) translateX(-100%);
-  transition: transform 0.5s ease;
-}
-
-.btn:hover::after {
-  transform: rotate(45deg) translateX(100%);
-}
-
-.btn:hover {
-  background: #ffc107;
-  transform: scale(1.05);
-}
-
-/* Optional pulse effect (slightly expand periodically) */
-@keyframes pulse {
-  0%, 100% { transform: scale(1); }
-  50% { transform: scale(1.03); }
-}
-
-.btn {
-  animation: pulse 3s infinite ease-in-out;
-}
-
-
-/* Features */
-.features {
-  padding: 80px 40px;
-  text-align: center;
-  background: #fff;
-}
-
-.features h2 {
-  font-size: 2em;
-  color: #004aad;
-  margin-bottom: 40px;
-}
-
-.feature-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-  gap: 20px;
-}
-
-.feature-card {
-  background: #f1f5ff;
-  padding: 25px;
-  border-radius: 12px;
-  transition: 0.3s;
-}
-
-.feature-card:hover {
-  transform: translateY(-5px);
-  background: #e4ecff;
-}
-
-/* Footer */
-footer {
-  background: #004aad;
-  color: white;
-  text-align: center;
-  padding: 20px 10px;
-  margin-top: 50px;
-}
-
-/* Login Page */
-.login-body {
+/* Body */
+body {
+  background-color: var(--bg);
+  color: var(--text);
   display: flex;
   flex-direction: column;
-  align-items: center;
-  justify-content: center;
   min-height: 100vh;
-  position: relative;
-  overflow: hidden;
-  padding: 20px;
 }
+
 .login-body::before {
   content: "";
   position: absolute;
@@ -267,7 +122,7 @@ footer {
   z-index: -1;
 }
 .login-container {
-  background: rgba(255, 255, 255, 0.99);
+  background: #ffffff;
   padding: 40px 30px;
   border-radius: 12px;
   width: 90%;
@@ -293,9 +148,7 @@ footer {
 
 /* Fix footer positioning and width on login page */
 .login-body footer {
-  width: 100%;
-  margin-top: 0;
-  background: transparent;
+  display: none !important;
 }
 
 .login-container h2 {
@@ -304,24 +157,58 @@ footer {
   color: #004aad;
 }
 
+/* Animation for dynamic fields */
+.field-fade-in {
+  animation: fieldFadeIn 0.4s ease-out forwards;
+}
+
+@keyframes fieldFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.login-form .form-group {
+  margin-bottom: 20px;
+  width: 100%;
+}
+
 .login-form label {
   display: block;
-  margin-bottom: 5px;
-  font-weight: 500;
+  margin-bottom: 8px;
+  font-weight: 600;
+  font-size: 0.9rem;
+  color: #374151;
 }
 
 .login-form input,
 .login-form select {
   width: 100%;
-  padding: 10px;
-  margin-bottom: 15px;
-  border: 1px solid #ccc;
-  border-radius: 6px;
+  padding: 12px;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  font-size: 1rem;
+  background-color: #f9fafb;
+  transition: all 0.2s ease;
+  box-sizing: border-box;
+}
+
+.login-form input:focus,
+.login-form select:focus {
+  outline: none;
+  border-color: #2563eb;
+  background-color: #ffffff;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
 }
 
 .login-form button {
   width: 100%;
-  background: #004aad;
+  background: #2563eb;
   color: #fff;
   padding: 10px;
   border: none;
@@ -329,65 +216,6 @@ footer {
   font-weight: bold;
   cursor: pointer;
   transition: 0.3s;
-}
-
-/* Signup Page */
-.signup-body {
-  display: flex;
-  justify-content: center;
-  margin-top: 200px;
-  margin-bottom: 200px;
-  width: 100%;
-  align-items: center;
-  height: 100vh;
-  background: linear-gradient(120deg, #004aad, #00bcd4);
-}
-
-.signup-container {
-  background: #fff;
-  padding: 40px 30px;
-  border-radius: 12px;
-  margin-left: 30px;
-  width: 90%;
-  max-width: 400px;
-  box-shadow: 0 5px 15px rgba(0,0,0,0.2);
-}
-
-.signup-container h2 {
-  text-align: center;
-  margin-bottom: 25px;
-  color: #004aad;
-}
-
-
-.signup-form label {
-  display: block;
-  margin-bottom: 5px;
-  font-weight: 500;
-}
-
-.signup-form input,
-.signup-form select { 
-  width: 100%;
-  padding: 10px;
-  margin-bottom: 15px;
-  border: 1px solid #ccc;
-  border-radius: 6px;
-}
-
-.signup-form button {
-  width: 100%;
-  background: #004aad;
-  color: #fff;
-  padding: 10px;
-  border: none;
-  border-radius: 6px;
-  font-weight: bold;
-  cursor: pointer;
-  transition: 0.3s;
-}
-.signup-form button:hover {
-  background: #003580;
 }
 
 .support {
@@ -435,6 +263,7 @@ footer {
     font-size: 1em;
   }
 
+  /* Signup Page */
   .login-container {
     width: 95%;
     padding: 30px 20px;
@@ -452,7 +281,7 @@ footer {
   background: #004aad;
   color: white;
   width: 240px;
-   padding: 24px 18px;
+  padding: 24px 18px;
   display: flex;
   flex-direction: column;
   justify-content: space-between;
@@ -680,16 +509,7 @@ footer {
     margin-bottom: 5px;
   }
 }
-@media (max-width: 480px) {
-  .hero h1 {
-    font-size: 1.5em;
-  }
-
-  .hero p {
-    font-size: 1em;
-  }
-}
-/* updated log in part that inlude admin and class teacher */
+/* updated log in part that includes admin and class teacher */
 .helper-text {
   display: block;
   font-size: 0.8rem;
@@ -804,4 +624,36 @@ footer {
 .btn:disabled {
   opacity: 0.7;
   cursor: not-allowed;
+}
+
+.logo-container {
+  text-align: center;
+  margin-bottom: 15px;
+}
+
+.login-logo {
+  width: 90px;
+  height: 90px;
+  object-fit: contain;
+  display: block;
+  margin: 0 auto;
+  animation: popIn 0.6s ease;
+}
+
+.brand-name {
+  font-size: 18px;
+  font-weight: 600;
+  color: #004aad;
+  margin-top: 5px;
+}
+
+@keyframes popIn {
+  from {
+    transform: scale(0.7);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
 }

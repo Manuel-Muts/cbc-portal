@@ -1013,6 +1013,7 @@ if (!marksAssessmentSelect.value) {
       const admission = row.dataset.admission;
       const name = row.dataset.name;
       const grade = row.dataset.grade;
+      const stream = row.dataset.stream; // Fix: Capture stream from dataset
       
       // Use global Term/Assessment selections
       const term = marksTermSelect.value;
@@ -1025,6 +1026,7 @@ if (!marksAssessmentSelect.value) {
         admissionNo: admission,
         studentName: name,
         grade: gradeNum,
+        stream: stream || null, // Fix: Include stream in submission
         term: Number(term),
         year: Number(marksYearInput.value),
         assessment: Number(assessment),

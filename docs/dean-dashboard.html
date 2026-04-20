@@ -6,18 +6,20 @@
   <title>DEAN DASHBOARD</title>
   <link rel="stylesheet" href="css/teachers.css" />
   <link rel="stylesheet" href="css/dean.css" />
-  <link rel="icon" href="https://cdn-icons-png.flaticon.com/512/1077/1077012.png" />
+  <link rel="icon" type="image/png" href="/images/favicon.png"/> 
  <meta http-equiv="Content-Security-Policy" 
-content="style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com;">
+content="style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com; font-src https://fonts.gstatic.com https://cdnjs.cloudflare.com;">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.28/jspdf.plugin.autotable.min.js"></script>
 </head>
 <body>
   <header>
     <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
-      <h1>DEAN DASHBOARD</h1>
-      <a href="teacher-dashboard.html" class="btn secondary-btn" style="text-decoration: none;">← Teacher Dashboard</a>
+      <h1>DEAN </h1>
+      <a href="teacher-dashboard.html" class="btn secondary-btn" style="text-decoration: none;">← BACK</a>
     </div>
     <div style="display: flex; align-items: center; gap: 10px;">
       <button id="logoutBtn">Logout</button>
@@ -27,97 +29,119 @@ content="style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src
   <div id="toastContainer"></div>
 
   <main>
-    <section class="stats-grid">
-      <div class="stat-card">
-        <h3>Status</h3>
-        <p id="deanStatus">Checking authorization...</p>
-      </div>
-    </section>
-    <section class="filters-section">
-      <h3>Oversight Filters</h3>
-      <div class="filter-grid">
-        <div class="filter-group">
-          <label>Grade</label>
-          <select id="filterGrade">
-            <option value="">-- All Grades --</option>
-          </select>
+    <div class="dashboard-layout">
+      <!-- Sidebar Navigation -->
+      <aside class="sidebar-nav">
+        <h4>Dashboard</h4>
+        <button class="tab-btn active" data-tab="overviewTab"><i class="fas fa-th-large"></i> Overview</button>
+        <button class="tab-btn" data-tab="rankingsTab"><i class="fas fa-users"></i> Learner Rankings</button>
+        <button class="tab-btn" data-tab="analyticsTab"><i class="fas fa-chart-line"></i> Analytics</button>
+        
+        <div class="status-card-sidebar">
+          <p id="deanStatus">Checking...</p>
+          <p id="deanRoleText"></p>
         </div>
-        <div class="filter-group">
-          <label>Term</label>
-          <select id="filterTerm">
-            <option value="1">Term 1</option>
-            <option value="2">Term 2</option>
-            <option value="3">Term 3</option>
-          </select>
-        </div>
-        <div class="filter-group">
-          <label>Assessment</label>
-          <select id="filterAssessment"></select>
-        </div>
-        <div class="filter-group">
-          <label>Year</label>
-          <input type="number" id="filterYear" readonly>
-        </div>
-        <button id="applyFiltersBtn">🔍 View Results</button>
-      </div>
-    </section>
+      </aside>
 
-    <section id="analysisSection" style="display: none;">
-      <div class="stats-grid">
-        <div class="stat-card stat-mean">
-          <h4>Class Mean</h4>
-          <p id="classMean">-</p>
+      <!-- Main Analysis Area -->
+      <section class="main-content-area">
+        <section class="filters-section">
+          <h3>Oversight Filters</h3>
+          <div class="filter-grid">
+            <div class="filter-group">
+              <label>Grade</label>
+              <select id="filterGrade"><option value="">-- Select Grade --</option></select>
+            </div>
+            <div class="filter-group">
+              <label>Term</label>
+              <select id="filterTerm">
+                <option value="1">Term 1</option>
+                <option value="2">Term 2</option>
+                <option value="3">Term 3</option>
+              </select>
+            </div>
+            <div class="filter-group">
+              <label>Assessment</label>
+              <select id="filterAssessment"></select>
+            </div>
+            <div class="filter-group">
+              <label>Year</label>
+              <select id="filterYear"></select>
+            </div>
+            <div class="filter-group">
+              <label>Subject</label>
+              <select id="filterSubject" style="display:none;"></select>
+            </div>
+            <div class="filter-group">
+           <label for="filterTarget">School Target(%)</label>
+         <input type="number" id="filterTarget" placeholder="e.g. 70" min="0" max="100" style="width: 80px;">
         </div>
-        <div class="stat-card stat-top" title="Percentage of students meeting or exceeding expectations (Mean Score >= 41%)">
-          <h4>Pass Rate</h4>
-          <p id="passRate">-</p>
-        </div>
-        <div class="stat-card stat-top" title="Learner with the highest average score">
-          <h4>Top Learner</h4>
-          <p id="topLearner">-</p>
-        </div>
-        <div class="stat-card stat-low" title="Learner with the lowest average score">
-          <h4>Lowest Learner</h4>
-          <p id="lowLearner">-</p>
-        </div>
-        <div class="stat-card stat-top" title="Subject with the highest mean score">
-          <h4>Top Subject</h4>
-          <p id="topSubject">-</p>
-        </div>
-        <div class="stat-card stat-low" title="Subject with the lowest mean score">
-          <h4>Lowest Subject</h4>
-          <p id="lowSubject">-</p>
-        </div>
-        <div class="stat-card stat-entries" title="Total number of students analyzed">
-          <h4>Entries</h4>
-          <p id="recordsCount">0</p>
-        </div>
-      </div>
 
-      <div class="dashboard-card">
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
-          <h3 style="margin: 0;">Grade Ranking Report</h3>
-          <button id="printReportBtn" class="btn primary-btn" style="padding: 6px 12px; font-size: 0.85rem; display: none;">📄 Print PDF</button>
+             <div class="filter-group">
+          <label for="filterStream">Stream:</label>
+         <select id="filterStream" class="filter-select" style="display: none;">
+        <option value="all">All Streams</option>
+         </select>
+         </div>
+            <div class="filter-group">
+              <label>View Type</label>
+              <select id="chartTypeToggle">
+                <option value="trend" selected>Trend (Timeline)</option>
+                <option value="stream">Stream Comparison</option>
+              </select>
+            </div>
+
+            <button id="applyFiltersBtn">🔍 View Results</button>
+          </div>
+        </section>
+
+        <!-- Tabbed Results Container -->
+        <div id="analysisSection" style="display: none;">
+          <!-- Overview Tab: Performance Stats & Subject Means -->
+          <div id="overviewTab" class="tab-pane active">
+            <div class="summary-section">
+              <h3 id="summarySectionTitle" style="display: none;"></h3> <!-- This element will be updated by JavaScript -->
+              <div class="summary-cards stats-grid">
+                <div class="stat-card stat-mean"><h4>Class Mean</h4><p id="classMean">-</p></div>
+                <div class="stat-card stat-top" title="Mean Score >= 41%"><h4>Pass Rate</h4><p id="passRate">-</p></div>
+                <div class="stat-card stat-top"><h4>Top Learner</h4><p id="topLearner">-</p></div>
+                <div class="stat-card stat-low"><h4>Lowest Learner</h4><p id="lowLearner">-</p></div>
+                <div class="stat-card stat-top"><h4>Top Subject</h4><p id="topSubject">-</p></div>
+                <div class="stat-card stat-low"><h4>Lowest Subject</h4><p id="lowSubject">-</p></div>
+                <div class="stat-card stat-entries"><h4>Entries</h4><p id="recordsCount">0</p></div>
+              </div>
+            </div>
+
+            <div id="subjectTableContainer" class="dashboard-card">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+                <h3 style="margin: 0;">Subject Performance</h3>
+                <button id="printSubjectReportBtn" class="btn primary-btn" style="padding: 6px 12px; font-size: 0.85rem;">📄 Print PDF</button>
+              </div>
+              <div id="subjectTableWrap"></div>
+            </div>
+          </div>
+
+          <!-- Rankings Tab: The Detailed Table -->
+          <div id="rankingsTab" class="tab-pane">
+            <div class="dashboard-card">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+                <h3 style="margin: 0;">Grade Ranking Report</h3>
+                <button id="printReportBtn" class="btn primary-btn" style="padding: 6px 12px; font-size: 0.85rem;">📄 Print PDF</button>
+              </div>
+              <div id="rankingTableWrap"></div>
+            </div>
+          </div>
+
+          <!-- Analytics Tab: Trend Charts -->
+          <div id="analyticsTab" class="tab-pane">
+            <div class="dashboard-card">
+              <h3>Performance Visualization</h3>
+              <div class="chart-wrap" style="height: 280px;"><canvas id="gradeTrendChart"></canvas></div>
+            </div>
+          </div>
         </div>
-        <div id="rankingTableWrap"></div>
-      </div>
-      
-      <div id="subjectTableContainer" class="dashboard-card" style="display: none;">
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
-          <h3 style="margin: 0;">Subject Performance</h3>
-          <button id="printSubjectReportBtn" class="btn primary-btn" style="padding: 6px 12px; font-size: 0.85rem;">📄 Print PDF</button>
-        </div>
-        <div id="subjectTableWrap"></div>
-      </div>
-
-    <div class="dashboard-card">
-        <h3>Performance Trend</h3>
-        <div class="chart-wrap"><canvas id="gradeTrendChart"></canvas></div>
-      </div>
-    </section>
-
-    
-
+      </section>
+    </div>
   </main>
 
   <script src="js/config.js"></script>

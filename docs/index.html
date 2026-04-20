@@ -5,7 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>COMPETENCE HUB</title>
   <link rel="stylesheet" href="css/style.css" />
-  <link rel="icon" type="image/png" href="/images/child-head.png"/> 
+  <link rel="stylesheet" href="css/ui.css" />
+  <link rel="icon" type="image/png" href="/images/favicon.png"/> 
 </head>
 
 <body>
@@ -13,35 +14,121 @@
 <!-- Header -->
 <header>
   <div class="logo">COMPETENCEHUB</div>
-  <nav>
+ <!-- <nav class="role-nav">
     <ul>
-      <li><a href="/home" class="active">Home</a></li>
-      <li><a href="/login">Login</a></li>
-      <li><a href="/contact">Contact</a></li>
-   
+      <li><a href="login.html?role=learner" class="role-link learner">Learner</a></li>
+      <li><a href="login.html?role=teacher" class="role-link teacher">Teacher</a></li>
+      <li><a href="login.html?role=classteacher" class="role-link classteacher">Class Teacher</a></li>
+      <li><a href="login.html?role=accounts" class="role-link accounts">Accounts</a></li>
+      <li><a href="login.html?role=admin" class="role-link admin">Admin</a></li>
     </ul>
-  </nav>
+  </nav>-->
+  <div class="contact-wrapper">
+    <a href="contact.html" class="contact-link">Contact</a>
+  </div>
   <div class="menu-toggle">&#9776;</div>
 </header>
 
 <!-- Hero -->
-<section class="hero">
+<section class="hero reveal">
   <div class="hero-content">
-    <h1>Complete CBE school operations & finance system </h1>
+    <h1 class="gradient-text">Empowering the Future of CBE Education</h1>
 <p>
-A secure, centralized platform for Learner assessment, reporting,<br>
-teacher management, and academic insights aligned with the<br>
-Competency-Based Education (CBE).
+A world-class, secure platform for learner assessment, financial management, <br>
+and real-time academic insights tailored for modern institutions.
 </p><br>
 
     <a href="/login" class="btn">Get Started</a><br><br>
-    <p style="margin-top:14px;font-size:14px;opacity:.85">
-     Used by teachers,Class Teachers, Learners & administrators</p>
+  </div>
+</section>
+
+<!-- Reliability Slider Section -->
+<section class="reliability-section reveal">
+  <div class="container">
+    <h2 style="text-align: center;">Built for Reliability</h2>
+    <div class="slider-container" style="max-width: 1000px;">
+      <div class="slide active">
+        <div class="slide-flex">
+          <div class="slide-text">
+            <h3>🛡️ Bank-Level Security</h3>
+            <p>Your data is protected with high-grade encryption and secure role-based access control, ensuring User privacy is never compromised.</p>
+          </div>
+          <div class="slide-image">
+            <img src="https://images.unsplash.com/photo-1550751827-4bd374c3f58b?auto=format&fit=crop&w=600&q=80" alt="Security Illustration">
+          </div>
+        </div>
+      </div>
+      <div class="slide">
+        <div class="slide-flex">
+          <div class="slide-text">
+            <h3>⚡ 99.9% System Uptime</h3>
+            <p>Hosted on a resilient cloud architecture that guarantees access for teachers, parents, and Leaners whenever they need it, 24/7.</p>
+          </div>
+          <div class="slide-image">
+            <img src="https://images.unsplash.com/photo-1451187580459-43490279c0fa?auto=format&fit=crop&w=600&q=80" alt="Cloud Infrastructure">
+          </div>
+        </div>
+      </div>
+      <div class="slide">
+        <div class="slide-flex">
+          <div class="slide-text">
+            <h3>💾 Automated Backups</h3>
+            <p>Never lose a single record. Our system performs automated daily off-site backups to keep your school's data safe from any disaster.</p>
+          </div>
+          <div class="slide-image">
+            <img src="https://images.unsplash.com/photo-1544383835-bda2bc66a55d?auto=format&fit=crop&w=600&q=80" alt="Data Backups">
+          </div>
+        </div>
+      </div>
+      <div class="slider-dots"></div>
+    </div>
+  </div>
+</section>
+
+<!-- Testimonials Slider Section -->
+<section class="testimonials-section reveal">
+  <div class="container">
+    <h2 style="text-align: center; margin-bottom: 50px;">What Our Users Say</h2>
+    <div class="slider-container" style="max-width: 900px;">
+      <div class="slide active">
+        <div class="slide-content">
+          <p style="font-size: 1.25rem; font-style: italic; color: #4a5568; margin-bottom: 20px;">
+            "CompetenceHub has revolutionized how we manage student assessments. The intuitive interface and real-time insights save us countless hours and help us focus on what truly matters: our students' growth."
+          </p>
+         <!--<p style="font-weight: 600; color: #2d3748;">— Jane Doe, Head Teacher, Green Valley Academy</p>-->
+        </div>
+      </div>
+      <div class="slide">
+        <div class="slide-content">
+          <p style="font-size: 1.25rem; font-style: italic; color: #4a5568; margin-bottom: 20px;">
+            "As a parent, seeing my child's progress visualized so clearly is invaluable. The communication tools and access to learning materials have made me feel more connected to their education than ever before."
+          </p>
+          <p style="font-weight: 600; color: #2d3748;">— John Munene, Parent of a Grade 7 Learner</p>
+        </div>
+      </div>
+      <div class="slide">
+        <div class="slide-content">
+          <p style="font-size: 1.25rem; font-style: italic; color: #4a5568; margin-bottom: 20px;">
+            "The system's reliability is truly impressive. We've experienced zero downtime, and the support team is always responsive. It's a robust platform that our entire school community relies on daily."
+          </p>
+          <p style="font-weight: 600; color: #2d3748;">— James Muriungi, School Administrator, Kambui Pry & Junior  School</p>
+        </div>
+      </div>
+      <div class="slide">
+        <div class="slide-content">
+          <p style="font-size: 1.25rem; font-style: italic; color: #4a5568; margin-bottom: 20px;">
+            "I love how easy it is to access my assignments and study materials. The progress tracking helps me understand where I need to improve, and the interface is super user-friendly!"
+          </p>
+          <p style="font-weight: 600; color: #2d3748;">— Alex Kimani, Grade 9 Learner</p>
+        </div>
+      </div>
+      <div class="slider-dots"></div>
+    </div>
   </div>
 </section>
 
 <!-- Features -->
-<section class="features">
+<section class="features key-features-bg reveal">
   <h2>Key Features</h2>
   <div class="feature-grid">
     <div class="feature-card">
@@ -54,7 +141,7 @@ Competency-Based Education (CBE).
     </div>
     <div class="feature-card">
       <h3>👩‍🏫 Teacher Dashboard</h3>
-      <p>Teachers can record marks, analyze performance, and generate reports.</p>
+      <p>Teachers can record marks, edit Marks and upload Assignments and Study Materials.</p>
     </div>
     <div class="feature-card">
       <h3>👨‍🎓 Leaner-Friendly Interface</h3>
@@ -62,7 +149,7 @@ Competency-Based Education (CBE).
     </div>
   </div>
 </section>
-<section class="features">
+<section class="features schools-bg reveal">
   <h2>Designed for Schools</h2>
   <div class="feature-grid">
     <div class="feature-card">
@@ -235,12 +322,7 @@ document.addEventListener("DOMContentLoaded", () => {
 });
 </script>
 
-<!-- Mobile Menu -->
-<script>
-  const menuToggle = document.querySelector('.menu-toggle');
-  const nav = document.querySelector('nav ul');
-  menuToggle.addEventListener('click', () => nav.classList.toggle('active'));
-</script>
-
+<!-- UI Scripts -->
+<script src="js/ui.js"></script>
 </body>
 </html>

@@ -71,13 +71,13 @@
 /* Analysis Stats */
 .stats-grid {
     display: grid;
-    gap: 16px;
-    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-    margin-bottom: 24px;
+    gap: 12px;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    margin-bottom: 20px;
 }
 
 .stat-card {
-    padding: 16px;
+    padding: 12px;
     background: white;
     border-radius: 8px;
     box-shadow: 0 1px 2px rgba(0,0,0,0.05);
@@ -87,14 +87,14 @@
 .stat-card h4 {
     margin: 0;
     color: #6b7280;
-    font-size: 0.875rem;
+    font-size: 0.75rem;
     font-weight: 500;
 }
 
 .stat-card p {
-    font-size: 1.15rem;
+    font-size: 1rem;
     font-weight: 600;
-    margin: 8px 0 0;
+    margin: 4px 0 0;
     color: #111827;
 }
 
@@ -106,8 +106,8 @@
 /* Layout Containers */
 .dashboard-card {
     background: white;
-    padding: 20px;
-    margin-bottom: 24px;
+    padding: 15px;
+    margin-bottom: 16px;
     border-radius: 10px;
     border: 1px solid #e5e7eb;
     overflow-x: auto;
@@ -120,10 +120,6 @@
     color: #111827;
 }
 
-.chart-wrap {
-    height: 300px;
-    position: relative;
-}
 
 /* Allocation Items (Rendered via JS) */
 .allocation-item {
@@ -150,3 +146,49 @@
     color: #ffffff !important;
 }
 
+.marks-table th, .marks-table td {
+    padding: 8px 10px !important;
+    font-size: 0.85rem !important;
+}
+
+/* Narrower Sidebar */
+.sidebar-nav {
+    width: 230px;
+    padding: 12px;
+}
+
+/* Layout & Sidebar */
+.dashboard-layout { display: flex; gap: 24px; min-height: 85vh; margin: 20px; align-items: flex-start; }
+.sidebar-nav { width: 260px; background: #fff; border-radius: 12px; padding: 15px; border: 1px solid #e2e8f0; position: sticky; top: 20px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); z-index: 100; }
+.sidebar-nav h4 { font-size: 0.75rem; color: #94a3b8; text-transform: uppercase; margin-bottom: 15px; padding-left: 12px; letter-spacing: 0.1em; font-weight: 700; border-bottom: 1px solid #f1f5f9; padding-bottom: 8px; }
+.tab-btn { display: flex; align-items: center; gap: 12px; width: 100%; padding: 12px; border: none; background: transparent; border-radius: 8px; color: #64748b; font-weight: 600; cursor: pointer; transition: all 0.2s; text-align: left; margin-bottom: 6px; font-size: 0.9rem; }
+.tab-btn i { width: 20px; text-align: center; font-size: 1.1rem; }
+.tab-btn:hover { background: #f8fafc; color: #2563eb; }
+.tab-btn.active { background: #eff6ff; color: #2563eb; box-shadow: inset 4px 0 0 -1px #2563eb; }
+
+.status-card-sidebar { margin-top: 30px; padding: 12px; background: #f9fafb; border-radius: 8px; border: 1px dashed #cbd5e0; }
+.status-card-sidebar p:first-child { font-weight: 700; color: #2d3748; font-size: 0.85rem; margin-bottom: 4px; }
+.status-card-sidebar p:last-child { font-size: 0.75rem; color: #718096; line-height: 1.3; }
+
+.main-content-area { flex: 1; min-width: 0; } /* min-width 0 prevents chart overflow issues */
+.tab-pane { display: none; }
+.tab-pane.active { display: block; animation: tabFadeIn 0.3s ease-out; }
+@keyframes tabFadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+
+/* Tab specific tweaks */
+#rankingTableWrap { overflow-x: auto; }
+
+.chart-wrap { 
+    position: relative; 
+    height: 500px !important; /* Massive height to ensure Y-axis values spread well apart */
+    min-height: 500px;
+    width: 100%;
+}
+
+@media (max-width: 992px) {
+    .dashboard-layout { flex-direction: column; }
+    .sidebar-nav { width: 100%; position: static; display: flex; overflow-x: auto; gap: 8px; padding: 10px; }
+    .sidebar-nav h4 { display: none; }
+    .status-card-sidebar { display: none; }
+    .tab-btn { white-space: nowrap; width: auto; padding: 8px 16px; border: 1px solid #e2e8f0; }
+}

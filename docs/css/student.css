@@ -138,6 +138,13 @@ section {
   box-shadow: 0 2px 5px rgba(0,0,0,0.05);
 }
 
+.chart-section {
+  background: #fff;
+  padding: 20px;
+  border-radius: 12px;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.05);
+}
+
 h3 {
   margin-bottom: 1rem;
   border-bottom: 2px solid #eee;

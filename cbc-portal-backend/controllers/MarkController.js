@@ -46,7 +46,7 @@ export const addMark = async (req, res) => {
       admission: admissionNo,
       role: "student",
       schoolId: req.user.schoolId
-    }).select("name admission");
+    }).select("name admission _id");
 
     if (!student) {
       return res.status(404).json({ message: "Student not found in your school" });
@@ -83,6 +83,16 @@ export const addMark = async (req, res) => {
       }
     }
 
+    // 🆕 Robust Stream Resolution: If missing in payload, fetch from active enrollment
+    let streamToSave = stream;
+    if (!streamToSave) {
+      const enrollment = await StudentEnrollment.findOne({ 
+        studentId: student._id, 
+        status: "active" 
+      }).select("stream");
+      if (enrollment) streamToSave = enrollment.stream;
+    }
+
     // ---------------------------
     // BASE MARK DATA
     // ---------------------------
@@ -90,7 +100,7 @@ export const addMark = async (req, res) => {
       admissionNo: student.admission,
       studentName: studentName || student.name,
       grade,
-      stream: stream || null,
+      stream: streamToSave || null,
       term,
       year,
       assessment,
@@ -333,27 +343,35 @@ export const getStudentMarks = async (req, res) => {
       .lean();
 
     if (!studentMarks.length) {
-      return res.status(404).json({ message: "No marks found for this student" });
+      return res.json({ studentMarks: [], allClassMarks: [] });
     }
 
     const latest = studentMarks[0];
-    term = term && term !== "all" ? Number(term) : latest.term;
-    year = year && year !== "all" ? Number(year) : latest.year;
-    assessment = assessment && assessment !== "all" ? Number(assessment) : latest.assessment;
+    // Define context for class comparison (defaults to latest if query is 'all')
+    const refTerm = (term && term !== "all") ? Number(term) : latest.term;
+    const refYear = (year && year !== "all") ? Number(year) : latest.year;
+    const refAssess = (assessment && assessment !== "all") ? Number(assessment) : latest.assessment;
 
-    studentMarks = studentMarks.filter(
-      m => m.term === term && m.year === year && m.assessment === assessment
-    );
+    // Filter history based on criteria, strictly respecting 'all'
+    if (term && term !== "all") {
+      studentMarks = studentMarks.filter(m => m.term === Number(term));
+    }
+    if (year && year !== "all") {
+      studentMarks = studentMarks.filter(m => m.year === Number(year));
+    }
+    if (assessment && assessment !== "all") {
+      studentMarks = studentMarks.filter(m => m.assessment === Number(assessment));
+    }
 
     if (!studentMarks.length) {
-      return res.status(404).json({ message: "No marks found for selected filters" });
+      return res.json({ studentMarks: [], allClassMarks: [] });
     }
 
     // ⚠️ left untouched (grade-based class comparison)
     const allClassMarks = await Mark.find({
-      term,
-      year,
-      assessment,
+      term: refTerm,
+      year: refYear,
+      assessment: refAssess,
       schoolId
     }).lean();
 
@@ -489,6 +507,7 @@ if (filterByStream) {
           // Persist student details from the first record found
           studentName: { $first: "$studentName" },
           grade: { $first: "$grade" },
+          stream: { $first: "$stream" },
           // Collect all subjects/courses into an array
           subjects: {
             $push: {
@@ -512,6 +531,7 @@ if (filterByStream) {
           admissionNo: "$_id.admissionNo",
           studentName: 1,
           grade: 1,
+          stream: 1,
           term: "$_id.term",
           year: "$_id.year",
           assessment: "$_id.assessment",
@@ -625,7 +645,7 @@ export const getClassMarks = async (req, res) => {
     const allMarks = await Mark.aggregate(pipeline).allowDiskUse(true);
 
     if (!allMarks.length) {
-      return res.status(404).json({ message: "No marks found" });
+      return res.json([]);
     }
 
     return res.json(allMarks);
