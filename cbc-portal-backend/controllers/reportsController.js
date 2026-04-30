@@ -457,7 +457,10 @@ export const getOutstandingFees = async (req, res) => {
       schoolId: req.user.schoolId
     };
     if (name) {
-      userQuery.name = { $regex: name, $options: "i" };
+      userQuery.$or = [
+        { name: { $regex: name, $options: "i" } },
+        { admission: { $regex: name, $options: "i" } }
+      ];
     }
     const students = await User.find(userQuery).select("name admission _id").lean();
 
@@ -637,7 +640,10 @@ export const generateOutstandingFeesPDF = async (req, res) => {
 
     // Filter by name if specified
     if (name) {
-      students = students.filter(s => s.name.toLowerCase().includes(name.toLowerCase()));
+      students = students.filter(s => 
+        s.name.toLowerCase().includes(name.toLowerCase()) || 
+        (s.admission && s.admission.toLowerCase().includes(name.toLowerCase()))
+      );
     }
 
     if (students.length === 0) {

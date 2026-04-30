@@ -376,6 +376,13 @@ body {
   transition: 0.3s;
 }
 
+/* Desktop styles for marks controls */
+.marks-controls {
+  display: flex;
+  gap: 15px;
+  align-items: flex-end;
+}
+
 .marks-section button:hover {
   background: #003580;
 }
@@ -418,6 +425,16 @@ body {
   display: grid;
   grid-template-columns: 1fr 1fr 1fr 1fr;
   gap: 5px;
+}
+
+/* Marks Entry Input Fields */
+.marks-entry-input {
+  padding: 8px;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  font-size: 0.9rem;
+  box-sizing: border-box;
+  width: 100%;
 }
 
 /* Responsive */
@@ -465,6 +482,17 @@ body {
     padding: 10px;
   }
 
+  /* Full-width buttons on mobile */
+  .marks-section button,
+  .sync-report-btn,
+  #submitAllMarksBtn, 
+  #loadStudentsBtn,
+  #saveDraftBtn,
+  #loadDraftBtn {
+    width: 100%;
+    margin-bottom: 5px;
+  }
+
   #marksEntryTable td,
   .marks-table td {
     text-align: right;
@@ -474,11 +502,51 @@ body {
     min-height: 35px;
   }
 
+  /* Filter controls stacking and full width on mobile */
+  .marks-controls {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+  }
+
+  .marks-controls .form-group,
+  .marks-controls select,
+  .marks-controls input {
+    width: 100% !important;
+  }
+
+  /* Final score highlighting for mobile visibility */
+  .marks-entry-input.final-input {
+    background-color: #e0f2f7 !important;
+    font-weight: bold;
+    color: #004aad;
+    border-color: #a7d9ed;
+  }
+
+  /* Pagination controls responsiveness */
+  #studentsPagination, #materialsPagination {
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  /* Final score highlighting for mobile visibility */
+  .marks-entry-input.final-input {
+    background-color: #e0f2f7 !important;
+    font-weight: bold;
+    color: #004aad;
+    border-color: #a7d9ed;
+  }
+
   #marksEntryTable td:last-child,
   .marks-table td:last-child {
     border-bottom: none;
   }
 
+  /* Ensure buttons are full width on mobile */
+  .marks-section button,
+  .marks-report-card .sync-report-btn, #submitAllMarksBtn, #loadStudentsBtn {
+    width: 100%;
+  }
   #marksEntryTable td::before,
   .marks-table td::before {
     content: attr(data-label);
@@ -487,15 +555,6 @@ body {
     color: #555;
   }
 
-  /* Adjust Input Grid for Mobile */
-  .marks-input-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr; /* 2x2 grid on mobile */
-    gap: 8px;
-    margin-top: 5px;
-    clear: both; /* Ensure it drops below label */
-    width: 100%;
-  }
   
   /* Specific tweak for Marks cell which contains the grid */
   #marksEntryTable td[data-label="Marks"] {
@@ -548,6 +607,11 @@ body {
   box-shadow: 0 4px 12px rgba(0,0,0,0.3);
   text-align: center;
   animation: fadeIn 0.3s ease-in-out;
+}
+
+.modal-content button:active {
+  transform: scale(0.98);
+  transition: transform 0.1s;
 }
 
 /* Heading */

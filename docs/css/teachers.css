@@ -1,55 +1,4 @@
-/* ==============================
-   RESET & BASE STYLES
-============================== */
-* {
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
-  font-family: "Poppins", sans-serif;
-}
-
-body {
-  background: #f4f7fb;
-  color: #333;
-  line-height: 1.6;
-  min-height: 100vh;
-}
-
-/* ==============================
-   HEADER
-============================== */
-header {
-  background: #2b6cb0;
-  color: #fff;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 15px 30px;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
-}
-
-header h1 {
-  font-size: 1.5rem;
-  font-weight: 600;
-}
-
-header button {
-  background: #fff;
-  color: #2b6cb0;
-  border: none;
-  padding: 8px 16px;
-  border-radius: 6px;
-  font-size: 0.95rem;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.3s ease;
-}
-
-header button:hover {
-  background: #2b6cb0;
-  color: #fff;
-  border: 1px solid #fff;
-}
+/* Note: Reset, Body, and Header styles are inherited from style.css to prevent redundancy */
 
 /* ==============================
    MARKS SECTION
@@ -176,10 +125,6 @@ form {
   margin-bottom: 15px;
 }
 
-.marks-table table {
-  width: 100%;
-  border-collapse: collapse;
-}
 
 .marks-table th,
 .marks-table td {
@@ -509,9 +454,9 @@ form {
   font-weight: 600;
   box-shadow: 0 3px 8px rgba(0,0,0,0.2);
   position: fixed;
-  left: 50%;
-  top: 50%;
-  transform: translate(-50%, -50%);
+  left: 50%; /* Center horizontally */
+  top: 20px; /* Position at the top */
+  transform: translateX(-50%); /* Adjust for centering */
   z-index: 10000;
 }
 
@@ -932,4 +877,56 @@ form {
   .marks-controls .form-group label {
     font-size: 0.9rem;
   }
+}
+
+/* ==============================
+   CONFIRMATION DIALOG (Moved from JS)
+============================== */
+.toast.confirm-toast {
+    position: fixed;
+    top: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    background-color: #ffffff;
+    color: #2d3748 !important; /* Fix white text clash */
+    border: 1px solid #ccc;
+    box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+    border-radius: 12px;
+    min-width: 320px;
+    padding: 20px;
+    z-index: 10000;
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+    text-align: center;
+    animation: slideDown 0.3s ease-out forwards !important; /* Prevent auto-fade from generic toast class */
+}
+
+.toast.confirm-toast p {
+    color: #4a5568;
+    margin: 0;
+    font-size: 1rem;
+}
+
+.confirm-actions { display: flex; justify-content: center; gap: 12px; }
+
+.secondary-btn {
+    background-color: #edf2f7 !important;
+    color: #4a5568 !important;
+    border: 1px solid #cbd5e0 !important;
+}
+
+.secondary-btn:hover {
+    background-color: #e2e8f0 !important;
+}
+
+@keyframes slideDown {
+    from { transform: translate(-50%, -100%); opacity: 0; }
+    to { transform: translate(-50%, 0); opacity: 1; }
+}
+
+/* Allocation & Signature Containers */
+.allocation-card, .signature-card {
+    flex: 1; min-width: 250px; padding: 15px; border: 1px solid #e2e8f0;
+    border-radius: 10px; background: #fff; box-shadow: 0 2px 4px rgba(0,0,0,0.05);
 }

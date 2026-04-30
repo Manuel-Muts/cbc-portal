@@ -1,5 +1,38 @@
 document.addEventListener("DOMContentLoaded", () => {
   // ---------------------------
+  // STYLES FOR COMPACTNESS
+  // ---------------------------
+  const compactStyle = document.createElement("style");
+  compactStyle.textContent = `
+    .marks-table th, .marks-table td, #marksEntryTable th, #marksEntryTable td { 
+      padding: 5px 8px !important; 
+      font-size: 0.82rem !important; 
+      line-height: 1.2 !important;
+      vertical-align: middle !important;
+      border: 1px solid #e2e8f0 !important;
+    }
+    .marks-table th, #marksEntryTable th {
+      background-color: #f8fafc !important;
+      font-weight: 600 !important;
+      color: #475569 !important;
+      text-transform: uppercase !important;
+      font-size: 0.72rem !important;
+    }
+    .marks-accordion-summary {
+      padding: 8px 12px !important;
+    }
+    .marks-entry-input {
+      height: 28px !important;
+      padding: 2px 6px !important;
+      font-size: 0.8rem !important;
+    }
+    .marks-input-grid {
+      gap: 4px !important;
+    }
+  `;
+  document.head.appendChild(compactStyle);
+
+  // ---------------------------
   // CONFIG + GLOBALS
   // ---------------------------
   // API_BASE is now loaded from config.js
@@ -36,7 +69,6 @@ document.addEventListener("DOMContentLoaded", () => {
   const assessmentSelect = document.getElementById("assessmentSelect");
   const logoutBtn = document.getElementById("logoutBtn");
   const submittedMarksContainer = document.getElementById("submittedMarksContainer");
-
   // ---------------------------
   // HELPER FUNCTIONS (Logic Consolidation)
   // ---------------------------
@@ -150,11 +182,11 @@ document.addEventListener("DOMContentLoaded", () => {
     if (document.getElementById("signatureUploadContainer")) return;
 
     const sigHtml = `
-      <div id="signatureUploadContainer" style="flex: 0 0 auto; text-align: center; border: 1px solid #cbd5e0; padding: 12px; border-radius: 8px; background: #fff;">
-        <p style="font-size: 0.75rem; font-weight: bold; color: #4a5568; margin-bottom: 8px; text-transform: uppercase;">Digital Signature</p>
-        <div id="signaturePreview" style="margin-bottom: 10px; min-height: 40px; display: flex; align-items: center; justify-content: center;">
+      <div id="signatureUploadContainer" class="signature-card">
+        <p class="helper-text">DIGITAL SIGNATURE</p>
+        <div id="signaturePreview" class="sig-preview-box">
           ${user.signatureUrl ? 
-            `<img src="${user.signatureUrl}" style="max-height: 40px; border-bottom: 1px solid #eee;">` : 
+            `<img src="${user.signatureUrl}" style="max-height: 45px;">` : 
             `<span style="font-size: 0.75rem; color: #a0aec0; font-style: italic;">No signature set</span>`
           }
         </div>
@@ -356,13 +388,7 @@ document.addEventListener("DOMContentLoaded", () => {
     if (!infoWrapper) {
       infoWrapper = document.createElement("div");
       infoWrapper.id = "allocationsInfoDisplay";
-      infoWrapper.style.flex = "1";
-      infoWrapper.style.minWidth = "250px";
-      infoWrapper.style.padding = "12px";
-      infoWrapper.style.border = "1px solid #cbd5e0";
-      infoWrapper.style.borderRadius = "8px";
-      infoWrapper.style.background = "#ffffff";
-      infoWrapper.style.boxShadow = "0 2px 4px rgba(0,0,0,0.05)";
+      infoWrapper.className = "allocation-card";
       container.prepend(infoWrapper);
     }
 
@@ -613,6 +639,7 @@ document.addEventListener("DOMContentLoaded", () => {
   // ---------------------------
   function displayStudentsInMarksTable(students) {
     marksEntryTableBody.innerHTML = "";
+    marksEntryTable.classList.add("marks-entry-table-mobile");
     
     if (!students || students.length === 0) {
       const row = marksEntryTableBody.insertRow();
@@ -662,16 +689,16 @@ document.addEventListener("DOMContentLoaded", () => {
      row.innerHTML = `
   <td data-label="Admission">${sanitize(student.admissionNo || student.admission)}</td>
   <td data-label="Name">${sanitize(student.name)}</td>
-  <td data-label="Marks">
+  <td data-label="Marks" class="marks-entry-cell">
     ${isSeniorSchool ? `
       <div class="marks-input-grid">
-        <input type="number" class="ca-input" min="0" max="100" placeholder="CA" />
-        <input type="number" class="pw-input" min="0" max="100" placeholder="PW" />
-        <input type="number" class="exam-input" min="0" max="100" placeholder="Exam" />
-        <input type="number" class="final-input" min="0" max="100" placeholder="Final" readonly />
+        <input type="number" class="marks-entry-input ca-input" min="0" max="100" placeholder="CA" />
+        <input type="number" class="marks-entry-input pw-input" min="0" max="100" placeholder="PW" />
+        <input type="number" class="marks-entry-input exam-input" min="0" max="100" placeholder="Exam" />
+        <input type="number" class="marks-entry-input final-input" min="0" max="100" placeholder="Final" readonly />
       </div>
     ` : `
-      <input type="number" class="marks-input" min="0" max="100" placeholder="Score" />
+      <input type="number" class="marks-entry-input marks-input" min="0" max="100" placeholder="Score" />
     `}
   </td>
 `;
@@ -1130,14 +1157,15 @@ if (!marksAssessmentSelect.value) {
       return;
     }
 
-    if (!confirm(`Are you sure you want to submit marks for ${marks.length} learner(s)?`)) {
+    const confirmed = await cbcUtils.showConfirmToast(`Are you sure you want to submit marks for ${marks.length} learner(s)?`);
+    if (!confirmed) {
       return;
-    }
+    }    
 
     submitAllMarksBtn.disabled = true;
     submitAllMarksBtn.innerHTML = '<span class="spinner"></span>Submitting...';
 
-    try {
+    try { 
       let successCount = 0;
       let failureCount = 0;
       const token = authService.getToken();
@@ -1364,6 +1392,7 @@ if (!marksAssessmentSelect.value) {
         const groupMarks = grouped[key];
         const headerInfo = groupMarks[0];
         const details = document.createElement('details');
+        details.open = false; // Ensure it's collapsed by default
         details.className = 'marks-accordion';
         let assessmentLabel;
         if (headerInfo.assessment === 0) {

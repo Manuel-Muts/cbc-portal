@@ -109,6 +109,30 @@ window.cbcUtils = {
     },
 
     /**
+     * Centralized Confirmation Toast
+     * Returns a promise that resolves to true (Confirm) or false (Cancel)
+     */
+    showConfirmToast: (msg, options = {}) => {
+        const { confirmText = "Confirm", cancelText = "Cancel" } = options;
+
+        return new Promise((resolve) => {
+            const confirmToast = document.createElement("div");
+            confirmToast.className = "toast confirm-toast"; // Ensure both classes are applied for styling and positioning
+            confirmToast.innerHTML = `
+                <p>${msg}</p>
+                <div class="confirm-actions">
+                    <button class="btn btn-primary confirm-btn">${confirmText}</button>
+                    <button class="btn secondary-btn cancel-btn">${cancelText}</button>
+                </div>
+            `;
+            document.body.appendChild(confirmToast);
+
+            confirmToast.querySelector(".confirm-btn").onclick = () => { confirmToast.remove(); resolve(true); };
+            confirmToast.querySelector(".cancel-btn").onclick = () => { confirmToast.remove(); resolve(false); };
+        });
+    },
+
+    /**
      * Centralized logout
      */
     logout: () => {

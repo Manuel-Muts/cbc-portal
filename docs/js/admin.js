@@ -130,11 +130,11 @@ function renderSchoolInfo() {
   }
 
   schoolNameDisplay.innerHTML = `
-    <div class="school-header" style="display: flex; align-items: center; gap: 20px;">
-      ${logoURL ? `<img src="${logoURL}" class="school-logo" crossorigin="anonymous" style="height: 110px; width: auto; object-fit: contain;">` : ""}
+    <div class="school-header">
+      ${logoURL ? `<img src="${logoURL}" class="school-logo" crossorigin="anonymous">` : ""}
       <div class="school-meta">
-        <h1 class="school-name" style="margin: 0; font-size: 1.9rem; color: #1a202c;">${schoolInfo.name || "School Name"}</h1>
-        <p class="school-address" style="margin: 0; color: #718096; font-size: 0.99rem;">${schoolInfo.address || ""}</p>
+        <h1 class="school-name">${schoolInfo.name || "School Name"}</h1>
+        <p class="school-address">${schoolInfo.address || ""}</p>
       </div>
     </div>
   `;
@@ -334,6 +334,10 @@ function attachAdminSignatureLogic() {
     style.id = id;
     style.textContent = `
       @keyframes spin { to { transform: rotate(360deg); } }
+      /* Sticky Header */
+      .header { position: sticky !important; top: 0; z-index: 1000; background: var(--light-gray) !important; padding: 10px 0; }
+      .header { position: sticky !important; top: 0; z-index: 1000; background: var(--light-gray) !important; padding: 10px 0; }
+      .header { position: sticky !important; top: 0; z-index: 1000; background: var(--light-gray) !important; padding: 10px 0; }
       .feedback.error { color: #721c24; background: #f8d7da; padding:8px; border-radius:6px; border-left: 4px solid #dc3545; }
       .feedback.info { color: #0f5132; background: #d1e7dd; padding:8px; border-radius:6px; }
       .toast { transition: opacity .35s ease; }
