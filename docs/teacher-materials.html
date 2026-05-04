@@ -103,7 +103,17 @@
       font-weight: 500;
       box-shadow: 0 4px 12px rgba(0,0,0,0.15);
       z-index: 1000;
-      animation: slideIn 0.3s ease-out;
+      opacity: 0;
+      visibility: hidden;
+      transition: opacity 0.3s ease-out, visibility 0.3s ease-out;
+    }
+    .toast.visible {
+      opacity: 1;
+      visibility: visible;
+    }
+    .toast.hiding {
+      opacity: 0;
+      visibility: hidden;
     }
     .toast.success { background-color: #2ecc71; }
     .toast.error { background-color: #e74c3c; }
@@ -234,7 +244,7 @@
         <span style="font-size: 0.9rem; color: #666;">Showing recent uploads</span>
       </div>
       
-      <div class="table-responsive">
+      <div class="table-responsive materials-table-container">
         <table class="table">
           <thead>
             <tr id="materialsTableHeader">
@@ -264,6 +274,7 @@
 
   <!-- Scripts -->
   <script src="js/config.js"></script>
+  <script src="js/ui.js"></script>
   <script src="js/teacher-materials.js"></script>
 </body>
 </html>

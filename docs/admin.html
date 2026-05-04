@@ -10,36 +10,33 @@
 <body>
 
 <div class="container">
-    <div class="header">
-        <div id="schoolNameDisplay">
-            
-            <h1>Admin Dashboard</h1>
+    <!-- Sidebar Navigation -->
+    <aside class="sidebar">
+        <div class="sidebar-brand">
+            <h2 class="logo">ADMIN PORTAL</h2>
         </div>
-        <div>
-            <button id="refreshBtn" class="btn secondary-btn">🔄 Refresh Data</button>
-            <button id="logoutBtn" class="btn danger-btn">Logout</button>
-        </div>
-    </div>
+        
+        <ul class="menu">
+            <li class="active" data-section="subjectAllocSection">Subject Allocations</li>
+            <li data-section="classAllocSection">Class Allocations</li>
+            <li data-section="searchSection">Learner Search</li>
+            <li data-section="promotionSection">Learner Promotion</li>
+            <li><a href="users.html">👥 User Management</a></li> 
+            <li data-section="signatureUploadSection">Digital Signature</li>
+            <!--<li><a href="settings.html">⚙️ Settings</a></li>-->
+        </ul>
+        
+        <button id="refreshBtn" class="refresh-btn">🔄 Refresh</button><br><br>
+        <button id="logoutBtn" class="logout-btn">Logout</button>
+    </aside>
 
-    <!-- 1. USER MANAGEMENT LINK (Replaces old table/form) -->
-    <div class="card">
-        <div style="display:flex; justify-content:space-between; align-items:center;">
-            <div>
-                <h3>User Management</h3>
-                <p style="margin:5px 0 0; color:#666;">Register new users, manage existing accounts, and export user lists.</p>
-            </div>
-            <a href="users.html" class="btn primary-btn" style="font-weight:600;">Manage Users &rarr;</a>
-        </div>
-    </div>
+    <!-- Main Content Area -->
+    <main class="main">
+        <header class="topbar">
+            <h1 id="pageTitle">Subject Allocations</h1>
+        </header>
 
-    <!-- Tab Navigation Menu -->
-    <ul class="menu">
-      <li data-section="subjectAllocSection" class="active">Subject Allocations</li>
-      <li data-section="classAllocSection">Class Teacher Allocations</li>
-      <li data-section="searchSection">Learner Search</li>
-      <li data-section="promotionSection">Learner Promotion</li>
-    </ul>
-
+        <section id="contentArea">
     <!-- 1. Subject Allocation Tab -->
     <div id="subjectAllocSection" class="tab-section">
       <div class="card">
@@ -224,6 +221,10 @@
     </div>
     </div>
 
+    <!-- 5. Digital Signature Tab -->
+    <div id="signatureUploadSection" class="tab-section" style="display:none;"></div>
+        </section>
+    </main>
 </div>
 
 <!-- Config & Script -->
@@ -232,6 +233,7 @@
 <!-- jsPDF -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.28/jspdf.plugin.autotable.min.js"></script>
+<script src="js/ui.js"></script>
 <script src="js/admin.js"></script>
 
 </body>

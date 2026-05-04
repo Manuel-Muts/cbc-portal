@@ -17,13 +17,9 @@ content="style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://c
 </head>
 <body>
   <header>
-    <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
-      <h1>DEAN </h1>
-      <a href="teacher-dashboard.html" class="btn secondary-btn" style="text-decoration: none;">← BACK</a>
-    </div>
-    <div style="display: flex; align-items: center; gap: 10px;">
-      <button id="logoutBtn">Logout</button>
-    </div>
+    <a href="teacher-dashboard.html" class="back-link">← BACK</a>
+    <h1>DEAN</h1>
+    <button id="logoutBtn">Logout</button>
   </header>
 
   <div id="toastContainer"></div>
@@ -147,6 +143,7 @@ content="style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://c
   <script src="js/config.js"></script>
   <script src="js/auth-service.js"></script>
   <script src="js/cbc-utils.js"></script>
+  <script src="js/ui.js"></script>
   <script src="js/dean.js"></script>
 </body>
 </html>

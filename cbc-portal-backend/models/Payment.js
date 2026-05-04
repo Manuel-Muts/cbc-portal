@@ -65,6 +65,11 @@ const paymentSchema = new mongoose.Schema(
       type: String,
       enum: ["Term 1", "Term 2", "Term 3"],
       required: true
+    },
+
+    isReversed: {
+      type: Boolean,
+      default: false
     }
   },
   { timestamps: true }
@@ -78,7 +83,7 @@ paymentSchema.pre("findOneAndUpdate", function () {
 paymentSchema.pre("deleteOne", function () {
   throw new Error("Payments cannot be deleted.");
 });
-paymentSchema.index({ studentId: 1, academicYear: 1 });
+paymentSchema.index({ studentId: 1, academicYear: 1, isReversed: 1 });
 paymentSchema.index({ createdAt: -1 });
 paymentSchema.index({ studentId: 1, createdAt: -1 });
 export default mongoose.model("Payment", paymentSchema);

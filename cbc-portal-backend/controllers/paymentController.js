@@ -6,6 +6,7 @@ import PaymentReversal from "../models/PaymentReversal.js";
 import StudentEnrollment from "../models/StudentEnrollment.js";
 import { calculateBalance } from "../services/balanceService.js";
 import FeeStructure from "../models/FeeStructure.js";
+import Setting from "../models/Setting.js";
 import cache from "../utils/simpleCache.js";
 
 const escapeRegex = (text) => {
@@ -40,14 +41,11 @@ export const recordPayment = async (req, res) => {
       const existingBFs = await Payment.find({
         studentId: student._id,
         academicYear: currentYear,
-        method: "fund_transfer"
+        method: "fund_transfer",
+        isReversed: { $ne: true }
       });
-
-      for (const bf of existingBFs) {
-        const isReversed = await PaymentReversal.exists({ paymentId: bf._id });
-        if (!isReversed) {
-          return res.status(400).json({ message: "A brought forward balance already exists for this student in this academic year." });
-        }
+      if (existingBFs.length > 0) {
+        return res.status(400).json({ message: "A brought forward balance already exists for this student in this academic year." });
       }
     }
 
@@ -174,11 +172,12 @@ export const getStudentLedger = async (req, res) => {
       return res.status(404).json({ message: "Student not found" });
     }
 
-    const total = await Payment.countDocuments({ studentId: student._id });
+    const total = await Payment.countDocuments({ studentId: student._id, isReversed: { $ne: true } });
     const totalPages = Math.ceil(total / limit);
 
     const payments = await Payment.find({
-      studentId: student._id
+      studentId: student._id,
+      isReversed: { $ne: true }
     }).sort({ createdAt: -1, _id: -1 }).skip(skip).limit(limit).lean();
 
     res.json({
@@ -233,16 +232,56 @@ export const getMyFeeStructure = async (req, res) => {
 
     if (!fee) return res.status(404).json({ message: 'Fee structure not found for the selected academic year' });
 
+    // Fetch Global Fee Note for the year
+    const noteKey = `fee_note_${req.user.schoolId}_${year}`;
+    const noteSetting = await Setting.findOne({ key: noteKey }).select('value');
+
     res.json({ 
       grade: fee.grade, 
       academicYear: fee.academicYear, 
       term1Fee: fee.term1Fee,
       term2Fee: fee.term2Fee,
       term3Fee: fee.term3Fee,
-      totalFee: fee.totalFee 
+      totalFee: fee.totalFee,
+      additionalInfo: noteSetting ? noteSetting.value : ""
     });
   } catch (err) {
     console.error('Get My Fee Structure Error:', err);
+    res.status(500).json({ message: err.message });
+  }
+};
+
+// ---------------------------
+// GLOBAL FEE NOTES
+// ---------------------------
+export const getGlobalFeeNote = async (req, res) => {
+  try {
+    const { academicYear } = req.query;
+    if (!academicYear) return res.status(400).json({ message: "Year required" });
+
+    const key = `fee_note_${req.user.schoolId}_${academicYear}`;
+    const setting = await Setting.findOne({ key });
+    res.json({ note: setting ? setting.value : "" });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+export const saveGlobalFeeNote = async (req, res) => {
+  try {
+    const { academicYear, note } = req.body;
+    if (!academicYear) return res.status(400).json({ message: "Year required" });
+
+    const key = `fee_note_${req.user.schoolId}_${academicYear}`;
+    await Setting.findOneAndUpdate(
+      { key },
+      { value: note, schoolId: req.user.schoolId },
+      { upsert: true, new: true }
+    );
+
+    cache.clearByPattern(req.user.schoolId);
+    res.json({ message: "Global fee instructions updated" });
+  } catch (err) {
     res.status(500).json({ message: err.message });
   }
 };
@@ -293,7 +332,8 @@ export const getMyPayments = async (req, res) => {
     const payments = await Payment.find({
       studentId: req.user.id,
       academicYear: year,
-      schoolId: req.user.schoolId
+      schoolId: req.user.schoolId,
+      isReversed: { $ne: true }
     }).sort({ createdAt: -1 });
 
     res.json({
@@ -316,6 +356,10 @@ export const listSchoolFeeStructures = async (req, res) => {
     const skip = (page - 1) * limit;
 
     const query = { schoolId: req.user.schoolId };
+    
+    if (req.query.academicYear) query.academicYear = Number(req.query.academicYear);
+    if (req.query.grade) query.grade = req.query.grade;
+
     const total = await FeeStructure.countDocuments(query);
     const fees = await FeeStructure.find(query)
       .sort({ academicYear: -1, grade: 1 })
@@ -401,13 +445,8 @@ export const reversePayment = async (req, res) => {
     const payment = await Payment.findById(paymentId);
     if (!payment) return res.status(404).json({ message: "Payment not found" });
 
-    if (payment.method === "reversal") {
-      return res.status(400).json({ message: "Cannot reverse a reversal transaction" });
-    }
-
-    const existingReversal = await PaymentReversal.findOne({ paymentId });
-    if (existingReversal) {
-      return res.status(400).json({ message: "Payment already reversed" });
+    if (payment.isReversed) {
+      return res.status(400).json({ message: "Payment has already been reversed" });
     }
 
     await PaymentReversal.create({
@@ -417,21 +456,12 @@ export const reversePayment = async (req, res) => {
       amount: payment.amount
     });
 
-    // 🔁 Record negative payment
-    await Payment.create({
-      studentId: payment.studentId,
-      schoolId: payment.schoolId,
-      amount: -payment.amount,
-      method: "reversal",
-      reference: `REV-${payment.reference}`,
-      term: payment.term,
-      academicYear: payment.academicYear,
-      recordedBy: req.user.id,
-      recordedByRole: "accounts"
-    });
+    // Mark original as reversed so it is ignored by balance and ledger queries
+    payment.isReversed = true;
+    await payment.save();
 
     cache.clearByPattern(req.user.schoolId); // Invalidate cache
-    res.json({ message: "Payment reversed successfully" });
+    res.json({ message: "Payment reversed and removed from ledger successfully" });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
@@ -524,7 +554,8 @@ export const getAllStudentAccounts = async (req, res) => {
     // 1. Batch fetch Payments & Fee Structures
     const allPagePayments = await Payment.find({
       studentId: { $in: studentIds },
-      academicYear
+      academicYear,
+      isReversed: { $ne: true }
     }).select("studentId amount term method").lean();
 
     // Resolve enrollments map (using data already fetched in aggregation)

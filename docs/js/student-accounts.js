@@ -12,6 +12,8 @@
     .money-col { font-weight: 700 !important; color: #0f172a !important; }
     .bf-badge { font-size: 0.65rem !important; padding: 1px 4px !important; border-radius: 3px !important; margin-left: 4px; }
     .btn { padding: 3px 8px !important; font-size: 0.75rem !important; }
+    .spinner { width: 24px; height: 24px; border: 3px solid #e2e8f0; border-top-color: #2563eb; border-radius: 50%; animation: spin 0.8s linear infinite; display: inline-block; vertical-align: middle; }
+    @keyframes spin { to { transform: rotate(360deg); } }
   `;
   document.head.appendChild(compactStyle);
 
@@ -35,10 +37,18 @@
   // Cache State
   let userProfile = null;
   let schoolInfoCache = null;
-  const accountsCache = new Map();
+  const accountsCache = new Map(); 
   const ledgerCache = new Map();
   const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
+  // Ledger Modal State
+  let currentLedgerAdmission = null;
+  let currentLedgerName = null;
+  let currentLedgerPage = 1;
+
+  // ---------------------------
+  // HELPERS
+  // ---------------------------
   // Payment Modal
   const paymentModal = document.getElementById("paymentModal");
   const savePaymentBtn = document.getElementById("savePaymentBtn");
@@ -52,23 +62,19 @@
   const closeLedgerBtn = document.getElementById("closeLedgerBtn");
   const ledgerTableContainer = document.getElementById("ledgerTableContainer");
   const ledgerStudentName = document.getElementById("ledgerStudentName");
-  let currentLedgerAdmission = null;
-  let currentLedgerName = null;
-  let currentLedgerPage = 1;
 
   // Student Fee Details Modal Elements
-  const studentFeeDetailsModal = document.getElementById('studentFeeDetailsModal');
-  const closeStudentFeeDetailsBtn = document.getElementById('closeStudentFeeDetailsBtn');
-  const studentFeeModalBody = document.getElementById('studentFeeModalBody');
-  const dlStructureBtn = document.getElementById('dlStructureBtn');
-  const dlStatementBtn = document.getElementById('dlStatementBtn');
-  let currentStudentDetails = null;
+  const studentFeeDetailsModal = document.getElementById("studentFeeDetailsModal");
+  const studentFeeModalBody = document.getElementById("studentFeeModalBody");
+  const closeStudentFeeDetailsBtn = document.getElementById("closeStudentFeeDetailsBtn");
+  const dlStructureBtn = document.getElementById("dlStructureBtn");
+  const dlStatementBtn = document.getElementById("dlStatementBtn");
 
-  // Manual B/F Modal Elements
+  // Manual B/F Elements (Adding missing references)
   const addBFBtn = document.getElementById("addBFBtn");
   const bfModal = document.getElementById("bfModal");
-  const saveBFBtn = document.getElementById("saveBFBtn");
   const cancelBFBtn = document.getElementById("cancelBFBtn");
+  const saveBFBtn = document.getElementById("saveBFBtn");
   const bfYearInput = document.getElementById("bfYear");
 
   // Initialize Year Filter
@@ -84,39 +90,20 @@
     }
   }
 
-  // ---------------------------
-  // HELPERS
-  // ---------------------------
-  function showToast(message, type = "info") {
-    const t = document.createElement("div");
-    t.className = `toast toast-${type}`;
-    t.textContent = message;
-    document.body.appendChild(t);
-    setTimeout(() => {
-      t.classList.add('hiding');
-      t.addEventListener('transitionend', () => t.remove());
-    }, 3000);
-  }
-
   async function secureFetch(url, options = {}) {
     const token = authService.getToken();
-    options.headers = { ...options.headers,
-       "Content-Type": "application/json", 
-       "Authorization": `Bearer ${token}` };
-    try {
-      const res = await fetch(url, options);
-      if (!res.ok) {
-          const text = await res.text();
-          throw new Error(text);
-      }
-      return res.json();
-    } catch (err) {
-      console.error(err);
-      let msg = err.message;
-      try { msg = JSON.parse(err.message).message; } catch(e){}
-      showToast(msg || "Request failed", "error");
-      return null;
+    const headers = {
+      ...options.headers,
+      "Authorization": `Bearer ${token}`,
+      "Content-Type": "application/json"
+    };
+    const res = await fetch(url, { ...options, headers });
+    if (res.status === 401 || res.status === 403) return authService.redirectToLogin();
+    if (!res.ok) {
+      const error = await res.json().catch(() => ({}));
+      throw new Error(error.message || "Request failed");
     }
+    return res.json();
   }
 
   async function getSchoolInfo() {
@@ -337,7 +324,11 @@
     currentLedgerPage = page;
     
     ledgerStudentName.textContent = `Ledger for: ${studentName}`;
-    ledgerTableContainer.innerHTML = '<p style="text-align:center; padding:20px;">Loading payment history...</p>';
+    ledgerTableContainer.innerHTML = `
+      <div style="text-align:center; padding:40px;">
+        <div class="spinner"></div>
+        <p style="margin-top:10px; color:#64748b;">Loading payment history...</p>
+      </div>`;
     ledgerModal.style.display = "flex";
     requestAnimationFrame(() => ledgerModal.classList.add("visible"));
 
@@ -572,12 +563,12 @@
     const headerElement = document.querySelector('#studentFeeModalBody .report-header');
 
     if (!contentElement || !headerElement || !window.html2canvas || !window.jspdf) {
-      alert("PDF generation components not ready.");
+      showToast("PDF generation components not ready.", "error");
       return;
-    }
+    } // Replaced with showToast
     
     // 1. Fetch school info to get the name
-    const school = await getSchoolInfo();
+    const school = await getSchoolInfo({ fields: 'name' });
     const schoolName = (school.name || "SCHOOL NAME").toUpperCase();
 
     // 2. Create a temporary, off-screen container for printing
@@ -613,11 +604,19 @@
       const imgHeight = (canvas.height * imgWidth) / canvas.width;
       
       pdf.addImage(imgData, 'PNG', 10, 10, imgWidth, imgHeight);
+
+      // Add footer with current date
+      const dateStr = `Generated: ${new Date().toLocaleString()}`;
+      pdf.setFontSize(8);
+      pdf.setTextColor(100);
+      pdf.text(dateStr, 10, pdf.internal.pageSize.getHeight() - 10);
+      pdf.text(`Page 1 of 1`, pdf.internal.pageSize.getWidth() - 10, pdf.internal.pageSize.getHeight() - 10, { align: 'right' });
+
       const fname = `${currentStudentDetails?.name || 'Student'}_${titleSuffix}.pdf`;
       pdf.save(fname);
     } catch(e) { 
         console.error(e); 
-        alert("PDF generation failed"); 
+        showToast("PDF generation failed", "error"); 
     } finally {
         // 4. Clean up the temporary container
         document.body.removeChild(printContainer);
@@ -627,7 +626,7 @@
   // Generate Receipt PDF
   async function generateReceiptPDF(payment) {
     const { jsPDF } = window.jspdf;
-    if (!jsPDF) return alert("PDF library not loaded.");
+    if (!jsPDF) return showToast("PDF library not loaded.", "error");
     const doc = new jsPDF();
 
     const school = await getSchoolInfo();
@@ -649,6 +648,11 @@
     doc.setFont("helvetica", "bold");
     doc.text(`Amount: ${formatMoney(Math.abs(payment.amount))}`, 20, 110);
 
+    // Add footer with current date
+    const dateStr = `Generated: ${new Date().toLocaleString()}`;
+    doc.setFontSize(8);
+    doc.setTextColor(100);
+    doc.text(dateStr, 10, doc.internal.pageSize.getHeight() - 10);
     doc.save(`Receipt_${payment.reference}.pdf`);
   }
 
@@ -660,8 +664,8 @@
       if (e.target.classList.contains("reverse-btn")) {
         const btn = e.target;
         const paymentId = btn.dataset.id;
-        const reason = prompt("Enter reason for reversal:");
-        
+        const reason = prompt("Please enter a reason for this reversal:");
+
         if (reason) {
           btn.disabled = true;
           btn.textContent = "...";

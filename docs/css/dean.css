@@ -1,5 +1,250 @@
 /* dean.css - Dedicated styling for Dean Dashboard */
 
+/* ==============================
+   HEADER LAYOUT FIX
+============================== */
+header {
+  display: flex !important;
+  justify-content: space-between !important;
+  align-items: center !important;
+  position: relative !important; /* Allows absolute centering of the title */
+  background: #2b6cb0 !important;
+  padding: 0 5% !important;
+  height: 70px !important;
+}
+
+/* Centered Title "DEAN" */
+header .logo, 
+header h1 {
+  position: absolute !important;
+  left: 50% !important;
+  transform: translateX(-50%) !important;
+  margin: 0 !important;
+  color: #ffffff !important;
+  font-weight: 800 !important;
+  letter-spacing: 2px !important;
+  pointer-events: none; /* Prevents title from blocking clicks on buttons */
+  animation: titlePulse 4s infinite ease-in-out;
+}
+
+@keyframes titlePulse {
+  0%, 100% { opacity: 1; text-shadow: 0 0 8px rgba(255, 255, 255, 0.2); }
+  50% { opacity: 0.8; text-shadow: 0 0 18px rgba(255, 255, 255, 0.5); }
+}
+
+/* Styled Back Button */
+header .back-link {
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+  padding: 8px 16px !important;
+  background: rgba(255, 255, 255, 0.15) !important;
+  color: #ffffff !important;
+  border: 1px solid rgba(255, 255, 255, 0.3) !important;
+  border-radius: 6px !important;
+  text-decoration: none !important;
+  font-size: 0.85rem !important;
+  font-weight: 600 !important;
+  transition: all 0.3s ease !important;
+  backdrop-filter: blur(4px);
+  z-index: 10; /* Ensure it stays above the centered title layer */
+}
+
+header .back-link:hover {
+  background: rgba(255, 255, 255, 0.25) !important;
+  transform: translateX(-3px); /* Subtle nudge to indicate direction */
+}
+
+/* Styled Logout Button with Red Tint */
+header #logoutBtn {
+  display: inline-flex !important;
+  align-items: center !important;
+  padding: 8px 16px !important;
+  background: rgba(231, 76, 60, 0.2) !important; /* Semi-transparent red */
+  color: #ffffff !important;
+  border: 1px solid rgba(231, 76, 60, 0.4) !important;
+  border-radius: 6px !important;
+  cursor: pointer;
+  font-size: 0.85rem !important;
+  font-weight: 600 !important;
+  transition: all 0.3s ease !important;
+  backdrop-filter: blur(4px);
+  z-index: 10;
+}
+
+header #logoutBtn:hover {
+  background: rgba(231, 76, 60, 0.4) !important;
+  box-shadow: 0 4px 12px rgba(231, 76, 60, 0.2);
+  border-color: rgba(231, 76, 60, 0.6) !important;
+}
+
+/* ==============================
+   MOBILE HEADER RESPONSIVENESS
+============================== */
+@media (max-width: 600px) {
+  header {
+    flex-direction: row !important; /* Force horizontal layout and override teachers.css */
+    align-items: center !important;
+    padding: 0 12px !important;
+    gap: 8px !important;
+    height: 60px !important;
+  }
+
+  /* Revert absolute positioning to avoid button overlap */
+  header .logo, 
+  header h1 {
+    position: static !important;
+    transform: none !important;
+    left: auto !important;
+    font-size: 1.1rem !important;
+    letter-spacing: 1px !important;
+    flex: 1;
+    text-align: center;
+  }
+
+  header .back-link,
+  header #logoutBtn {
+    padding: 6px 10px !important;
+    font-size: 0.7rem !important;
+    white-space: nowrap;
+  }
+}
+
+/* ==============================
+   MOBILE OPTIMIZATION FOR FILTERS AND RESULTS
+============================== */
+@media (max-width: 768px) {
+  /* Filters Section - Wrap into 2 or 3 rows instead of one long row */
+  .filters-section .filter-grid {
+    display: grid !important;
+    grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)) !important; /* Naturally creates multiple rows */
+    gap: 12px !important;
+    overflow-x: visible !important; /* Disable scroll for filters */
+    padding-bottom: 0;
+  }
+
+  .filters-section .filter-group {
+    min-width: 0 !important;
+    max-width: none !important;
+    flex: 1 1 auto !important;
+  }
+
+  /* Make 'View Results' button span full width at the bottom of the filter grid */
+  .filters-section #applyFiltersBtn {
+    grid-column: 1 / -1 !important;
+    min-width: 100% !important;
+    margin-top: 8px !important;
+  }
+
+  .analysis-options .btn { /* From analysis.css */
+    flex: 0 0 150px !important; /* Fixed width for buttons */
+    min-width: 150px !important;
+    max-width: 150px !important;
+    margin-top: 0 !important; /* Remove top margin from analysis.css */
+  }
+
+  /* Summary Cards - Ensure horizontal scrolling */
+  .summary-cards.stats-grid {
+    display: flex !important; /* Override grid */
+    flex-wrap: nowrap !important; /* Force horizontal layout */
+    overflow-x: auto !important; /* Enable horizontal scrolling */
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: 10px; /* Add some padding for scrollbar */
+    gap: 10px !important; /* Adjust gap for mobile */
+    justify-content: flex-start !important;
+  }
+
+  /* Ensure stat cards have a minimum width */
+  .stat-card {
+    flex: 0 0 160px !important; /* Fixed width for each stat card */
+    min-width: 160px !important;
+    max-width: 160px !important;
+  }
+
+  /* Tables (ranking and subject) - ensure tables themselves have a min-width */
+  #rankingTableWrap table,
+  #subjectTableWrap table {
+    min-width: 700px !important; /* Ensure tables are wide enough to scroll */
+  }
+
+  /* Chart Section - Ensure horizontal scrolling */
+  .chart-wrap {
+    overflow-x: auto !important; /* Enable horizontal scrolling for the chart container */
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: 10px; /* Add some padding for scrollbar */
+  }
+
+  .chart-wrap canvas {
+    min-width: 600px !important; /* Ensure the canvas itself has a minimum width */
+    width: 100% !important; /* Allow it to scale down to min-width */
+    height: 300px !important; /* Keep a reasonable height for mobile */
+  }
+
+  /* Adjust padding for main content area on mobile */
+  .main-content-area {
+    padding: 10px !important;
+  }
+}
+
+/* Helper for text intended only for screen readers or PDF exports */
+.sr-only {
+    position: absolute !important;
+    width: 1px !important;
+    height: 1px !important;
+    padding: 0 !important;
+    margin: -1px !important;
+    overflow: hidden !important;
+    clip: rect(0, 0, 0, 0) !important;
+    white-space: nowrap !important;
+    border: 0 !important;
+}
+
+/* ==============================
+   CONFIRMATION MODAL (TOAST)
+============================== */
+.toast.confirm-toast {
+    position: fixed;
+    top: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    background-color: #ffffff;
+    color: #2d3748 !important;
+    border: 1px solid #e2e8f0;
+    box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+    border-radius: 12px;
+    min-width: 320px;
+    padding: 20px;
+    z-index: 10000;
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+    text-align: center;
+    animation: slideDown 0.3s ease-out forwards;
+}
+
+.toast.confirm-toast p {
+    color: #4a5568;
+    margin: 0;
+    font-size: 1rem;
+    font-weight: 500;
+}
+
+.confirm-actions { display: flex; justify-content: center; gap: 12px; }
+
+.confirm-actions .secondary-btn {
+    background-color: #edf2f7 !important;
+    color: #4a5568 !important;
+    border: 1px solid #cbd5e0 !important;
+    padding: 8px 16px;
+    border-radius: 6px;
+    cursor: pointer;
+}
+
+@keyframes slideDown {
+    from { transform: translate(-50%, -100%); opacity: 0; }
+    to { transform: translate(-50%, 0); opacity: 1; }
+}
+
 .filters-section {
     margin-bottom: 24px;
     padding: 20px;

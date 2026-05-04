@@ -17,7 +17,8 @@ export const generateFeeStructuresPDF = async (req, res) => {
     }
 
     // Get school info for header
-    const school = await School.findById(req.user.schoolId);
+    // Optimize: Fetch only the school name as requested
+    const school = await School.findById(req.user.schoolId).select('name');
     if (!school) {
       return res.status(404).json({ message: 'School not found' });
     }
@@ -47,9 +48,7 @@ export const generateFeeStructuresPDF = async (req, res) => {
 
     // Add school header
     doc.fontSize(20).font('Helvetica-Bold').text(school.name || 'School Name', { align: 'center' });
-    doc.moveDown(0.5);
-    doc.fontSize(14).font('Helvetica').text(school.address || '', { align: 'center' });
-    doc.moveDown(0.5);
+    doc.moveDown(1);
     doc.fontSize(16).font('Helvetica-Bold').text('FEE STRUCTURES REPORT', { align: 'center' });
     doc.moveDown(0.5);
     doc.fontSize(10).text(`Generated on: ${new Date().toLocaleDateString()} ${new Date().toLocaleTimeString()}`, { align: 'center' });
@@ -148,7 +147,8 @@ export const generateStudentFeesPDF = async (req, res) => {
     }
 
     // Get school info for header
-    const school = await School.findById(req.user.schoolId);
+    // Optimize: Fetch only required fields
+    const school = await School.findById(req.user.schoolId).select('name'); // Refactored to fetch only name
     if (!school) {
       return res.status(404).json({ message: 'School not found' });
     }
@@ -156,7 +156,7 @@ export const generateStudentFeesPDF = async (req, res) => {
     // --- Fetch Headteacher Signature (once) ---
     let headteacherSignatureBase64 = null;
     if (school.headteacherSignatureUrl) {
-      headteacherSignatureBase64 = await getImageBase64FromUrl(school.headteacherSignatureUrl);
+      // headteacherSignatureBase64 = await getImageBase64FromUrl(school.headteacherSignatureUrl); // Removed as per request to fetch only name
     }
     const { class: classFilter, term } = req.query;
     const currentAcademicYear = new Date().getFullYear();
@@ -258,9 +258,7 @@ export const generateStudentFeesPDF = async (req, res) => {
 
     // Add school header
     doc.fontSize(20).font('Helvetica-Bold').text(school.name || 'School Name', { align: 'center' });
-    doc.moveDown(0.5);
-    doc.fontSize(14).font('Helvetica').text(school.address || '', { align: 'center' });
-    doc.moveDown(0.5);
+    doc.moveDown(1);
     doc.fontSize(16).font('Helvetica-Bold').text('STUDENT FEES REPORT', { align: 'center' });
     doc.moveDown(0.5);
     doc.fontSize(10).text(`Academic Year: ${currentAcademicYear} | Generated on: ${new Date().toLocaleDateString()} ${new Date().toLocaleTimeString()}`, { align: 'center' });
@@ -480,7 +478,8 @@ export const getOutstandingFees = async (req, res) => {
     // 3. Batch Fetch Payments
     const payments = await Payment.find({
       studentId: { $in: studentIds },
-      academicYear: yearToUse
+      academicYear: yearToUse,
+      isReversed: { $ne: true }
     }).select("studentId amount term").lean();
 
     // 4. Batch Fetch Fee Structures
@@ -616,10 +615,10 @@ export const generateOutstandingFeesPDF = async (req, res) => {
   try {
     if (!req.user || !req.user.schoolId) {
       return res.status(400).json({ message: 'No school assigned' });
-    }
+    } // Refactored to fetch only name
 
     // Get school info for header
-    const school = await School.findById(req.user.schoolId);
+    const school = await School.findById(req.user.schoolId).select('name');
     if (!school) {
       return res.status(404).json({ message: 'School not found' });
     }
@@ -627,7 +626,7 @@ export const generateOutstandingFeesPDF = async (req, res) => {
     // --- Fetch Headteacher Signature (once) ---
     let headteacherSignatureBase64 = null;
     if (school.headteacherSignatureUrl) {
-      headteacherSignatureBase64 = await getImageBase64FromUrl(school.headteacherSignatureUrl);
+      // headteacherSignatureBase64 = await getImageBase64FromUrl(school.headteacherSignatureUrl); // Removed as per request to fetch only name
     }
     const { name, class: classFilter, term } = req.query;
     const currentAcademicYear = new Date().getFullYear();
@@ -662,7 +661,8 @@ export const generateOutstandingFeesPDF = async (req, res) => {
     // 2. Batch Fetch Payments
     const payments = await Payment.find({
       studentId: { $in: studentIds },
-      academicYear: currentAcademicYear
+      academicYear: currentAcademicYear,
+      isReversed: { $ne: true }
     }).select("studentId amount term").lean();
 
     // 3. Batch Fetch Fee Structures
@@ -943,10 +943,10 @@ export const generateOutstandingFeesPDFFromData = async (req, res) => {
   try {
     if (!req.user || !req.user.schoolId) {
       return res.status(400).json({ message: 'No school assigned' });
-    }
+    } // Refactored to fetch only name
 
     // Get school info for header
-    const school = await School.findById(req.user.schoolId);
+    const school = await School.findById(req.user.schoolId).select('name');
     if (!school) {
       return res.status(404).json({ message: 'School not found' });
     }
@@ -954,7 +954,7 @@ export const generateOutstandingFeesPDFFromData = async (req, res) => {
     // --- Fetch Headteacher Signature (once) ---
     let headteacherSignatureBase64 = null;
     if (school.headteacherSignatureUrl) {
-      headteacherSignatureBase64 = await getImageBase64FromUrl(school.headteacherSignatureUrl);
+      // headteacherSignatureBase64 = await getImageBase64FromUrl(school.headteacherSignatureUrl); // Removed as per request to fetch only name
     }
     // Get the student data from request body (already filtered on frontend)
     const outstandingStudents = req.body || [];

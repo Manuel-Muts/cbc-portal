@@ -17,9 +17,11 @@ import superAdminRoutes from './routes/superAdminRoutes.js';
 import schoolRoutes from "./routes/schoolRoutes.js";
 import promotionRoutes from "./routes/promotionRoutes.js";
 import enrollmentRoutes from "./routes/enrollmentRoutes.js";
+import paymentRoutes from "./routes/paymentRoutes.js"; // Import paymentRoutes
 import accountsRoutes from "./routes/accountsRoutes.js";
 import reportsRoutes from "./routes/reportsRoutes.js";
 import { mpesaCallback } from './controllers/mpesaController.js';
+import { startCronJobs } from './services/cronService.js';
 
 
 dotenv.config();
@@ -130,6 +132,7 @@ app.use("/api", schoolRoutes);
 app.use("/api/promotions", promotionRoutes);
 app.use("/api/enrollments", enrollmentRoutes);
 app.use("/api/accounts", accountsRoutes);
+app.use("/api/payments", paymentRoutes); // Use paymentRoutes
 app.use("/api/reports", reportsRoutes);
 // app.use("/api/payments", paymentsRoutes); // Removed: payments handled in userRoutes
 
@@ -172,11 +175,6 @@ app.use(express.static(frontendPath));
 // SPA fallback handler
 app.use((req, res) => {
   // Ignore API routes
-  if (req.path.startsWith('/api')) {
-    return res.status(404).json({ message: 'API route not found' });
-  }
-
-  // Ignore real file requests (.js, .css, .png, etc.)
   if (req.path.includes('.')) {
     return res.status(404).send('File not found');
   }
@@ -223,6 +221,10 @@ console.log(`📦 Using database: ${mongoURI.includes("mongodb+srv") ? "MongoDB 
 mongoose.connect(mongoURI)
   .then(() => {
     console.log("✅ MongoDB connected successfully!");
+    
+    // 🚀 Start scheduled background tasks (Materials cleanup & Payment backups)
+    startCronJobs();
+
     const PORT = process.env.PORT || 5000;
     app.listen(PORT, () =>
       console.log(`🚀 Server running on port ${PORT}`)

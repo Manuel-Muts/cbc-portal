@@ -6,7 +6,7 @@
   <title>Learner</title>
   <link rel="stylesheet" href="css/style.css" />
   <link rel="stylesheet" href="css/student.css" />
-  <link rel="icon" type="image/png" href="/images/favicon.png"/> 
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
   <style>
     /* Mobile Responsive Optimizations for Dashboard */
     @media screen and (max-width: 768px) {
@@ -48,65 +48,52 @@
     }
   </style>
 </head>
-<body>
-  <div id="toastMessage" style="
-  display:none;
-  position: fixed;
-  top: 15px;
-  left: 50%;
-  transform: translateX(-50%);
-  background: #2ecc71;
-  color: white;
-  padding: 10px 20px;
-  border-radius: 8px;
-  box-shadow: 0 4px 10px rgba(0,0,0,0.2);
-  font-weight: 500;
-  z-index: 9999;
-  transition: opacity 0.6s ease;
-"></div>
+<body> 
+  <link rel="icon" type="image/png" href="/images/favicon.png"/>
+  <!-- The toastContainer will be dynamically created by ui-utils.js if not present -->
   <aside class="sidebar">
-    <h2>LEARNER'S Portal</h2>
-    <ul>
-      <li class="active"><a href="#">🏠 Dashboard</a></li>
-      <li><a href="/performance">📈 My Performance</a></li>
-      <li><a href="/study-materials">📚 Study Materials/Assignments</a></li>
+    <div class="sidebar-brand">
+      <div class="logo">
+        <h2 id="schoolName">SCHOOL NAME</h2>
+      </div>
+    </div>
+    <button class="sidebar-close" aria-label="Close sidebar">&times;</button>
 
+    <ul class="menu">
+      <li class="active"><a href="#"><i class="fas fa-home"></i> Dashboard</a></li>
+      <li><a href="/performance"><i class="fas fa-chart-line"></i> My Performance</a></li>
+      <li><a href="/study-materials"><i class="fas fa-book-open"></i> Study Materials/Assignments</a></li>
     </ul>
+
+    <div class="sidebar-actions">
+      <button id="viewFeeBtn" class="btn sidebar-fee-btn">
+         Fee Structure
+      </button>
+      <button id="refreshBtn" class="btn sidebar-refresh-btn">
+        Refresh 
+      </button>
+      <button id="logoutBtn" class="btn sidebar-logout-btn">
+        Logout
+      </button>
+    </div>
   </aside>
 
   <main class="dashboard-main">
     <header class="dashboard-header">
+      <button class="menu-toggle" aria-label="Toggle navigation">☰</button>
       <div class="welcome-banner">Welcome, <span id="welcomeName">Learner</span></div>
-      <div class="toolbar">
-        <button id="refreshBtn" class="btn small primary">Refresh</button>
-        <button id="viewFeeBtn" class="btn small" style="margin-right:8px;">View Fee Structure</button>
-        <button id="logoutBtn" class="btn small danger">Logout</button>
-      </div>
+      <div class="toolbar"></div>
     </header>
 
-<div id="loadingSpinner" style="
-  display:none;
-  text-align:center;
-  padding:20px;
-  font-size:18px;
-  font-weight:bold;
-">
-  Loading marks...
-</div>
+    <div id="loadingSpinner" class="loading-spinner">Loading marks...</div>
 
-<!-- Learner Info Display -->
-<div id="learnerInfoDisplay" style="
-  margin-bottom: 20px;
-  padding: 15px;
-  background: #f9f9f9;
-  border-radius: 8px;
-  border-left: 4px solid #3498db;
-">
-  <p style="margin: 5px 0;"><strong>Grade:</strong> <span id="learnerGradeDisplay">Loading...</span></p>
-  <p style="margin: 5px 0;"><strong>Stream:</strong> <span id="learnerStreamDisplay">N/A</span></p>
-</div>
+    <!-- Learner Info Display -->
+    <div id="learnerInfoDisplay" class="learner-info-card">
+      <p><strong>Grade:</strong> <span id="learnerGradeDisplay">Loading...</span></p>
+      <p><strong>Stream:</strong> <span id="learnerStreamDisplay">N/A</span></p>
+    </div>
 
-      <div class="filter-bar">
+    <div class="filter-bar">
   <label for="termFilter">
     Term:
     <select id="termFilter">
@@ -142,17 +129,17 @@
 </div>
 
     <!-- TABS NAVIGATION -->
-    <div class="tabs-nav" style="margin-top: 20px;">
+    <div class="tabs-nav">
       <button class="tab-btn active" data-tab="performanceTab">📈 My Performance</button>
       <button class="tab-btn" data-tab="analysisTab">📊 Component Analysis</button>
     </div>
 
     <div id="performanceTab" class="tab-pane active">
-      <div id="learnerMarks" style="padding-top: 10px;">Loading marks...</div>
+      <div id="learnerMarks" class="tab-content-area empty-state">Select Assessment above, then click "Apply Filters" to view your marks.</div>
     </div>
 
     <div id="analysisTab" class="tab-pane">
-      <div id="learnerAnalysis" style="padding-top: 10px; color: #777; text-align: center;">Apply filters to see performance analysis.</div>
+      <div id="learnerAnalysis" class="tab-content-area empty-state">Apply filters to see performance analysis.</div>
     </div>
 
   </main>
@@ -160,7 +147,7 @@
   <!-- Fee modal -->
   <div id="feeModal" class="modal hidden">
     <div class="modal-backdrop"></div>
-    <div class="modal-content" style="width:90%; max-width:800px; max-height:80vh; overflow-y:auto;">
+    <div class="modal-content fee-modal-content">
       <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem;">
         <h3 style="margin:0;">My Fee Structure</h3>
         <div>
@@ -182,8 +169,9 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
   <script src="js/config.js"></script>
-  <script src="js/student.js"></script>
-  <script src="js/cbc-utils.js"></script>
   <script src="js/auth-service.js"></script>
+  <script src="js/cbc-utils.js"></script>
+  <script src="js/ui.js"></script>
+  <script src="js/student.js"></script>
 </body>
 </html>

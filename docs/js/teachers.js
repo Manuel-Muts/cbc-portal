@@ -109,7 +109,11 @@ document.addEventListener("DOMContentLoaded", () => {
   // 🆕 SET DEFAULT VALUES FOR TERM AND ASSESSMENT
   // ---------------------------
   if (marksTermSelect) {
-    marksTermSelect.value = "1"; // Default to Term 1
+    const month = new Date().getMonth() + 1; // 1-12
+    let currentTerm = "1";
+    if (month >= 5 && month <= 8) currentTerm = "2";
+    else if (month >= 9) currentTerm = "3";
+    marksTermSelect.value = currentTerm;
   }
   if (marksAssessmentSelect) {
     marksAssessmentSelect.value = "0"; // Default to Midterm
@@ -176,7 +180,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   function renderSignatureUI(user) {
     const container = document.getElementById("allocationsContainer");
-    if (!container || !user) return;
+    if (!container || !user || !user.isClassTeacher) return; // Only show if user is a class teacher
 
     // Check if signature UI already exists
     if (document.getElementById("signatureUploadContainer")) return;
@@ -531,18 +535,23 @@ document.addEventListener("DOMContentLoaded", () => {
       console.log(`📚 Loading students for class: ${classLabel} (Page ${page})`);
 
       const CACHE_KEY = `students_cache_${classLabel}_p${page}`;
-      const CACHE_DURATION = 10 * 60 * 1000; // 10 minutes
+      const CACHE_DURATION = 10 * 60 * 1000; // 10 minutes for student list
 
       if (!forceRefresh) {
         const cached = localStorage.getItem(CACHE_KEY);
         if (cached) {
           try {
             const { timestamp, data } = JSON.parse(cached);
-            if (Date.now() - timestamp < CACHE_DURATION) {
+            if (data && (Date.now() - timestamp < CACHE_DURATION)) {
               console.log("✅ Using cached student list");
               loadedStudents = data.students || data;
               currentStudentPage = data.currentPage || page;
               return data;
+            }
+            // If cache is stale or invalid, remove it
+            else {
+              localStorage.removeItem(CACHE_KEY);
+              console.log("Cache for students is stale or invalid, fetching new data.");
             }
           } catch (e) {
             console.warn("Student cache parse error:", e);
@@ -1622,8 +1631,20 @@ if (!marksAssessmentSelect.value) {
       startY: 20,
       head: [headers],
       body: rows,
-      styles: { fontSize: 10 },
-      headStyles: { fillColor: [22, 160, 133] }
+      styles: { fontSize: 10 }, // Keep existing styles
+      headStyles: { fillColor: [22, 160, 133] }, // Keep existing styles
+      didDrawPage: (data) => {
+        // Footer
+        doc.setFontSize(8);
+        doc.setTextColor(100);
+        const dateStr = `Generated: ${new Date().toLocaleString()}`;
+        doc.text(dateStr, data.settings.margin.left, doc.internal.pageSize.getHeight() - 10);
+        
+        // Add page number if needed
+        if (data.pageCount && data.pageCount > 1) {
+          doc.text(`Page ${data.pageNumber} of ${data.pageCount}`, doc.internal.pageSize.getWidth() - data.settings.margin.right, doc.internal.pageSize.getHeight() - 10, { align: 'right' });
+        }
+      }
     });
     doc.save(`${title.replace(/\s+/g, "_")}.pdf`);
   }
@@ -1651,13 +1672,6 @@ if (!marksAssessmentSelect.value) {
   // ---------------------------
   // TOAST
   // ---------------------------
-  function showToast(msg, type = "success") {
-    const toast = document.createElement("div");
-    toast.className = `toast ${type}`;
-    toast.textContent = msg;
-    document.body.appendChild(toast);
-    setTimeout(() => toast.remove(), 3000);
-  }
 
   // ---------------------------
   // INITIAL LOAD

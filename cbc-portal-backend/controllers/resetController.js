@@ -14,10 +14,10 @@ const generateCode = () =>
 // 0️⃣ VERIFY USER (role + name + email)
 // ============================================================
 export const verifyUser = async (req, res) => {
-  const { role, name, email } = req.body; // 'name' sent from frontend
+  const { role, email } = req.body; //
 
-  if (!role || !name || !email) {
-    return res.status(400).json({ msg: "Missing required fields" });
+  if (!role || !email) { //
+    return res.status(400).json({ msg: "Missing required fields" }); //
   }
 
   try {
@@ -26,17 +26,13 @@ export const verifyUser = async (req, res) => {
       return res.status(404).json({ msg: "User not found" });
     }
 
-    // Check role
-    if (user.role !== role) {
+    // Check role - Allow matches for primary role OR class teacher designation
+    const roleMatches = 
+      user.role === role || 
+      (role === "classteacher" && user.isClassTeacher === true);
+
+    if (!roleMatches) {
       return res.status(400).json({ msg: "Role mismatch" });
-    }
-
-    // Flexible name check: lowercase, trim, remove extra spaces
-    const normalize = str => str?.toLowerCase().replace(/\s+/g, " ").trim();
-
-    const dbName = user.name; // <-- use 'name' from DB
-    if (normalize(dbName) !== normalize(name)) {
-      return res.status(400).json({ msg: "Fullname mismatch" });
     }
 
     // All good

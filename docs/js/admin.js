@@ -8,9 +8,19 @@
   const API_BASE = config.api.baseURL;
 
   // DOM shortcuts
-  const schoolNameDisplay = document.getElementById("schoolNameDisplay");
+  const schoolInfoDisplay = document.getElementById("schoolInfoDisplay");
+  const headerSchoolLogo = document.getElementById("headerSchoolLogo");
+  const sidebar = document.querySelector('.sidebar');
+  const pageTitle = document.getElementById('pageTitle');
+  const sidebarBrandLogo = document.querySelector('.sidebar-brand .logo'); // New shortcut
 
   let schoolInfo = null;
+
+  // ---------------------------
+  // SIDEBAR TOGGLE FUNCTIONALITY (Removed - not needed in new design)
+  // ---------------------------
+
+
 
 
   // DOM elements
@@ -56,6 +66,8 @@
   let promoPage = 1;
   const promoLimit = 20;
   let promoTotalPages = 1;
+  let promoLoading = false;
+
   let subjectAllocPage = 1;
   const SUBJECT_ALLOC_LIMIT = 5;
   let subjectAllocTotalPages = 1;
@@ -111,7 +123,7 @@ async function loadSchoolInfo(forceReload = false) {
 }
 
 function renderSchoolInfo() {
-  if (!schoolNameDisplay || !schoolInfo) return;
+  if (!schoolInfo) return;
 
   // Detect logo format and create appropriate URL
   let logoURL = "";
@@ -129,73 +141,86 @@ function renderSchoolInfo() {
     }
   }
 
-  schoolNameDisplay.innerHTML = `
-    <div class="school-header">
-      ${logoURL ? `<img src="${logoURL}" class="school-logo" crossorigin="anonymous">` : ""}
-      <div class="school-meta">
-        <h1 class="school-name">${schoolInfo.name || "School Name"}</h1>
-        <p class="school-address">${schoolInfo.address || ""}</p>
-      </div>
-    </div>
-  `;
+  // Replace "Admin Portal" branding with School Name and Logo at the top of the sidebar
+  if (sidebarBrandLogo) {
+    sidebarBrandLogo.innerHTML = `
+      ${logoURL ? `<img src="${logoURL}" alt="Logo" crossorigin="anonymous" style="max-height: 50px; margin-bottom: 8px; display: block; margin-left: auto; margin-right: auto; border-radius: 4px;">` : ""}
+      <div class="school-name" style="font-size: 1.25rem; font-weight: 800; color: #fff; text-align: center; line-height: 1.2; text-transform: uppercase;">${schoolInfo.name || "School Name"}</div>
+    `;
+  }
+
+  // Ensure address is not shown in sidebar (Name and Logo alone)
+  if (schoolInfoDisplay) {
+    schoolInfoDisplay.innerHTML = '';
+  }
+
+  // Render logo in header
+  if (headerSchoolLogo && logoURL) {
+    headerSchoolLogo.style.display = 'none'; // Hide the logo in the header as requested
+  }
 
   renderAdminSignature();
-  attachAdminSignatureLogic();
 
-  // For PDF export
-  if (window.schoolLogoElem && logoURL) {
-    schoolLogoElem.crossOrigin = "anonymous";
-    schoolLogoElem.src = logoURL;
+  // For PDF export (ensure window.schoolLogoElem is defined in admin.html if needed)
+  const pdfSchoolLogo = document.getElementById("pdfSchoolLogo"); // Assuming an element for PDF logo
+  if (pdfSchoolLogo && logoURL) {
+    pdfSchoolLogo.src = logoURL;
   }
 }
 
 function renderAdminSignature() {
-  if (!schoolInfo || schoolInfo.allowSignatureUpload === false) return;
-
   // Try to find a professional placement in the User Management area
-  let sigContainer = document.getElementById("adminSignatureSection");
-  
-  if (!sigContainer) {
-    // Look for User Management header and Manage User buttons to insert between
-    const headers = Array.from(document.querySelectorAll('h1, h2, h3'));
-    const userMgmtHeader = headers.find(h => h.textContent.toLowerCase().includes('user management'));
-    const manageUserBtn = Array.from(document.querySelectorAll('button')).find(b => b.textContent.toLowerCase().includes('manage user'));
-
-    if (userMgmtHeader) {
-      sigContainer = document.createElement('div');
-      sigContainer.id = "adminSignatureSection";
-      
-      // Create a horizontal row wrapper for the section header elements
-      const headerRow = document.createElement('div');
-      headerRow.className = "admin-section-header-row";
-      
-      // Move existing elements into the new flex container
-      userMgmtHeader.parentNode.insertBefore(headerRow, userMgmtHeader);
-      headerRow.appendChild(userMgmtHeader);
-      headerRow.appendChild(sigContainer);
-      
-      // Move the action button into the row if it exists as a sibling
-      if (manageUserBtn && manageUserBtn.parentNode === headerRow.parentNode) {
-        headerRow.appendChild(manageUserBtn);
+  // Now targeting the dedicated signatureUploadSection
+  let signatureUploadSection = document.getElementById("signatureUploadSection");
+  if (!signatureUploadSection) {
+    // If the section doesn't exist in admin.html, create it dynamically
+    const mainContent = document.getElementById("contentArea") || document.querySelector(".main-content") || document.querySelector(".main");
+    if (mainContent) {
+      signatureUploadSection = document.createElement("div");
+      signatureUploadSection.id = "signatureUploadSection";
+      signatureUploadSection.className = "tab-section"; 
+      if (!signatureUploadSection.style.display) {
+        signatureUploadSection.style.display = "none";
       }
+      mainContent.appendChild(signatureUploadSection);
+    } else {
+      console.warn("Main content area not found. Cannot render admin signature UI.");
+      return;
     }
   }
 
-  if (!sigContainer) return;
+  if (!schoolInfo) {
+    signatureUploadSection.innerHTML = '<div class="card"><p style="text-align:center; padding:20px; color:#64748b;">Loading school configuration...</p></div>';
+    return;
+  }
 
-  sigContainer.innerHTML = `
-    <div class="headteacher-sig-box">
-      <p class="sig-label">Official Authority Signature</p>
-      <div id="adminSigPreview" class="sig-preview-area">
-        ${schoolInfo.headteacherSignatureUrl ? 
-          `<img src="${schoolInfo.headteacherSignatureUrl}" style="max-height: 45px; max-width: 100px; filter: contrast(1.05);">` : 
-          `<span style="font-size: 0.75rem; color: #a0aec0; font-style: italic;">No signature uploaded</span>`
-        }
+  if (schoolInfo.allowSignatureUpload === false) {
+    signatureUploadSection.innerHTML = '<div class="card"><p style="text-align:center; padding:20px; color:#dc3545;">Digital signature upload is disabled for this school.</p></div>';
+    return;
+  }
+
+  // Clear previous content if any
+  signatureUploadSection.innerHTML = `
+    <div class="card">
+      <div class="admin-section-header-row">
+        <h3>Digital Signature Management</h3>
       </div>
-      <button class="btn secondary-btn" id="uploadAdminSigBtn" style="font-size: 0.65rem; padding: 2px 19px; margin-top: 8px; border-radius: 6px; font-weight: 600;">Update Digital Signature</button>
-      <input type="file" id="adminSigInput" style="display:none;" accept="image/*">
+      <p style="margin-bottom: 20px; color: #6b7280;">Upload or update the official digital signature for reports and documents. This signature will represent the Headteacher/Principal.</p>
+      <div class="headteacher-sig-box" style="margin: 0 auto; max-width: 300px; padding: 20px; border-radius: 12px; background: #f9fafb; border: 1px solid #e5e7eb; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
+          <h4 style="font-size: 1rem; margin-top: 0; margin-bottom: 15px; color: #1f2937;">Current Official Signature</h4>
+          <p class="sig-label">Headteacher/Principal's Signature</p>
+          <div id="adminSigPreview" class="sig-preview-area">
+            ${schoolInfo.headteacherSignatureUrl ? 
+              `<img src="${schoolInfo.headteacherSignatureUrl}" style="max-height: 60px; max-width: 150px; filter: contrast(1.05); object-fit: contain;">` : 
+              `<span style="font-size: 0.75rem; color: #a0aec0; font-style: italic;">No signature uploaded</span>`
+            }
+          </div>
+          <button class="btn secondary-btn" id="uploadAdminSigBtn" style="font-size: 0.65rem; padding: 2px 19px; margin-top: 8px; border-radius: 6px; font-weight: 600;">Update Digital Signature</button>
+          <input type="file" id="adminSigInput" style="display:none;" accept="image/*">
+      </div>
     </div>
   `;
+  attachAdminSignatureLogic();
 }
 
 function attachAdminSignatureLogic() {
@@ -244,65 +269,6 @@ function attachAdminSignatureLogic() {
   // ---------------------------
   // SMALL UI HELPERS
   // ---------------------------
-  let toastContainer = document.getElementById("toastContainer");
-  if (!toastContainer) {
-    toastContainer = document.createElement("div");
-    toastContainer.id = "toastContainer";
-    toastContainer.style.position = "fixed";
-    toastContainer.style.right = "16px";
-    toastContainer.style.bottom = "16px";
-    toastContainer.style.zIndex = "9999";
-    document.body.appendChild(toastContainer);
-  }
-
-  function showToast(message, type = "info", duration = 3000) {
-    const t = document.createElement("div");
-    t.className = `toast toast-${type}`; // This uses the new CSS classes
-    t.textContent = message;
-    toastContainer.appendChild(t);
-    setTimeout(() => {
-      t.classList.add('hiding'); // Add class for hiding animation
-      t.addEventListener('transitionend', () => t.remove());
-    }, duration);
-  }
-
-  function showConfirm({ title = "Confirm", message = "Are you sure?", confirmText = "Yes", cancelText = "No" } = {}) {
-    return new Promise(resolve => {
-      const overlay = document.createElement("div");
-      overlay.className = "confirm-overlay";
-
-      const box = document.createElement("div");
-      box.className = "confirm-box";
-
-      box.innerHTML = `
-        <h4>${title}</h4>
-        <p>${message}</p>
-        <div class="confirm-buttons">
-          <button class="btn secondary-btn" id="confirmCancel">${cancelText}</button>
-          <button class="btn primary-btn" id="confirmOk">${confirmText}</button>
-        </div>
-      `;
-
-      overlay.appendChild(box);
-      document.body.appendChild(overlay);
-
-      // Add visible class to trigger animation
-      requestAnimationFrame(() => {
-        overlay.classList.add('visible');
-      });
-
-      const close = (value) => {
-        overlay.classList.remove('visible');
-        overlay.addEventListener('transitionend', () => {
-          overlay.remove();
-          resolve(value);
-        }, { once: true });
-      };
-
-      overlay.querySelector("#confirmCancel").onclick = () => close(false);
-      overlay.querySelector("#confirmOk").onclick = () => close(true);
-    });
-  }
 
   function showFeedback(element, message, type = "info") {
     if (!element) return;
@@ -334,10 +300,40 @@ function attachAdminSignatureLogic() {
     style.id = id;
     style.textContent = `
       @keyframes spin { to { transform: rotate(360deg); } }
-      /* Sticky Header */
-      .header { position: sticky !important; top: 0; z-index: 1000; background: var(--light-gray) !important; padding: 10px 0; }
-      .header { position: sticky !important; top: 0; z-index: 1000; background: var(--light-gray) !important; padding: 10px 0; }
-      .header { position: sticky !important; top: 0; z-index: 1000; background: var(--light-gray) !important; padding: 10px 0; }
+      
+      /* Dashboard Layout */
+      .dashboard-wrapper { display: flex; min-height: 100vh; width: 100%; }
+      .sidebar { width: 260px; background: #2b6cb0 !important; color: white !important; padding: 20px 0; flex-shrink: 0; position: sticky; top: 0; height: 100vh; z-index: 1100; box-shadow: 4px 0 10px rgba(0,0,0,0.1); }
+      .main-content { flex-grow: 1; background: #f8fafc; min-width: 0; }
+      
+      .sidebar-brand .logo { font-size: 1.4rem; font-weight: 800; margin-bottom: 20px; text-align: center; border-bottom: 1px solid rgba(255,255,255,0.1); padding: 0 20px 15px 20px; letter-spacing: 1px; color: white; }
+      
+      /* Sidebar Menu Styling */
+      .menu { padding: 0 20px; margin: 0; list-style: none; display: flex !important; flex-direction: column !important; gap: 4px; }
+      .menu li { transition: all 0.2s ease; margin: 6px 0; border-radius: 8px; overflow: hidden; }
+      .menu li:not([data-section]) { padding: 0; }
+      .menu li[data-section] { padding: 12px 15px; cursor: pointer; color: rgba(255,255,255,0.8); font-weight: 500; display: flex; align-items: center; }
+      .menu li:hover { background: rgba(255, 255, 255, 0.1) !important; color: white !important; }
+      .menu li.active { background: #1a4d8c !important; color: white !important; font-weight: 700; box-shadow: inset 4px 0 0 #fff; }
+      
+      /* Menu Icons */
+      .menu li[data-section]::before { margin-right: 12px; font-size: 1.1rem; width: 20px; text-align: center; }
+      .menu li[data-section="userManagement"]::before { content: "👥"; }
+      .menu li[data-section="subjectAllocations"]::before { content: "📖"; }
+      .menu li[data-section="classAllocations"]::before { content: "👨‍🏫"; }
+      .menu li[data-section="studentPromotion"]::before { content: "🎓"; }
+      .menu li[data-section="studentSearch"]::before { content: "🔍"; }
+      .menu li[data-section="signatureUploadSection"]::before { content: "✍️"; } /* New icon for signature */
+      
+      .menu li a { display: block; padding: 12px 15px; color: rgba(255,255,255,0.8); text-decoration: none; font-weight: 500; transition: all 0.2s; }
+      .menu li a:hover { color: white; background: rgba(255, 255, 255, 0.1); }
+      
+      .menu-divider { height: 1px; background: rgba(255,255,255,0.1); margin: 15px 0 !important; }
+      
+      /* Professional Blue Header */
+      .header { position: sticky !important; top: 0; z-index: 1000; background: #2b6cb0 !important; padding: 15px 30px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+      .header .school-name, .header .school-address, .header h1, .header h2, .header p, .header span { color: #ffffff !important; }
+      
       .feedback.error { color: #721c24; background: #f8d7da; padding:8px; border-radius:6px; border-left: 4px solid #dc3545; }
       .feedback.info { color: #0f5132; background: #d1e7dd; padding:8px; border-radius:6px; }
       .toast { transition: opacity .35s ease; }
@@ -347,18 +343,64 @@ function attachAdminSignatureLogic() {
       table td { padding: 6px 10px !important; vertical-align: middle !important; }
       table th { padding: 10px 10px !important; }
       
-      /* Professional Signature Box */
+      /* Modern Toast Styles */
+      #toastContainer { position: fixed; right: 20px; bottom: 20px; z-index: 10000; display: flex; flex-direction: column; gap: 10px; }
+      .toast { 
+        padding: 12px 18px; border-radius: 8px; color: white !important; font-weight: 600; font-size: 0.9rem;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.2); min-width: 250px;
+        transform: translateX(0); transition: all 0.35s ease;
+      }
+      .toast-success { background: #38a169 !important; border-left: 5px solid #22543d; }
+      .toast-error { background: #e53e3e !important; border-left: 5px solid #742a2a; }
+      .toast-info { background: #3182ce !important; border-left: 5px solid #2a4365; }
+      .toast.hiding { opacity: 0; transform: translateX(50px); }
+
+      /* Centered Modal Styles */
+      .confirm-overlay {
+        position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
+        background: rgba(0, 0, 0, 0.4); backdrop-filter: blur(4px);
+        display: flex; justify-content: center; align-items: center;
+        z-index: 11000; opacity: 0; visibility: hidden; transition: all 0.3s ease;
+      }
+      .confirm-overlay.visible { opacity: 1; visibility: visible; }
+      .confirm-box {
+        background: white; padding: 30px; border-radius: 16px; width: 90%; max-width: 400px;
+        box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25); transform: scale(0.9);
+        transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1); text-align: center;
+      }
+      .confirm-overlay.visible .confirm-box { transform: scale(1); }
+      .confirm-box h4 { margin: 0 0 10px; font-size: 1.3rem; font-weight: 800; color: #1a202c; }
+      .confirm-box p { margin: 0 0 25px; color: #4a5568; line-height: 1.6; font-size: 1rem; }
+      .confirm-buttons { display: flex; justify-content: center; gap: 15px; }
+      
       .admin-section-header-row { display: flex; align-items: center; gap: 24px; flex-wrap: wrap; margin-bottom: 25px; width: 100%; border-bottom: 1px solid #f1f5f9; padding-bottom: 15px; }
       .admin-section-header-row h1, .admin-section-header-row h2, .admin-section-header-row h3 { margin: 0 !important; font-size: 1.4rem; color: #1e293b; }
       #adminSignatureSection { margin-left: auto; }
       .admin-section-header-row button { margin-left: 12px; }
-      
+
+      /* Suspended Status Styling */
+      .suspended-status { color: #dc3545 !important; font-weight: 700; }
+      .toggleStatusBtn { 
+        background: #64748b; color: white; border: none; padding: 4px 8px; border-radius: 4px; cursor: pointer;
+        font-size: 0.75rem; font-weight: 600;
+      }
+      .toggleStatusBtn:hover { background: #475569; }
+
       .headteacher-sig-box { display: flex; flex-direction: column; align-items: center; background: #ffffff; border: 1px solid #e2e8f0; padding: 8px 16px; border-radius: 10px; margin: 0; width: fit-content; min-width: 180px; box-shadow: 0 1px 2px rgba(0,0,0,0.05); }
       .sig-label { font-size: 0.6rem; font-weight: 800; color: #64748b; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.05em; border-bottom: 1px solid #f1f5f9; width: 100%; text-align: center; padding-bottom: 2px; }
       .sig-preview-area { min-height: 50px; display: flex; align-items: center; justify-content: center; width: 100%; background: #fafafa; border-radius: 6px; }
     `;
     document.head.appendChild(style);
   })();
+
+  const GRADE_ORDER = ["Grade 1", "Grade 2", "Grade 3", "Grade 4", "Grade 5", "Grade 6", "Grade 7", "Grade 8", "Grade 9", "Grade 10", "Grade 11", "Grade 12"];
+  
+  const normalizeGrade = (g) => {
+    if (!g) return "";
+    const match = String(g).match(/\d+/);
+    return match ? `Grade ${match[0]}` : g;
+  };
+
   const getNextGrade = (currentGrade) => {
   const normalized = normalizeGrade(currentGrade);
   const index = GRADE_ORDER.indexOf(normalized);
@@ -413,10 +455,11 @@ function renderPromotionPreview(data = []) {
 
 
 previewPromotionBtn.addEventListener("click", () => {
-  loadPromotionPreview(1);
-});
+    if (promoLoading) return;
+    loadPromotionPreview(1);
+  });
 
-async function loadPromotionPreview(page = 1) {
+  async function loadPromotionPreview(page = 1) {
   const year = fromAcademicYearInput.value.trim();
   if (!year) {
     showToast("Enter academic year", "error");
@@ -424,6 +467,7 @@ async function loadPromotionPreview(page = 1) {
   }
 
   // Show loading in button and table
+  promoLoading = true;
   const originalHTML = previewPromotionBtn.innerHTML;
   previewPromotionBtn.disabled = true;
   previewPromotionBtn.innerHTML = '<span class="spinner"></span>Loading...';
@@ -444,6 +488,7 @@ async function loadPromotionPreview(page = 1) {
       renderPromotionPagination();
     }
   } finally {
+    promoLoading = false;
     previewPromotionBtn.disabled = false;
     previewPromotionBtn.innerHTML = originalHTML;
   }
@@ -466,8 +511,15 @@ function renderPromotionPagination() {
     <button id="promoNextBtn" class="pagination-btn" ${promoPage >= promoTotalPages ? "disabled" : ""}>Next</button>
   ` : '';
 
-  if(document.getElementById("promoPrevBtn")) document.getElementById("promoPrevBtn").onclick = () => loadPromotionPreview(promoPage - 1);
-  if(document.getElementById("promoNextBtn")) document.getElementById("promoNextBtn").onclick = () => loadPromotionPreview(promoPage + 1);
+  const prevBtn = document.getElementById("promoPrevBtn");
+  const nextBtn = document.getElementById("promoNextBtn");
+
+  if (prevBtn) prevBtn.onclick = () => {
+    if (!promoLoading && promoPage > 1) loadPromotionPreview(promoPage - 1);
+  };
+  if (nextBtn) nextBtn.onclick = () => {
+    if (!promoLoading && promoPage < promoTotalPages) loadPromotionPreview(promoPage + 1);
+  };
 }
 
 confirmPromotionBtn.addEventListener("click", async () => {
@@ -657,7 +709,7 @@ confirmPromotionBtn.addEventListener("click", async () => {
             <input type="checkbox" class="dean-toggle" data-id="${item._id}" ${item.isDean ? 'checked' : ''}>
           </td>
           <td>
-            <button class="danger" data-id="${item._id}" data-action="remove-subjects">Remove</button>
+            <!-- No allocations to remove -->
           </td>
         `;
         frag.appendChild(tr);
@@ -748,6 +800,9 @@ confirmPromotionBtn.addEventListener("click", async () => {
   async function loadSubjectAllocations(page = subjectAllocPage, limit = SUBJECT_ALLOC_LIMIT, force = false) {
     if (!subjectAllocTableBody) return;
     
+    if (subjectAllocTableBody.dataset.loading === "true") return;
+    subjectAllocTableBody.dataset.loading = "true";
+
     const CACHE_KEY = `subject_allocations_p${page}`;
     if (!force) {
       const cached = localStorage.getItem(CACHE_KEY);
@@ -758,33 +813,45 @@ confirmPromotionBtn.addEventListener("click", async () => {
           subjectAllocTotalPages = data.pagination?.totalPages || 1;
           renderSubjectAllocations(data.data || data);
           updateSubjectAllocPaginationControls();
+          subjectAllocTableBody.dataset.loading = "false";
           return;
         }
       }
     }
 
     subjectAllocTableBody.innerHTML = `<tr><td colspan="5" style="text-align:center">${createSpinner().outerHTML} Loading allocations...</td></tr>`;
-    const response = await secureFetch(`${API_BASE}/users/subjects/allocations?page=${page}&limit=${limit}`);
-    if (!response) { subjectAllocTableBody.innerHTML = ""; return; }
+    
+    try {
+      const response = await secureFetch(`${API_BASE}/users/subjects/allocations?page=${page}&limit=${limit}`);
+      if (!response) { subjectAllocTableBody.innerHTML = ""; return; }
 
-    const allocationData = Array.isArray(response) ? response : response.data || [];
-    const pagination = response.pagination || {};
+      const allocationData = Array.isArray(response) ? response : response.data || [];
+      const pagination = response.pagination || {};
 
-    subjectAllocPage = pagination.page || page;
-    subjectAllocTotalPages = pagination.totalPages || 1;
+      subjectAllocPage = pagination.page || page;
+      subjectAllocTotalPages = pagination.totalPages || 1;
 
-    localStorage.setItem(CACHE_KEY, JSON.stringify({ timestamp: Date.now(), data: response }));
-    renderSubjectAllocations(allocationData);
-    updateSubjectAllocPaginationControls();
+      localStorage.setItem(CACHE_KEY, JSON.stringify({ timestamp: Date.now(), data: response }));
+      renderSubjectAllocations(allocationData);
+    } finally {
+      subjectAllocTableBody.dataset.loading = "false";
+      updateSubjectAllocPaginationControls();
+    }
   }
 
   async function loadClassAllocations() {
     if (!classAllocTableBody) return;
+    if (classAllocTableBody.dataset.loading === "true") return;
+    classAllocTableBody.dataset.loading = "true";
+
     classAllocTableBody.innerHTML = `<tr><td colspan="3" style="text-align:center">${createSpinner().outerHTML} Loading class allocations...</td></tr>`;
-    // ✅ Corrected URL
-    const data = await secureFetch(`${API_BASE}/users/allocations`);
-    if (!data) { classAllocTableBody.innerHTML = ""; return; }
-    renderClassAllocations(data);
+    try {
+      const data = await secureFetch(`${API_BASE}/users/allocations`);
+      if (!data) { classAllocTableBody.innerHTML = ""; return; }
+      renderClassAllocations(data);
+    } finally {
+      classAllocTableBody.dataset.loading = "false";
+    }
   }
 //------------------------
   //EDIT ENROLLMENT MODAL
@@ -981,22 +1048,32 @@ async function openHistoryModal(studentId) {
     const tabs = document.querySelectorAll(".menu li");
     const sections = document.querySelectorAll(".tab-section");
 
-    if (tabs.length === 0) {
-      console.warn("Tab Navigation: No .menu li elements found in HTML.");
-      return;
-    }
+    if (tabs.length === 0) return;
+
+    // Map section IDs to display names
+    const sectionTitles = {
+      "subjectAllocSection": "Subject Allocations",
+      "classAllocSection": "Class Allocations",
+      "searchSection": "Learner Search",
+      "promotionSection": "Learner Promotion",
+      "signatureUploadSection": "Digital Signature" // New section title
+    }; 
 
     tabs.forEach(tab => {
       tab.addEventListener("click", () => {
         const targetId = tab.getAttribute("data-section");
-        if (!targetId) {
-          console.error("Tab Navigation: Missing data-section attribute on tab", tab);
-          return;
-        }
+        
+        // Allow standard behavior for menu items without data-section (links)
+        if (!targetId) return;
 
         // Update active tab styling
         tabs.forEach(t => t.classList.remove("active"));
         tab.classList.add("active");
+
+        // Update page title
+        if (pageTitle) {
+          pageTitle.textContent = sectionTitles[targetId] || targetId;
+        }
 
         // Toggle visibility of sections
         sections.forEach((sec) => {
@@ -1005,13 +1082,26 @@ async function openHistoryModal(studentId) {
           if (isTarget) sec.classList.remove("hidden");
           else sec.classList.add("hidden");
         });
+
+        if (targetId === "signatureUploadSection") {
+          renderAdminSignature(); // Render/re-render signature UI when its tab is active
+        }
       });
     });
 
-    // Initialize: Activate the first tab (or existing active one) on load
-    const active = document.querySelector(".menu li.active") || tabs[0];
+    // Initialize: Activate the first section-based tab on load
+    const active = document.querySelector(".menu li.active[data-section]") || document.querySelector(".menu li[data-section]");
     if (active) active.click();
   }
+
+  // IMPORTANT: Ensure your admin.html file has the following list item within the <ul class="menu">
+  // for the "Digital Signature" navigation to appear:
+  /*
+  <li data-section="signatureUploadSection">
+    <a href="#">Digital Signature</a>
+  </li>
+  */
+
 
 (async function initialLoad() {
   if (isRefreshing) return;
@@ -1020,13 +1110,13 @@ async function openHistoryModal(studentId) {
     if (!user) return;
     authService.initLogout();
 
-    setupNavigation();
     await Promise.all([
       loadTeacherOptions(),
       loadSubjectAllocations(),
       loadClassAllocations(),
-      loadSchoolInfo()  // ✅ Fetch school info here
+      loadSchoolInfo()
     ]); 
+    setupNavigation();
   } catch (err) { 
     console.error("Initial load error:", err); 
   }
@@ -1050,15 +1140,12 @@ const grade = grades.length > 0 ? grades[0] : ""; // ✅ fix here
 const stream = streamInput?.value?.trim() || null; // 🆕 Get stream from input
 const subjects = subjectsSelect ? Array.from(subjectsSelect.selectedOptions).map(opt => opt.value) : [];
 
-const token = authService.getToken();
-const res = await fetch(`${API_BASE}/users/subjects/assign`, {
-  method: 'POST',
-  headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-  body: JSON.stringify({ teacherId, gradeRange, grade, stream, subjects }) // 🆕 Include stream
-});
+      const res = await secureFetch(`${API_BASE}/users/subjects/assign`, {
+        method: 'POST',
+        body: JSON.stringify({ teacherId, gradeRange, grade, stream, subjects })
+      });
 
-      if (res && res.ok) { await loadSubjectAllocations(); showToast("Subject allocation saved successfully!", "success"); }
-      else { showToast("Failed to save subject allocation", "error"); }
+      if (res) { await loadSubjectAllocations(1, SUBJECT_ALLOC_LIMIT, true); showToast("Subject allocation saved successfully!", "success"); }
 
       if (submitBtn) { submitBtn.disabled = false; Array.from(submitBtn.querySelectorAll(".spinner")).forEach(n => n.remove()); }
     });
@@ -1074,18 +1161,14 @@ const res = await fetch(`${API_BASE}/users/subjects/assign`, {
     const assignedClass = classGradeSelect?.value || "";
     const assignedStream = classStreamInput?.value?.trim() || null; // 🆕 Get stream from input
 
-    const token = authService.getToken();
-    const res = await fetch(`${API_BASE}/users/classes/assign-teacher`, {
+    const res = await secureFetch(`${API_BASE}/users/classes/assign-teacher`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-      body: JSON.stringify({ teacherId, assignedClass, assignedStream }) // 🆕 Include stream
+      body: JSON.stringify({ teacherId, assignedClass, assignedStream })
     });
 
-    if (res && res.ok) {
+    if (res) {
       await loadClassAllocations(); // should GET /users/classes/allocations and pass to renderClassAllocations
       showToast("Class allocation saved successfully!", "success");
-    } else {
-      showToast("Failed to save class allocation", "error");
     }
 
     if (submitBtn) { submitBtn.disabled = false; Array.from(submitBtn.querySelectorAll(".spinner")).forEach(n => n.remove()); }
@@ -1097,10 +1180,11 @@ const res = await fetch(`${API_BASE}/users/subjects/assign`, {
   // ---------------------------
 
   subjectAllocTableBody?.addEventListener("click", async (e) => {
-  if (e.target.dataset.action === "remove-subjects") {
-    const teacherId = e.target.dataset.id;
-    const grade = e.target.dataset.grade; // 👈 capture grade from dataset
-    let stream = e.target.dataset.stream; // 🆕 capture stream from dataset
+  const btn = e.target.closest("button");
+  if (btn && btn.dataset.action === "remove-subjects") {
+    const teacherId = btn.dataset.id;
+    const grade = btn.dataset.grade; // 👈 capture grade from dataset
+    let stream = btn.dataset.stream; // 🆕 capture stream from dataset
     
     // Convert empty string or whitespace to null for proper backend matching
     stream = (stream && stream.trim() && stream.trim() !== '') ? stream.trim() : null;
@@ -1112,12 +1196,10 @@ const res = await fetch(`${API_BASE}/users/subjects/assign`, {
     if (!ok) return;
 
     try {
-      const token = authService.getToken();
       console.log(`[DEBUG] Sending remove request with:`, { teacherId, grade, stream });
       
       const result = await secureFetch(`${API_BASE}/users/subjects/remove`, {
         method: "POST",
-        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
         body: JSON.stringify({ teacherId, grade, stream })
       });
       
@@ -1128,7 +1210,7 @@ const res = await fetch(`${API_BASE}/users/subjects/assign`, {
         await new Promise(r => setTimeout(r, 800));
         
         // Reload all allocations to refresh the table
-        await loadSubjectAllocations();
+        await loadSubjectAllocations(1, SUBJECT_ALLOC_LIMIT, true);
         showToast(`Subject allocation for ${gradeLabel} removed successfully`, "success");
       } else {
         showToast("Failed to remove allocation - please check browser console", "error");
@@ -1147,18 +1229,14 @@ const res = await fetch(`${API_BASE}/users/subjects/assign`, {
       if (!ok) return;
       
       try {
-        const token = authService.getToken();
         const result = await secureFetch(`${API_BASE}/users/classes/remove`, { 
           method: "POST",
-          headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
           body: JSON.stringify({ teacherId })
         });
         
         if (result) {
           await loadClassAllocations();
           showToast("Class allocation removed", "success");
-        } else {
-          showToast("Failed to remove class allocation", "error");
         }
       } catch (err) {
         console.error("Remove class allocation error:", err);
@@ -1343,10 +1421,10 @@ studentSearchBody.addEventListener("click", async (e) => {
       subjectAllocPageInfo.textContent = `Page ${subjectAllocPage} of ${subjectAllocTotalPages}`;
     }
     if (subjectAllocPrevBtn) {
-      subjectAllocPrevBtn.disabled = subjectAllocPage <= 1;
+      subjectAllocPrevBtn.disabled = subjectAllocPage <= 1 || subjectAllocTableBody.dataset.loading === "true";
     }
     if (subjectAllocNextBtn) {
-      subjectAllocNextBtn.disabled = subjectAllocPage >= subjectAllocTotalPages;
+      subjectAllocNextBtn.disabled = subjectAllocPage >= subjectAllocTotalPages || subjectAllocTableBody.dataset.loading === "true";
     }
   }
 

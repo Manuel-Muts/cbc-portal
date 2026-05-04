@@ -25,7 +25,8 @@ export const calculateBalance = async (student, grade = null, academicYear = new
     {
       $match: {
         studentId: student._id,
-        academicYear: Number(academicYear)
+        academicYear: Number(academicYear),
+        isReversed: { $ne: true }
       }
     },
     {

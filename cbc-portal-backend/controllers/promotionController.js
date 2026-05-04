@@ -229,15 +229,15 @@ export const previewPromotion = async (req, res) => {
     const limitNum = parseInt(limit) || 10;
     const skip = (pageNum - 1) * limitNum;
 
-    const total = await StudentEnrollment.countDocuments({
+    const query = {
       schoolId: req.user.schoolId,
-      academicYear: Number(academicYear)
-    });
+      academicYear: Number(academicYear),
+      status: "active" // Only active students are eligible for promotion preview
+    };
 
-    const enrollments = await StudentEnrollment.find({
-      schoolId: req.user.schoolId,
-      academicYear: Number(academicYear)
-    })
+    const total = await StudentEnrollment.countDocuments(query);
+
+    const enrollments = await StudentEnrollment.find(query)
       .populate("studentId", "name admission")
       .sort({ grade: 1, _id: 1 }) // Stable sort for pagination
       .skip(skip)

@@ -1,6 +1,113 @@
 /* Note: Reset, Body, and Header styles are inherited from style.css to prevent redundancy */
 
 /* ==============================
+   HEADER STYLING
+============================== */
+header {
+  background: #2b6cb0 !important; /* Professional blue to override the global white background */
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1) !important;
+}
+
+/* Adjust logo color to be readable on the new background */
+header .logo {
+  color: #ffffff !important;
+}
+
+/* Update navigation links and welcome message to be visible on the new blue header */
+header nav ul li a,
+header .role-link,
+header #teacherName,
+header #teacherName span {
+  color: #ffffff !important;
+  font-weight: 500;
+}
+
+header .contact-link {
+  color: #ffffff !important;
+  border-color: #ffffff !important;
+}
+
+header .contact-link:hover {
+  background: #ffffff !important;
+  color: #2b6cb0 !important;
+}
+
+/* Style the refresh button and Dean Panel link in the header */
+header #teacherName #headerRefreshBtn {
+  color: #ffffff !important;
+  opacity: 0.8;
+  transition: opacity 0.3s ease, transform 0.5s ease;
+}
+
+header #teacherName #headerRefreshBtn:hover {
+  opacity: 1;
+}
+
+header #teacherName .secondary-btn {
+  background: rgba(255, 255, 255, 0.15) !important;
+  color: #ffffff !important;
+  border: 1px solid rgba(255, 255, 255, 0.3) !important;
+  backdrop-filter: blur(4px);
+}
+
+header #teacherName .secondary-btn:hover {
+  background: rgba(255, 255, 255, 0.25) !important;
+}
+
+header .menu-toggle {
+  color: #ffffff !important;
+}
+
+/* ==============================
+   MOBILE RESPONSIVENESS (768px)
+============================== */
+@media (max-width: 768px) {
+  header nav ul {
+    background: #2b6cb0 !important;
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+  }
+
+  header nav ul li a {
+    padding: 15px 25px !important; /* Increased padding for better touch targets */
+    display: block;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05); /* Subtle separation between items */
+  }
+
+  /* Align Welcome message, Dean Panel button, and Refresh button horizontally */
+  header #teacherName {
+    display: flex !important;
+    align-items: center !important;
+    gap: 10px !important;
+    font-size: 0.8rem !important;
+    white-space: nowrap !important;
+  }
+
+  header #teacherName .secondary-btn {
+    padding: 4px 8px !important;
+    font-size: 0.65rem !important;
+  }
+}
+
+@media (max-width: 600px) {
+  header {
+    flex-direction: row !important; /* Keep logo and menu on one line */
+    justify-content: space-between !important;
+    padding: 0 15px !important;
+  }
+
+  header h1 {
+    font-size: 1.1rem !important;
+  }
+
+  /* Ensure logout button scales on mobile */
+  header #logoutBtn {
+    padding: 6px 10px !important;
+    font-size: 0.75rem !important;
+    margin-left: auto; /* Push to the right relative to the logo */
+  }
+}
+
+/* ==============================
    MARKS SECTION
 ============================== */
 .marks-section {
@@ -10,6 +117,12 @@
   padding: 30px 25px;
   border-radius: 10px;
   box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+  border-top: 4px solid #2b6cb0;
+  transition: box-shadow 0.3s ease;
+}
+
+.marks-section:hover {
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
 }
 
 .marks-section h2 {
@@ -89,22 +202,6 @@ form {
 /* ==============================
    RESPONSIVE DESIGN
 ============================== */
-@media (max-width: 600px) {
-  header {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 10px;
-  }
-
-  .marks-section {
-    width: 90%;
-    padding: 20px;
-  }
-
-  header h1 {
-    font-size: 1.2rem;
-  }
-}
 
 /* ==============================
    MARKS TABLE
@@ -117,6 +214,12 @@ form {
   border-radius: 10px;
   box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
   overflow-x: auto;
+  border-top: 4px solid #2b6cb0;
+  transition: box-shadow 0.3s ease;
+}
+
+.marks-table:hover {
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
 }
 
 .marks-table h2 {
@@ -929,4 +1032,68 @@ form {
 .allocation-card, .signature-card {
     flex: 1; min-width: 250px; padding: 15px; border: 1px solid #e2e8f0;
     border-radius: 10px; background: #fff; box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    border-top: 4px solid #2b6cb0;
+    transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+.allocation-card:hover, .signature-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 8px 20px rgba(0,0,0,0.1);
+}
+
+/* ==============================
+   MODAL STYLES (for showConfirm)
+============================== */
+.confirm-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0,0,0,0.5);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.3s, visibility 0.3s;
+  z-index: 1000;
+}
+.confirm-overlay.visible {
+  opacity: 1;
+  visibility: visible;
+}
+.confirm-box {
+  background: white;
+  padding: 30px;
+  border-radius: 12px;
+  box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+  max-width: 500px;
+  width: 90%;
+  transform: scale(0.9);
+  transition: transform 0.3s;
+}
+.confirm-overlay.visible .confirm-box {
+  transform: scale(1);
+}
+.confirm-box h4 {
+  margin: 0 0 15px 0;
+  font-size: 1.2rem;
+  color: #333;
+}
+.confirm-box p {
+  margin: 0 0 20px 0;
+  color: #666;
+}
+.confirm-buttons {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+.confirm-buttons button {
+  padding: 8px 16px;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+  font-weight: 500;
 }

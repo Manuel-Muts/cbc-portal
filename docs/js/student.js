@@ -5,19 +5,6 @@ const API_BASE = config.api.baseURL;
 
 document.addEventListener("DOMContentLoaded", async () => {
   // ---------------------------
-  // STYLES FOR COMPACTNESS
-  // ---------------------------
-  const compactStyle = document.createElement("style");
-  compactStyle.textContent = `
-    .marks-table th, .marks-table td { padding: 6px 10px !important; font-size: 0.85rem !important; text-align: center; }
-    .marks-table td:first-child, .marks-table th:first-child { text-align: left !important; }
-    .analysis-summary table th, .analysis-summary table td { padding: 4px 8px !important; font-size: 0.8rem !important; }
-    .marks-header p { font-size: 0.85rem !important; }
-    .card { padding: 15px !important; margin-bottom: 20px !important; }
-  `;
-  document.head.appendChild(compactStyle);
-
-  // ---------------------------
   // AUTHENTICATION WITH TOKEN
   // ---------------------------
   const user = await authService.getUserProfile(["student", "learner"]);
@@ -27,6 +14,33 @@ document.addEventListener("DOMContentLoaded", async () => {
   window.currentUser = user;
   console.log("✅ Student authenticated:", user.name);
   authService.initLogout();
+
+  const menuToggleBtn = document.querySelector(".menu-toggle");
+  const sidebarEl = document.querySelector(".sidebar");
+  const sidebarBackdrop = document.createElement("div");
+  sidebarBackdrop.className = "sidebar-backdrop";
+  document.body.appendChild(sidebarBackdrop);
+
+  const closeSidebar = () => {
+    sidebarEl?.classList.remove("show");
+    sidebarBackdrop.classList.remove("active");
+  };
+
+  menuToggleBtn?.addEventListener("click", () => {
+    const isOpen = sidebarEl?.classList.toggle("show");
+    sidebarBackdrop.classList.toggle("active", Boolean(isOpen));
+  });
+
+  sidebarBackdrop.addEventListener("click", closeSidebar);
+
+  // Auto-close sidebar when menu item or button is clicked
+  document.querySelectorAll('.sidebar a, .sidebar button').forEach(el => {
+    el.addEventListener('click', closeSidebar);
+  });
+
+  // Close button on sidebar
+  const closeBtn = document.querySelector('.sidebar-close');
+  closeBtn?.addEventListener('click', closeSidebar);
 
   // ---------------------------
   // TAB LOGIC
@@ -120,57 +134,40 @@ document.addEventListener("DOMContentLoaded", async () => {
     console.error("Enrollment fetch error:", err);
   }
 
-  // ---------------------------
-  // TOAST FUNCTION
-  // ---------------------------
-  const showToast = (message) => {
-    const toast = document.getElementById("toastMessage");
-    if (!toast) return;
-    toast.textContent = message;
-    toast.style.display = "block";
-    toast.style.opacity = "1";
-    setTimeout(() => {
-      toast.style.opacity = "0";
-      setTimeout(() => (toast.style.display = "none"), 600);
-    }, 4000);
-  };
 // ---------------------------
 // FETCH SCHOOL INFO
 // ---------------------------
-const schoolNameEl = document.createElement("p"); // create element to show school name
-schoolNameEl.id = "schoolNameDashboard";
-schoolNameEl.style.fontWeight = "bold";
-schoolNameEl.style.fontSize = "1.2rem";
-schoolNameEl.style.marginBottom = "10px";
-
 // Fee info element
 const feeInfoEl = document.createElement('p');
 feeInfoEl.id = 'feeInfoDashboard';
-feeInfoEl.style.marginBottom = '10px';
+feeInfoEl.className = 'fee-info-banner';
+const schoolNameEl = document.getElementById("schoolName");
 
-// Insert at top of dashboard main
+// Insert fee summary into dashboard header on the right side
 const dashboardMain = document.querySelector(".dashboard-main");
-if (dashboardMain) dashboardMain.prepend(schoolNameEl);
-if (dashboardMain) dashboardMain.prepend(feeInfoEl);
+const dashboardHeader = document.querySelector(".dashboard-header");
+if (dashboardHeader) {
+  dashboardHeader.insertBefore(feeInfoEl, dashboardHeader.querySelector(".toolbar"));
+}
 
 try {
-  let school = getCached("schoolProfile");
+  let school = getCached("schoolProfile_full");
   if (!school) {
-    const schoolRes = await fetch(`${API_BASE}/users/my-school`, {
+    const schoolRes = await fetch(`${API_BASE}/users/my-school?includeLogo=false`, { // Fetch name only, exclude logo and details
       headers: { Authorization: `Bearer ${token}` },
     });
 
     if (schoolRes.ok) {
       school = await schoolRes.json();
-      setCached("schoolProfile", school);
+      setCached("schoolProfile_full", school);
     }
   }
 
-  schoolNameEl.textContent = school ? school.name.toUpperCase() : "School Name N/A";
+  if (schoolNameEl) schoolNameEl.textContent = school ? school.name.toUpperCase() : "School Name N/A";
   if (school) console.log("✅ School info fetched (Cache/API):", school);
 
 } catch (err) {
-  schoolNameEl.textContent = "School Name N/A";
+  if (schoolNameEl) schoolNameEl.textContent = "School Name N/A";
   console.error("Error fetching school info:", err);
 }
 
@@ -191,6 +188,7 @@ try {
 
   if (f) {
     feeInfoEl.textContent = `Total Annual Fees (${f.grade}, ${f.academicYear}): KES ${f.totalFee}`;
+    feeInfoEl.style.display = 'block';
     console.log("✅ Fee info fetched:", f);
   }
 } catch (err) {
@@ -269,12 +267,43 @@ const loadFeeData = async (selectedYear) => {
     }
     paymentsTable += '</table>';
 
-    const schoolName = schoolNameEl.textContent || 'SCHOOL NAME';
+    const schoolName = (schoolNameEl ? schoolNameEl.textContent : '') || 'SCHOOL NAME';
+    
+    // NEW: Global Fee Note (Hidden in UI, visible only in PDF)
+    const globalFeeNote = feesData.additionalInfo || '';
+    let globalFeeNoteHtml = '';
+    if (globalFeeNote) {
+      globalFeeNoteHtml = `
+        <div class="global-fee-note-pdf" style="display: none; margin-top: 30px; padding: 15px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px;">
+          <h4 style="margin: 0 0 10px 0; color: #1e293b; font-size: 1rem; border-bottom: 1px solid #e2e8f0; padding-bottom: 5px;">📢 PAYMENT INSTRUCTIONS</h4>
+          <p style="font-size: 0.9rem; color: #475569; margin: 0; white-space: pre-wrap; line-height: 1.5;">${globalFeeNote}</p>
+        </div>
+      `;
+    }
+    const infoHeaderHtml = `
+      <div class="modal-info-header" style="margin-bottom: 25px;">
+        <h2 style="text-align:center; margin: 0 0 5px 0; color: #1e293b; font-size: 1.6rem;">${schoolName}</h2>
+        <h3 style="text-align:center; margin: 0 0 20px 0; color: #2563eb; font-weight: 600;">${window.currentUser.name}</h3>
+        
+        <div style="display: flex; justify-content: space-around; flex-wrap: wrap; background: #f8fafc; padding: 15px; border-radius: 12px; border: 1px solid #e2e8f0; gap: 10px;">
+          <div style="text-align:center; flex: 1; min-width: 120px;">
+            <span style="display:block; font-size: 0.7rem; color: #64748b; text-transform: uppercase; font-weight: 700; margin-bottom: 3px; letter-spacing: 0.05em;">Admission No</span>
+            <strong style="font-size: 1.1rem; color: #0f172a;">${window.currentUser.admission}</strong>
+          </div>
+          <div style="text-align:center; flex: 1; min-width: 120px; border-left: 1px solid #e2e8f0;">
+            <span style="display:block; font-size: 0.7rem; color: #64748b; text-transform: uppercase; font-weight: 700; margin-bottom: 3px; letter-spacing: 0.05em;">Grade</span>
+            <strong style="font-size: 1.1rem; color: #0f172a;">${feesData.grade}</strong>
+          </div>
+          <div style="text-align:center; flex: 1; min-width: 120px; border-left: 1px solid #e2e8f0;">
+            <span style="display:block; font-size: 0.7rem; color: #64748b; text-transform: uppercase; font-weight: 700; margin-bottom: 3px; letter-spacing: 0.05em;">Academic Year</span>
+            <strong style="font-size: 1.1rem; color: #0f172a;">${feesData.academicYear}</strong>
+          </div>
+        </div>
+      </div>
+    `;
 
     body.innerHTML = `<div id="feeStructureContent">
-                      <h2 style="text-align:center; margin-bottom:20px;">${schoolName}</h2>
-                      <p><strong>Grade:</strong> ${feesData.grade}</p>
-                      <p><strong>Academic Year:</strong> ${feesData.academicYear}</p>
+                      ${infoHeaderHtml}
                       <h4>Term Breakdown:</h4>
                       <table style="width:100%; border-collapse:collapse;">
                         <tr style="border-bottom:1px solid #ddd;">
@@ -302,13 +331,27 @@ const loadFeeData = async (selectedYear) => {
                           <td style="text-align:right; padding:8px;">KES ${(feesData.term3Fee || 0) - term3Paid}</td>
                         </tr>
                       </table>
-                      <p><strong>Total Fee:</strong> KES ${feesData.totalFee}</p>
-                      <p><strong>Total Paid:</strong> KES ${totalPaid}</p>
-                      <p><strong>Outstanding Balance:</strong> KES ${feesData.totalFee - totalPaid}</p>
+
+                      <div style="display: flex; justify-content: space-around; flex-wrap: wrap; background: #f8fafc; padding: 15px; border-radius: 12px; border: 1px solid #e2e8f0; gap: 10px; margin-top: 20px;">
+                        <div style="text-align:center; flex: 1; min-width: 120px;">
+                          <span style="display:block; font-size: 0.7rem; color: #64748b; text-transform: uppercase; font-weight: 700; margin-bottom: 3px; letter-spacing: 0.05em;">Total Fee</span>
+                          <strong style="font-size: 1.1rem; color: #0f172a;">KES ${feesData.totalFee.toLocaleString()}</strong>
+                        </div>
+                        <div style="text-align:center; flex: 1; min-width: 120px; border-left: 1px solid #e2e8e0;">
+                          <span style="display:block; font-size: 0.7rem; color: #64748b; text-transform: uppercase; font-weight: 700; margin-bottom: 3px; letter-spacing: 0.05em;">Total Paid</span>
+                          <strong style="font-size: 1.1rem; color: #16a34a;">KES ${totalPaid.toLocaleString()}</strong>
+                        </div>
+                        <div style="text-align:center; flex: 1; min-width: 120px; border-left: 1px solid #e2e8e0;">
+                          <span style="display:block; font-size: 0.7rem; color: #64748b; text-transform: uppercase; font-weight: 700; margin-bottom: 3px; letter-spacing: 0.05em;">Outstanding Balance</span>
+                          <strong style="font-size: 1.1rem; color: #dc2626;">KES ${(feesData.totalFee - totalPaid).toLocaleString()}</strong>
+                        </div>
+                      </div>
+                      ${globalFeeNoteHtml} <!-- Moved to bottom, hidden in UI -->
                       </div>
                       <div id="feeStatementContent">
-                      <h2 style="text-align:center; margin-bottom:20px;">${schoolName}</h2>
+                      ${infoHeaderHtml}
                       ${paymentsTable}
+                      ${globalFeeNoteHtml} <!-- Moved to bottom, hidden in UI -->
                       </div>`;
   } catch (err) {
     console.error(err);
@@ -343,8 +386,19 @@ const loadFeeData = async (selectedYear) => {
       const option = document.createElement("option");
       option.value = yr;
       option.textContent = yr;
+      if (yr === currentYear) option.selected = true;
       yearFilter.appendChild(option);
     }
+  }
+
+  // Set default Term filter based on the current month
+  const termFilter = document.getElementById("termFilter");
+  if (termFilter) {
+    const month = new Date().getMonth() + 1; // 1-12
+    let currentTerm = "1";
+    if (month >= 5 && month <= 8) currentTerm = "2";
+    else if (month >= 9) currentTerm = "3";
+    termFilter.value = currentTerm;
   }
 
 if (viewFeeBtn) {
@@ -379,18 +433,42 @@ if (feeFilterBtn) {
 const downloadFeeStructurePDF = document.getElementById('downloadFeeStructurePDF');
 if (downloadFeeStructurePDF) {
   downloadFeeStructurePDF.addEventListener('click', async () => {
+    // Provide immediate feedback to the user
+    const originalHtml = downloadFeeStructurePDF.innerHTML;
+    downloadFeeStructurePDF.disabled = true;
+    downloadFeeStructurePDF.innerHTML = '<span class="spinner"></span> Processing...';
+
     const { jsPDF } = window.jspdf;
-    const pdf = new jsPDF();
+    const pdf = new jsPDF('p', 'mm', 'a4');
     const element = document.getElementById('feeStructureContent');
     const selectedYear = feeYearFilter ? feeYearFilter.value : new Date().getFullYear();
     if (element) {
-      const canvas = await html2canvas(element);
+      // Temporarily show instructions for PDF capture
+      const note = element.querySelector('.global-fee-note-pdf');
+      if (note) note.style.display = 'block';
+
+      // Optimized scale: 1.5 provides good clarity while being faster than 2.0
+      const canvas = await html2canvas(element, { scale: 1.5, useCORS: true });
+
+      if (note) note.style.display = 'none';
+
       const imgData = canvas.toDataURL('image/png');
       const imgWidth = 190;
       const imgHeight = (canvas.height * imgWidth) / canvas.width;
       pdf.addImage(imgData, 'PNG', 10, 10, imgWidth, imgHeight);
       pdf.save(`fee_structure_${user.name}_${selectedYear}.pdf`);
+
+      // Add footer with current date
+      const dateStr = `Generated: ${new Date().toLocaleString()}`;
+      pdf.setFontSize(8);
+      pdf.setTextColor(100);
+      pdf.text(dateStr, 10, pdf.internal.pageSize.getHeight() - 10);
+      pdf.text(`Page 1 of 1`, pdf.internal.pageSize.getWidth() - 10, pdf.internal.pageSize.getHeight() - 10, { align: 'right' });
+
     }
+
+    downloadFeeStructurePDF.disabled = false;
+    downloadFeeStructurePDF.innerHTML = originalHtml;
   });
 }
 
@@ -398,18 +476,41 @@ if (downloadFeeStructurePDF) {
 const downloadFeeStatementPDF = document.getElementById('downloadFeeStatementPDF');
 if (downloadFeeStatementPDF) {
   downloadFeeStatementPDF.addEventListener('click', async () => {
+    // Provide immediate feedback to the user
+    const originalHtml = downloadFeeStatementPDF.innerHTML;
+    downloadFeeStatementPDF.disabled = true;
+    downloadFeeStatementPDF.innerHTML = '<span class="spinner"></span> Processing...';
+
     const { jsPDF } = window.jspdf;
-    const pdf = new jsPDF();
+    const pdf = new jsPDF('p', 'mm', 'a4');
     const element = document.getElementById('feeStatementContent');
     const selectedYear = feeYearFilter ? feeYearFilter.value : new Date().getFullYear();
     if (element) {
-      const canvas = await html2canvas(element);
+      // Temporarily show instructions for PDF capture
+      const note = element.querySelector('.global-fee-note-pdf');
+      if (note) note.style.display = 'block';
+
+      const canvas = await html2canvas(element, { scale: 1.5, useCORS: true });
+
+      if (note) note.style.display = 'none';
+
       const imgData = canvas.toDataURL('image/png');
       const imgWidth = 190;
       const imgHeight = (canvas.height * imgWidth) / canvas.width;
       pdf.addImage(imgData, 'PNG', 10, 10, imgWidth, imgHeight);
       pdf.save(`fee_statement_${user.name}_${selectedYear}.pdf`);
+
+      // Add footer with current date
+      const dateStr = `Generated: ${new Date().toLocaleString()}`;
+      pdf.setFontSize(8);
+      pdf.setTextColor(100);
+      pdf.text(dateStr, 10, pdf.internal.pageSize.getHeight() - 10);
+      pdf.text(`Page 1 of 1`, pdf.internal.pageSize.getWidth() - 10, pdf.internal.pageSize.getHeight() - 10, { align: 'right' });
+
     }
+
+    downloadFeeStatementPDF.disabled = false;
+    downloadFeeStatementPDF.innerHTML = originalHtml;
   });
 }
 
@@ -805,5 +906,4 @@ const displayStudentTables = async () => {
   // INITIALIZATION
   // ---------------------------
   setupTabs();
-  displayStudentTables();
 });

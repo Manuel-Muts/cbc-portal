@@ -11,41 +11,35 @@
 <body>
 
 <main class="reset-wrap">
-  <section class="card">
-
-    <!-- Header -->
-    <header class="card-head">
-      <h1>Password Reset</h1>
-      <p class="lead">
-        Admins,Teachers, Accounts and Class Teachers only.
-      </p>
-    </header>
-
-    <!-- Step Form -->
     <form id="resetForm" class="reset-form" autocomplete="off" novalidate>
+      
+      <!-- Native Header -->
+      <header class="card-head">
+        <h1>Password Reset</h1>
+        <p class="lead">
+          Admins, Teachers, Accounts and Class Teachers only.
+        </p>
+        <hr class="header-divider">
+      </header>
 
       <!-- Step 1: User info -->
-      <section id="stepEmail" class="step active" aria-labelledby="stepEmailTitle">
-        <h2 id="stepEmailTitle" class="sr-only">User Verification</h2>
-
+      <section id="stepEmail" class="step active">
+        
         <label for="role">Role</label>
         <select id="role" name="role" required aria-required="true">
           <option value="">-- Select role --</option>
           <option value="admin">Admin</option>
           <option value="teacher">Teacher</option>
           <option value="classteacher">Class Teacher</option>
+          <option value="accounts">Accounts</option>
         </select><br><br>
-
-        <label for="fullname">Full Name</label>
-        <input id="fullname" name="fullname" type="text" placeholder="Emmanuel Mutegi" required>
 
         <label for="email">Registered email</label>
         <input id="email" name="email" type="email" placeholder="emmanuel@example.com" required /><br><br>
 
-        <div class="row">
+        <div class="button-group">
           <button id="sendCodeBtn" type="button" class="btn primary" aria-live="polite">
             <span class="btn-label">Send Reset Code</span>
-            <span class="btn-spinner" aria-hidden="true"></span>
           </button>
 
           <button id="clearBtn" type="button" class="btn ghost" title="Clear form">Clear</button>
@@ -74,10 +68,9 @@
         <label for="code" class="sr-only">OTP code</label>
         <input id="code" name="code" type="text" inputmode="numeric" pattern="[0-9]*" placeholder="123456" class="hidden-fallback" />
 
-        <div class="row">
+        <div class="button-group">
           <button id="verifyCodeBtn" type="button" class="btn primary">
             <span class="btn-label">Verify OTP</span>
-            <span class="btn-spinner" aria-hidden="true"></span>
           </button>
 
           <button id="resendBtn" type="button" class="btn ghost" disabled>
@@ -104,10 +97,9 @@
           <div id="pwStrengthText" class="pw-text muted small">Enter a strong password</div>
         </div>
 
-        <div class="row">
+        <div class="button-group">
           <button id="resetPasswordBtn" type="button" class="btn primary">
             <span class="btn-label">Reset Password</span>
-            <span class="btn-spinner" aria-hidden="true"></span>
           </button>
 
           <button id="cancelBtn" type="button" class="btn ghost">Cancel</button>
@@ -127,17 +119,17 @@
         </div>
       </section>
 
+      <!-- Native Footer Info -->
+      <div class="form-footer-area">
+        <p class="reset-help-text">
+          If you don't receive the email, check spam or contact your school admin.
+        </p>
+        <div class="back-to-login">
+          <a href="/login">Back to Login</a>
+        </div>
+      </div>
+
     </form>
-
-    <!-- Footer -->
-    <p class="hint">
-      If you don't receive the email, check spam or contact your school admin.
-    </p>
-    <div class="card-foot">
-      <a href="/login" class="btn link">Back to Login</a>
-    </div>
-
-  </section>
 </main>
 
 <footer>

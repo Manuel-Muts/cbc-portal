@@ -338,7 +338,13 @@ export const getStudentMarks = async (req, res) => {
       return res.status(400).json({ message: "Student info missing" });
     }
 
-    let studentMarks = await Mark.find({ admissionNo, schoolId })
+    // 🆕 Build query dynamically based on filters to prevent heavy fetch
+    const filter = { admissionNo, schoolId };
+    if (term && term !== "all") filter.term = Number(term);
+    if (year && year !== "all") filter.year = Number(year);
+    if (assessment && assessment !== "all") filter.assessment = Number(assessment);
+
+    let studentMarks = await Mark.find(filter)
       .sort({ year: -1, term: -1, assessment: -1, _id: -1 })
       .lean();
 
@@ -346,32 +352,24 @@ export const getStudentMarks = async (req, res) => {
       return res.json({ studentMarks: [], allClassMarks: [] });
     }
 
-    const latest = studentMarks[0];
-    // Define context for class comparison (defaults to latest if query is 'all')
-    const refTerm = (term && term !== "all") ? Number(term) : latest.term;
-    const refYear = (year && year !== "all") ? Number(year) : latest.year;
-    const refAssess = (assessment && assessment !== "all") ? Number(assessment) : latest.assessment;
-
-    // Filter history based on criteria, strictly respecting 'all'
-    if (term && term !== "all") {
-      studentMarks = studentMarks.filter(m => m.term === Number(term));
-    }
-    if (year && year !== "all") {
-      studentMarks = studentMarks.filter(m => m.year === Number(year));
-    }
-    if (assessment && assessment !== "all") {
-      studentMarks = studentMarks.filter(m => m.assessment === Number(assessment));
-    }
+    // Define context for class comparison (ranking)
+    // We use the first mark in the result set to determine the "context" for comparison
+    const contextMark = studentMarks[0];
+    const refTerm = contextMark.term;
+    const refYear = contextMark.year;
+    const refAssess = contextMark.assessment;
+    const refGrade = contextMark.grade;
 
     if (!studentMarks.length) {
       return res.json({ studentMarks: [], allClassMarks: [] });
     }
 
-    // ⚠️ left untouched (grade-based class comparison)
+    // Optimized class comparison fetch: only fetch marks for the same grade/context
     const allClassMarks = await Mark.find({
       term: refTerm,
       year: refYear,
       assessment: refAssess,
+      grade: refGrade,
       schoolId
     }).lean();
 

@@ -35,96 +35,152 @@
   }
 
   // ---------------------------
-  // HELPERS
-  // ---------------------------
-  function showToast(message, type = "info") {
-    const t = document.createElement("div");
-    t.className = `toast toast-${type}`;
-    t.textContent = message;
-    document.body.appendChild(t);
-    setTimeout(() => {
-      t.classList.add('hiding');
-      t.addEventListener('transitionend', () => t.remove());
-    }, 3000);
-  }
-
   // Cache State
   let userProfile = null;
   let statsCache = null;
   let statsLastFetch = 0;
-  let feeStructuresCache = null;
-  let feesLastFetch = 0;
-  let schoolInfoCache = null;
+  let feeStructuresCache = null; // Cache for fee structures list
+  let globalNoteCache = {}; // Cache for global fee notes
+  let feesLastFetch = 0; 
+  const schoolInfoCache = new Map(); // Changed to Map for caching different field requests
   const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
+  // Ledger Modal State
+  let currentLedgerAdmission = null;
+  let currentLedgerName = null;
+  let currentLedgerPage = 1;
+
+  // Pagination for Fee Structures
+  let feeStructuresPage = 1;
+let feeStructuresCachePage = 1;
+let feeStructuresTotalPages = 1;
+const FEE_STRUCTURES_LIMIT = 10;
+
 
   // DOM Elements
   const refreshBtn = document.getElementById("refreshBtn");
   const logoutBtn = document.getElementById("logoutBtn");
+
+  // Fee Balance Section DOM Elements
+  const outstandingTableBody = document.getElementById("outstandingFeesTableBody");
+  const outstandingGradeFilter = document.getElementById("outstandingGradeFilter"); // Corrected name
+  const outstandingYearFilter = document.getElementById("outstandingYearFilter");
+  // const outstandingTermFilter = document.getElementById("outstandingTermFilter"); // Not present in HTML for Fee Balance
+  const outstandingSortFilter = document.getElementById("outstandingSortFilter");
+  const outstandingSearchInput = document.getElementById("outstandingSearchInput");
+  const outstandingPageInfo = document.getElementById("outstandingPageInfo");
+  const outstandingPrevBtn = document.getElementById("outstandingPrevBtn");
+  const outstandingNextBtn = document.getElementById("outstandingNextBtn");
+  const downloadOutstandingPDF = document.getElementById("downloadOutstandingPDF");
   
-  // Tab Logic
-  function setupTabs() {
-    const tabBtns = document.querySelectorAll(".tab-btn");
-    const tabPanes = document.querySelectorAll(".tab-pane");
+  // Payment Overview Section DOM Elements
+  const overviewYearFilter = document.getElementById("overviewYearFilter");
+  const overviewTermFilter = document.getElementById("overviewTermFilter");
+  const overviewClassFilter = document.getElementById("overviewClassFilter");
 
-    tabBtns.forEach(btn => {
-      btn.addEventListener("click", () => {
-        const target = btn.dataset.tab;
+  // Fee Structures DOM Elements
+  const feeStructuresPageInfo = document.getElementById("feeStructuresPageInfo");
+  const feeStructuresPrevBtn = document.getElementById("feeStructuresPrevBtn");
+  const feeStructuresNextBtn = document.getElementById("feeStructuresNextBtn");
+  const editFeeModal = document.getElementById("editFeeModal");
+  const cancelEditFeeBtn = document.getElementById("cancelEditFeeBtn");
+  const updateFeeBtn = document.getElementById("updateFeeBtn");
+  const openPostFeeBtn = document.getElementById("openPostFeeBtn");
+  const postFeeModal = document.getElementById("postFeeModal");
+  const cancelPostFeeBtn = document.getElementById("cancelPostFeeBtn");
+  const postedFeesYearFilter = document.getElementById("postedFeesYearFilter");
+  const postedFeesClassFilter = document.getElementById("postedFeesClassFilter");
+  const saveFeeBtn = document.getElementById("saveFeeBtn");
+  const downloadAllFeeStructuresBtn = document.getElementById("downloadAllFeeStructuresBtn");
 
-        tabBtns.forEach(b => b.classList.remove("active"));
-        tabPanes.forEach(p => p.classList.remove("active"));
+  // Manual B/F Elements
+  const addBFBtn = document.getElementById("addBFBtn");
+  const bfModal = document.getElementById("bfModal");
+  const cancelBFBtn = document.getElementById("cancelBFBtn");
+  const saveBFBtn = document.getElementById("saveBFBtn");
+  const bfYearInput = document.getElementById("bfYear");
 
-        btn.classList.add("active");
-        const activePane = document.getElementById(target);
-        if (activePane) activePane.classList.add("active");
+  // Student Fee Details Modal Elements
+  const studentFeeDetailsModal = document.getElementById("studentFeeDetailsModal");
+  const studentFeeModalBody = document.getElementById("studentFeeModalBody");
+  const closeStudentFeeDetailsBtn = document.getElementById("closeStudentFeeDetailsBtn");
+  const dlStructureBtn = document.getElementById("dlStructureBtn");
+  const dlStatementBtn = document.getElementById("dlStatementBtn");
+  const ledgerStudentName = document.getElementById("ledgerStudentName");
+
+  // Global Fee Note Elements
+  const globalNoteContent = document.getElementById("globalNoteContent");
+  const globalFeeNoteInput = document.getElementById("globalFeeNoteInput");
+  const noteYearDisplay = document.getElementById("noteYearDisplay");
+  const applyGlobalNoteFiltersBtn = document.getElementById("applyGlobalNoteFilters");
+  const editGlobalNoteBtn = document.getElementById("editGlobalNoteBtn");
+  const cancelGlobalNoteBtn = document.getElementById("cancelGlobalNoteBtn");
+  const saveGlobalNoteBtn = document.getElementById("saveGlobalNoteBtn");
+  const globalNoteEditMode = document.getElementById("globalNoteEditMode");
+
+  // Pagination for Outstanding Fees
+  let outstandingPage = 1;
+  let outstandingTotalPages = 1;
+  let outstandingCache = new Map(); // Cache for outstanding fees
+  const outstandingLimit = 10; // Define outstandingLimit
+
+  // Current student details for PDF generation
+  let currentStudentDetails = null;
+
+  // ---------------------------
+  // HELPERS
+  // ---------------------------
+    function setupTabs() {
+  const tabBtns = document.querySelectorAll(".tab-btn");
+  const tabPanes = document.querySelectorAll(".tab-pane");
+
+  tabBtns.forEach(btn => {
+    btn.addEventListener("click", () => {
+      const target = btn.dataset.tab;
+
+      tabBtns.forEach(b => b.classList.remove("active"));
+      tabPanes.forEach(p => p.classList.remove("active"));
+
+      btn.classList.add("active");
+      const activePane = document.getElementById(target);
+      if (activePane) activePane.classList.add("active");
+    });
+  });
+}
+
+  function setupSidebarNavigation() {
+    const menuItems = document.querySelectorAll(".sidebar .menu li[data-section]");
+    const mainSections = document.querySelectorAll(".main-section");
+
+    menuItems.forEach(item => {
+      item.addEventListener("click", (e) => {
+        e.preventDefault();
+        const targetSectionId = item.dataset.section;
+        if (!targetSectionId) return;
+
+        // Update active class in sidebar
+        menuItems.forEach(i => i.classList.remove("active"));
+        item.classList.add("active");
+
+        // Toggle visibility of main sections and load data
+        mainSections.forEach(section => {
+          section.style.display = section.id === targetSectionId ? "block" : "none";
+        });
+
+        if (targetSectionId === "feesPaymentOverviewSection") {
+           loadStats();
+        } else if (targetSectionId === "postedFeesSection") {
+           loadFeeStructures();
+        } else if (targetSectionId === "feeBalanceSection") {
+           loadOutstandingFees(1);
+        } else if (targetSectionId === "feesPaymentOverviewSection") {
+           loadStats();
+        } else if (targetSectionId === "instructionsSection") {
+           loadGlobalFeeNote();
+        }
       });
     });
   }
-
-  // Post Fee Modal Elements
-  const openPostFeeBtn = document.getElementById('openPostFeeBtn');
-  const postFeeModal = document.getElementById('postFeeModal');
-  const saveFeeBtn = document.getElementById('saveFeeBtn');
-  const cancelPostFeeBtn = document.getElementById('cancelPostFeeBtn');
-
-  // Edit Fee Modal Elements
-  const editFeeModal = document.getElementById('editFeeModal');
-  const updateFeeBtn = document.getElementById('updateFeeBtn');
-  const cancelEditFeeBtn = document.getElementById('cancelEditFeeBtn');
-
-  // Outstanding Fees Elements
-  const outstandingClassFilter = document.getElementById('outstandingClassFilter');
-  const outstandingYearFilter = document.getElementById('outstandingYearFilter');
-  const outstandingTermFilter = document.getElementById('outstandingTermFilter');
-  const outstandingSortFilter = document.getElementById('outstandingSortFilter');
-  const outstandingSearchInput = document.getElementById('outstandingSearchInput');
-  const outstandingTableBody = document.getElementById('outstandingFeesTableBody');
-  
-  // Outstanding Fees Pagination
-  const outstandingPrevBtn = document.getElementById('outstandingPrevBtn');
-  const outstandingNextBtn = document.getElementById('outstandingNextBtn');
-  const outstandingPageInfo = document.getElementById('outstandingPageInfo');
-  let outstandingPage = 1;
-  const outstandingLimit = 20;
-  let outstandingTotalPages = 1; // Corrected: This was duplicated
-
-  const downloadOutstandingPDF = document.getElementById('downloadOutstandingPDF');
-  const downloadAllFeeStructuresBtn = document.getElementById('downloadFeeStructuresPDF');
-  const exportBtn = document.getElementById('exportBtn');
-
-  // Student Fee Details Modal Elements
-  const studentFeeDetailsModal = document.getElementById('studentFeeDetailsModal');
-  const closeStudentFeeDetailsBtn = document.getElementById('closeStudentFeeDetailsBtn');
-  const studentFeeModalBody = document.getElementById('studentFeeModalBody');
-  const dlStructureBtn = document.getElementById('dlStructureBtn');
-  const dlStatementBtn = document.getElementById('dlStatementBtn');
-  const feeStructuresPrevBtn = document.getElementById('feeStructuresPrevBtn');
-  const feeStructuresNextBtn = document.getElementById('feeStructuresNextBtn');
-  const feeStructuresPageInfo = document.getElementById('feeStructuresPageInfo');
-  let currentStudentDetails = null; // Store current student for PDF naming
-  let feeStructuresPage = 1;
-  const FEE_STRUCTURES_LIMIT = 10;
-  let feeStructuresTotalPages = 1;
-  let feeStructuresCachePage = 1;
 
   async function secureFetch(url, options = {}) {
     const token = authService.getToken();
@@ -133,7 +189,14 @@
       "Authorization": `Bearer ${token}`,
       "Content-Type": "application/json"
     };
-    const res = await fetch(url, { ...options, headers });
+
+    let finalUrl = url;
+    if (options.query) {
+      const queryString = new URLSearchParams(options.query).toString();
+      finalUrl = `${url}?${queryString}`;
+    }
+
+    const res = await fetch(finalUrl, { ...options, headers });
     if (res.status === 401 || res.status === 403) return authService.redirectToLogin();
     if (!res.ok) {
       const error = await res.json().catch(() => ({}));
@@ -141,12 +204,23 @@
     }
     return res.json();
   }
+ 
+  async function getSchoolInfo(options = {}) {
+    const fieldsQuery = options.fields || 'all'; // Default to 'all' if no specific fields requested
+    const cacheKey = `my-school-${fieldsQuery}`;
 
-  async function getSchoolInfo() {
-    if (schoolInfoCache) return schoolInfoCache;
+    if (schoolInfoCache.has(cacheKey)) {
+      const cached = schoolInfoCache.get(cacheKey);
+      if (Date.now() - cached.timestamp < CACHE_TTL) {
+        return cached.data;
+      }
+    }
+
     try {
-      schoolInfoCache = await secureFetch(`${API_BASE}/my-school`);
-      return schoolInfoCache;
+      const queryParams = options.fields ? { fields: options.fields } : {};
+      const schoolData = await secureFetch(`${API_BASE}/my-school`, { query: queryParams });
+      schoolInfoCache.set(cacheKey, { timestamp: Date.now(), data: schoolData });
+      return schoolData;
     } catch (e) {
       console.error("School info fetch failed", e);
       return { name: "SCHOOL NAME" };
@@ -163,11 +237,10 @@
     }
 
     try {
-      await Promise.all([
-        loadStats(forceRefresh),
-        loadFeeStructures(forceRefresh),
-        loadOutstandingFees()
-      ]);
+      // This function is now primarily for the overall refresh button,
+      // individual section loads are handled by setupSidebarNavigation.
+      // For a full refresh, we can call all of them.
+      await Promise.all([loadStats(forceRefresh), loadFeeStructures(forceRefresh), loadOutstandingFees(1, forceRefresh), loadGlobalFeeNote(forceRefresh)]);
     } catch (err) {
       console.error("Dashboard load error", err);
     } finally {
@@ -184,15 +257,15 @@
   async function loadStats(forceRefresh = false) {
       // Fetch a sample of accounts to calculate totals
       try {
-        const grade = outstandingClassFilter.value;
-        const year = outstandingYearFilter.value;
-        const term = outstandingTermFilter ? outstandingTermFilter.value : "";
+        const grade = overviewClassFilter ? overviewClassFilter.value : "";
+        const year = overviewYearFilter ? overviewYearFilter.value : "";
+        const term = overviewTermFilter ? overviewTermFilter.value : "";
         
         // Cache key should include filters to avoid stale data when switching
         const cacheKey = `stats_${grade}_${year}_${term}`;
         
         if (!forceRefresh && statsCache && statsCache.key === cacheKey && (Date.now() - statsLastFetch < CACHE_TTL)) {
-            calculateTotals(statsCache.data, term, statsCache.total);
+            calculateTotals(statsCache.data, term, statsCache.total); // Recalculate totals with current term filter
             return;
         }
 
@@ -200,7 +273,7 @@
         if (grade) query.append("class", grade);
 
         const data = await secureFetch(`${API_BASE}/accounts?${query.toString()}`);
-        const accounts = data.students || data.accounts || [];
+        const accounts = data.accounts || []; // Ensure it's 'accounts' from the API response
         const total = data.total || accounts.length;
         statsCache = { key: cacheKey, data: accounts, total: total };
         statsLastFetch = Date.now();
@@ -276,15 +349,25 @@
   // ---------------------------
   // FEE STRUCTURES LOGIC
   // ---------------------------
-  async function loadFeeStructures(forceRefresh = false) {
+  async function loadFeeStructures(forceRefresh = false, page = feeStructuresPage) {
     try {
-      if (!forceRefresh && feeStructuresCache && feeStructuresCachePage === feeStructuresPage && (Date.now() - feesLastFetch < CACHE_TTL)) {
+      // Get filter values from the Posted Fees section
+      const year = postedFeesYearFilter ? postedFeesYearFilter.value : "";
+      const grade = postedFeesClassFilter ? postedFeesClassFilter.value : "";
+
+      // Construct a cache key that includes the filters
+      const cacheKey = `feeStructures_${year}_${grade}_p${page}`;
+
+      if (!forceRefresh && feeStructuresCache && feeStructuresCachePage === feeStructuresPage && (Date.now() - feesLastFetch < CACHE_TTL) && feeStructuresCache.key === cacheKey) {
         renderFeeStructures(feeStructuresCache);
         updateFeeStructuresPaginationControls();
         return;
       }
+      const query = new URLSearchParams({ page: page, limit: FEE_STRUCTURES_LIMIT });
+      if (year) query.append("academicYear", year);
+      if (grade) query.append("grade", grade);
 
-      const payload = await secureFetch(`${API_BASE}/accounts/fee-structures?page=${feeStructuresPage}&limit=${FEE_STRUCTURES_LIMIT}`);
+      const payload = await secureFetch(`${API_BASE}/accounts/fee-structures?${query.toString()}`);
       const list = Array.isArray(payload) ? payload : payload.data || [];
       const pagination = payload.pagination || {};
 
@@ -292,8 +375,8 @@
       if (!tbody) return;
 
       feeStructuresCache = list;
-      feeStructuresCachePage = feeStructuresPage;
-      feesLastFetch = Date.now();
+      feeStructuresCache.key = cacheKey; // Store the key with the cache
+      feesLastFetch = Date.now(); // Update timestamp for cache
       feeStructuresTotalPages = pagination.totalPages || 1;
       feeStructuresPage = pagination.page || feeStructuresPage;
 
@@ -369,7 +452,6 @@
       }
     });
   }
-
   if (feeStructuresNextBtn) {
     feeStructuresNextBtn.addEventListener('click', () => {
       if (feeStructuresPage < feeStructuresTotalPages) {
@@ -382,25 +464,40 @@
   // ---------------------------
   // OUTSTANDING FEES LOGIC
   // ---------------------------
-  async function loadOutstandingFees(page = 1) {
-    if (!outstandingTableBody) return;
+  async function loadOutstandingFees(page = 1, forceRefresh = false) {
+    if (!outstandingTableBody) {
+      console.error("Error: outstandingFeesTableBody element not found in the DOM. Please ensure it exists in accounts.html.");
+      return;
+    }
     outstandingTableBody.innerHTML = '<tr><td colspan="6" style="text-align: center;">Loading...</td></tr>';
 
-    const grade = outstandingClassFilter.value;
-    const year = outstandingYearFilter.value;
-    const term = outstandingTermFilter ? outstandingTermFilter.value : "";
+    const grade = outstandingGradeFilter ? outstandingGradeFilter.value : "";
+    const year = outstandingYearFilter?.value || new Date().getFullYear();
+    const term = ""; // No term filter in HTML for outstanding fees section
     const sort = outstandingSortFilter ? outstandingSortFilter.value : "balance_desc";
     const search = outstandingSearchInput.value.trim();
 
+    const cacheKey = `outstanding_${grade}_${year}_${term}_${sort}_${search}_p${page}`;
+    if (!forceRefresh && outstandingCache.has(cacheKey)) {
+      const cached = outstandingCache.get(cacheKey);
+      if (Date.now() - cached.timestamp < CACHE_TTL) {
+        renderOutstandingTable(cached.data.students || [], outstandingTableBody);
+        outstandingPage = cached.data.currentPage || 1;
+        outstandingTotalPages = cached.data.totalPages || 1;
+        updateOutstandingPagination();
+        return;
+      }
+    }
     const query = new URLSearchParams({ academicYear: year, limit: outstandingLimit, page: page });
     if (grade) query.append("class", grade);
-    if (term) query.append("term", term);
+    // if (term) query.append("term", term); // Removed as there's no term filter in HTML
     if (sort) query.append("sort", sort);
     if (search) query.append("name", search);
 
     try {
         const data = await secureFetch(`${API_BASE}/reports/outstanding-fees?${query.toString()}`);
-        renderOutstandingTable(data.students || []);
+        outstandingCache.set(cacheKey, { timestamp: Date.now(), data });
+        renderOutstandingTable(data.students || [], outstandingTableBody);
         
         // Update pagination state
         outstandingPage = data.currentPage || 1;
@@ -419,8 +516,7 @@
     if (outstandingNextBtn) outstandingNextBtn.disabled = outstandingPage >= outstandingTotalPages;
   }
 
-  function renderOutstandingTable(accounts) {
-    if (!outstandingTableBody) return;
+ function renderOutstandingTable(accounts, outstandingTableBody) {
     if (accounts.length === 0) {
         outstandingTableBody.innerHTML = '<tr><td colspan="6" style="text-align: center;">No students with outstanding balances found.</td></tr>';
         return;
@@ -430,15 +526,6 @@
     outstandingTableBody.innerHTML = accounts.map(s => {
         let balance = (s.balance !== undefined && s.balance !== null) ? s.balance : ((s.expected || 0) - (s.paid || 0));
         
-        // If a specific term is selected, display that term's balance
-        const termFilter = outstandingTermFilter ? outstandingTermFilter.value : "";
-        if (termFilter && s.termBalances) {
-            const key = termFilter.toLowerCase().replace(/\s+/g, ''); // "Term 1" -> "term1"
-            if (s.termBalances[key]) {
-                balance = s.termBalances[key].balance;
-            }
-        }
-
         if (balance <= 0) return ''; // Only show those with a balance
         const safeName = (s.studentName || s.name || 'Unknown').replace(/'/g, "&apos;");
         
@@ -495,9 +582,7 @@
       }
     });
   }
-  //----------------
-//logout button logic
-//-------------------
+
 if (logoutBtn) {
   logoutBtn.addEventListener("click", () => {
     try {
@@ -636,8 +721,7 @@ if (logoutBtn) {
               </tbody>
             </table>
           </div>
-        </div>
-      `;
+        </div>`;
 
       studentFeeModalBody.innerHTML = content;
 
@@ -665,7 +749,7 @@ if (logoutBtn) {
     }
     
     // 1. Fetch school info to get the name
-    const school = await getSchoolInfo();
+    const school = await getSchoolInfo({ fields: 'name' });
     const schoolName = (school.name || "SCHOOL NAME").toUpperCase();
 
     // 2. Create a temporary, off-screen container for printing
@@ -691,6 +775,30 @@ if (logoutBtn) {
     }
     printContainer.appendChild(clonedHeader);
     printContainer.appendChild(contentElement.cloneNode(true));
+
+    // Add global payment instructions only for Fee Structure PDF
+    if (elementId === 'fee-structure-for-pdf') { // Only for fee structure, not statement
+        const year = outstandingYearFilter.value || new Date().getFullYear();
+        let globalNote = "";
+        try {
+            const noteRes = await secureFetch(`${API_BASE}/payments/global-note?academicYear=${year}`);
+            globalNote = noteRes?.note || "";
+        } catch (err) {
+            console.error("Error fetching global note for PDF:", err);
+        }
+
+        if (globalNote) {
+            const officialInstructions = document.createElement('div');
+            officialInstructions.innerHTML = `
+                <div style="margin-top: 25px; padding: 15px; border: 1px solid #000; border-radius: 5px; background-color: #f0f0f0;">
+                    <h4 style="margin: 0 0 10px 0; font-size: 14px; font-weight: bold; text-align: center; border-bottom: 1px solid #ccc; padding-bottom: 5px;">OFFICIAL PAYMENT INSTRUCTIONS</h4>
+                    <p style="margin: 0; font-size: 11px; line-height: 1.6; white-space: pre-wrap;">${globalNote}</p>
+                </div>
+            `;
+            printContainer.appendChild(officialInstructions);
+        }
+    }
+
     document.body.appendChild(printContainer);
 
     try {
@@ -701,6 +809,14 @@ if (logoutBtn) {
       const imgHeight = (canvas.height * imgWidth) / canvas.width;
       
       pdf.addImage(imgData, 'PNG', 10, 10, imgWidth, imgHeight);
+
+      // Add footer with current date
+      const dateStr = `Generated: ${new Date().toLocaleString()}`;
+      pdf.setFontSize(8);
+      pdf.setTextColor(100);
+      pdf.text(dateStr, 10, pdf.internal.pageSize.getHeight() - 10);
+      pdf.text(`Page 1 of 1`, pdf.internal.pageSize.getWidth() - 10, pdf.internal.pageSize.getHeight() - 10, { align: 'right' });
+
       const fname = `${currentStudentDetails?.name || 'Student'}_${titleSuffix}.pdf`;
       pdf.save(fname);
     } catch(e) { 
@@ -827,29 +943,162 @@ if (logoutBtn) {
       });
   }
 
+  // ---------------------------
+  // GLOBAL FEE NOTE LOGIC
+  // ---------------------------
+  async function loadGlobalFeeNote(forceRefresh = false) {
+    const year = globalNoteYearFilter?.value; // Get the selected year
+    if (!year) return;
+
+    if (noteYearDisplay) noteYearDisplay.textContent = year;
+
+    const cacheKey = `globalNote_${year}`;
+    if (!forceRefresh && globalNoteCache[cacheKey] && (Date.now() - globalNoteCache[cacheKey].timestamp < CACHE_TTL)) {
+      const cachedData = globalNoteCache[cacheKey].data;
+      if (globalNoteContent && globalFeeNoteInput) {
+        globalNoteContent.textContent = cachedData.note || 'No general instructions set for this year. Click "Edit" to add Paybill or Bank details.';
+        globalNoteContent.style.fontStyle = cachedData.note ? "normal" : "italic";
+        globalFeeNoteInput.value = cachedData.note || "";
+      }
+      return;
+    }
+
+    try {
+      const data = await secureFetch(`${API_BASE}/payments/global-note?academicYear=${year}`);
+      if (data && globalNoteContent && globalFeeNoteInput) { // Check if elements exist
+        // Only update if the instructions section is currently visible or being loaded
+        const instructionsSection = document.getElementById("instructionsSection");
+        if (!instructionsSection || instructionsSection.style.display === "none") {
+          // If not visible, just update the input value for when it becomes visible
+          globalFeeNoteInput.value = data.note || "";
+          return;
+        }
+
+        const note = data.note || "";
+        globalNoteContent.textContent = note || 'No general instructions set for this year. Click "Edit" to add Paybill or Bank details.';
+        globalNoteContent.style.fontStyle = note ? "normal" : "italic";
+        globalFeeNoteInput.value = note;
+        globalNoteCache[cacheKey] = { timestamp: Date.now(), data: data }; // Cache the fetched data
+      }
+    } catch (err) {
+      console.error("Error loading global fee note:", err);
+    }
+  }
+
+  async function saveGlobalFeeNote() {
+    const year = globalNoteYearFilter?.value;
+    const note = globalFeeNoteInput.value.trim();
+
+    saveGlobalNoteBtn.disabled = true;
+    saveGlobalNoteBtn.textContent = "Saving...";
+
+    try {
+      await secureFetch(`${API_BASE}/payments/global-note`, {
+        method: 'POST',
+        body: JSON.stringify({ academicYear: year, note })
+      });
+
+      showToast("Global instructions updated", "success");
+      toggleGlobalNoteEdit(false);
+      loadGlobalFeeNote(true); // Force refresh after saving
+      delete globalNoteCache[`globalNote_${year}`]; // Invalidate cache for this year
+    } catch (err) {
+      alert("Error saving note: " + err.message);
+    } finally {
+      saveGlobalNoteBtn.disabled = false;
+      saveGlobalNoteBtn.textContent = "Save for All Grades";
+    }
+  }
+
+  function toggleGlobalNoteEdit(show) {
+    if (globalNoteEditMode) globalNoteEditMode.style.display = show ? "block" : "none";
+    if (globalNoteContent) globalNoteContent.style.display = show ? "none" : "block";
+    if (editGlobalNoteBtn) editGlobalNoteBtn.style.display = show ? "none" : "inline-block";
+  }
+
+  if (editGlobalNoteBtn) editGlobalNoteBtn.addEventListener("click", () => toggleGlobalNoteEdit(true));
+  if (cancelGlobalNoteBtn) cancelGlobalNoteBtn.addEventListener("click", () => toggleGlobalNoteEdit(false));
+  if (saveGlobalNoteBtn) saveGlobalNoteBtn.addEventListener("click", saveGlobalFeeNote);
+
   if (refreshBtn) {
     refreshBtn.addEventListener('click', () => loadDashboardData(true));
   }
 
   // ---------------------------
   // INIT
-  // Outstanding fees listeners
-  if (outstandingYearFilter) {
-    const currentYear = new Date().getFullYear();
-    outstandingYearFilter.innerHTML = "";
-    for (let y = 2026; y <= 2130; y++) {
-        const opt = document.createElement("option");
-        opt.value = y;
-        opt.textContent = y;
-        if (y === currentYear) opt.selected = true;
-        outstandingYearFilter.appendChild(opt);
-    }
+  // ---------------------------
+  function populateYearFilters() {
+    const currentYear = new Date().getFullYear(); // Keep current year for default selection
+    const startYear = 2026;
+    const endYear = 3026;
+
+    // Re-fetch elements to ensure we have them even if top-level vars were null
+    const yearSelectors = [
+      document.getElementById("outstandingYearFilter"),
+      document.getElementById("overviewYearFilter"),
+      document.getElementById("postedFeesYearFilter"),
+      document.getElementById("globalNoteYearFilter")
+    ].filter(Boolean); // Filter out nulls
+
+    yearSelectors.forEach(selector => {
+      selector.innerHTML = ""; 
+      for (let y = startYear; y <= endYear; y++) {
+        const option = document.createElement("option");
+        option.value = y;
+        option.textContent = y;
+        if (y === currentYear || (y === startYear && currentYear < startYear)) { // Select current year if within range, else select startYear
+          option.selected = true;
+        }
+        selector.appendChild(option);
+      }
+    });
   }
 
-  outstandingClassFilter?.addEventListener('change', () => { loadOutstandingFees(1); loadStats(true); });
-  outstandingYearFilter?.addEventListener('change', () => { loadOutstandingFees(1); loadStats(true); });
-  outstandingTermFilter?.addEventListener('change', () => { loadOutstandingFees(1); loadStats(true); });
+  // Event Listeners for Filters
+  // Fee Balance Section Filters
+  outstandingGradeFilter?.addEventListener('change', () => {
+    loadOutstandingFees(1, true);
+  });
+  outstandingYearFilter?.addEventListener('change', () => {
+    loadOutstandingFees(1, true);
+  });
   outstandingSortFilter?.addEventListener('change', () => loadOutstandingFees(1));
+
+  // Payment Overview Section Filters
+  overviewClassFilter?.addEventListener('change', () => {
+    loadStats(true);
+  });
+  overviewYearFilter?.addEventListener('change', () => {
+    loadStats(true);
+  });
+  overviewTermFilter?.addEventListener('change', () => {
+    loadStats(true);
+  });
+
+  // Posted Fees Section Filters
+  postedFeesYearFilter?.addEventListener('change', () => {
+    loadFeeStructures(true);
+  });
+  postedFeesClassFilter?.addEventListener('change', () => {
+    loadFeeStructures(true);
+  });
+
+  // Global Note Section Filters
+  globalNoteYearFilter?.addEventListener('change', () => {
+    loadGlobalFeeNote(true);
+  });
+  applyGlobalNoteFiltersBtn?.addEventListener('click', () => loadGlobalFeeNote(true));
+
+  // Combined listeners that affect multiple sections (if any)
+  // The original code had outstandingYearFilter change affecting loadStats, loadGlobalFeeNote, loadFeeStructures.
+  // This is now broken down into specific filter buttons/changes for each section.
+  // For now, I'm assuming section-specific filters only affect their own section.
+  outstandingYearFilter?.addEventListener('change', () => {
+    loadOutstandingFees(1, true); 
+    // If loadStats, loadGlobalFeeNote, loadFeeStructures should also react to this,
+    // their respective change listeners or apply buttons should be used.
+    // For now, keeping it focused on outstanding fees.
+  });
 
   if (outstandingPrevBtn) outstandingPrevBtn.addEventListener('click', () => loadOutstandingFees(outstandingPage - 1));
   if (outstandingNextBtn) outstandingNextBtn.addEventListener('click', () => loadOutstandingFees(outstandingPage + 1));
@@ -859,32 +1108,6 @@ if (logoutBtn) {
       clearTimeout(outstandingDebounce);
       outstandingDebounce = setTimeout(() => loadOutstandingFees(1), 500);
   });
-
-  // Export PDF (accountsTable)
-  if (exportBtn) {
-    exportBtn.addEventListener("click", () => {
-      if (!isPdfAutoTableReady()) {
-        showToast("PDF AutoTable plugin not loaded. Ensure jspdf-autotable.min.js is included in accounts.html.", "error");
-        return;
-      }
-      const { jsPDF } = window.jspdf;
-      const doc = new jsPDF();
-      doc.text("Student Accounts Report", 14, 15);
-      
-      const rows = [];
-      document.querySelectorAll("#accountsTable tbody tr").forEach(tr => {
-        const cells = Array.from(tr.querySelectorAll("td")).map(td => td.textContent);
-        if (cells.length > 1) rows.push(cells.slice(0, 6)); // Exclude action col
-      });
-
-      doc.autoTable({
-        head: [["Admission", "Name", "Grade", "Total Fee", "Paid", "Balance"]],
-        body: rows,
-        startY: 20
-      });
-      doc.save("accounts_report.pdf");
-    });
-  }
 
   // Download Outstanding Fees PDF
   // This listener was duplicated in the provided context, keeping only one.
@@ -907,19 +1130,95 @@ if (logoutBtn) {
       head: [["Admission", "Name", "Grade", "Balance"]],
       body: rows,
       startY: 20
+    ,
+      didDrawPage: (data) => {
+        // Footer
+        doc.setFontSize(8);
+        doc.setTextColor(100);
+        const dateStr = `Generated: ${new Date().toLocaleString()}`;
+        doc.text(dateStr, data.settings.margin.left, doc.internal.pageSize.getHeight() - 10);
+        
+        if (data.pageCount && data.pageCount > 1) {
+          doc.text(`Page ${data.pageNumber} of ${data.pageCount}`, doc.internal.pageSize.getWidth() - data.settings.margin.right, doc.internal.pageSize.getHeight() - 10, { align: 'right' });
+        }
+      }
     });
+
+    // Add Global Note at the bottom of the table
+    const note = globalNoteContent?.textContent.trim();
+    if (note && !note.includes("No general instructions set")) {
+        let finalY = doc.lastAutoTable.cursor.y || 20;
+        
+        // Add a background rectangle for the instructions section
+        const rectX = 10;
+        const rectY = finalY + 10;
+        const rectWidth = doc.internal.pageSize.getWidth() - (2 * rectX);
+        const initialTextHeight = 20; // Estimate for title and some padding
+        const splitNote = doc.splitTextToSize(note, rectWidth - 10); // Adjust width for padding
+        const noteTextHeight = splitNote.length * doc.getLineHeight() / doc.internal.scaleFactor;
+        const rectHeight = initialTextHeight + noteTextHeight + 10; // Total height for the box
+
+        doc.setFillColor(240, 240, 240); // Light grey background
+        doc.rect(rectX, rectY, rectWidth, rectHeight, 'F');
+        doc.setDrawColor(0, 0, 0); // Black border
+        doc.setLineWidth(0.5);
+        doc.rect(rectX, rectY, rectWidth, rectHeight, 'S');
+
+        // Add title
+        doc.setFontSize(12);
+        doc.setFont("helvetica", "bold");
+        doc.setTextColor(0, 0, 0); // Black text
+        doc.text("OFFICIAL PAYMENT INSTRUCTIONS", rectX + (rectWidth / 2), rectY + 8, { align: 'center' });
+        
+        // Add a separator line below the title
+        doc.setDrawColor(200, 200, 200); // Light grey line
+        doc.setLineWidth(0.2);
+        doc.line(rectX + 5, rectY + 12, rectX + rectWidth - 5, rectY + 12);
+
+        // Add the note content
+        doc.setFontSize(9);
+        doc.setFont("helvetica", "normal");
+        doc.setTextColor(50, 50, 50); // Dark grey text
+        doc.text(splitNote, rectX + 5, rectY + 18);
+    }
+
     doc.save("outstanding_fees_report.pdf");
   });
 
   // Initial Load
-  setupTabs();
-  loadDashboardData();
+  // setupTabs(); // Setup inner tabs
+  // setupSidebarNavigation(); // Setup main sidebar navigation
+  // loadDashboardData(); // This needs to be refactored
+
+  // New init function to handle initial loading of the default active section
+  (async function init() {
+    userProfile = await authService.getUserProfile(["accounts", "admin"]);
+    if (!userProfile) return;
+    authService.initLogout();
+
+    // Populate all academic year filters across sections (2026 - 3026)
+    populateYearFilters();
+
+    setupSidebarNavigation(); // Setup main sidebar navigation
+
+    // Trigger initial load for the default active section
+    let initialActiveSidebarItem = document.querySelector(".sidebar .menu li.active[data-section]");
+    // If "Overview" was active, default to "Payment Overview"
+    if (!initialActiveSidebarItem || initialActiveSidebarItem.dataset.section === "dashboardSection") {
+      initialActiveSidebarItem = document.querySelector(".sidebar .menu li[data-section='feesPaymentOverviewSection']");
+      if (initialActiveSidebarItem) initialActiveSidebarItem.classList.add('active'); // Set "Payment Overview" as active
+    }
+    if (initialActiveSidebarItem) {
+      initialActiveSidebarItem.dispatchEvent(new Event('click'));
+    }
+  })();
 
   // Download All Fee Structures PDF (this handler was already correct)
   if (downloadAllFeeStructuresBtn) {
     downloadAllFeeStructuresBtn.addEventListener('click', async () => {
       try {
         showToast("Generating Fee Structures PDF...", "info");
+        const token = authService.getToken();
         const res = await fetch(`${API_BASE}/reports/fee-structures`, {
           headers: { "Authorization": `Bearer ${token}` }
         });

@@ -4,34 +4,72 @@ import cache from "../utils/simpleCache.js";
 
 export const getMySchool = async (req, res) => {
   try {
-    if (!req.user?.schoolId) {
+    const schoolId = req.user?.schoolId;
+    if (!schoolId) {
       return res.status(400).json({ msg: "No school assigned" });
     }
 
-    const cacheKey = `school_profile_${req.user.schoolId}`;
+    const isStudent = req.user.role === 'student' || req.user.role === 'learner';
+    const includeLogo = req.query.includeLogo === 'true';
+    const fields = req.query.fields;
+    // Determine if we are fetching a "lite" version for a student (no logo, but needs paybill)
+    const isStudentLiteFetch = isStudent && !includeLogo;
+
+    // Cache key should reflect the type of payload
+    let cacheSuffix = '';
+    if (fields) cacheSuffix = `_fields_${fields}`;
+    if (isStudentLiteFetch) cacheSuffix = '_student_lite';
+    else if (includeLogo) cacheSuffix = '_full_with_logo';
+    else cacheSuffix = '_full_no_logo'; // For admins/teachers not requesting logo
+
+    const cacheKey = `school_profile_${schoolId}${cacheSuffix}`;
+
     const cached = cache.get(cacheKey);
     if (cached) {
       return res.json(cached);
     }
 
-    const school = await School.findById(req.user.schoolId)
-  .select("name logo logoMimeType address status paybill mpesaShortcode headteacherSignatureUrl allowSignatureUpload");
+    let projectionFields = "name address status allowSignatureUpload"; // Base fields
 
-if (!school) return res.status(404).json({ msg: "School not found" });
+    if (fields) {
+      projectionFields = fields.replace(/,/g, ' ');
+    } else if (includeLogo) {
+      projectionFields += " logo logoMimeType headteacherSignatureUrl paybill mpesaShortcode";
+    } else if (isStudentLiteFetch) {
+      // For student dashboard/fee modal, get name, address, paybill, mpesaShortcode, but no logo/signature
+      projectionFields += " paybill mpesaShortcode";
+    } else {
+      // For other roles (admin/teacher) not requesting logo, get all non-logo fields
+      projectionFields += " paybill mpesaShortcode headteacherSignatureUrl";
+    }
 
-// Make the logo path relative to /uploads
-const logoPath = school.logo || null;
+    const school = await School.findById(schoolId).select(projectionFields).lean();
+    if (!school) return res.status(404).json({ msg: "School not found" });
 
+    if (fields) {
+      cache.set(cacheKey, school, 300);
+      return res.json(school);
+    }
 
-const response = {
-  name: school.name,
-  address: school.address,
-  logo: logoPath,
-  logoMimeType: school.logoMimeType,
-  paybill: school.paybill || "",
-  headteacherSignatureUrl: school.headteacherSignatureUrl || "",
-  allowSignatureUpload: school.allowSignatureUpload !== false
-};
+    const response = {
+      name: school.name,
+      address: school.address,
+      allowSignatureUpload: school.allowSignatureUpload !== false
+    };
+
+    // Conditionally add fields to the response object based on what was projected
+    if (school.logo !== undefined) { // Check if logo was included in the projection
+  response.logo = school.logo || null;
+  response.logoMimeType = school.logoMimeType;
+    }
+    if (school.headteacherSignatureUrl !== undefined) {
+  response.headteacherSignatureUrl = school.headteacherSignatureUrl || "";
+    }
+    if (school.paybill !== undefined) {
+      response.paybill = school.paybill || "";
+      response.mpesaShortcode = school.mpesaShortcode || "";
+}
+
 cache.set(cacheKey, response, 300); // Cache for 5 minutes
 res.json(response);
 

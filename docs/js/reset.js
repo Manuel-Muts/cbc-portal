@@ -11,6 +11,12 @@
 */
 
 document.addEventListener("DOMContentLoaded", () => {
+  // Subtle Parallax Effect (consistent with login.js)
+  document.addEventListener("mousemove", (e) => {
+    const moveX = (e.clientX - window.innerWidth / 2) * 0.005;
+    const moveY = (e.clientY - window.innerHeight / 2) * 0.005;
+    document.body.style.backgroundPosition = `calc(50% + ${moveX}px) calc(50% + ${moveY}px)`;
+  });
   // -------------------------
   // Elements
   // -------------------------
@@ -20,7 +26,6 @@ document.addEventListener("DOMContentLoaded", () => {
   const stepSuccess = document.getElementById("stepSuccess");
 
   const roleInput = document.getElementById("role");
-  const fullnameInput = document.getElementById("fullname");
   const emailInput = document.getElementById("email");
   const codeInput = document.getElementById("code"); // fallback single field
   const otpBoxes = Array.from(document.querySelectorAll(".otp"));
@@ -67,9 +72,8 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // Load previous state
   const saved = loadState();
-  if (saved.email) emailInput.value = saved.email;
-  if (saved.role) roleInput.value = saved.role;
-  if (saved.fullname) fullnameInput.value = saved.fullname;
+  if (saved.email && emailInput) emailInput.value = saved.email; //
+  if (saved.role && roleInput) roleInput.value = saved.role; //
 
   // -------------------------
   // Step helpers
@@ -90,7 +94,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // Reset visual errors on inputs
   function clearInputErrors() {
-    [roleInput, fullnameInput, emailInput, newPasswordInput].forEach(i => i && i.classList.remove("input-error"));
+    [roleInput, emailInput, newPasswordInput].forEach(i => i && i.classList.remove("input-error")); //
     otpBoxes.forEach(b => b.classList.remove("input-error"));
     codeInput && codeInput.classList.remove("input-error");
   }
@@ -101,32 +105,40 @@ document.addEventListener("DOMContentLoaded", () => {
   function setLoading(btn, loading = true) {
     if (!btn) return;
     if (loading) {
-      // Store original text content if not already stored
-      if (!btn.dataset.originalText) {
-        // Get current text, removing any existing spinner's text if present
-        const existingSpinner = btn.querySelector(".btn-spinner");
-        btn.dataset.originalText = btn.textContent.replace(existingSpinner?.textContent || '', '').trim();
-      }
-      // Add spinner if it doesn't exist
-      let spinner = btn.querySelector(".btn-spinner");
-      if (!spinner) {
-        spinner = document.createElement("span");
-        spinner.classList.add("btn-spinner");
-        btn.prepend(spinner); // Add spinner to the beginning
-      }
-      btn.textContent = "Loading..."; // Update text
-      btn.prepend(spinner); // Ensure spinner is always first child after textContent change
+      // Prevent re-capturing or nested loading states
+      if (btn.classList.contains("loading")) return;
+
+      // Store original content safely
+      btn.dataset.originalHtml = btn.innerHTML;
+      
+      const loadingText = btn.id === 'resendBtn' ? 'Resending...' : 'Sending...';
+      
+      btn.innerHTML = `<span class="btn-spinner" aria-hidden="true"></span> <span>${loadingText}</span>`;
       btn.classList.add("loading");
-      btn.setAttribute("disabled", "true");
+      btn.disabled = true;
     } else {
-      let spinner = btn.querySelector(".btn-spinner");
-      if (spinner) spinner.remove(); // Remove spinner
-      if (btn.dataset.originalText) {
-        btn.textContent = btn.dataset.originalText; // Restore original text
-        delete btn.dataset.originalText;
+      // Ensure spinner is removed explicitly before restoring original HTML
+      const spinner = btn.querySelector(".btn-spinner");
+      if (spinner) spinner.remove();
+
+      if (btn.dataset.originalHtml) {
+        btn.innerHTML = btn.dataset.originalHtml;
+        btn.dataset.originalHtml = "";
       }
       btn.classList.remove("loading");
-      btn.removeAttribute("disabled");
+      btn.disabled = false;
+    }
+  }
+
+  async function fetchWithTimeout(resource, options = {}) {
+    const { timeout = 20000 } = options; // Increased to 20s for slow networks
+    const controller = new AbortController();
+    const id = setTimeout(() => controller.abort(), timeout);
+    try {
+      const response = await fetch(resource, { ...options, signal: controller.signal });
+      return response;
+    } finally {
+      clearTimeout(id);
     }
   }
 
@@ -282,7 +294,7 @@ document.addEventListener("DOMContentLoaded", () => {
   // -------------------------
   // Enter key handling for steps
   // -------------------------
-  [roleInput, fullnameInput, emailInput].forEach(el => {
+  [roleInput, emailInput].forEach(el => { //
     el.addEventListener("keydown", (e) => {
       if (e.key === "Enter") { e.preventDefault(); sendCodeBtn.click(); }
     });
@@ -299,16 +311,7 @@ document.addEventListener("DOMContentLoaded", () => {
   clearInputErrors();
 
   // -------------------------
-  // Normalize input
-  // -------------------------
   const role = roleInput.value.trim();
-
-  // Collapse all spaces, tabs, newlines
-  function normalizeFullname(str) {
-    return str.replace(/\s+/g, " ").trim();
-  }
-  const fullname = normalizeFullname(fullnameInput.value);
-
   const email = emailInput.value.trim();
 
   // -------------------------
@@ -317,11 +320,6 @@ document.addEventListener("DOMContentLoaded", () => {
   if (!role) { 
     roleInput.classList.add("input-error"); 
     setFeedback(feedbackEmail, "Please select a role.", "error"); 
-    return; 
-  }
-  if (!fullname || fullname.length < 2) { 
-    fullnameInput.classList.add("input-error"); 
-    setFeedback(feedbackEmail, "Please enter your full name.", "error"); 
     return; 
   }
   if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { 
@@ -341,7 +339,7 @@ document.addEventListener("DOMContentLoaded", () => {
   // -------------------------
   // Save to session for resume
   // -------------------------
-  saveState({ role, fullname, email });
+  saveState({ role, email }); //
 
   setFeedback(feedbackEmail, "Verifying user...");
 
@@ -349,10 +347,10 @@ document.addEventListener("DOMContentLoaded", () => {
     // -------------------------
     // Verify user exists
     // -------------------------
-    const verifyRes = await fetch(`${API_BASE}/verify-user`, {
-      method: "POST",
+    const verifyRes = await fetchWithTimeout(`${API_BASE}/verify-user`, {
+      method: "POST", //
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ role, name: fullname, email }) // <-- 'name' key
+      body: JSON.stringify({ role, email }) //
     });
 
     const verifyData = await verifyRes.json().catch(() => ({}));
@@ -366,7 +364,7 @@ document.addEventListener("DOMContentLoaded", () => {
     // Request OTP
     // -------------------------
     setFeedback(feedbackEmail, "Sending reset code...");
-    const reqRes = await fetch(`${API_BASE}/request`, {
+    const reqRes = await fetchWithTimeout(`${API_BASE}/request`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ email })
@@ -397,9 +395,8 @@ document.addEventListener("DOMContentLoaded", () => {
   // Clear button
   // -------------------------
   clearBtn.addEventListener("click", () => {
-    roleInput.value = "";
-    fullnameInput.value = "";
-    emailInput.value = "";
+    roleInput.value = ""; //
+    emailInput.value = ""; //
     clearInputErrors();
     setFeedback(feedbackEmail, "");
     clearState();
@@ -421,7 +418,7 @@ resendBtn.addEventListener("click", withLoading(resendBtn, async () => {
 
   try {
     // 1️⃣ Regenerate code in backend
-    const res = await fetch(`${API_BASE}/request`, {
+    const res = await fetchWithTimeout(`${API_BASE}/request`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ email })
@@ -462,7 +459,7 @@ resendBtn.addEventListener("click", withLoading(resendBtn, async () => {
     setFeedback(feedbackCode, "Verifying code...");
 
     try {
-      const res = await fetch(`${API_BASE}/verify`, {
+      const res = await fetchWithTimeout(`${API_BASE}/verify`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, code })
@@ -512,7 +509,7 @@ resendBtn.addEventListener("click", withLoading(resendBtn, async () => {
     setFeedback(feedbackPassword, "Resetting password...");
 
     try {
-      const res = await fetch(`${API_BASE}/new-password`, {
+      const res = await fetchWithTimeout(`${API_BASE}/new-password`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, code, password })
@@ -569,12 +566,11 @@ resendBtn.addEventListener("click", withLoading(resendBtn, async () => {
   }
   document.querySelectorAll(".step").forEach(s => s.addEventListener("transitionend", persistLastStep));
 
-  [roleInput, fullnameInput, emailInput].forEach(i => {
-    i.addEventListener("input", () => {
+  [roleInput, emailInput].forEach(i => {
+    if (i) i.addEventListener("input", () => {
       const st = loadState();
-      st.role = roleInput.value;
-      st.fullname = fullnameInput.value;
-      st.email = emailInput.value;
+      if (roleInput) st.role = roleInput.value;
+      if (emailInput) st.email = emailInput.value;
       saveState(st);
     });
   });

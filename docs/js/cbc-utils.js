@@ -95,17 +95,13 @@ window.cbcUtils = {
      * Centralized Toast Notification
      */
     showToast: (msg, type = "success") => {
-        let container = document.getElementById("toastContainer");
-        if (!container) {
-            container = document.createElement("div");
-            container.id = "toastContainer";
-            document.body.appendChild(container);
+        // Delegate to the global showToast function defined in ui.js
+        // This ensures all toasts use the same centralized logic and styling.
+        if (window.showToast) {
+            window.showToast(msg, type);
+        } else {
+            console.warn("window.showToast is not defined. Toast message not shown:", msg);
         }
-        const toast = document.createElement("div");
-        toast.className = `toast ${type}`;
-        toast.textContent = msg;
-        container.appendChild(toast);
-        setTimeout(() => toast.remove(), 3000);
     },
 
     /**

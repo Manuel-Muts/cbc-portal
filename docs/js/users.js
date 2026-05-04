@@ -35,6 +35,36 @@
       border-bottom-color: #2563eb;
       color: #2563eb;
     }
+
+    /* Modern Toast & Confirm Styles */
+    #toastContainer { position: fixed; right: 20px; bottom: 20px; z-index: 10000; display: flex; flex-direction: column; gap: 10px; }
+    .toast { 
+      padding: 12px 18px; border-radius: 8px; color: white !important; font-weight: 600; font-size: 0.9rem;
+      box-shadow: 0 4px 15px rgba(0,0,0,0.2); min-width: 250px;
+      transform: translateX(0); transition: all 0.35s ease;
+    }
+    .toast-success { background: #38a169 !important; border-left: 5px solid #22543d; }
+    .toast-error { background: #e53e3e !important; border-left: 5px solid #742a2a; }
+    .toast-info { background: #3182ce !important; border-left: 5px solid #2a4365; }
+    .toast.hiding { opacity: 0; transform: translateX(50px); }
+
+    .confirm-overlay {
+      position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
+      background: rgba(0, 0, 0, 0.4); backdrop-filter: blur(4px);
+      display: flex; justify-content: center; align-items: center;
+      z-index: 11000; opacity: 0; visibility: hidden; transition: all 0.3s ease;
+    }
+    .confirm-overlay.visible { opacity: 1; visibility: visible; }
+    .confirm-box {
+      background: white; padding: 30px; border-radius: 16px; width: 90%; max-width: 400px;
+      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25); transform: scale(0.9);
+      transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1); text-align: center;
+    }
+    .confirm-overlay.visible .confirm-box { transform: scale(1); }
+    .confirm-box h4 { margin: 0 0 10px; font-size: 1.3rem; font-weight: 800; color: #1a202c; }
+    .confirm-box p { margin: 0 0 25px; color: #4a5568; line-height: 1.6; }
+    .confirm-buttons { display: flex; justify-content: center; gap: 15px; }
+    .confirm-buttons .btn { padding: 10px 24px; font-size: 0.95rem; font-weight: 700; border-radius: 10px; border: none; cursor: pointer; }
   `;
   document.head.appendChild(compactUsersStyle);
 
@@ -80,21 +110,6 @@
   // ---------------------------
   // HELPERS (Copied/Shared Logic)
   // ---------------------------
-  function showToast(message, type = "info") {
-    const t = document.createElement("div");
-    t.style.position = "fixed"; t.style.right = "16px"; t.style.bottom = "16px";
-    t.style.padding = "10px 14px"; t.style.background = type === "error" ? "#F8D7DA" : "#D4EDDA";
-    t.style.borderRadius = "8px"; t.textContent = message; t.style.boxShadow = "0 2px 6px rgba(0,0,0,0.2)";
-    document.body.appendChild(t);
-    setTimeout(() => t.remove(), 3000);
-  }
-
-  function showConfirm(options) {
-    return new Promise(resolve => {
-      if (confirm(options.message || "Are you sure?")) resolve(true);
-      else resolve(false);
-    });
-  }
 
   function createSpinner() {
     const s = document.createElement("span");
@@ -126,6 +141,23 @@
       showToast(err.message, "error");
       return null;
     }
+  }
+
+  /**
+   * Initialize all tab labels with current system counts
+   */
+  async function refreshAllTabCounts() {
+    const roles = ["student", "teacher", "accounts", "admin"];
+    const results = await Promise.all(roles.map(role => 
+      secureFetch(`${API_BASE}/users?page=1&limit=1&role=${role}`)
+    ));
+
+    results.forEach((res, index) => {
+      if (!res) return;
+      const role = roles[index];
+      const tab = document.querySelector(`.user-type-tabs li[data-role="${role}"]`);
+      if (tab) tab.textContent = `${getRoleLabel(role)} (${res.total || 0})`;
+    });
   }
 
   // ---------------------------
@@ -543,16 +575,6 @@ if (usersNextPageBtn) {
               continue;
             }
 
-            if (!name || !admission || !grade) {
-              failCount++;
-              failedRecords.push({
-                name: name || "Unknown",
-                admission: admission || "Unknown", 
-                reason: "Missing required fields"
-              });
-              continue;
-            }
-
             const body = {
               role: "student",
               name: String(name),
@@ -650,52 +672,29 @@ if (usersNextPageBtn) {
 
     if (userTabs.length === 0) return;
 
-    // Update existing tab labels to match the request
-    userTabs.forEach(tab => {
-      tab.textContent = getRoleLabel(tab.getAttribute("data-role"));
-    });
-
     // Set the initial heading based on the default active tab
     const activeTab = document.querySelector(".user-type-tabs li.active");
     if (heading && activeTab) heading.textContent = activeTab.textContent;
 
+    // Add event listeners to role tabs
     userTabs.forEach(tab => {
       tab.addEventListener("click", () => {
-        const role = tab.getAttribute("data-role");
-        if (!role) return;
-
         userTabs.forEach(t => t.classList.remove("active"));
         tab.classList.add("active");
 
-        // Update heading text dynamically when a tab is clicked
-        if (heading) heading.textContent = tab.textContent;
-
+        const role = tab.getAttribute("data-role");
         currentRoleTab = role;
-        usersPage = 1; // Reset to first page when switching views
-        loadUsers(1, true); // Force refresh for current role
+        
+        if (heading) heading.textContent = tab.textContent;
+        
+        usersPage = 1;
+        clearUsersCache();
+        loadUsers(1, true);
       });
     });
 
-    // 🆕 Fetch all counts once to populate labels for all tabs
+    // Fetch all counts once to populate labels for all tabs
     refreshAllTabCounts();
-  }
-
-  // 🆕 Initialize all tab labels with current system counts
-  async function refreshAllTabCounts() {
-    const roles = ["student", "teacher", "accounts", "admin"];
-    
-    // Better approach: Call a single stats endpoint if available, 
-    // or at least wait for all requests to finish together
-    const results = await Promise.all(roles.map(role => 
-      secureFetch(`${API_BASE}/users?page=1&limit=1&role=${role}`)
-    ));
-
-    results.forEach((res, index) => {
-      if (!res) return;
-      const role = roles[index];
-      const tab = document.querySelector(`.user-type-tabs li[data-role="${role}"]`);
-      if (tab) tab.textContent = `${getRoleLabel(role)} (${res.total || 0})`;
-    });
   }
 
   // ---------------------------
@@ -704,8 +703,14 @@ if (usersNextPageBtn) {
   function setupNavigation() {
     const tabs = document.querySelectorAll(".menu li");
     const sections = document.querySelectorAll(".tab-section");
-
-    if (tabs.length === 0) return;
+ 
+    const pageTitle = document.getElementById('pageTitle');
+    
+    const sectionTitles = {
+      "registerTab": "Register New User",
+      "userManagement": "Registered Users"
+    };
+    
 
     tabs.forEach(tab => {
       tab.addEventListener("click", () => {
@@ -717,21 +722,21 @@ if (usersNextPageBtn) {
         tab.classList.add("active");
 
         // Toggle visibility of sections
-        sections.forEach(sec => {
-          const isTarget = sec.id === targetId;
-          sec.style.display = isTarget ? "block" : "none";
-          if (isTarget) sec.classList.remove("hidden");
-          else sec.classList.add("hidden");
+        if (pageTitle) {
+          pageTitle.textContent = sectionTitles[targetId] || targetId;
+        }
+        
+        sections.forEach((sec) => {
+          sec.style.display = sec.id === targetId ? "block" : "none";
         });
       });
     });
 
-    // Initialize: Activate the first tab on load
-    const active = document.querySelector(".menu li.active") || tabs[0];
+    const active = document.querySelector(".menu li.active[data-section]") || document.querySelector(".menu li[data-section]");
     if (active) active.click();
   }
 
-  // Initialize
+  // Initialize Application
   (async function init() {
     userProfile = await authService.getUserProfile(["admin"]);
     if (!userProfile) return;
@@ -740,5 +745,5 @@ if (usersNextPageBtn) {
     setupNavigation();
     setupUserTypeTabs();
     loadUsers();
-  })();
+  })(); 
 })();

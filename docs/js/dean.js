@@ -443,8 +443,8 @@ function renderRankingTable(students, subjects, isSenior) {
       else if (diff < -0.1) progressHtml = `<span style="color:#ef4444; font-weight:700;"><i class="fas fa-arrow-down"></i> ${diff.toFixed(1)}</span>`;
       else progressHtml = `<span style="color:#3498db; font-size:0.8rem;"><i class="fas fa-minus"></i></span>`;
     }
-
-    html += `<tr${tiedClass}>
+    // Store progress value in a data attribute for PDF generation
+    html += `<tr${tiedClass} data-progress="${s.progress !== null ? s.progress : ''}">
       <td>${s.rank}</td><td>${s.name}</td><td>${s.adm}</td>
       ${subjects.map(sub => `<td>${s.subjects[sub] !== undefined ? s.subjects[sub] : "-"}</td>`).join("")}
       ${totalCell}
@@ -503,14 +503,45 @@ async function downloadRankingAsPDF() {
   doc.text(`Grade Ranking Report: ${grade}${selectedStream !== "all" ? ' - Stream ' + selectedStream : ''}`, 14, yPos + 17);
 
   // Extract headers and rows from the existing DOM table
-  const headers = Array.from(table.querySelectorAll("thead th")).map(th => th.innerText);
+  const significantDropRowIndices = [];
+  const SIGNIFICANT_DROP_THRESHOLD = -5; // Define what constitutes a "significant drop"
+
+  let headers = Array.from(table.querySelectorAll("thead th")).map(th => th.innerText);
   const tiedRowIndices = [];
-  const rows = Array.from(table.querySelectorAll("tbody tr")).map((tr, idx) => {
+  let rows = Array.from(table.querySelectorAll("tbody tr")).map((tr, idx) => {
     if (tr.classList.contains("tied-rank")) {
       tiedRowIndices.push(idx);
     }
+    if (tr.dataset.progress && parseFloat(tr.dataset.progress) < SIGNIFICANT_DROP_THRESHOLD) {
+      significantDropRowIndices.push(idx);
+    }
     return Array.from(tr.querySelectorAll("td")).map(td => td.innerText);
   });
+
+  // Remove "Mean" column from PDF export
+  const meanIdx = headers.indexOf("Mean");
+  if (meanIdx !== -1) {
+    headers.splice(meanIdx, 1);
+    rows = rows.map(row => {
+      const newRow = [...row];
+      newRow.splice(meanIdx, 1);
+      return newRow;
+    });
+  }
+
+  // Check if Progress column should be hidden (only N/A values)
+  const progressIdx = headers.indexOf("Progress");
+  if (progressIdx !== -1) {
+    const allNA = rows.every(row => row[progressIdx] === "N/A");
+    if (allNA) {
+      headers.splice(progressIdx, 1);
+      rows = rows.map(row => {
+        const newRow = [...row];
+        newRow.splice(progressIdx, 1);
+        return newRow;
+      });
+    }
+  }
 
   // Calculate Level Distribution
   const levelCounts = { EE1: 0, EE2: 0, ME1: 0, ME2: 0, AE1: 0, AE2: 0, BE1: 0, BE2: 0 };
@@ -530,6 +561,9 @@ async function downloadRankingAsPDF() {
     didParseCell: (data) => {
       if (data.section === 'body' && tiedRowIndices.includes(data.row.index)) {
         data.cell.styles.fillColor = [255, 249, 219]; // Light yellow matching .tied-rank CSS (#fff9db)
+      }
+      if (data.section === 'body' && significantDropRowIndices.includes(data.row.index)) {
+        data.cell.styles.fillColor = [255, 204, 204]; // Light red for significant drop
       }
       if (data.section === 'head' && data.cell.text[0] === 'Total') {
         data.cell.styles.fillColor = [52, 73, 94]; // Match #34495e header highlight
@@ -651,19 +685,34 @@ async function downloadSubjectPerformanceAsPDF() {
   doc.setFontSize(14);
   doc.text(`Subject Performance Analysis: ${grade}${selectedStream !== "all" ? ' - Stream ' + selectedStream : ''}`, 14, yPos + 17);
 
-  const headers = Array.from(table.querySelectorAll("thead th")).map(th => th.innerText);
+  let headers = Array.from(table.querySelectorAll("thead th")).map(th => th.innerText);
   const tiedRowIndices = [];
-  const rows = Array.from(table.querySelectorAll("tbody tr")).map((tr, idx) => {
+  let rows = Array.from(table.querySelectorAll("tbody tr")).map((tr, idx) => {
     if (tr.classList.contains("tied-rank")) tiedRowIndices.push(idx);
     return Array.from(tr.querySelectorAll("td")).map(td => td.innerText);
   });
+
+  // Check if Progress column should be hidden (only N/A values)
+  const progressIdx = headers.indexOf("Progress");
+  if (progressIdx !== -1) {
+    const allNA = rows.every(row => row[progressIdx] === "N/A");
+    if (allNA) {
+      headers.splice(progressIdx, 1);
+      rows = rows.map(row => {
+        const newRow = [...row];
+        newRow.splice(progressIdx, 1);
+        return newRow;
+      });
+    }
+  }
 
   doc.autoTable({ 
     startY: yPos + 23, 
     head: [headers], 
     body: rows, 
     theme: 'grid', 
-    styles: { fontSize: 10 }, 
+    styles: { fontSize: 10 },
+    columnStyles: { 3: { fontSize: 8, halign: 'center' } }, // Optimize Trend column for PDF
     headStyles: { fillColor: [46, 204, 113] }, // Green theme for subject stats
     showHead: 'firstPage', // Only show table headers on the first page
     didParseCell: (data) => {
@@ -730,12 +779,17 @@ function renderSubjectStats(subjects, totals, counts, prevMeans = {}, termStats 
         points.push({ x: i * 25 + 5, y: 25 - (val / 100 * 20), val: val.toFixed(0) });
       }
     });
-    if (points.length < 2) return `<span style="color:#94a3b8; font-size:0.75rem;">${points[0]?.val || '-'}%</span>`;
+
+    // Prepare textual statistics for PDF export (picked up by innerText)
+    const trendText = points.map((p, i) => `T${i+1}:${p.val}%`).join(' ');
+    const hiddenLabel = `<span class="sr-only">${trendText}</span>`;
+
+    if (points.length < 2) return hiddenLabel + `<span style="color:#94a3b8; font-size:0.75rem;">${points[0]?.val || '-'}%</span>`;
     
     let path = `M ${points[0].x} ${points[0].y}`;
     for(let j=1; j<points.length; j++) path += ` L ${points[j].x} ${points[j].y}`;
     
-    return `<svg width="60" height="30" style="vertical-align:middle; overflow:visible;">
+    return hiddenLabel + `<svg width="60" height="30" style="vertical-align:middle; overflow:visible;">
       <path d="${path}" fill="none" stroke="#3498db" stroke-width="2" />
       ${points.map(p => `<circle cx="${p.x}" cy="${p.y}" r="2" fill="#2980b9"><title>T: ${p.val}%</title></circle>`).join('')}
     </svg>`;
@@ -1254,7 +1308,15 @@ if (printSubjectReportBtn) {
 
 
 window.addEventListener("DOMContentLoaded", () => {
-  authService.initLogout();
+  // Implement Logout with Confirmation
+  if (logoutBtn) {
+    logoutBtn.addEventListener("click", async () => {
+      const confirmed = await cbcUtils.showConfirmToast("Are you sure you want to log out of the Dean Panel?");
+      if (confirmed) {
+        authService.logout();
+      }
+    });
+  }
   loadDeanProfile();
 });
 

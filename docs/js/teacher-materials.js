@@ -169,14 +169,6 @@
   // ---------------------------
   // HELPERS
   // ---------------------------
-  function showToast(msg, type = "success") {
-    const toast = document.createElement("div");
-    toast.className = `toast ${type}`;
-    toast.textContent = msg;
-    document.body.appendChild(toast);
-    setTimeout(() => toast.remove(), 3000);
-  }
-
   function sanitize(s) {
     if (s === undefined || s === null) return "";
     return String(s).replace(/[&<>"']/g, c => ({
@@ -364,7 +356,7 @@
         <td title="${sanitize(mat.description)}">${sanitize(mat.description.substring(0, 35))}${mat.description.length > 35 ? '...' : ''}</td>
         <td style="white-space:nowrap;">${fileCellContent}</td>
         <td style="text-align: center;">${mat.downloadCount || 0}</td>
-        <td style="text-align: center;"><button data-action="delete-material" data-id="${mat._id}" class="btn-delete" style="background:none;border:none;cursor:pointer;" title="Delete">🗑️</button></td>
+        <td style="text-align: center;"><button data-action="delete-material" data-id="${mat._id}" class="btn-delete" title="Delete">🗑️</button></td>
       `;
       materialsListEl.appendChild(row);
     });
@@ -494,13 +486,13 @@
         // Clear cache on new upload
         localStorage.removeItem("teacher_materials_cache");
 
-        showToast("✅ Material uploaded successfully!", "success");
-        loadMaterials(1, true); // Force refresh and reset to page 1
-        
-        // Auto-switch to Uploaded Materials tab
         const listTabBtn = document.querySelector('[data-tab="listTab"]');
-        if (listTabBtn) listTabBtn.click();
-
+        showToast("Study material uploaded successfully!", "success");
+        // Ensure toast is visible before potentially disruptive UI updates
+        setTimeout(() => {
+          if (listTabBtn) listTabBtn.click();
+          loadMaterials(1, true); // Force refresh and reset to page 1
+        }, 100); // Small delay to allow toast to render
         // Reset UI
         setTimeout(() => {
           progressContainer.style.display = "none";
@@ -533,9 +525,10 @@
   // DELETE HANDLER
   // ---------------------------
   materialsListEl?.addEventListener("click", async (e) => {
-    const btn = e.target.closest("button[data-action='delete-material']");
+    const target = e.target instanceof Element ? e.target : e.target.parentElement;
+    const btn = target?.closest("button[data-action='delete-material']");
     if (!btn) return;
-    if (!confirm("Delete this material?")) return;
+    if (!(await showConfirm("Are you sure you want to delete this study material?"))) return;
     
     try {
       const id = btn.dataset.id;
@@ -549,8 +542,11 @@
       // Clear cache on delete
       localStorage.removeItem("teacher_materials_cache");
 
-      showToast("Material deleted", "success");
-      loadMaterials(currentPage, true);
+      showToast("Study material deleted successfully", "success");
+      // Ensure toast is visible before re-rendering the list
+      setTimeout(() => {
+        loadMaterials(currentPage, true);
+      }, 100); // Small delay to allow toast to render
     } catch (err) {
       showToast("Failed to delete: " + err.message, "error");
     }

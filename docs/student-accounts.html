@@ -34,20 +34,57 @@
     }
     .bf-badge.bf-credit { background-color: #d1fae5; color: #065f46; } /* Green for Surplus */
     .bf-badge.bf-debt { background-color: #fee2e2; color: #991b1b; }   /* Red for Arrears */
+
+    /* Override admin.css for no sidebar */
+    .container { display: block; padding: 20px; }
+
+    /* Modal Styles */
+    .confirm-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0,0,0,0.5);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      opacity: 0;
+      visibility: hidden;
+      transition: opacity 0.3s, visibility 0.3s;
+      z-index: 1000;
+    }
+    .confirm-overlay.visible {
+      opacity: 1;
+      visibility: visible;
+    }
+    .confirm-box {
+      background: white;
+      padding: 30px;
+      border-radius: 12px;
+      box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+      max-width: 500px;
+      width: 90%;
+      transform: scale(0.9);
+      transition: transform 0.3s;
+    }
+    .confirm-overlay.visible .confirm-box {
+      transform: scale(1);
+    }
   </style>
 </head>
 <body>
 
 <div class="container">
   <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px; margin-top: 20px;">
-    <h2>Learner Accounts Management</h2>
+    <h2>LEARNER ACCOUNTS MANAGEMENT</h2>
     <a href="/accounts" class="btn secondary-btn">&larr; Back to Dashboard</a>
   </div>
 
   <!-- ACCOUNTS LIST CARD -->
   <div class="card">
     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
-      <h3>Learner Fee Status</h3>
+      <h3>LEARNER FEE STATUS</h3>
       <div style="display:flex; gap: 10px;">
         <button id="addBFBtn" class="btn primary-btn">➕ Add B/F</button>
         <button id="refreshAccountsBtn" class="btn secondary-btn">🔄 Refresh</button>
@@ -240,6 +277,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.28/jspdf.plugin.autotable.min.js"></script>
 <script src="js/auth-service.js"></script>
+<script src="js/ui.js"></script>
 <script src="js/student-accounts.js"></script>
 
 </body>

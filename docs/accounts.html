@@ -14,7 +14,26 @@
     .stat-card.paid p { color: #28a745; }
     .stat-card.students p { color: #007bff; }
     .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; margin-bottom: 25px; }
-    
+
+    /* Standardized Section Filters */
+    .section-filters {
+      display: flex;
+      gap: 15px;
+      flex-wrap: wrap;
+      align-items: flex-end;
+      padding: 15px;
+      background: #fff;
+      border-radius: 12px;
+      border: 1px solid #e2e8f0;
+      box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+      margin-bottom: 20px;
+    }
+    .filter-item {
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+    }
+
     /* Tab Styles */
     .tabs-nav { display: flex; gap: 10px; margin-bottom: 20px; border-bottom: 1px solid #ddd; padding-bottom: 10px; }
     .tab-btn { padding: 10px 20px; border: none; background: #f8f9fa; cursor: pointer; border-radius: 6px; font-weight: 600; color: #666; transition: all 0.2s; }
@@ -22,114 +41,119 @@
     .tab-btn.active { background: #2563eb; color: #fff; }
     .tab-pane { display: none; }
     .tab-pane.active { display: block; }
+
+    /* Modal Styles */
+    .confirm-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0,0,0,0.5);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      opacity: 0;
+      visibility: hidden;
+      transition: opacity 0.3s, visibility 0.3s;
+      z-index: 1000;
+    }
+    .confirm-overlay.visible {
+      opacity: 1;
+      visibility: visible;
+    }
+    .confirm-box {
+      background: white;
+      padding: 30px;
+      border-radius: 12px;
+      box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+      max-width: 500px;
+      width: 90%;
+      transform: scale(0.9);
+      transition: transform 0.3s;
+    }
+    .confirm-overlay.visible .confirm-box {
+      transform: scale(1);
+    }
+
+    /* Make Global Filters Sticky */
+    .dashboard-filters {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
   </style>
 </head>
 <body>
 
-  <div class="container">
-    <!-- HEADER -->
-    <div class="header">
-      <div class="school-header">
-        <!-- Logo and school info populated by JS if using admin.js logic, or keep simple -->
-        <h1 style="margin:0;">ACCOUNTS</h1>
-      </div>
-      <div>
-        <button id="refreshBtn" class="btn secondary-btn">🔄 Refresh Data</button>
-        <button id="logoutBtn" class="btn danger-btn">Logout</button>
-      </div>
-    </div>
-
-    <!-- 1. ACCOUNTS MANAGEMENT LINK -->
-    <div class="card">
-      <div style="display:flex; justify-content:space-between; align-items:center;">
-        <div>
-          <h3>Learners Accounts</h3>
-          <p style="margin:5px 0 0; color:#666;">View learner balances, record payments, and generate statements.</p>
-        </div>
-        <a href="student-accounts.html" class="btn primary-btn" style="font-weight:600;">Manage Accounts &rarr;</a>
-      </div>
-    </div>
-
-    <!-- Global Dashboard Filters -->
-    <div class="dashboard-filters card" style="margin-bottom: 20px; display: flex; gap: 15px; flex-wrap: wrap; align-items: flex-end; padding: 15px; background: #fff; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
-        <div class="filter-group" style="display: flex; flex-direction: column; gap: 5px;">
-            <label for="outstandingYearFilter" style="font-size: 13px; font-weight: 600; color: #555;">Academic Year</label>
-            <select id="outstandingYearFilter" class="form-control" style="padding: 8px; border: 1px solid #ddd; border-radius: 4px; min-width: 120px;"></select>
+<div class="container">
+    <!-- Sidebar Navigation -->
+    <aside class="sidebar">
+        <div class="sidebar-brand">
+            <h2 class="logo">ACCOUNTS PORTAL</h2>
         </div>
         
-        <div class="filter-group" style="display: flex; flex-direction: column; gap: 5px;">
-            <label for="outstandingTermFilter" style="font-size: 13px; font-weight: 600; color: #555;">Term</label>
-            <select id="outstandingTermFilter" class="form-control" style="padding: 8px; border: 1px solid #ddd; border-radius: 4px; min-width: 120px;">
-                <option value="">All Terms (Annual)</option>
-                <option value="Term 1">Term 1</option>
-                <option value="Term 2">Term 2</option>
-                <option value="Term 3">Term 3</option>
-            </select>
-        </div>
+        <ul class="menu">
+            <!-- <li class="active" data-section="dashboardSection"><a href="#">📊 Overview</a></li> -->
+            <li data-section="feesPaymentOverviewSection"><a href="#">💰 Payment Overview</a></li>
+            <li data-section="postedFeesSection"><a href="#">📋 Fee Structures</a></li>
+            <li data-section="feeBalanceSection"><a href="#">📉 Fee Balance</a></li>
+            <li data-section="instructionsSection"><a href="#">📢 Payment Instructions</a></li>
+            <li><a href="student-accounts.html">👥 Learner Accounts</a></li>
+           <!-- <li><a href="reports.html">📈 Reports</a></li>-->
+            <!-- <li><a href="settings.html">⚙️ Settings</a></li>-->
+        </ul>
         
-        <div class="filter-group" style="display: flex; flex-direction: column; gap: 5px;">
-            <label for="outstandingClassFilter" style="font-size: 13px; font-weight: 600; color: #555;">Grade</label>
-            <select id="outstandingClassFilter" class="form-control" style="padding: 8px; border: 1px solid #ddd; border-radius: 4px; min-width: 150px;">
-                <option value="">All Grades</option>
-                <option value="Grade 1">Grade 1</option>
-                <option value="Grade 2">Grade 2</option>
-                <option value="Grade 3">Grade 3</option>
-                <option value="Grade 4">Grade 4</option>
-                <option value="Grade 5">Grade 5</option>
-                <option value="Grade 6">Grade 6</option>
-                <option value="Grade 7">Grade 7</option>
-                <option value="Grade 8">Grade 8</option>
-                <option value="Grade 9">Grade 9</option>
-                <option value="Grade 10">Grade 10</option>
-                <option value="Grade 11">Grade 11</option>
-                <option value="Grade 12">Grade 12</option>
-            </select>
-        </div>
-    </div>
+        <button id="refreshBtn" class="refresh-btn">🔄 Refresh</button><br><br>
+        <button id="logoutBtn" class="logout-btn">Logout</button>
+    </aside>
 
-    <!-- ===============================
-         SUMMARY CARDS
-    =============================== -->
-    <section class="stats-grid">
-      <div class="stat-card students">
-        <h4>Total Learners</h4>
-        <p id="totalLearners">0</p>
-      </div>
+    <!-- Main Content Area -->
+    <main class="main">
+        <header class="topbar">
+            <h1 id="pageTitle">ACCOUNTS</h1>
+        </header>
 
-      <div class="stat-card expected">
-        <h4>Total Expected</h4>
-        <p id="totalExpected">KES 0</p>
-      </div>
-
-      <div class="stat-card paid">
-        <h4>Total Paid</h4>
-        <p id="totalPaid">KES 0</p>
-      </div>
-
-      <div class="stat-card balance">
-        <h4>Outstanding Balance</h4>
-        <p id="totalBalance">KES 0</p>
-      </div>
-    </section>
-
-    <!-- TABS NAVIGATION -->
-    <div class="tabs-nav">
-      <button class="tab-btn active" data-tab="postedFees">Posted Fee Structures</button>
-      <button class="tab-btn" data-tab="collectionOverview">Collection Overview</button>
-      <button class="tab-btn" data-tab="outstandingReport">Outstanding Fees Report</button>
-    </div>
-
-    <div id="postedFees" class="tab-pane active">
+        <section id="contentArea">
+    <!-- POSTED FEES SECTION -->
+    <div id="postedFeesSection" class="main-section" style="display: none;">
     <!-- POSTED FEES -->
     <div class="card" style="margin-top: 0;">
+      <!-- Local Filters for Posted Fee Structures -->
+      <div class="section-filters">
+          <div class="filter-item">
+              <label for="postedFeesYearFilter" style="font-size: 13px; font-weight: 600; color: #555;">Academic Year</label>
+              <select id="postedFeesYearFilter" class="form-control" style="padding: 8px; border: 1px solid #ddd; border-radius: 4px; min-width: 120px;"></select>
+          </div>
+          
+          <div class="filter-item">
+              <label for="postedFeesClassFilter" style="font-size: 13px; font-weight: 600; color: #555;">Grade</label>
+              <select id="postedFeesClassFilter" class="form-control" style="padding: 8px; border: 1px solid #ddd; border-radius: 4px; min-width: 150px;">
+                  <option value="">All Grades</option>
+                  <option value="Grade 1">Grade 1</option>
+                  <option value="Grade 2">Grade 2</option>
+                  <option value="Grade 3">Grade 3</option>
+                  <option value="Grade 4">Grade 4</option>
+                  <option value="Grade 5">Grade 5</option>
+                  <option value="Grade 6">Grade 6</option>
+                  <option value="Grade 7">Grade 7</option>
+                  <option value="Grade 8">Grade 8</option>
+                  <option value="Grade 9">Grade 9</option>
+                  <option value="Grade 10">Grade 10</option>
+                  <option value="Grade 11">Grade 11</option>
+                  <option value="Grade 12">Grade 12</option>
+              </select>
+          </div>
+      </div>
+
       <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
         <h3>Posted Fee Structures</h3>
         <div style="display:flex; gap:10px;">
           <button id="openPostFeeBtn" class="btn primary-btn">➕ Post Fee Structure</button>
           <button id="downloadFeeStructuresPDF" class="btn secondary-btn" style="display: flex; align-items: center; gap: 8px;">
-          <span>📄</span>
+         <!--- <span>📄</span>
           Download PDF
-        </button>
+        </button>-->
         </div>
       </div>
       
@@ -159,39 +183,48 @@
     </div>
     </div>
 
-    <div id="collectionOverview" class="tab-pane">
-    <!-- ===============================
-         CHART
-    =============================== -->
+    <!-- FEE BALANCE SECTION -->
+    <div id="feeBalanceSection" class="main-section" style="display: none;">
     <div class="card" style="margin-top: 0;">
-      <h3>Fee Collection Overview</h3>
-      <canvas id="feesChart" height="120"></canvas>
-    </div>
-    </div>
-
-    <div id="outstandingReport" class="tab-pane">
-    <!-- OUTSTANDING FEES REPORT -->
-    <div class="card" style="margin-top: 0;">
-        <h3>Outstanding Fees Report</h3>
-        <div class="flex-row" style="margin-bottom: 20px;">
-            <div class="col">
-                <label>Sort By</label>
-                <select id="outstandingSortFilter">
+        <h3>Learner Fee Balances</h3>
+        <div class="section-filters">
+            <div class="filter-item">
+                <label for="outstandingYearFilter" style="font-size: 13px; font-weight: 600; color: #555;">Academic Year</label>
+                <select id="outstandingYearFilter" class="form-control" style="padding: 8px; border: 1px solid #ddd; border-radius: 4px; min-width: 120px;"></select>
+            </div>
+            <div class="filter-item">
+                <label for="outstandingGradeFilter" style="font-size: 13px; font-weight: 600; color: #555;">Grade</label>
+                <select id="outstandingGradeFilter" class="form-control" style="padding: 8px; border: 1px solid #ddd; border-radius: 4px; min-width: 150px;">
+                    <option value="">All Grades</option>
+                    <option value="Grade 1">Grade 1</option>
+                    <option value="Grade 2">Grade 2</option>
+                    <option value="Grade 3">Grade 3</option>
+                    <option value="Grade 4">Grade 4</option>
+                    <option value="Grade 5">Grade 5</option>
+                    <option value="Grade 6">Grade 6</option>
+                    <option value="Grade 7">Grade 7</option>
+                    <option value="Grade 8">Grade 8</option>
+                    <option value="Grade 9">Grade 9</option>
+                    <option value="Grade 10">Grade 10</option>
+                    <option value="Grade 11">Grade 11</option>
+                    <option value="Grade 12">Grade 12</option>
+                </select>
+            </div>
+            <div class="filter-item">
+                <label for="outstandingSortFilter" style="font-size: 13px; font-weight: 600; color: #555;">Sort By</label>
+                <select id="outstandingSortFilter" class="form-control" style="padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
                     <option value="balance_desc" selected>Balance (High - Low)</option>
                     <option value="balance_asc">Balance (Low - High)</option>
                     <option value="name_asc">Name (A-Z)</option>
                     <option value="admission_asc">Admission (Asc)</option>
                 </select>
             </div>
-            
-            <div class="col" style="flex: 2;">
-                <label>Search</label>
-                <input type="text" id="outstandingSearchInput" placeholder="Search by name or admission...">
-            </div>
-            <div class="col form-group" style="display:flex; align-items:flex-end;">
-                 <button id="downloadOutstandingPDF" class="btn secondary-btn">📄 Download PDF</button>
+            <div class="filter-item" style="flex: 1;">
+                <label for="outstandingSearchInput" style="font-size: 13px; font-weight: 600; color: #555;">Search</label>
+                <input type="text" id="outstandingSearchInput" class="form-control" style="padding: 8px; border: 1px solid #ddd; border-radius: 4px; width: 100%;" placeholder="Search by name or admission...">
             </div>
             
+            <button id="downloadOutstandingPDF" class="btn secondary-btn">📄 PDF</button>
         </div>
         <table id="outstandingFeesTable">
             <thead>
@@ -205,7 +238,7 @@
                 </tr>
             </thead>
             <tbody id="outstandingFeesTableBody">
-                <tr><td colspan="4" style="text-align: center;">Loading...</td></tr>
+                <tr><td colspan="6" style="text-align: center;">Loading...</td></tr>
             </tbody>
         </table>
         <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 15px; align-items: center;">
@@ -214,6 +247,94 @@
             <button id="outstandingNextBtn" class="btn secondary-btn" disabled>Next</button>
         </div>
     </div>
+    </div>
+
+    <!-- FEES PAYMENT OVERVIEW SECTION -->
+    <div id="feesPaymentOverviewSection" class="main-section" style="display: none;">
+        <div class="card">
+            <!-- Local Filters for Payment Overview -->
+            <div class="section-filters">
+                <div class="filter-item">
+                    <label for="overviewYearFilter" style="font-size: 13px; font-weight: 600; color: #555;">Academic Year</label>
+                    <select id="overviewYearFilter" class="form-control" style="padding: 8px; border: 1px solid #ddd; border-radius: 4px; min-width: 120px;"></select>
+                </div>
+                
+                <div class="filter-item">
+                    <label for="overviewTermFilter" style="font-size: 13px; font-weight: 600; color: #555;">Term</label>
+                    <select id="overviewTermFilter" class="form-control" style="padding: 8px; border: 1px solid #ddd; border-radius: 4px; min-width: 120px;">
+                        <option value="">All Terms (Annual)</option>
+                        <option value="Term 1">Term 1</option>
+                        <option value="Term 2">Term 2</option>
+                        <option value="Term 3">Term 3</option>
+                    </select>
+                </div>
+                
+                <div class="filter-item">
+                    <label for="overviewClassFilter" style="font-size: 13px; font-weight: 600; color: #555;">Grade</label>
+                    <select id="overviewClassFilter" class="form-control" style="padding: 8px; border: 1px solid #ddd; border-radius: 4px; min-width: 150px;">
+                        <option value="">All Grades</option>
+                        <option value="Grade 1">Grade 1</option>
+                        <option value="Grade 2">Grade 2</option>
+                        <option value="Grade 3">Grade 3</option>
+                        <option value="Grade 4">Grade 4</option>
+                        <option value="Grade 5">Grade 5</option>
+                        <option value="Grade 6">Grade 6</option>
+                        <option value="Grade 7">Grade 7</option>
+                        <option value="Grade 8">Grade 8</option>
+                        <option value="Grade 9">Grade 9</option>
+                        <option value="Grade 10">Grade 10</option>
+                        <option value="Grade 11">Grade 11</option>
+                        <option value="Grade 12">Grade 12</option>
+                    </select>
+                </div>
+            </div>
+
+            <h3>Fees Payment Overview</h3>
+            <p style="color: #64748b; margin-bottom: 20px;">Summary of fee collection and overall financial status.</p>
+            
+            <!-- SUMMARY CARDS -->
+            <section class="stats-grid">
+              <div class="stat-card students"><h4>Total Learners</h4><p id="totalLearners">0</p></div>
+              <div class="stat-card expected"><h4>Total Expected</h4><p id="totalExpected">KES 0</p></div>
+              <div class="stat-card paid"><h4>Total Paid</h4><p id="totalPaid">KES 0</p></div>
+              <div class="stat-card balance"><h4>Outstanding Balance</h4><p id="totalBalance">KES 0</p></div>
+            </section>
+
+            <!-- CHART (Moved here) -->
+            <div class="card" style="margin-top: 20px;"><h3>Fee Collection Overview</h3><canvas id="feesChart" height="120"></canvas></div>
+        </div>
+    </div>
+
+    <!-- INDEPENDENT INSTRUCTIONS SECTION -->
+    <div id="instructionsSection" class="main-section" style="display: none;">
+        <div class="card">
+            <h3>Global Payment Instructions</h3>
+            <p style="color: #64748b; margin-bottom: 20px;">These instructions appear at the bottom of all downloaded Fee Structures and Outstanding Fees reports.</p>
+
+            <!-- Local Year Filter for Global Fee Note -->
+            <div class="section-filters">
+              <div class="filter-item">
+                  <label for="globalNoteYearFilter" style="font-size: 13px; font-weight: 600; color: #555;">Academic Year</label>
+                  <select id="globalNoteYearFilter" class="form-control" style="padding: 8px; border: 1px solid #ddd; border-radius: 4px; min-width: 120px;"></select>
+              </div>
+            </div>
+            
+            <div id="globalFeeNoteSection" style="padding: 20px; background: #fffbeb; border: 1px solid #fef3c7; border-radius: 12px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                    <h4 style="margin: 0; color: #92400e;">📢 Official Instructions for <span id="noteYearDisplay">Year</span></h4>
+                    <button id="editGlobalNoteBtn" class="btn secondary-btn">✏️ Edit Text</button>
+                </div>
+                <p id="globalNoteContent" style="font-size: 1rem; color: #78350f; line-height: 1.6; white-space: pre-wrap; padding: 10px; background: rgba(255,255,255,0.5); border-radius: 8px;">Loading...</p>
+                
+                <div id="globalNoteEditMode" style="display: none; margin-top: 15px;">
+                    <textarea id="globalFeeNoteInput" class="form-control" rows="8" style="width: 100%; padding: 12px; margin-bottom: 15px; font-family: monospace;" placeholder="Enter Paybill, Bank details, or payment deadlines..."></textarea>
+                    <div style="display: flex; gap: 10px;">
+                        <button id="saveGlobalNoteBtn" class="btn primary-btn" style="padding: 10px 20px;">Save Changes</button>
+                        <button id="cancelGlobalNoteBtn" class="btn secondary-btn" style="padding: 10px 20px;">Cancel</button>
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
 
   </div>
@@ -228,7 +349,21 @@
 
         <div class="form-group">
           <label>Grade</label>
-          <input type="text" id="feeGrade" placeholder="e.g. Grade 4" />
+          <select id="feeGrade" class="form-control" style="padding: 8px; border: 1px solid #ddd; border-radius: 4px; min-width: 150px;">
+              <option value="">Select Grade</option>
+              <option value="Grade 1">Grade 1</option>
+              <option value="Grade 2">Grade 2</option>
+              <option value="Grade 3">Grade 3</option>
+              <option value="Grade 4">Grade 4</option>
+              <option value="Grade 5">Grade 5</option>
+              <option value="Grade 6">Grade 6</option>
+              <option value="Grade 7">Grade 7</option>
+              <option value="Grade 8">Grade 8</option>
+              <option value="Grade 9">Grade 9</option>
+              <option value="Grade 10">Grade 10</option>
+              <option value="Grade 11">Grade 11</option>
+              <option value="Grade 12">Grade 12</option>
+          </select>
         </div>
 
         <div class="form-group">
@@ -341,12 +476,16 @@
       <div id="studentFeeModalBody" style="max-height: 70vh; overflow-y: auto;"></div>
     </div>
   </div>
+        </section>
+    </main>
+</div>
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.28/jspdf.plugin.autotable.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
   <script src="js/config.js"></script>
   <script src="js/auth-service.js"></script>
+  <script src="js/ui.js"></script>
   <script src="js/accounts.js"></script>
 </body>
 </html>

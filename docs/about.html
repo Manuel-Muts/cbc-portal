@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>About | Secure CBE Portal</title>
+    <link rel="stylesheet" href="css/about.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+</head>
+<body>
+
+    <header class="about-header">
+        <div class="header-content">
+            <a href="javascript:history.back()" class="back-btn"><i class="fas fa-arrow-left"></i> Dashboard</a>
+            <h1>About the Portal</h1>
+            <div class="spacer"></div>
+        </div>
+    </header>
+
+    <main class="about-container">
+        <!-- Mission Section -->
+        <section class="glass-card mission-section">
+            <div class="icon-circle"><i class="fas fa-rocket"></i></div>
+            <h2>Our Mission</h2>
+            <p>To provide a robust, secure, and intuitive digital ecosystem for <strong>Competency-Based Education (CBE)</strong>. We empower educators with real-time analytics and streamlined marks management, ensuring every learner's progress is tracked with precision.</p>
+        </section>
+
+        <!-- Features Grid -->
+        <section class="features-grid">
+            <div class="glass-card feature">
+                <i class="fas fa-chart-line"></i>
+                <h3>Advanced Analytics</h3>
+                <p>Comprehensive Dean reports with trend lines, subject performance analysis, and student progress tracking.</p>
+            </div>
+            <div class="glass-card feature">
+                <i class="fas fa-user-shield"></i>
+                <h3>Secure Infrastructure</h3>
+                <p>Multi-role authentication for Admins, Teachers, and Accounts, protected by encrypted protocols.</p>
+            </div>
+            <div class="glass-card feature">
+                <i class="fas fa-file-invoice-dollar"></i>
+                <h3>Fee Management</h3>
+                <p>Integrated ledger systems for tracking expected, paid, and balance amounts per learner.</p>
+            </div>
+            <div class="glass-card feature">
+                <i class="fas fa-cloud-upload-alt"></i>
+                <h3>Resource Sharing</h3>
+                <p>Digital repository for study materials, assignments, and school-wide announcements.</p>
+            </div>
+        </section>
+
+        <!-- Credits & Tech -->
+        <section class="glass-card credits-section">
+            <h2>System Development</h2>
+            <p>Developed and Maintained by <strong>Muts Tech Ltd</strong>.</p>
+            <div class="tech-tags">
+                <span><i class="fab fa-node-js"></i> Node.js</span>
+                <span><i class="fas fa-database"></i> MongoDB</span>
+                <span><i class="fab fa-js"></i> ES6+</span>
+                <span><i class="fas fa-file-pdf"></i> jsPDF Engine</span>
+            </div>
+        </section>
+
+        <!-- Version Info -->
+        <div class="version-info">
+            <p>System Version: <strong>v2.1.0-Stable</strong></p>
+            <p>&copy; 2026 Muts Tech Ltd · All Rights Reserved</p>
+        </div>
+    </main>
+
+    <script>
+        // Optional: Simple scroll animation
+        document.addEventListener('DOMContentLoaded', () => {
+            const cards = document.querySelectorAll('.glass-card');
+            cards.forEach((card, index) => {
+                setTimeout(() => card.style.opacity = '1', index * 100);
+            });
+        });
+    </script>
+</body>
+</html>

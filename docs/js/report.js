@@ -155,7 +155,8 @@ async function getImageBase64(url) {
   // 2. Fetch School and Enrollment info in parallel for better performance
   try {
     const [schoolRes, enrollmentRes] = await Promise.all([
-      fetch(`${BACKEND_URL}/api/users/my-school`, { headers: { Authorization: `Bearer ${token}` } }),
+      // Request school info with logo specifically for report generation
+      fetch(`${BACKEND_URL}/api/users/my-school?includeLogo=true`, { headers: { Authorization: `Bearer ${token}` } }),
       fetch(`${BACKEND_URL}/api/enrollments/my-enrollment`, { headers: { Authorization: `Bearer ${token}` } }).catch(() => null)
     ]);
 
