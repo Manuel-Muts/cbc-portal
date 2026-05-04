@@ -1,11 +1,18 @@
 document.addEventListener("DOMContentLoaded", () => {
     // --- 1. MOBILE MENU ---
-    const menuToggle = document.querySelector('.menu-toggle');
-    const nav = document.querySelector('nav ul');
-    if (menuToggle) {
-        menuToggle.addEventListener('click', () => nav.classList.toggle('active'));
-    }
+ const toggle = document.getElementById("menuToggle");
+const menu = document.getElementById("navMenu");
+const overlay = document.getElementById("menuOverlay");
 
+toggle.addEventListener("click", () => {
+  menu.classList.toggle("active");
+  overlay.classList.toggle("active");
+});
+
+overlay.addEventListener("click", () => {
+  menu.classList.remove("active");
+  overlay.classList.remove("active");
+});
     // --- 2. RELIABILITY SLIDER ---
     const sliderContainers = document.querySelectorAll('.slider-container');
     
