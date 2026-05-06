@@ -4,15 +4,19 @@ document.addEventListener("DOMContentLoaded", () => {
 const menu = document.getElementById("navMenu");
 const overlay = document.getElementById("menuOverlay");
 
-toggle.addEventListener("click", () => {
-  menu.classList.toggle("active");
-  overlay.classList.toggle("active");
-});
+if (toggle) {
+  toggle.addEventListener("click", () => {
+    if (menu) menu.classList.toggle("active");
+    if (overlay) overlay.classList.toggle("active");
+  });
+}
 
-overlay.addEventListener("click", () => {
-  menu.classList.remove("active");
-  overlay.classList.remove("active");
-});
+if (overlay) {
+  overlay.addEventListener("click", () => {
+    if (menu) menu.classList.remove("active");
+    overlay.classList.remove("active");
+  });
+}
     // --- 2. RELIABILITY SLIDER ---
     const sliderContainers = document.querySelectorAll('.slider-container');
     

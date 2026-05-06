@@ -12,12 +12,9 @@ import { calculateBalance } from "../services/balanceService.js";
 // ---------------------------
 const normalizeGrade = (grade) => {
   if (!grade) return null;
-
-  // numeric grades: "2", 2 → "Grade 2"
-  if (!isNaN(grade)) {
-    return `Grade ${grade}`;
-  }
-
+  const str = String(grade).trim();
+  if (!isNaN(str) && str !== "") return `Grade ${str}`;
+  if (str.length <= 2 && /^\d+[A-Z]?$/i.test(str)) return `Grade ${str}`;
   return grade;
 };
 

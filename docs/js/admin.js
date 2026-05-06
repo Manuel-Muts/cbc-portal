@@ -80,7 +80,7 @@ const BACKEND_URL = config.api.baseURL.replace('/api', '');
 
 async function loadSchoolInfo(forceReload = false) {
   const CACHE_KEY = "admin_school_info_cache";
-  const CACHE_DURATION = 30 * 60 * 1000; // 30 minutes
+  const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes (reduced from 30 to catch updates faster)
 
   if (!forceReload) {
     const cached = localStorage.getItem(CACHE_KEY);
@@ -96,6 +96,11 @@ async function loadSchoolInfo(forceReload = false) {
         }
       } catch (e) { console.warn("Cache read error:", e); }
     }
+  }
+  
+  // Clear expired cache
+  if (!forceReload) {
+    localStorage.removeItem(CACHE_KEY);
   }
 
   try {
@@ -160,6 +165,7 @@ function renderSchoolInfo() {
   }
 
   renderAdminSignature();
+  applySchoolTypeToGradeSelectors();
 
   // For PDF export (ensure window.schoolLogoElem is defined in admin.html if needed)
   const pdfSchoolLogo = document.getElementById("pdfSchoolLogo"); // Assuming an element for PDF logo
@@ -394,11 +400,73 @@ function attachAdminSignatureLogic() {
   })();
 
   const GRADE_ORDER = ["Grade 1", "Grade 2", "Grade 3", "Grade 4", "Grade 5", "Grade 6", "Grade 7", "Grade 8", "Grade 9", "Grade 10", "Grade 11", "Grade 12"];
-  
+
+  const SCHOOL_TYPES = {
+    full: {
+      label: "Full School (Grades 1-12)",
+      rangeOptions: ["1-3", "4-6", "7-9", "10-12"],
+      gradeOptions: ["1","2","3","4","5","6","7","8","9","10","11","12"]
+    },
+    primary_junior: {
+      label: "Primary + Junior (Grades 1-9)",
+      rangeOptions: ["1-3", "4-6", "7-9"],
+      gradeOptions: ["1","2","3","4","5","6","7","8","9"]
+    },
+    senior: {
+      label: "Senior School (Grades 10-12)",
+      rangeOptions: ["10-12"],
+      gradeOptions: ["10","11","12"]
+    }
+  };
+
   const normalizeGrade = (g) => {
     if (!g) return "";
     const match = String(g).match(/\d+/);
     return match ? `Grade ${match[0]}` : g;
+  };
+
+  const getSchoolTypeKey = () => {
+    return (schoolInfo && schoolInfo.schoolType && SCHOOL_TYPES[schoolInfo.schoolType]) ? schoolInfo.schoolType : 'full';
+  };
+
+  const populateGradeRangeOptions = () => {
+    if (!gradeRangeSelect) return;
+    const schoolType = getSchoolTypeKey();
+    const options = SCHOOL_TYPES[schoolType].rangeOptions;
+
+    gradeRangeSelect.innerHTML = '<option value="">-- Select Range --</option>';
+    options.forEach(range => {
+      const opt = document.createElement('option');
+      opt.value = range;
+      const [start, end] = range.split('-').map(Number);
+      opt.textContent = start === end ? `Grade ${start}` : `Grade ${start}-${end}`;
+      gradeRangeSelect.appendChild(opt);
+    });
+  };
+
+  const populateClassGradeOptions = () => {
+    if (!classGradeSelect) return;
+    const schoolType = getSchoolTypeKey();
+    const options = SCHOOL_TYPES[schoolType].gradeOptions;
+
+    classGradeSelect.innerHTML = '';
+    options.forEach(grade => {
+      const opt = document.createElement('option');
+      opt.value = grade;
+      opt.textContent = `Grade ${grade}`;
+      classGradeSelect.appendChild(opt);
+    });
+  };
+
+  const resetGradeSelection = () => {
+    if (gradesSelect) gradesSelect.innerHTML = '';
+    if (gradeRangeSelect) gradeRangeSelect.value = '';
+  };
+
+  const applySchoolTypeToGradeSelectors = () => {
+    populateGradeRangeOptions();
+    populateClassGradeOptions();
+    resetGradeSelection();
   };
 
   const getNextGrade = (currentGrade) => {

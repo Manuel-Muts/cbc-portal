@@ -22,7 +22,7 @@ import accountsRoutes from "./routes/accountsRoutes.js";
 import reportsRoutes from "./routes/reportsRoutes.js";
 import { mpesaCallback } from './controllers/mpesaController.js';
 import { startCronJobs } from './services/cronService.js';
-
+import expenseRoutes from './routes/expenseRoutes.js'; // 🆕
 
 dotenv.config();
 
@@ -133,7 +133,8 @@ app.use("/api/promotions", promotionRoutes);
 app.use("/api/enrollments", enrollmentRoutes);
 app.use("/api/accounts", accountsRoutes);
 app.use("/api/payments", paymentRoutes); // Use paymentRoutes
-app.use("/api/reports", reportsRoutes);
+app.use("/api/reports", reportsRoutes); 
+app.use('/api/expenses', expenseRoutes); // 🆕
 // app.use("/api/payments", paymentsRoutes); // Removed: payments handled in userRoutes
 
 

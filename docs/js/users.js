@@ -98,6 +98,40 @@
   const usersCache = {};
   let currentRoleTab = "student"; // Default view: Learners (Students)
 
+  // ---------------------------
+  // SCHOOL TYPE & GRADE HELPERS
+  // ---------------------------
+  const SCHOOL_TYPES = {
+    full: {
+      label: "Full School (Grades 1-12)",
+      gradeOptions: ["1","2","3","4","5","6","7","8","9","10","11","12"]
+    },
+    primary_junior: {
+      label: "Primary + Junior (Grades 1-9)",
+      gradeOptions: ["1","2","3","4","5","6","7","8","9"]
+    },
+    senior: {
+      label: "Senior School (Grades 10-12)",
+      gradeOptions: ["10","11","12"]
+    }
+  };
+
+  let schoolInfo = null;
+
+  function populateRegistrationGrades() {
+    const select = document.getElementById("studentGrade");
+    if (!select) return;
+    const type = (schoolInfo && schoolInfo.schoolType && SCHOOL_TYPES[schoolInfo.schoolType]) ? schoolInfo.schoolType : 'full';
+    const grades = SCHOOL_TYPES[type].gradeOptions;
+    select.innerHTML = '<option value="">-- Select Grade --</option>';
+    grades.forEach(g => {
+      const opt = document.createElement("option");
+      opt.value = g;
+      opt.textContent = `Grade ${g}`;
+      select.appendChild(opt);
+    });
+  }
+
   // 🆕 Helper for consistent labels across tabs and headings
   function getRoleLabel(role) {
     if (role === "student") return "Registered Learners";
@@ -741,6 +775,12 @@ if (usersNextPageBtn) {
     userProfile = await authService.getUserProfile(["admin"]);
     if (!userProfile) return;
     authService.initLogout();
+
+    // Fetch school info to determine grade options for learner registration
+    schoolInfo = await secureFetch(`${API_BASE}/my-school`);
+    if (schoolInfo) {
+      populateRegistrationGrades();
+    }
 
     setupNavigation();
     setupUserTypeTabs();

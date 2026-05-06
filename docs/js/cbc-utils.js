@@ -34,6 +34,25 @@ window.cbcUtils = {
     ],
 
     /**
+     * Official Grade Progression
+     */
+    GRADE_ORDER: ["PP1", "PP2", "Grade 1", "Grade 2", "Grade 3", "Grade 4", "Grade 5", "Grade 6", "Grade 7", "Grade 8", "Grade 9", "Grade 10", "Grade 11", "Grade 12"],
+
+    /**
+     * Ensures grades are always in the format "Grade X"
+     */
+    normalizeGrade: (g) => {
+        if (!g) return "";
+        const str = String(g).trim();
+        // If it's just a number (e.g., "5"), prefix it
+        if (!isNaN(str) && str !== "") return `Grade ${str}`;
+        // If it's a string like "5W", prefix it
+        if (str.length <= 2 && /^\d+[A-Z]?$/i.test(str)) return `Grade ${str}`;
+        // Fallback for everything else
+        return str;
+    },
+
+    /**
      * Calculates weighted final score for Senior School (Grade 10-12)
      */
     calculateFinalScore: (ca, pw, exam) => {

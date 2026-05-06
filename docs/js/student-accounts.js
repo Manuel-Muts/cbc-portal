@@ -35,7 +35,7 @@
   let totalPages = 1;
 
   // Cache State
-  let userProfile = null;
+  let userProfile = null; 
   let schoolInfoCache = null;
   const accountsCache = new Map(); 
   const ledgerCache = new Map();
@@ -107,13 +107,77 @@
   }
 
   async function getSchoolInfo() {
-    if (schoolInfoCache) return schoolInfoCache;
+    const cacheKey = 'my-school-all';
+    if (schoolInfoCache && schoolInfoCache.has(cacheKey)) {
+      const cached = schoolInfoCache.get(cacheKey);
+      if (Date.now() - cached.timestamp < CACHE_TTL) {
+        return cached.data;
+      }
+    }
     try {
-      schoolInfoCache = await secureFetch(`${API_BASE}/my-school`);
-      return schoolInfoCache;
+      const schoolData = await secureFetch(`${API_BASE}/my-school`);
+      if (!(schoolInfoCache instanceof Map)) schoolInfoCache = new Map();
+      schoolInfoCache.set(cacheKey, { timestamp: Date.now(), data: schoolData });
+      return schoolData;
     } catch (e) {
       console.error("School info fetch failed", e);
-      return { name: "SCHOOL NAME" };
+      return { name: "SCHOOL NAME", schoolType: "full" };
+    }
+  }
+
+  function showToast(message, type = "info") {
+    const toast = document.createElement("div");
+    toast.style.cssText = `
+      position: fixed; top: 20px; left: 50%; transform: translateX(-50%);
+      padding: 12px 24px; border-radius: 8px; color: white; font-size: 14px;
+      font-weight: 600; z-index: 10001; box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+      transition: all 0.3s ease;
+    `;
+    if (type === "success") toast.style.backgroundColor = "#10b981";
+    else if (type === "error") toast.style.backgroundColor = "#ef4444";
+    else toast.style.backgroundColor = "#3b82f6";
+    toast.textContent = message;
+    document.body.appendChild(toast);
+    setTimeout(() => {
+      toast.style.opacity = "0";
+      setTimeout(() => toast.remove(), 300);
+    }, 3000);
+  }
+
+  const SCHOOL_TYPES = {
+    full: {
+      label: "Full School (Grades 1-12)",
+      gradeOptions: ["1","2","3","4","5","6","7","8","9","10","11","12"]
+    },
+    primary_junior: {
+      label: "Primary + Junior (Grades 1-9)",
+      gradeOptions: ["1","2","3","4","5","6","7","8","9"]
+    },
+    senior: {
+      label: "Senior School (Grades 10-12)",
+      gradeOptions: ["10","11","12"]
+    }
+  };
+
+  function getSchoolTypeKey() {
+    // schoolInfoCache is a Map, so retrieve the 'my-school-all' entry
+    const schoolInfo = schoolInfoCache.get('my-school-all')?.data;
+    return (schoolInfo && schoolInfo.schoolType && SCHOOL_TYPES[schoolInfo.schoolType]) ? schoolInfo.schoolType : 'full';
+  }
+
+  // New function to populate grade filters (Adapted from accounts.js)
+  function populateGradeFilters() {
+    const schoolType = getSchoolTypeKey();
+    const grades = SCHOOL_TYPES[schoolType].gradeOptions;
+    if (classFilter) { // Ensure classFilter element exists
+      classFilter.innerHTML = '<option value="">All Grades</option>'; // Add an "All" option
+      grades.forEach(g => {
+        const option = document.createElement("option");
+        const gradeLabel = `Grade ${g}`;
+        option.value = gradeLabel;
+        option.textContent = gradeLabel;
+        classFilter.appendChild(option);
+      });
     }
   }
 
@@ -275,38 +339,45 @@
     const method = document.getElementById("paymentMethod").value;
     const reference = document.getElementById("paymentReference").value;
     const term = document.getElementById("paymentTerm").value;
+    const academicYear = yearFilter?.value || new Date().getFullYear(); 
 
     if (!amount || !reference) {
       showToast("Amount and Reference are required", "error");
       return;
     }
 
-    savePaymentBtn.textContent = "Processing...";
     savePaymentBtn.disabled = true;
+    savePaymentBtn.textContent = "Processing...";
 
-    // Matching endpoints from original accounts.js logic (/users/record)
-    const res = await secureFetch(`${API_BASE}/users/record`, {
-      method: "POST",
-      body: JSON.stringify({
-        admission: currentStudentAdmission,
-        amount: Number(amount),
-        method: method.toLowerCase(),
-        reference,
-        term
-      })
-    });
+    try {
+      // Matching endpoints from original accounts.js logic (/users/record)
+      const res = await secureFetch(`${API_BASE}/users/record`, {
+        method: "POST",
+        body: JSON.stringify({
+          admission: currentStudentAdmission,
+          amount: Number(amount),
+          method: method.toLowerCase(),
+          reference,
+          term,
+          academicYear: Number(academicYear) // Add academicYear here
+        })
+      });
 
-    if (res) {
-      showToast("Payment recorded successfully", "success");
-      paymentModal.classList.remove("visible");
-      setTimeout(() => paymentModal.style.display = "none", 200);
-      accountsCache.clear(); // Invalidate cache on update
-      if (currentStudentAdmission) ledgerCache.delete(currentStudentAdmission);
-      loadAccounts(currentPage, true);
+      if (res) {
+        showToast("Payment recorded successfully", "success");
+        paymentModal.classList.remove("visible");
+        setTimeout(() => paymentModal.style.display = "none", 200);
+        accountsCache.clear(); // Invalidate cache on update
+        if (currentStudentAdmission) ledgerCache.delete(currentStudentAdmission);
+        loadAccounts(currentPage, true);
+      }
+    } catch (err) {
+      console.error("Record Payment Error:", err);
+      showToast(err.message || "Failed to record payment", "error");
+    } finally {
+      savePaymentBtn.textContent = "Save Payment";
+      savePaymentBtn.disabled = false;
     }
-
-    savePaymentBtn.textContent = "Save Payment";
-    savePaymentBtn.disabled = false;
   });
 
   cancelPaymentBtn.addEventListener("click", () => {
@@ -862,7 +933,11 @@
   (async function init() {
     userProfile = await authService.getUserProfile(["accounts", "admin"]);
     if (!userProfile) return;
+    // Initialize schoolInfoCache as a Map if it's not already
+    if (!(schoolInfoCache instanceof Map)) schoolInfoCache = new Map();
     authService.initLogout();
+    await getSchoolInfo(); // Fetch school info to populate schoolInfoCache
+    populateGradeFilters(); // Call after school info is loaded
     loadAccounts();
   })();
 })();

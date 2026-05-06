@@ -1,4 +1,5 @@
 // controllers/reportsController.js
+import mongoose from "mongoose"; 
 import FeeStructure from "../models/FeeStructure.js";
 import { User } from "../models/User.js";
 import { School } from "../models/school.js";
@@ -9,6 +10,16 @@ import axios from "axios"; // Import axios
 import Payment from "../models/Payment.js";
 import { PassThrough } from 'stream';
 import cache from "../utils/simpleCache.js";
+
+const getImageBase64FromUrl = async (url) => {
+  try {
+    const response = await axios.get(url, { responseType: 'arraybuffer' });
+    return `data:${response.headers['content-type']};base64,${Buffer.from(response.data).toString('base64')}`;
+  } catch (error) {
+    console.error(`Error fetching image from URL ${url}:`, error);
+    return null;
+  }
+};
 
 export const generateFeeStructuresPDF = async (req, res) => {
   try {
@@ -161,24 +172,26 @@ export const generateStudentFeesPDF = async (req, res) => {
     const { class: classFilter, term } = req.query;
     const currentAcademicYear = new Date().getFullYear();
 
-    // Get students with their balances
+    // 🔎 Get active enrollments for the current year
+    const enrollmentMatch = {
+      schoolId: req.user.schoolId,
+      academicYear: currentAcademicYear,
+      status: "active"
+    };
+    if (classFilter) enrollmentMatch.grade = classFilter;
+
+    const activeEnrollments = await StudentEnrollment.find(enrollmentMatch)
+      .select('studentId grade')
+      .lean();
+
+    const activeStudentIds = activeEnrollments.map(e => e.studentId);
+
+    // Get student details for active students only
     let students = await User.find({
+      _id: { $in: activeStudentIds },
       role: "student",
       schoolId: req.user.schoolId
-    }).select("name admission schoolId");
-
-    // Filter by class if specified
-    if (classFilter) {
-      const enrollments = await StudentEnrollment.find({
-        studentId: { $in: students.map(s => s._id) },
-        academicYear: currentAcademicYear,
-        status: "active",
-        grade: classFilter
-      }).select('studentId');
-
-      const enrolledStudentIds = enrollments.map(e => e.studentId);
-      students = students.filter(s => enrolledStudentIds.includes(s._id));
-    }
+    }).select("name admission schoolId").lean();
 
     // Get balance data for each student
     const studentData = [];
@@ -189,12 +202,6 @@ export const generateStudentFeesPDF = async (req, res) => {
           academicYear: currentAcademicYear,
           status: "active"
         }).select("grade");
-
-        if (!enrollment) {
-          enrollment = await StudentEnrollment.findOne({
-            studentId: student._id
-          }).sort({ academicYear: -1 }).select("grade");
-        }
 
         const balanceData = enrollment ? await calculateBalance(student, enrollment.grade, currentAcademicYear) : {
           totalFee: 0,
@@ -437,8 +444,19 @@ export const getOutstandingFees = async (req, res) => {
       return res.status(400).json({ message: 'No school assigned' });
     }
 
+    const school = await School.findById(req.user.schoolId).select('schoolType').lean();
+    if (!school) return res.status(404).json({ message: 'School not found' });
+
+    const schoolType = school.schoolType || 'full';
+    const SCHOOL_TYPES = {
+      full: { gradeOptions: ["Grade 1","Grade 2","Grade 3","Grade 4","Grade 5","Grade 6","Grade 7","Grade 8","Grade 9","Grade 10","Grade 11","Grade 12"] },
+      primary_junior: { gradeOptions: ["Grade 1","Grade 2","Grade 3","Grade 4","Grade 5","Grade 6","Grade 7","Grade 8","Grade 9"] },
+      senior: { gradeOptions: ["Grade 10","Grade 11","Grade 12"] }
+    };
+    const allowedGrades = SCHOOL_TYPES[schoolType].gradeOptions;
+
     // Cache key specific to school and query parameters
-    const cacheKey = `outstanding_${req.user.schoolId}_${JSON.stringify(req.query)}`;
+    const cacheKey = `outstanding_${req.user.schoolId}_${schoolType}_${JSON.stringify(req.query)}`;
     const cachedData = cache.get(cacheKey);
     if (cachedData) {
       return res.json(cachedData);
@@ -449,8 +467,20 @@ export const getOutstandingFees = async (req, res) => {
     const limit = parseInt(limitQuery) || 10;
     const yearToUse = parseInt(academicYear) || new Date().getFullYear();
 
-    // 1. Fetch Students
+    // 🔎 1. Get active enrollments for the selected year and school type
+    const enrollmentQuery = {
+      schoolId: req.user.schoolId,
+      academicYear: yearToUse,
+      status: "active",
+      grade: classFilter ? classFilter : { $in: allowedGrades }
+    };
+
+    const enrollments = await StudentEnrollment.find(enrollmentQuery).select("studentId grade stream").lean();
+    const activeStudentIds = enrollments.map(e => e.studentId);
+
+    // 2. Fetch Student details for active students only
     const userQuery = {
+      _id: { $in: activeStudentIds },
       role: "student",
       schoolId: req.user.schoolId
     };
@@ -463,21 +493,16 @@ export const getOutstandingFees = async (req, res) => {
     const students = await User.find(userQuery).select("name admission _id").lean();
 
     if (students.length === 0) {
-       return res.json({ students: [], total: 0, totalPages: 0, currentPage: page });
+       const response = { students: [], total: 0, totalPages: 0, currentPage: page };
+       cache.set(cacheKey, response, 120);
+       return res.json(response);
     }
 
-    const studentIds = students.map(s => s._id);
-
-    // 2. Batch Fetch Enrollments (Active only, matching current logic)
-    const enrollments = await StudentEnrollment.find({
-      studentId: { $in: studentIds },
-      academicYear: yearToUse,
-      status: "active"
-    }).select("studentId grade stream").lean();
+    const studentIdsToFetch = students.map(s => s._id);
 
     // 3. Batch Fetch Payments
     const payments = await Payment.find({
-      studentId: { $in: studentIds },
+      studentId: { $in: studentIdsToFetch },
       academicYear: yearToUse,
       isReversed: { $ne: true }
     }).select("studentId amount term").lean();
@@ -492,119 +517,75 @@ export const getOutstandingFees = async (req, res) => {
     let studentData = students.map(student => {
       const sId = String(student._id);
       const enrollment = enrollments.find(e => String(e.studentId) === sId);
-      
-      let balanceData;
-      
-      if (enrollment) {
-        // Calculate balance logic inline to avoid N+1 service calls
-        const fee = feeStructures.find(f => f.grade === enrollment.grade) || {};
-        const sPayments = payments.filter(p => String(p.studentId) === sId);
-        
-        // Group payments
-        const termPaid = { "Term 1": 0, "Term 2": 0, "Term 3": 0 };
-        sPayments.forEach(p => {
-          if (termPaid[p.term] !== undefined) termPaid[p.term] += p.amount;
-        });
-        
-        const totalPaid = Object.values(termPaid).reduce((a, b) => a + b, 0);
-        const totalFee = fee.totalFee || 0;
-        
-        balanceData = {
-          totalFee,
-          totalPaid,
-          balance: totalFee - totalPaid,
-          termBalances: {
-            term1: { fee: fee.term1Fee || 0, paid: termPaid["Term 1"], balance: (fee.term1Fee || 0) - termPaid["Term 1"] },
-            term2: { fee: fee.term2Fee || 0, paid: termPaid["Term 2"], balance: (fee.term2Fee || 0) - termPaid["Term 2"] },
-            term3: { fee: fee.term3Fee || 0, paid: termPaid["Term 3"], balance: (fee.term3Fee || 0) - termPaid["Term 3"] }
-          }
-        };
-      } else {
-        balanceData = {
-          totalFee: 0, totalPaid: 0, balance: 0,
-          termBalances: {
-            term1: { fee: 0, paid: 0, balance: 0 },
-            term2: { fee: 0, paid: 0, balance: 0 },
-            term3: { fee: 0, paid: 0, balance: 0 }
-          }
-        };
-      }
 
-      let className = "Not Enrolled";
-      if (enrollment) {
-        className = enrollment.stream ? `${enrollment.grade}${enrollment.stream}` : enrollment.grade;
-      }
+      if (!enrollment) return null;
+      
+      const fee = feeStructures.find(f => f.grade === enrollment.grade) || {};
+      const sPayments = payments.filter(p => String(p.studentId) === sId);
+      
+      const termPaid = { "Term 1": 0, "Term 2": 0, "Term 3": 0 };
+      sPayments.forEach(p => {
+        if (termPaid[p.term] !== undefined) termPaid[p.term] += p.amount;
+      });
+      
+      const totalPaid = Object.values(termPaid).reduce((a, b) => a + b, 0);
+      const totalFee = fee.totalFee || 0;
+      
+      const balanceData = {
+        totalFee,
+        totalPaid,
+        balance: totalFee - totalPaid,
+        termBalances: {
+          term1: { fee: fee.term1Fee || 0, paid: termPaid["Term 1"], balance: (fee.term1Fee || 0) - termPaid["Term 1"] },
+          term2: { fee: fee.term2Fee || 0, paid: termPaid["Term 2"], balance: (fee.term2Fee || 0) - termPaid["Term 2"] },
+          term3: { fee: fee.term3Fee || 0, paid: termPaid["Term 3"], balance: (fee.term3Fee || 0) - termPaid["Term 3"] }
+        }
+      };
 
       return {
         studentId: student._id,
         admission: student.admission,
-        className: className,
+        className: enrollment.stream ? `${enrollment.grade}${enrollment.stream}` : enrollment.grade,
         studentName: student.name,
         expected: balanceData.totalFee,
         paid: balanceData.totalPaid,
         balance: balanceData.balance,
         termBalances: balanceData.termBalances
       };
-    });
-
-    // Filter by class if specified (supports both with and without stream)
-    if (classFilter) {
-      studentData = studentData.filter(s => {
-        // Match exact format or partial match (for backward compatibility)
-        if (!s.className.startsWith(classFilter)) return false;
-        // Ensure we don't match "Grade 10" when filtering "Grade 1"
-        const nextChar = s.className.charAt(classFilter.length);
-        return !/\d/.test(nextChar); // True if next char is NOT a digit (e.g. space, letter, or empty)
-      });
-    }
+    }).filter(Boolean);
 
     let outstandingStudents;
     if (term) {
       const termKey = term.toLowerCase().replace(/\s+/g, '');
       outstandingStudents = studentData.filter(s => s.termBalances && s.termBalances[termKey] && s.termBalances[termKey].balance > 0);
     } else {
-      // Filter students with outstanding balance > 0 (Annual)
       outstandingStudents = studentData.filter(s => s.balance > 0);
     }
 
-    // Sorting Logic
     if (sort) {
-      const [field, order] = sort.split('_'); // e.g. "balance_desc" -> field="balance", order="desc"
+      const [field, order] = sort.split('_');
       const multiplier = order === 'desc' ? -1 : 1;
 
       outstandingStudents.sort((a, b) => {
-        if (field === 'balance') {
-          return (a.balance - b.balance) * multiplier;
-        }
-        if (field === 'name') {
-          return a.studentName.localeCompare(b.studentName) * multiplier;
-        }
-        if (field === 'admission') {
-          // numeric comparison for admission strings if possible
-          return a.admission.localeCompare(b.admission, undefined, { numeric: true }) * multiplier;
-        }
+        if (field === 'balance') return (a.balance - b.balance) * multiplier;
+        if (field === 'name') return a.studentName.localeCompare(b.studentName) * multiplier;
+        if (field === 'admission') return a.admission.localeCompare(b.admission, undefined, { numeric: true }) * multiplier;
         return 0;
       });
     }
 
-    // Server-side pagination of the result set
     const total = outstandingStudents.length;
-    const totalPages = Math.ceil(total / limit);
-    const startIndex = (page - 1) * limit;
-    const endIndex = startIndex + limit;
-    const paginatedStudents = outstandingStudents.slice(startIndex, endIndex);
+    const paginatedStudents = outstandingStudents.slice((page - 1) * limit, page * limit);
 
-    // Return structure matching pagination standards
     const response = { 
       students: paginatedStudents, 
       total, 
-      totalPages, 
+      totalPages: Math.ceil(total / limit), 
       currentPage: page,
       totalFilteredStudents: studentData.length 
     };
-    cache.set(cacheKey, response, 120); // Cache for 2 minutes
+    cache.set(cacheKey, response, 120);
     res.json(response);
-
   } catch (err) {
     console.error('Get Outstanding Fees Error:', err);
     res.status(500).json({ message: err.message });
@@ -631,11 +612,26 @@ export const generateOutstandingFeesPDF = async (req, res) => {
     const { name, class: classFilter, term } = req.query;
     const currentAcademicYear = new Date().getFullYear();
 
-    // Get students with their balances
+    // 🔎 Get active enrollments for the current year
+    const enrollmentMatch = {
+      schoolId: req.user.schoolId,
+      academicYear: currentAcademicYear,
+      status: "active"
+    };
+    if (classFilter) enrollmentMatch.grade = classFilter;
+
+    const activeEnrollments = await StudentEnrollment.find(enrollmentMatch)
+      .select('studentId grade stream')
+      .lean();
+
+    const activeStudentIds = activeEnrollments.map(e => e.studentId);
+
+    // Get student details for active students only
     let students = await User.find({
+      _id: { $in: activeStudentIds },
       role: "student",
       schoolId: req.user.schoolId
-    }).select("name admission schoolId");
+    }).select("name admission schoolId").lean();
 
     // Filter by name if specified
     if (name) {
@@ -649,18 +645,9 @@ export const generateOutstandingFeesPDF = async (req, res) => {
       // Return empty report immediately if no students
     }
 
-    const studentIds = students.map(s => s._id);
-
-    // 1. Batch Fetch Enrollments
-    const enrollments = await StudentEnrollment.find({
-      studentId: { $in: studentIds },
-      academicYear: currentAcademicYear,
-      status: "active"
-    }).select("studentId grade stream").lean();
-
     // 2. Batch Fetch Payments
     const payments = await Payment.find({
-      studentId: { $in: studentIds },
+      studentId: { $in: students.map(s => s._id) },
       academicYear: currentAcademicYear,
       isReversed: { $ne: true }
     }).select("studentId amount term").lean();
@@ -674,7 +661,7 @@ export const generateOutstandingFeesPDF = async (req, res) => {
     // 4. Process in Memory
     let studentData = students.map(student => {
       const sId = String(student._id);
-      const enrollment = enrollments.find(e => String(e.studentId) === sId);
+      const enrollment = activeEnrollments.find(e => String(e.studentId) === sId);
       let balanceData;
 
       if (enrollment) {
@@ -1153,6 +1140,207 @@ export const generateOutstandingFeesPDFFromData = async (req, res) => {
 
   } catch (err) {
     console.error('Generate Outstanding Fees PDF Error:', err);
+    res.status(500).json({ message: err.message });
+  }
+};
+
+// ---------------------------
+// GET SCHOOL TOTALS (for expenses dashboard)
+// ---------------------------
+export const getSchoolTotals = async (req, res) => {
+  try {
+    if (!req.user || !req.user.schoolId) {
+      return res.status(400).json({ message: 'No school assigned' });
+    }
+
+    const academicYear = parseInt(req.query.academicYear) || new Date().getFullYear();
+    const term = req.query.term;
+    const schoolId = new mongoose.Types.ObjectId(req.user.schoolId);
+
+    // 🔎 Get school type to restrict grades
+    const school = await School.findById(req.user.schoolId).select('schoolType').lean();
+    if (!school) return res.status(404).json({ message: 'School not found' });
+    const schoolType = school.schoolType || 'full';
+    const SCHOOL_TYPES = {
+      full: { gradeOptions: ["PP1", "PP2", "Grade 1","Grade 2","Grade 3","Grade 4","Grade 5","Grade 6","Grade 7","Grade 8","Grade 9","Grade 10","Grade 11","Grade 12"] },
+      primary_junior: { gradeOptions: ["PP1", "PP2", "Grade 1","Grade 2","Grade 3","Grade 4","Grade 5","Grade 6","Grade 7","Grade 8","Grade 9"] },
+      senior: { gradeOptions: ["Grade 10","Grade 11","Grade 12"] }
+    };
+    const allowedGrades = SCHOOL_TYPES[schoolType].gradeOptions;
+
+    // 🔎 Get only active student IDs for this year and school type to filter income
+    const enrollments = await StudentEnrollment.find({
+      schoolId: schoolId,
+      academicYear,
+      status: "active",
+      grade: { $in: allowedGrades }
+    }).select("studentId").lean();
+    const activeStudentIds = enrollments.map(e => e.studentId);
+
+    // This aggregation sums all successful payments for the specific school and year.
+    // Restricted to active students only as per requirement.
+    const totalPaidResult = await Payment.aggregate([
+      { 
+        $match: { 
+          schoolId: schoolId, 
+          academicYear: academicYear, 
+          isReversed: { $ne: true },
+          studentId: { $in: activeStudentIds },
+          ...(term ? { term } : {})
+        } 
+      },
+      { 
+        $group: { 
+          _id: null, 
+          totalPaid: { $sum: '$amount' } 
+        } 
+      }
+    ]);
+
+    const totalPaid = totalPaidResult.length > 0 ? totalPaidResult[0].totalPaid : 0;
+
+    res.json({ totalPaid });
+  } catch (err) {
+    console.error('Get School Totals Error:', err);
+    res.status(500).json({ message: err.message });
+  }
+};
+
+// ---------------------------
+// GET SCHOOL OVERVIEW STATS (for accounts dashboard cards)
+// ---------------------------
+export const getSchoolOverviewStats = async (req, res) => {
+  try {
+    if (!req.user || !req.user.schoolId) {
+      return res.status(400).json({ message: 'No school assigned' });
+    }
+
+    const academicYear = parseInt(req.query.academicYear) || new Date().getFullYear();
+    const schoolId = new mongoose.Types.ObjectId(req.user.schoolId);
+    const { grade, term } = req.query;
+
+    // 🔎 Get school type to restrict grades if no specific class filter is provided
+    const school = await School.findById(req.user.schoolId).select('schoolType').lean();
+    if (!school) return res.status(404).json({ message: 'School not found' });
+    const schoolType = school.schoolType || 'full';
+    const SCHOOL_TYPES = {
+      full: { gradeOptions: ["PP1", "PP2", "Grade 1","Grade 2","Grade 3","Grade 4","Grade 5","Grade 6","Grade 7","Grade 8","Grade 9","Grade 10","Grade 11","Grade 12"] },
+      primary_junior: { gradeOptions: ["PP1", "PP2", "Grade 1","Grade 2","Grade 3","Grade 4","Grade 5","Grade 6","Grade 7","Grade 8","Grade 9"] },
+      senior: { gradeOptions: ["Grade 10","Grade 11","Grade 12"] }
+    };
+    const allowedGrades = SCHOOL_TYPES[schoolType].gradeOptions;
+
+    // ---------------------------
+    // 1. Get Enrolled Students
+    // ---------------------------
+    const enrollmentMatch = {
+      schoolId: schoolId,
+      academicYear,
+      status: "active",
+      grade: grade ? grade : { $in: allowedGrades }
+    };
+
+    const enrollments = await StudentEnrollment.find(enrollmentMatch)
+      .select("studentId grade")
+      .lean();
+
+    const studentIds = enrollments.map(e => e.studentId);
+
+    // ---------------------------
+    // 2. Total Paid (Income)
+    // ---------------------------
+    const paymentMatch = {
+      schoolId: schoolId,
+      academicYear,
+      isReversed: { $ne: true },
+      studentId: { $in: studentIds }
+    };
+
+    if (term) paymentMatch.term = term;
+
+    const totalPaidResult = await Payment.aggregate([
+      { $match: paymentMatch },
+      {
+        $group: {
+          _id: null,
+          totalPaid: { $sum: "$amount" }
+        }
+      }
+    ]);
+
+    const totalPaid =
+      totalPaidResult.length > 0 ? totalPaidResult[0].totalPaid : 0;
+
+    // ---------------------------
+    // 3. Expected Fees + Learners
+    // ---------------------------
+    let feeField = "$feeStructure.totalFee";
+
+    if (term === "Term 1") feeField = "$feeStructure.term1Fee";
+    else if (term === "Term 2") feeField = "$feeStructure.term2Fee";
+    else if (term === "Term 3") feeField = "$feeStructure.term3Fee";
+
+    const expectedFeesAndLearners = await StudentEnrollment.aggregate([
+      { $match: enrollmentMatch },
+      {
+        $lookup: {
+          from: "feestructures",
+          let: { eGrade: "$grade" },
+          pipeline: [
+            {
+              $match: {
+                $expr: {
+                  $and: [
+                    { $eq: ["$schoolId", schoolId] },
+                    { $eq: ["$grade", "$$eGrade"] },
+                    { $eq: ["$academicYear", academicYear] }
+                  ]
+                }
+              }
+            }
+          ],
+          as: "feeStructure"
+        }
+      },
+      {
+        $unwind: {
+          path: "$feeStructure",
+          preserveNullAndEmptyArrays: true
+        }
+      },
+      {
+        $group: {
+          _id: null,
+          totalExpectedFees: { $sum: { $ifNull: [feeField, 0] } },
+          totalLearners: { $sum: 1 }
+        }
+      }
+    ]);
+
+    const totalExpectedFees =
+      expectedFeesAndLearners.length > 0
+        ? expectedFeesAndLearners[0].totalExpectedFees
+        : 0;
+
+    const totalLearners =
+      expectedFeesAndLearners.length > 0
+        ? expectedFeesAndLearners[0].totalLearners
+        : 0;
+
+    // ---------------------------
+    // 4. Outstanding Balance
+    // ---------------------------
+    const totalOutstandingBalance = totalExpectedFees - totalPaid;
+
+    res.json({
+      totalPaid,
+      totalExpectedFees,
+      totalOutstandingBalance,
+      totalLearners
+    });
+
+  } catch (err) {
+    console.error("Get School Overview Stats Error:", err);
     res.status(500).json({ message: err.message });
   }
 };

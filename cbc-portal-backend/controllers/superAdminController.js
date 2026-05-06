@@ -51,6 +51,7 @@ export const createSchool = async (req, res) => {
       contactNumber,
       registrationOpen: req.body.registrationOpen === undefined ? true : parseBoolean(req.body.registrationOpen),
       allowSignatureUpload: req.body.allowSignatureUpload === undefined ? true : parseBoolean(req.body.allowSignatureUpload),
+      schoolType: req.body.schoolType || 'full',
       logo,
       logoMimeType 
     });
@@ -281,6 +282,9 @@ export const updateSchool = async (req, res) => {
     }
     if (req.body.allowSignatureUpload !== undefined) {
       school.allowSignatureUpload = parseBoolean(req.body.allowSignatureUpload);
+    }
+    if (req.body.schoolType !== undefined) {
+      school.schoolType = req.body.schoolType || 'full';
     }
 
     // Update logo if uploaded - convert to base64

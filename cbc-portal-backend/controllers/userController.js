@@ -126,10 +126,10 @@ if (!allowedRoles.includes(role)) {
     // Normalize grade to "Grade X" format helper
     const normalizeGrade = (g) => {
       if (!g) return null;
-      if (!isNaN(g)) {
-        return `Grade ${g}`;
-      }
-      return g;
+      const str = String(g).trim();
+      if (!isNaN(str) && str !== "") return `Grade ${str}`;
+      if (str.length <= 2 && /^\d+[A-Z]?$/i.test(str)) return `Grade ${str}`;
+      return str;
     };
 
     const newUser = new User({
@@ -672,7 +672,7 @@ export const getMyAllocations = async (req, res) => {
       
       await sendEmail({
         to: teacher.email,
-        subject: 'CBC Portal Class Teacher Allocation',
+        subject: 'CBE Portal Class Teacher Allocation',
         text: `Hello ${teacher.name},
 
         You have been allocated to ${classLabel} as the class teacher.
@@ -842,7 +842,7 @@ export const removeClassTeacher = async (req, res) => {
     if (teacher.email) {
       await sendEmail({
         to: teacher.email,
-        subject: 'CBC Portal Class Teacher Removal',
+        subject: 'CBE Portal Class Teacher Removal',
         text: `Hello ${teacher.name},
 
          You have been removed as class teacher. You still retain your teacher role credentials.

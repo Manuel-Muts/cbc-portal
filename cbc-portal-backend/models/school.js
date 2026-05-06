@@ -15,6 +15,11 @@ const schoolSchema = new mongoose.Schema({
   },
   registrationOpen: { type: Boolean, default: true },
   allowSignatureUpload: { type: Boolean, default: true },
+  schoolType: {
+    type: String,
+    enum: ["full", "primary_junior", "senior"],
+    default: "full"
+  },
   version: { type: Number, default: 1 },       // <-- version increments on suspension
   paybill: { type: String, default: "" },      // M-Pesa paybill number (for C2B manual payments)
   createdAt: { type: Date, default: Date.now }

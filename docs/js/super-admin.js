@@ -397,6 +397,7 @@ if (!forceRefresh && cached) {
               <th>School Name</th>
               <th>Admin Email</th>
               <th>Address</th>
+              <th>Type</th>
               <th>Status</th>
               <th>Actions</th>
             </tr>
@@ -422,10 +423,16 @@ if (!forceRefresh && cached) {
           <input type="text" id="newSchoolAddress">
           <label>Logo</label>
           <input type="file" id="newSchoolLogo" accept="image/*">
+          <label>School Type</label>
+          <select id="newSchoolType">
+            <option value="full">Full School (Grades 1-12)</option>
+            <option value="primary_junior">Primary + Junior (Grades 1-9)</option>
+            <option value="senior">Senior School (Grades 10-12)</option>
+          </select>
           <label><input type="checkbox" id="newSchoolRegistrationOpen" checked> Allow Student Registrations</label>
           <label><input type="checkbox" id="newSchoolAllowSignatureUpload" checked> Allow Signature Uploads</label>
           <button id="saveSchoolBtn" class="primary-btn">Save</button>
-          <button class="close-btn" onclick="closeAddModal()">Cancel</button>
+          <button id="cancelAddSchoolBtn" class="close-btn">Cancel</button>
         </div>
       </div>
 
@@ -440,6 +447,12 @@ if (!forceRefresh && cached) {
           <input type="text" id="editSchoolAddress">
           <label>Logo</label>
           <input type="file" id="editSchoolLogo" accept="image/*">
+          <label>School Type</label>
+          <select id="editSchoolType">
+            <option value="full">Full School (Grades 1-12)</option>
+            <option value="primary_junior">Primary + Junior (Grades 1-9)</option>
+            <option value="senior">Senior School (Grades 10-12)</option>
+          </select>
           <label><input type="checkbox" id="editSchoolRegistrationOpen"> Allow Student Registrations</label>
           <label><input type="checkbox" id="editSchoolAllowSignatureUpload"> Allow Signature Uploads</label>
           <button id="updateSchoolBtn" class="primary-btn">Update</button>
@@ -460,6 +473,10 @@ if (!forceRefresh && cached) {
 
     addBtn.addEventListener("click", () => modal.classList.remove("hidden"));
     window.closeAddModal = () => modal.classList.add("hidden");
+    const cancelAddSchoolBtn = document.getElementById("cancelAddSchoolBtn");
+    if (cancelAddSchoolBtn) {
+      cancelAddSchoolBtn.addEventListener("click", () => modal.classList.add("hidden"));
+    }
     const editSchoolModal = document.getElementById("editSchoolModal");
     const cancelEditSchoolBtn = document.getElementById("cancelEditSchoolBtn");
     if (cancelEditSchoolBtn) {
@@ -482,6 +499,7 @@ if (!forceRefresh && cached) {
       formData.append("name", name);
       formData.append("adminEmail", adminEmail);
       formData.append("address", address);
+      formData.append("schoolType", document.getElementById("newSchoolType").value);
       formData.append("registrationOpen", document.getElementById("newSchoolRegistrationOpen").checked);
       formData.append("allowSignatureUpload", document.getElementById("newSchoolAllowSignatureUpload").checked);
       if (logoFile) formData.append("logo", logoFile);
@@ -500,7 +518,7 @@ if (!forceRefresh && cached) {
     // ---------------------------
     async function loadSchools(page = 1) {
       const search = document.getElementById("searchSchools").value.trim();
-      tableBody.innerHTML = '<tr><td colspan="6" style="text-align:center">Loading...</td></tr>';
+      tableBody.innerHTML = '<tr><td colspan="7" style="text-align:center">Loading...</td></tr>';
       
       const res = await authFetch(`/schools?page=${page}&limit=10&search=${encodeURIComponent(search)}`);
       if (!res) return;
@@ -530,6 +548,7 @@ if (!forceRefresh && cached) {
               <td>${s.name}</td>
               <td>${s.adminEmail}</td>
               <td>${s.address || ''}</td>
+              <td>${s.schoolType === 'primary_junior' ? 'Primary + Junior' : s.schoolType === 'senior' ? 'Senior' : 'Full'}</td>
               <td class="${statusClass}">${currentStatus}</td>
               <td>
                 <button class="toggleStatusBtn" data-id="${s._id}" data-status="${currentStatus}">${btnText}</button>
@@ -556,6 +575,7 @@ if (!forceRefresh && cached) {
           document.getElementById("editSchoolName").value = school.name;
           document.getElementById("editSchoolAdmin").value = school.adminEmail;
           document.getElementById("editSchoolAddress").value = school.address || '';
+          document.getElementById("editSchoolType").value = school.schoolType || 'full';
           document.getElementById("editSchoolRegistrationOpen").checked = school.registrationOpen !== false;
           document.getElementById("editSchoolAllowSignatureUpload").checked = school.allowSignatureUpload !== false;
           document.getElementById("editSchoolModal").classList.remove("hidden");
@@ -575,6 +595,7 @@ if (!forceRefresh && cached) {
             formData.append("name", name);
             formData.append("adminEmail", adminEmail);
             formData.append("address", address);
+            formData.append("schoolType", document.getElementById("editSchoolType").value);
             formData.append("registrationOpen", document.getElementById("editSchoolRegistrationOpen").checked);
             formData.append("allowSignatureUpload", document.getElementById("editSchoolAllowSignatureUpload").checked);
             if (logoFile) formData.append("logo", logoFile);

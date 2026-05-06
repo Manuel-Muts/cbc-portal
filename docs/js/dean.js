@@ -35,6 +35,32 @@ let currentIsSenior = false;
 const CACHE_TTL = 15 * 60 * 1000; // 15 minutes
 const CACHE_KEY_PREFIX = "dean_analytics_cache_";
 
+const SCHOOL_TYPES = {
+  full: {
+    label: "Full School (Grades 1-12)",
+    gradeOptions: ["1","2","3","4","5","6","7","8","9","10","11","12"]
+  },
+  primary_junior: {
+    label: "Primary + Junior (Grades 1-9)",
+    gradeOptions: ["1","2","3","4","5","6","7","8","9"]
+  },
+  senior: {
+    label: "Senior School (Grades 10-12)",
+    gradeOptions: ["10","11","12"]
+  }
+};
+
+let schoolInfo = null;
+
+function getSchoolTypeKey() {
+  return (schoolInfo && schoolInfo.schoolType && SCHOOL_TYPES[schoolInfo.schoolType]) ? schoolInfo.schoolType : 'full';
+}
+
+function getGradeOptionsForSchool() {
+  const schoolType = getSchoolTypeKey();
+  return SCHOOL_TYPES[schoolType].gradeOptions.map(g => `Grade ${g}`);
+}
+
 function getAnalyticsCache(key) {
   try {
     const cached = JSON.parse(localStorage.getItem(CACHE_KEY_PREFIX + key));
@@ -1245,8 +1271,8 @@ function initFilters() {
     filterAssessmentEl.appendChild(endTerm);
   }
 
-  // Populate all school grades
-  const grades = ["Grade 1", "Grade 2", "Grade 3", "Grade 4", "Grade 5", "Grade 6", "Grade 7", "Grade 8", "Grade 9", "Grade 10", "Grade 11", "Grade 12"];
+  // Populate school grades based on school type
+  const grades = getGradeOptionsForSchool();
   grades.forEach(g => {
     const opt = document.createElement("option"); opt.value = g; opt.textContent = g;
     filterGradeEl.appendChild(opt);
@@ -1271,14 +1297,24 @@ async function loadDeanProfile() {
       deanProfileData.signatureBase64 = await getImageBase64(deanProfileData.signatureUrl);
     }
 
-    // Pre-load school info and logo for PDF generation
+    // Pre-load school info and logo for PDF generation (always fresh, no cache)
     try {
-      const school = await fetchWithAuth(`${API_BASE}/users/my-school`);
-      if (school) {
-        deanProfileData.schoolName = (school.name || "School Name").toUpperCase();
-        if (school.logo) {
+      // Force clear any cached school info to get latest schoolType
+      const SCHOOL_CACHE_KEY = "dean_school_info_cache";
+      localStorage.removeItem(SCHOOL_CACHE_KEY);
+      
+      schoolInfo = await fetchWithAuth(`${API_BASE}/users/my-school`);
+      if (schoolInfo) {
+        // Cache briefly for performance but always refresh on page load
+        localStorage.setItem(SCHOOL_CACHE_KEY, JSON.stringify({
+          timestamp: Date.now(),
+          data: schoolInfo
+        }));
+        
+        deanProfileData.schoolName = (schoolInfo.name || "School Name").toUpperCase();
+        if (schoolInfo.logo) {
           // Note: getImageBase64 now handles both relative paths and absolute URLs
-          deanProfileData.schoolLogoBase64 = await getImageBase64(school.logo);
+          deanProfileData.schoolLogoBase64 = await getImageBase64(schoolInfo.logo);
         }
       }
     } catch (e) {

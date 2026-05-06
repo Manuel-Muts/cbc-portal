@@ -29,7 +29,7 @@ export const getMySchool = async (req, res) => {
       return res.json(cached);
     }
 
-    let projectionFields = "name address status allowSignatureUpload"; // Base fields
+    let projectionFields = "name address status allowSignatureUpload schoolType"; // Base fields
 
     if (fields) {
       projectionFields = fields.replace(/,/g, ' ');
@@ -54,7 +54,8 @@ export const getMySchool = async (req, res) => {
     const response = {
       name: school.name,
       address: school.address,
-      allowSignatureUpload: school.allowSignatureUpload !== false
+      allowSignatureUpload: school.allowSignatureUpload !== false,
+      schoolType: school.schoolType || 'full'
     };
 
     // Conditionally add fields to the response object based on what was projected

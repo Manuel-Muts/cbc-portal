@@ -4,7 +4,7 @@
    HEADER STYLING
 ============================== */
 header {
-  background: #2b6cb0 !important; /* Professional blue to override the global white background */
+  background: #76ace3 !important; /* Professional blue to override the global white background */
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1) !important;
 }
 
@@ -553,25 +553,26 @@ form {
   color: white;
   font-size: 14px;
   animation: fadeInOut 3.5s ease forwards;
-  min-width: 180px;
+  min-width: 280px;
   font-weight: 600;
-  box-shadow: 0 3px 8px rgba(0,0,0,0.2);
+  box-shadow: 0 10px 25px rgba(0,0,0,0.2), 0 5px 10px rgba(0,0,0,0.1);
   position: fixed;
   left: 50%; /* Center horizontally */
-  top: 20px; /* Position at the top */
+  top: 85px; /* Positioned below the header to prevent background blending */
+  border: 1px solid rgba(255, 255, 255, 0.2);
   transform: translateX(-50%); /* Adjust for centering */
   z-index: 10000;
 }
 
-.toast.success { background: #28a745; }
-.toast.error { background: #dc3545; }
-.toast.info { background: #007bff; }
+.toast-success { background: #28a745 !important; }
+.toast-error { background: #dc3545 !important; }
+.toast-info { background: #0061c2 !important; } /* Deeper blue for better contrast */
 
 @keyframes fadeInOut {
-  0% { opacity: 0; transform: translateY(-10px); }
-  10% { opacity: 1; transform: translateY(0); }
+  0% { opacity: 0; transform: translateX(-50%) translateY(-20px); }
+  10% { opacity: 1; transform: translateX(-50%) translateY(0); }
   90% { opacity: 1; }
-  100% { opacity: 0; transform: translateY(-10px); }
+  100% { opacity: 0; transform: translateX(-50%) translateY(-20px); }
 }
 .accordion {
   border: 1px solid #ccc;

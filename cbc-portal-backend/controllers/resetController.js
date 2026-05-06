@@ -11,7 +11,7 @@ const generateCode = () =>
 
 
 // ============================================================
-// 0️⃣ VERIFY USER (role + name + email)
+// 0️⃣ VERIFY USER (role + email)
 // ============================================================
 export const verifyUser = async (req, res) => {
   const { role, email } = req.body; //

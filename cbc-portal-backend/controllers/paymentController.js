@@ -487,6 +487,16 @@ export const getAllStudentAccounts = async (req, res) => {
     const academicYear = parseInt(req.query.academicYear) || new Date().getFullYear();
     const skip = (page - 1) * limit;
 
+    // 🔎 Get school type to restrict grades if no specific class filter is provided
+    const school = await User.findById(req.user.id).select('schoolId').populate('schoolId', 'schoolType');
+    const schoolType = school?.schoolId?.schoolType || 'full';
+    const SCHOOL_TYPES = {
+      full: { gradeOptions: ["PP1", "PP2", "Grade 1","Grade 2","Grade 3","Grade 4","Grade 5","Grade 6","Grade 7","Grade 8","Grade 9","Grade 10","Grade 11","Grade 12"] },
+      primary_junior: { gradeOptions: ["PP1", "PP2", "Grade 1","Grade 2","Grade 3","Grade 4","Grade 5","Grade 6","Grade 7","Grade 8","Grade 9"] },
+      senior: { gradeOptions: ["Grade 10","Grade 11","Grade 12"] }
+    };
+    const allowedGrades = SCHOOL_TYPES[schoolType].gradeOptions;
+
     // Aggregation Pipeline for efficient Filtering, Searching & Pagination
     const pipeline = [
       // 1. Match Active Enrollments for School/Year
@@ -495,7 +505,7 @@ export const getAllStudentAccounts = async (req, res) => {
           schoolId: new mongoose.Types.ObjectId(req.user.schoolId),
           academicYear: academicYear,
           status: "active",
-          ...(gradeFilter ? { grade: gradeFilter } : {})
+          grade: gradeFilter ? gradeFilter : { $in: allowedGrades }
         }
       },
       // 2. Join Student Data

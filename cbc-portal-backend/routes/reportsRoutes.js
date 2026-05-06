@@ -1,6 +1,6 @@
 // routes/reportsRoutes.js
 import express from "express";
-import { generateFeeStructuresPDF, generateStudentFeesPDF, getOutstandingFees, generateOutstandingFeesPDF, generateOutstandingFeesPDFFromData } from "../controllers/reportsController.js";
+import { generateFeeStructuresPDF, generateStudentFeesPDF, getOutstandingFees, generateOutstandingFeesPDF, generateOutstandingFeesPDFFromData, getSchoolTotals, getSchoolOverviewStats } from "../controllers/reportsController.js";
 import verifyToken from "../middleware/verifyToken.js";
 import { accountsOnly } from "../middleware/roleChecks.js";
 
@@ -13,6 +13,8 @@ router.use(verifyToken);
 router.get("/fee-structures", accountsOnly, generateFeeStructuresPDF);
 router.get("/fees", accountsOnly, generateStudentFeesPDF);
 router.get("/outstanding-fees", accountsOnly, getOutstandingFees);
+router.get("/school-totals", accountsOnly, getSchoolTotals);
+router.get("/school-overview-stats", accountsOnly, getSchoolOverviewStats); // New endpoint for overview cards
 router.get("/outstanding-fees-pdf", accountsOnly, generateOutstandingFeesPDF);
 router.post("/outstanding-fees-pdf-from-data", accountsOnly, generateOutstandingFeesPDFFromData);
 
