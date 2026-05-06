@@ -1,6 +1,6 @@
-const API_BASE = config.api.baseURL;
-
 document.addEventListener("DOMContentLoaded", async () => {
+  const API_BASE = config.api.baseURL;
+
   const user = await authService.getUserProfile(["student", "learner"]);
   if (!user) return;
 
@@ -9,6 +9,28 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   const welcomeNameEl = document.getElementById("welcomeName");
   if (welcomeNameEl) welcomeNameEl.textContent = `Performance Analysis - ${user.name}`;
+
+  // ---------------------------
+  // CACHE UTILITIES
+  // ---------------------------
+  const CACHE_KEY = "student_performance_cache";
+  const CACHE_TTL = 15 * 60 * 1000; // 15 minutes
+
+  const getCached = (key) => {
+    try {
+      const store = JSON.parse(localStorage.getItem(CACHE_KEY) || "{}");
+      if (store[key] && (Date.now() - store[key].timestamp < CACHE_TTL)) return store[key].data;
+    } catch (e) { }
+    return null;
+  };
+
+  const setCached = (key, data) => {
+    try {
+      const store = JSON.parse(localStorage.getItem(CACHE_KEY) || "{}");
+      store[key] = { timestamp: Date.now(), data };
+      localStorage.setItem(CACHE_KEY, JSON.stringify(store));
+    } catch (e) { }
+  };
 
   // Populate Year Filter (matches dashboard logic)
   const yearFilter = document.getElementById("yearFilter");
@@ -20,6 +42,26 @@ document.addEventListener("DOMContentLoaded", async () => {
       option.textContent = yr;
       yearFilter.appendChild(option);
     }
+  }
+
+  // Populate Assessment Filter from centralized mapping
+  const assessmentFilter = document.getElementById("assessmentFilter");
+  if (assessmentFilter) {
+    const mapping = window.ASSESSMENT_MAPPING || {};
+    // Default to prompt instead of auto-filtering all
+    assessmentFilter.innerHTML = '<option value="">-- Select Assessment --</option>';
+    
+    const optAll = document.createElement("option");
+    optAll.value = "all";
+    optAll.textContent = "All Assessments";
+    assessmentFilter.appendChild(optAll);
+
+    Object.entries(mapping).forEach(([val, label]) => {
+      const opt = document.createElement("option");
+      opt.value = val;
+      opt.textContent = label;
+      assessmentFilter.appendChild(opt);
+    });
   }
 
   let perfChartInstance = null;
@@ -38,27 +80,39 @@ document.addEventListener("DOMContentLoaded", async () => {
     const spinner = document.getElementById("loadingSpinner");
     if (spinner) spinner.style.display = "block";
 
-    const term = document.getElementById("termFilter")?.value || "all";
-    const year = document.getElementById("yearFilter")?.value || "all";
-    const assess = document.getElementById("assessmentFilter")?.value || "all";
+    const term = document.getElementById("termFilter")?.value || "";
+    const year = document.getElementById("yearFilter")?.value || "";
+    const assess = document.getElementById("assessmentFilter")?.value || "";
+
+    if (!assess) {
+      const container = document.getElementById("chartContainer");
+      if (container) container.innerHTML = '<p style="text-align:center; padding:20px; color:#64748b;">Please select an assessment and click "Filter Analysis" to view your progress.</p>';
+      if (spinner) spinner.style.display = "none";
+      return;
+    }
 
     // Reuses the exact query logic from the dashboard
     const query = new URLSearchParams();
-    if (term !== "all") query.set("term", term);
-    if (year !== "all") query.set("year", year);
-    if (assess !== "all") query.set("assessment", assess);
+    if (term && term !== "all") query.set("term", term);
+    if (year && year !== "all") query.set("year", year);
+    if (assess && assess !== "all") query.set("assessment", assess);
 
     try {
-      const url = `${API_BASE}/marks/student${query.toString() ? '?' + query.toString() : ''}`;
-      const res = await fetch(url, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      const queryString = query.toString();
+      const cacheKey = `perf_data_${queryString || 'all'}`;
+      let data = getCached(cacheKey);
 
-      if (!res.ok) {
-        throw new Error("Failed to fetch marks");
+      if (!data) {
+        const url = `${API_BASE}/marks/student${queryString ? '?' + queryString : ''}`;
+        const res = await fetch(url, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+
+        if (!res.ok) throw new Error("Failed to fetch marks");
+        data = await res.json();
+        setCached(cacheKey, data);
       }
 
-      const data = await res.json();
       const studentMarks = data.studentMarks || [];
       
       const canvas = prepareContainer();
@@ -88,7 +142,20 @@ document.addEventListener("DOMContentLoaded", async () => {
     // 1. COMPARATIVE VIEW (When a specific year is selected)
     // This allows comparing assessments across different terms side-by-side
     if (selectedYear !== "all") {
-      const labels = ["Midterm", "Assmt 1", "Assmt 2", "Assmt 3", "Assmt 4", "End Term"];
+      // Use Centralized Mapping for labels
+      const mapping = window.ASSESSMENT_MAPPING || {
+        1: "Opener",
+        2: "Assessment 2",
+        3: "Assessment 3",
+        4: "Assessment 4",
+        5: "Midterm",
+        6: "Assessment 6",
+        7: "Assessment 7",
+        8: "Endterm"
+      };
+      const labels = Object.values(mapping);
+      const mappingKeys = Object.keys(mapping);
+      
       const datasets = [];
       const termsToShow = selectedTerm !== "all" ? [Number(selectedTerm)] : [1, 2, 3];
       
@@ -99,7 +166,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       };
 
       termsToShow.forEach(tNum => {
-        const termData = new Array(6).fill(null);
+        const termData = new Array(labels.length).fill(null);
         const termMarks = studentMarks.filter(m => m.term == tNum && m.year == selectedYear);
         
         if (termMarks.length > 0) {
@@ -112,7 +179,11 @@ document.addEventListener("DOMContentLoaded", async () => {
           });
 
           Object.keys(assessTotals).forEach(a => {
-            if (termData[a] !== undefined) termData[a] = (assessTotals[a].sum / assessTotals[a].count).toFixed(1);
+            const label = mapping[a];
+            const idx = labels.indexOf(label);
+            if (idx !== -1) {
+              termData[idx] = (assessTotals[a].sum / assessTotals[a].count).toFixed(1);
+            }
           });
 
           datasets.push({
@@ -154,6 +225,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     // 2. TIMELINE VIEW (When "All Years" is selected)
     // Displays a continuous trend over time
     else {
+      const mapping = window.ASSESSMENT_MAPPING || {};
       const totals = {};
       studentMarks.forEach(m => {
         const key = `${m.year}-${String(m.term).padStart(2, '0')}-${String(m.assessment).padStart(2, '0')}`;
@@ -170,8 +242,8 @@ document.addEventListener("DOMContentLoaded", async () => {
       const dataPoints = sortedKeys.map(k => (totals[k].sum / totals[k].count).toFixed(1));
       const labels = sortedKeys.map(k => {
         const d = totals[k];
-        const aName = d.assessment == 0 ? "Mid" : d.assessment == 5 ? "End" : `A${d.assessment}`;
-        return `${d.year} T${d.term}-${aName}`;
+        const aName = mapping[d.assessment] || `A${d.assessment}`;
+        return `${d.year} T${d.term} ${aName}`;
       });
 
       perfChartInstance = new Chart(ctx, {
@@ -204,7 +276,7 @@ document.addEventListener("DOMContentLoaded", async () => {
             legend: { display: false },
             title: {
               display: true,
-              text: 'Key: T = Term | Mid= Midterm | A1-4 = Assessment | A5 = End Term',
+              text: 'Key: T = Term | Assessment labels are shown on the timeline',
               position: 'bottom',
               padding: { top: 20 },
               color: '#64748b',
@@ -215,9 +287,7 @@ document.addEventListener("DOMContentLoaded", async () => {
                 title: (items) => {
                   const key = sortedKeys[items[0].dataIndex];
                   const d = totals[key];
-                  let assessName = `Assessment ${d.assessment}`;
-                  if (d.assessment == 0) assessName = 'Midterm';
-                  if (d.assessment == 5) assessName = 'End Term';
+                  const assessName = mapping[d.assessment] || `Assessment ${d.assessment}`;
                   return `${d.year} - Term ${d.term}, ${assessName}`;
                 }
               }
@@ -230,5 +300,9 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   document.getElementById("applyFiltersBtn")?.addEventListener("click", loadPerformanceData);
 
-  loadPerformanceData();
+  // Initial placeholder state
+  const container = document.getElementById("chartContainer");
+  if (container) {
+    container.innerHTML = '<p style="text-align:center; padding:20px; color:#64748b;">Please select an assessment and click "Filter Analysis" to view your progress.</p>';
+  }
 });

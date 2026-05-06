@@ -103,6 +103,17 @@ export const addMark = async (req, res) => {
       stream: streamToSave || null,
       term,
       year,
+      /**
+       * Assessment Mapping Convention:
+       * 1 - Opener Exam
+       * 2 - Assessment 2
+       * 3 - Assessment 3
+       * 4 - Assessment 4
+       * 5 - Midterm
+       * 6 - Assessment 6
+       * 7 - Assessment 7
+       * 8 - Endterm
+       */
       assessment,
       teacherId: req.user.id,
       schoolId: req.user.schoolId,

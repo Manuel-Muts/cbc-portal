@@ -945,10 +945,9 @@ function renderTrendChart(raw, isSenior) {
 
   sortedKeys.forEach(k => {
     const d = assessmentData[k];
-
-    const assessLabel = d.assessment === "0" ? "Midterm" : 
-                        d.assessment === "5" ? "End Term" : 
-                        `Assmt ${d.assessment}`;
+    
+    const mapping = window.ASSESSMENT_MAPPING || {};
+    const assessLabel = mapping[d.assessment] || `Assmt ${d.assessment}`;
 
     labels.push(isAllTerms ? `T${d.term} ${assessLabel}` : assessLabel);
 
@@ -1252,23 +1251,15 @@ function initFilters() {
   }
 
   // Populate Assessments
-  if (filterAssessmentEl) {
-    filterAssessmentEl.innerHTML = '<option value="all">All Assessments</option>';
-    const midterm = document.createElement("option");
-    midterm.value = 0;
-    midterm.textContent = "Midterm";
-    filterAssessmentEl.appendChild(midterm);
-    
-    for (let i = 1; i <= 4; i++) {
+  if (filterAssessmentEl && window.ASSESSMENT_MAPPING) {
+    filterAssessmentEl.innerHTML = '<option value="all">All Assessments</option>'; // Keep "All Assessments" option
+    Object.entries(window.ASSESSMENT_MAPPING).forEach(([value, label]) => {
       const opt = document.createElement("option");
-      opt.value = i;
-      opt.textContent = `Assessment ${i}`;
+      opt.value = value;
+      opt.textContent = label;
       filterAssessmentEl.appendChild(opt);
     }
-    const endTerm = document.createElement("option");
-    endTerm.value = 5;
-    endTerm.textContent = "End Term";
-    filterAssessmentEl.appendChild(endTerm);
+    );
   }
 
   // Populate school grades based on school type

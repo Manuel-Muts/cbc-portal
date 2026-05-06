@@ -1,9 +1,9 @@
 // ===== CBC GRADING HELPERS (For both Junior & Senior School) =====
 // API_BASE is now loaded from config.js
 // To change the API endpoint, update config.js
-const API_BASE = config.api.baseURL;
 
 document.addEventListener("DOMContentLoaded", async () => {
+  const API_BASE = config.api.baseURL;
   // ---------------------------
   // AUTHENTICATION WITH TOKEN
   // ---------------------------
@@ -532,10 +532,41 @@ if (downloadFeeStatementPDF) {
   
 
   const getAssessmentLabel = (value) => {
-    if (value == 0) return "Midterm";
-    if (value == 5) return "End Term";
-    return `Assessment ${value}`;
+    // Use global mapping with a robust fallback to ensure names like "Midterm" appear correctly
+    const mapping = window.ASSESSMENT_MAPPING || {
+      1: "Opener",
+      2: "Assessment 2",
+      3: "Assessment 3",
+      4: "Assessment 4",
+      5: "Midterm",
+      6: "Assessment 6",
+      7: "Assessment 7",
+      8: "Endterm"
+    };
+    return mapping[value] || `Assessment ${value}`;
   };
+
+  // ---------------------------
+  // NEW: POPULATE ASSESSMENT FILTER
+  // ---------------------------
+  (function populateAssessmentFilter() {
+    const assessFilter = document.getElementById("assessmentFilter");
+    if (!assessFilter) return;
+    
+    const mapping = window.ASSESSMENT_MAPPING || {
+      1: "Opener", 2: "Assessment 2", 3: "Assessment 3", 4: "Assessment 4",
+      5: "Midterm", 6: "Assessment 6", 7: "Assessment 7", 8: "Endterm"
+    };
+
+    assessFilter.innerHTML = '<option value="">--Select Assessment--</option>';
+
+    Object.entries(mapping).forEach(([val, label]) => {
+      const opt = document.createElement("option");
+      opt.value = val;
+      opt.textContent = label;
+      assessFilter.appendChild(opt);
+    });
+  })();
 
  // ---------------------------
 
@@ -544,6 +575,9 @@ const displayStudentTables = async () => {
   const marksContainer = document.getElementById("learnerMarks");
   const analysisContainer = document.getElementById("learnerAnalysis");
   const spinner = document.getElementById("loadingSpinner");
+
+  // Guard to prevent crash if script is loaded on pages without these elements (e.g. performance.html)
+  if (!marksContainer) return;
 
   const showSpinner = () => spinner && (spinner.style.display = "block");
   const hideSpinner = () => spinner && (spinner.style.display = "none");
@@ -558,9 +592,18 @@ const displayStudentTables = async () => {
     const yearEl = document.getElementById("yearFilter");
     const assessEl = document.getElementById("assessmentFilter");
 
-    let termValue = termEl ? termEl.value.trim() : "all";
-    let yearValue = yearEl ? yearEl.value.trim() : "all";
-    let assessValue = assessEl ? assessEl.value.trim() : "all";
+    let termValue = termEl ? termEl.value : "all";
+    let yearValue = yearEl ? yearEl.value : "all";
+    let assessValue = assessEl ? assessEl.value : "";
+
+    if (!assessValue) {
+      // Clear any previous marks or analysis if no assessment is selected
+      marksContainer.innerHTML = '';
+      if (analysisContainer) analysisContainer.innerHTML = '';
+      marksContainer.innerHTML = '<div class="empty-state">Please select an assessment to view your marks.</div>';
+      hideSpinner();
+      return;
+    }
 
     const query = new URLSearchParams();
     if (termValue !== "all" && !isNaN(termValue)) query.set("term", Number(termValue));
@@ -600,16 +643,6 @@ const displayStudentTables = async () => {
     }
 
     const latest = studentMarks[0];
-
-    // Update filter defaults
-    if (termValue === "all" && termEl) termEl.value = latest.term;
-    if (yearValue === "all" && yearEl) yearEl.value = latest.year;
-    if (assessValue === "all" && assessEl) assessEl.value = latest.assessment;
-
-    // Show latest info
-    showToast(
-      `📊 Latest: Term ${latest.term}, ${latest.year} (${getAssessmentLabel(latest.assessment)})`
-    );
 
     // ===== Show pathway for Grade 10-12 students =====
     try {
@@ -906,4 +939,6 @@ const displayStudentTables = async () => {
   // INITIALIZATION
   // ---------------------------
   setupTabs();
+  
+  // Note: displayStudentTables() is no longer called on load to prevent auto-filtering
 });

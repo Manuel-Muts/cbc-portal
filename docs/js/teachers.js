@@ -29,6 +29,29 @@ document.addEventListener("DOMContentLoaded", () => {
     .marks-input-grid {
       gap: 4px !important;
     }
+  
+    #schoolName {
+      display: block;
+      width: 100%;
+      text-align: center;
+      margin-bottom: 6px;
+      font-size: 1.1rem !important;
+      font-weight: 800 !important;
+      color: #2d3748;
+    }
+    #teacherName {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-wrap: wrap;
+      gap: 10px;
+      width: 100%;
+    }
+      
+    @media (min-width: 768px) {
+      #schoolName { width: auto; text-align: left; margin-bottom: 0; font-size: 1.25rem !important; }
+      #teacherName { width: auto; justify-content: flex-end; }
+    }
   `;
   document.head.appendChild(compactStyle);
 
@@ -115,9 +138,6 @@ document.addEventListener("DOMContentLoaded", () => {
     else if (month >= 9) currentTerm = "3";
     marksTermSelect.value = currentTerm;
   }
-  if (marksAssessmentSelect) {
-    marksAssessmentSelect.value = "0"; // Default to Midterm
-  }
 
   // ---------------------------
   // NEW: STORE TEACHER ALLOCATIONS & STUDENTS
@@ -151,13 +171,13 @@ document.addEventListener("DOMContentLoaded", () => {
     const teacherNameEl = document.getElementById("teacherName");
     if (teacherNameEl && teacher) {
       teacherNameEl.innerHTML = `
-        <span>${(teacher.name || "TEACHER").toUpperCase()}</span>
+        <span style="font-weight: 600; color: #4a5568;">${(teacher.name || "TEACHER").toUpperCase()}</span>
         ${teacher.isDean ? `
-          <a href="dean-dashboard.html" class="btn secondary-btn" style="margin-left:15px; font-size:0.75rem; padding:5px 12px; text-decoration:none; display:inline-block; vertical-align:middle; border-radius:6px; font-weight:600; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
+          <a href="dean-dashboard.html" class="btn secondary-btn" style="font-size:0.7rem; padding:4px 10px; text-decoration:none; border-radius:6px; font-weight:600; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
             🎓 DEAN PANEL
           </a>
         ` : ''}
-        <button id="headerRefreshBtn" title="Refresh Dashboard" style="background:none; border:none; cursor:pointer; margin-left:10px; font-size:1.1rem; color:inherit; vertical-align:middle; transition: transform 0.5s ease;">
+        <button id="headerRefreshBtn" title="Refresh Dashboard" style="background:none; border:none; cursor:pointer; font-size:1.1rem; color:inherit; transition: transform 0.5s ease; display: flex; align-items: center; padding: 0;">
           🔄
         </button>
       `;
@@ -420,23 +440,16 @@ document.addEventListener("DOMContentLoaded", () => {
   // ---------------------------
   (function populateAssessments() {
     const selectElements = [assessmentSelect, marksAssessmentSelect].filter(el => el);
+    const mapping = window.ASSESSMENT_MAPPING || {};
+
     selectElements.forEach(select => {
       select.innerHTML = '<option value="">-- Select Assessment --</option>';
-      const midterm = document.createElement("option");
-      midterm.value = 0;
-      midterm.textContent = "Midterm";
-      select.appendChild(midterm);
-      
-      for (let i = 1; i <= 4; i++) {
+      Object.entries(mapping).forEach(([value, label]) => {
         const opt = document.createElement("option");
-        opt.value = i;
-        opt.textContent = `Assessment ${i}`;
+        opt.value = value;
+        opt.textContent = label;
         select.appendChild(opt);
-      }
-      const endTerm = document.createElement("option");
-      endTerm.value = 5;
-      endTerm.textContent = "End Term";
-      select.appendChild(endTerm);
+      });
     });
   })();
 
@@ -659,14 +672,15 @@ document.addEventListener("DOMContentLoaded", () => {
     // Determine if senior school based on first student's grade
     const isSeniorSchool = cbcUtils.isSeniorGrade(students[0].grade);
 
-    // 🆕 Update table title to show selected subject
+   // 🆕 Update table title to show selected subject
     const marksControlsSection = document.querySelector('.marks-controls');
     if (marksControlsSection && selectedSubject) {
-      let titleElement = marksControlsSection.querySelector('.selected-subject-title');
+     
+      let titleElement = document.querySelector('.selected-subject-title');
       if (!titleElement) {
         titleElement = document.createElement('div');
         titleElement.className = 'selected-subject-title';
-        marksControlsSection.appendChild(titleElement);
+        marksControlsSection.insertAdjacentElement('beforebegin', titleElement);
       }
       titleElement.innerHTML = `<p style="font-size: 1.1rem; color: #2b6cb0; font-weight: 600; margin: 10px 0;">📍 Subject: <strong>${selectedSubject}</strong></p>`;
     }
@@ -1166,8 +1180,26 @@ if (!marksAssessmentSelect.value) {
       return;
     }
 
-    const confirmed = await cbcUtils.showConfirmToast(`Are you sure you want to submit marks for ${marks.length} learner(s)?`);
-    if (!confirmed) {
+    let newMarksCount = 0;
+    let updatedMarksCount = 0;
+    marks.forEach(m => {
+      if (m._id) {
+        updatedMarksCount++;
+      } else {
+        newMarksCount++;
+      }
+    });
+
+    let confirmationMessage = "Are you sure you want to submit these marks?";
+    if (newMarksCount > 0 && updatedMarksCount > 0) {
+      confirmationMessage = `You are submitting ${newMarksCount} new mark(s) and updating ${updatedMarksCount} existing mark(s). Do you want to continue?`;
+    } else if (newMarksCount > 0) {
+      confirmationMessage = `You are submitting ${newMarksCount} new mark(s). Do you want to continue?`;
+    } else if (updatedMarksCount > 0) {
+      confirmationMessage = `You are updating ${updatedMarksCount} existing mark(s). Do you want to continue?`;
+    }
+
+    if (marks.length > 0 && !await cbcUtils.showConfirmToast(confirmationMessage)) {
       return;
     }    
 
@@ -1403,14 +1435,9 @@ if (!marksAssessmentSelect.value) {
         const details = document.createElement('details');
         details.open = false; // Ensure it's collapsed by default
         details.className = 'marks-accordion';
-        let assessmentLabel;
-        if (headerInfo.assessment === 0) {
-          assessmentLabel = 'Midterm';
-        } else if (headerInfo.assessment === 5) {
-          assessmentLabel = 'End Term';
-        } else {
-          assessmentLabel = 'Assessment ' + headerInfo.assessment;
-        }
+        
+        const mapping = window.ASSESSMENT_MAPPING || {};
+        const assessmentLabel = mapping[headerInfo.assessment] || `Assessment ${headerInfo.assessment}`;
         const summaryText = `Grade: ${sanitize(headerInfo.grade)} • Term: ${sanitize(headerInfo.term)} • Year: ${sanitize(headerInfo.year)} • ${assessmentLabel} — ${groupMarks.length} record${groupMarks.length > 1 ? 's' : ''}`;
         const summary = document.createElement('summary');
         summary.className = 'marks-accordion-summary';
@@ -1652,10 +1679,19 @@ if (!marksAssessmentSelect.value) {
   submittedMarksContainer.addEventListener("click", e => {
     const btn = e.target.closest(".pdf-btn");
     if (!btn) return;
+
     const details = btn.closest("details");
     const table = details.querySelector("table");
-    const title = btn.previousElementSibling?.innerText || "Marks_Report";
-    downloadTableAsPDF(table, title);
+
+    // Use the mapping to generate a professional title for the PDF
+    const mapping = window.ASSESSMENT_MAPPING || {};
+    const key = btn.dataset.key; // "assessment_term_year_grade"
+    const [assessment, term, year, grade] = key.split('_');
+    const assessmentLabel = mapping[assessment] || `Assessment ${assessment}`;
+
+    const cleanTitle = `${grade} ${assessmentLabel} Report (Term ${term}, ${year})`;
+
+    downloadTableAsPDF(table, cleanTitle);
   });
 
   // ---------------------------

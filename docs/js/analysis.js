@@ -67,6 +67,31 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   
+  // ===== HELPER: GET ASSESSMENT LABEL =====
+  const getAssessmentLabel = (value) => {
+    const mapping = window.ASSESSMENT_MAPPING || {};
+    return mapping[value] || (value === "all" ? "All Assessments" : `Assessment ${value}`);
+  };
+
+  // ===== POPULATE ASSESSMENT FILTER =====
+  function populateAssessmentFilter() {
+    if (assessmentFilter && window.ASSESSMENT_MAPPING) {
+      assessmentFilter.innerHTML = '<option value="">--Select Assessment--</option>';
+
+      const optAll = document.createElement("option");
+      optAll.value = "all";
+      optAll.textContent = "All Assessments";
+      assessmentFilter.appendChild(optAll);
+
+      Object.entries(window.ASSESSMENT_MAPPING).forEach(([val, label]) => {
+        const opt = document.createElement("option");
+        opt.value = val;
+        opt.textContent = label;
+        assessmentFilter.appendChild(opt);
+      });
+    }
+  }
+
   // ===== FETCH SCHOOL =====
   async function fetchSchoolInfo() {
     try {
@@ -183,6 +208,7 @@ document.addEventListener("DOMContentLoaded", () => {
       }
 
       user = profile; // update user globally
+      populateAssessmentFilter(); // Populate assessment filter after user is loaded
      
       
       // ===== LOAD SCHOOL HEADER =====
@@ -518,29 +544,15 @@ document.addEventListener("DOMContentLoaded", () => {
     Object.keys(stats.groupedByAssessment).forEach(assessmentKey => {
       const arr = stats.groupedByAssessment[assessmentKey];
       if (!arr.length) return;
-      let assessLabel;
-      if (assessmentKey === "0") {
-        assessLabel = "Midterm";
-      } else if (assessmentKey === "5") {
-        assessLabel = "End Term";
-      } else {
-        assessLabel = assessmentKey;
-      }
+      let assessLabel = getAssessmentLabel(assessmentKey);
 
       html += `<h4>Assessment ${assessLabel}</h4>`;
       html += `<table style="border-collapse: collapse; width: 100%; border:1px solid #000; margin-bottom: 15px;">
         <thead><tr><th>Rank</th><th>Name</th><th>Assessment</th>`;
       stats.subjects.forEach(sub => html += `<th>${sub}</th>`);
       html += `<th>Total Marks</th><th>Total Points</th><th>Avg Points</th><th>Performance Level</th></tr></thead><tbody>`;
-      arr.forEach(s => {
-        let assessLabelRow;
-        if (s.assessment === "0") {
-          assessLabelRow = "Midterm";
-        } else if (s.assessment === "5") {
-          assessLabelRow = "End Term";
-        } else {
-          assessLabelRow = s.assessment;
-        }
+      arr.forEach(s => { // Use getAssessmentLabel for row as well
+        let assessLabelRow = getAssessmentLabel(s.assessment);
         html += `<tr><td>${s.rank}</td><td>${s.name}</td><td>${assessLabelRow}</td>`;
         stats.subjects.forEach(sub => html += `<td>${s.subjects[sub] ?? '-'}</td>`);
         html += `<td>${s.total}</td><td><strong>${s.totalPoints}</strong></td><td>${s.avgPoints.toFixed(2)}</td><td>${cbcUtils.getSubdivision(s.mean)}</td></tr>`;
@@ -593,6 +605,12 @@ html += `
   // ===== LOAD LEARNERS FOR EDITING =====
   async function loadLearnersForEditing() {
     const btn = document.querySelector("#editContainer").previousElementSibling?.querySelector("button[class*='primary-btn']") || generateBtn.nextElementSibling;
+    
+    if (assessmentFilter && assessmentFilter.value === "") {
+      alert("Please select an assessment before loading learners for editing.");
+      return;
+    }
+
     if(btn) { btn.disabled = true; btn.textContent = "Loading..."; }
     
     try {
@@ -816,6 +834,11 @@ html += `
 
   // ===== GENERATE REPORT =====
   async function generateReport() {
+    if (assessmentFilter && assessmentFilter.value === "") {
+      alert("Please select an assessment first.");
+      return;
+    }
+
     console.log("[Analysis] Generate Report clicked");
     generateBtn.textContent = "Generating...";
     generateBtn.disabled = true;
@@ -903,9 +926,7 @@ html += `
       const currentSubjects = Array.from(currentSubjectsSet).sort();
 
       let assessLabel;
-      if (assessmentKey === "0") assessLabel = "Midterm";
-      else if (assessmentKey === "5") assessLabel = "End Term";
-      else assessLabel = `Assessment ${assessmentKey}`;
+      assessLabel = getAssessmentLabel(assessmentKey);
 
       // Header per assessment
       html += `<h3>📊 CLASS RANKING - ${assessLabel} (By Final Weighted Score)</h3>`;
@@ -985,13 +1006,8 @@ async function exportPdf() {
       <h1 style="margin:0;font-size:18px;">CLASS REPORT</h1>
       <p style="margin:5px 0 0 0;">
         Grade: ${user.classGrade || "-"} |
-        Term: ${termFilter.value || "-"} |
-        Year: ${yearFilter.value || "-"} |
-        Assessment: ${
-          assessmentFilter.value === "0" ? "Midterm" :
-          assessmentFilter.value === "5" ? "End Term" :
-          assessmentFilter.value === "all" ? "All" : assessmentFilter.value
-        }
+        Term: ${termFilter.value || "-"} | Year: ${yearFilter.value || "-"} |
+        Assessment: ${getAssessmentLabel(assessmentFilter.value)}
       </p>
     `;
     pdfContainer.appendChild(header);
@@ -1293,7 +1309,7 @@ async function exportPdf() {
     if (window.trendChart) window.trendChart.destroy();
     window.trendChart = new Chart(ctx, {
       type: "line",
-      data: { labels: assessments.map(a => a === "0" ? "Midterm" : a === "5" ? "End Term" : `Assessment ${a}`), datasets: [{ label: "Class Mean", data: classMeans, borderColor: "blue", fill: false, tension: 0.2 }] },
+      data: { labels: assessments.map(a => getAssessmentLabel(a)), datasets: [{ label: "Class Mean", data: classMeans, borderColor: "blue", fill: false, tension: 0.2 }] },
       options: { responsive: true, plugins: { legend: { position: 'bottom' } }, scales: { y: { beginAtZero: true, title: { display: true, text: "Class Mean (%)" } }, x: { title: { display: true, text: "Assessment" } } } }
     });
   }

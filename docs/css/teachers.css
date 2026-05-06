@@ -16,10 +16,19 @@ header .logo {
 /* Update navigation links and welcome message to be visible on the new blue header */
 header nav ul li a,
 header .role-link,
-header #teacherName,
 header #teacherName span {
   color: #ffffff !important;
   font-weight: 500;
+  transition: all 0.3s ease;
+  display: inline-block;
+}
+
+/* Ensure the welcome message container uses flexbox on desktop for proper alignment */
+header #teacherName {
+  display: flex !important;
+  align-items: center !important;
+  gap: 15px !important; /* Space between name, dean button, and refresh button */
+  white-space: nowrap !important;
 }
 
 header .contact-link {
@@ -30,6 +39,7 @@ header .contact-link {
 header .contact-link:hover {
   background: #ffffff !important;
   color: #2b6cb0 !important;
+  transform: scale(1.1);
 }
 
 /* Style the refresh button and Dean Panel link in the header */
@@ -682,6 +692,7 @@ form {
   gap: 15px;
   align-items: flex-end;
   padding: 15px;
+  
 }
 
 .marks-controls h3 {
