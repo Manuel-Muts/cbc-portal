@@ -577,6 +577,7 @@ form {
 .toast-success { background: #28a745 !important; }
 .toast-error { background: #dc3545 !important; }
 .toast-info { background: #0061c2 !important; } /* Deeper blue for better contrast */
+.toast-warning { background: #f39c12 !important; } /* Professional orange for warnings */
 
 @keyframes fadeInOut {
   0% { opacity: 0; transform: translateX(-50%) translateY(-20px); }

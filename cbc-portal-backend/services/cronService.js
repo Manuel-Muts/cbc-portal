@@ -3,6 +3,7 @@ import fs from 'fs';
 import path from 'path';
 import { Material } from '../models/Material.js';
 import Payment from '../models/Payment.js';
+import { cleanOrphanedEnrollments } from '../controllers/enrollmentController.js'; // Import the cleanup function
 //import { S3Client } from '@aws-sdk/client-s3';
 //import { Upload } from '@aws-sdk/lib-storage';
 
@@ -19,6 +20,34 @@ const BACKUPS_DIR = path.join(path.resolve(), 'backups', 'payments');
 //});
 
 export const startCronJobs = () => {
+  // 🆕 Cron Job: Clean up orphaned StudentEnrollment records weekly
+  // Runs every Sunday at 3:00 AM (0 3 * * 0)
+  cron.schedule('0 3 * * 0', async () => {
+    console.log('🕒 Running scheduled cleanup of orphaned student enrollments...');
+    try {
+      // Simulate a request object with a super_admin user for system-wide cleanup
+      const mockReq = {
+        user: {
+          role: 'super_admin',
+          // No schoolId needed for super_admin to clean globally
+        }
+      };
+      // Simulate a response object for logging purposes
+      const mockRes = {
+        status: function(code) {
+          console.log(`[Orphaned Enrollment Cleanup] Status: ${code}`);
+          return this;
+        },
+        json: function(data) {
+          console.log(`[Orphaned Enrollment Cleanup] Result:`, data);
+        }
+      };
+      await cleanOrphanedEnrollments(mockReq, mockRes);
+    } catch (err) {
+      console.error('❌ Error during orphaned enrollment cleanup job:', err);
+    }
+  });
+
   // Run every day at midnight (00:00)
   // Format: Minute Hour DayOfMonth Month DayOfWeek
   cron.schedule('0 0 * * *', async () => {

@@ -72,7 +72,7 @@ export const createAdmin = async (req, res) => {
   try {
     if (req.user.role !== 'super_admin') return res.status(403).json({ msg: 'Only super-admins can create admins' });
 
-    const { name, email, schoolId } = req.body;
+    const { name, email, schoolId, password } = req.body;
     if (!name || !email || !schoolId) return res.status(400).json({ msg: 'All fields required' });
 
     const existing = await User.findOne({ email });
@@ -81,7 +81,8 @@ export const createAdmin = async (req, res) => {
     const school = await School.findById(schoolId);
     if (!school) return res.status(404).json({ msg: 'School not found' });
 
-    const rawPassword = Math.random().toString(36).slice(-6); // 6-character alphanumeric
+    // Use provided password or generate a random 6-character one
+    const rawPassword = password || Math.random().toString(36).slice(-6);
     const hashedPassword = await bcrypt.hash(rawPassword, 10);
  
     const admin = await User.create({
@@ -94,7 +95,16 @@ export const createAdmin = async (req, res) => {
       passwordMustChange: true
     });
 
-    await sendCredentialsEmail({ name, email, rawPassword });
+    try {
+      await sendCredentialsEmail({ name, email, rawPassword });
+    } catch (emailErr) {
+      console.error('Admin created but welcome email failed:', emailErr);
+      return res.status(201).json({ 
+        msg: 'Admin created, but email failed to send. Please share the password manually.', 
+        admin, 
+        rawPassword 
+      });
+    }
 
     cache.clearByPattern('super_admins');
     res.status(201).json({ msg: 'Admin created successfully', admin });

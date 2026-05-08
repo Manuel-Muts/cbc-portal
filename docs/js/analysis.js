@@ -118,7 +118,7 @@ document.addEventListener("DOMContentLoaded", () => {
   exportPdfBtn?.addEventListener("click", exportPdf);
 
   // ===== LOAD LEARNERS (EDIT MODE) BUTTON =====
-  if (generateBtn) {
+  /*if (generateBtn) {
     const loadLearnersBtn = document.createElement("button");
     loadLearnersBtn.textContent = "Load Learners (Edit)";
     loadLearnersBtn.className = "primary-btn"; 
@@ -134,7 +134,7 @@ document.addEventListener("DOMContentLoaded", () => {
     generateBtn.parentNode.insertBefore(loadLearnersBtn, generateBtn.nextSibling);
     
     loadLearnersBtn.addEventListener("click", loadLearnersForEditing);
-  }
+  } */
 
   // Create Container for Edit Table
   const editContainer = document.createElement("div");
@@ -557,7 +557,39 @@ document.addEventListener("DOMContentLoaded", () => {
         stats.subjects.forEach(sub => html += `<td>${s.subjects[sub] ?? '-'}</td>`);
         html += `<td>${s.total}</td><td><strong>${s.totalPoints}</strong></td><td>${s.avgPoints.toFixed(2)}</td><td>${cbcUtils.getSubdivision(s.mean)}</td></tr>`;
       });
-      html += "</tbody></table>";
+
+      // Calculate Totals and Means for Footer
+      const groupTotalMarks = arr.reduce((acc, s) => acc + s.total, 0);
+      const groupTotalPoints = arr.reduce((acc, s) => acc + s.totalPoints, 0);
+      const groupAvgPointsSum = arr.reduce((acc, s) => acc + s.avgPoints, 0);
+      const groupMeanSum = arr.reduce((acc, s) => acc + s.mean, 0);
+      const groupCount = arr.length || 1;
+
+      html += `</tbody><tfoot style="background-color: #f2f2f2; font-weight: bold; border-top: 2px solid #000;">`;
+      
+      // TOTAL Row
+      html += `<tr><td colspan="3" style="text-align: right; padding: 8px;">TOTAL:</td>`;
+      stats.subjects.forEach(sub => {
+        const subSum = arr.reduce((acc, s) => acc + (s.subjects[sub] || 0), 0);
+        html += `<td style="text-align: center; padding: 8px;">${subSum.toFixed(0)}</td>`;
+      });
+      html += `<td style="text-align: center; padding: 8px;">${groupTotalMarks.toFixed(0)}</td>`;
+      html += `<td style="text-align: center; padding: 8px;">${groupTotalPoints}</td>`;
+      html += `<td style="text-align: center; padding: 8px;">${groupAvgPointsSum.toFixed(1)}</td>`;
+      html += `<td></td></tr>`;
+
+      // MEAN Row
+      html += `<tr><td colspan="3" style="text-align: right; padding: 8px;">MEAN:</td>`;
+      stats.subjects.forEach(sub => {
+        const subSum = arr.reduce((acc, s) => acc + (s.subjects[sub] || 0), 0);
+        const subCount = arr.filter(s => s.subjects[sub] !== undefined).length || 1;
+        html += `<td style="text-align: center; padding: 8px;">${(subSum / subCount).toFixed(1)}</td>`;
+      });
+      html += `<td style="text-align: center; padding: 8px;">${(groupTotalMarks / groupCount).toFixed(1)}</td>`;
+      html += `<td style="text-align: center; padding: 8px;">${(groupTotalPoints / groupCount).toFixed(1)}</td>`;
+      html += `<td style="text-align: center; padding: 8px;">${(groupAvgPointsSum / groupCount).toFixed(2)}</td>`;
+      html += `<td style="text-align: center; padding: 8px; color: #1a237e;">${cbcUtils.getSubdivision(groupMeanSum / groupCount)}</td>`;
+      html += `</tr></tfoot></table>`;
 
 // ===== TIE-AWARE TOP & LOW STUDENTS =====
 const highestPoints = arr.length ? arr[0].totalPoints : 0;
@@ -965,7 +997,33 @@ html += `
         html += `<td style='border:1px solid #ddd;padding:8px;'>${subLevel} (${cbcUtils.getPerformanceLabel(mainLevel)})</td>`;
         html += "</tr>";
       });
-      html += "</tbody></table>";
+
+      // Calculate Totals and Means for Senior Footer
+      const groupTotalPoints = group.reduce((acc, s) => acc + s.totalPoints, 0);
+      const groupMeanSum = group.reduce((acc, s) => acc + s.mean, 0);
+      const groupCount = group.length || 1;
+
+      html += `</tbody><tfoot style="background-color: #f2f2f2; font-weight: bold; border-top: 2px solid #337ab7;">`;
+      
+      // TOTAL Row
+      html += `<tr><td colspan="3" style="text-align: right; padding: 8px;">TOTAL:</td>`;
+      currentSubjects.forEach(sub => {
+        const subSum = group.reduce((acc, s) => acc + (s.subjects[sub] || 0), 0);
+        html += `<td style="border:1px solid #ddd;padding:8px;text-align:center;">${subSum.toFixed(0)}</td>`;
+      });
+      html += `<td style="border:1px solid #ddd;padding:8px;text-align:center;">${groupTotalPoints}</td>`;
+      html += `<td></td></tr>`;
+
+      // MEAN Row
+      html += `<tr><td colspan="3" style="text-align: right; padding: 8px;">MEAN:</td>`;
+      currentSubjects.forEach(sub => {
+        const subSum = group.reduce((acc, s) => acc + (s.subjects[sub] || 0), 0);
+        const subCount = group.filter(s => s.subjects[sub] !== undefined).length || 1;
+        html += `<td style="border:1px solid #ddd;padding:8px;text-align:center;">${(subSum / subCount).toFixed(1)}</td>`;
+      });
+      html += `<td style="border:1px solid #ddd;padding:8px;text-align:center;">${(groupTotalPoints / groupCount).toFixed(1)}</td>`;
+      html += `<td style="border:1px solid #ddd;padding:8px;text-align:center; color: #1a237e;">${cbcUtils.getSubdivision(groupMeanSum / groupCount)}</td>`;
+      html += `</tr></tfoot></table>`;
     });
     
     rankingTableWrap.innerHTML = html;
@@ -979,284 +1037,159 @@ async function exportPdf() {
     const filtered = await getFilteredMarks();
     if (!filtered.length) return alert("No data to export.");
 
-    const gradeNum = parseInt(gradeFilter?.value) || 0;
-    const isSeniorSchool = gradeNum >= 10 && gradeNum <= 12;
-
-    const stats = isSeniorSchool 
-      ? calculateSeniorSchoolStats(filtered)
-      : calculateStats(filtered);
-
-    // Defensively filter out null or 'null' subjects that might have crept in.
-    const subjects = (stats.subjects || []).filter(s => s && s !== 'null');
-
-    const pdfContainer = document.createElement("div");
-    pdfContainer.id = "pdf-temp-container";
-    pdfContainer.style.padding = "20px";
-    pdfContainer.style.fontFamily = "Arial, sans-serif";
-    pdfContainer.style.fontSize = "10px";
-    pdfContainer.style.width = "100%";
-    pdfContainer.style.background = "#fff";
-    document.body.appendChild(pdfContainer);
-
-    // HEADER
-    const header = document.createElement("div");
-    header.style.textAlign = "center";
-    header.style.marginBottom = "15px";
-    header.innerHTML = `
-      <h1 style="margin:0;font-size:18px;">CLASS REPORT</h1>
-      <p style="margin:5px 0 0 0;">
-        Grade: ${user.classGrade || "-"} |
-        Term: ${termFilter.value || "-"} | Year: ${yearFilter.value || "-"} |
-        Assessment: ${getAssessmentLabel(assessmentFilter.value)}
-      </p>
-    `;
-    pdfContainer.appendChild(header);
-
-    // RANKING TABLE
-    const rankingTable = document.createElement("table");
-    rankingTable.style.width = "100%";
-    rankingTable.style.borderCollapse = "collapse";
-    rankingTable.style.marginBottom = "20px";
-
-    if (isSeniorSchool) {
-        // ===== SENIOR SCHOOL PDF TABLE =====
-        const grouped = stats.groupedByAssessment || {};
-        Object.keys(grouped).sort().forEach(assessmentKey => {
-            const studentArray = grouped[assessmentKey];
-            if (!studentArray.length) return;
-
-            // Determine subjects present in this assessment group
-            const currentSubjectsSet = new Set();
-            studentArray.forEach(s => {
-              if (s.subjects) {
-                Object.keys(s.subjects).forEach(sub => currentSubjectsSet.add(sub));
-              }
-            });
-            const currentSubjects = Array.from(currentSubjectsSet).sort();
-
-            // Assessment Header Row
-            let assessLabel = assessmentKey === "0" ? "Midterm" : assessmentKey === "5" ? "End Term" : `Assessment ${assessmentKey}`;
-            const assessRow = document.createElement("tr");
-            assessRow.innerHTML = `<td colspan="${5 + currentSubjects.length}" style="padding:10px;font-weight:bold;background:#e0e0e0;text-align:left;">${assessLabel}</td>`;
-            rankingTable.appendChild(assessRow);
-
-            // Headers
-            const headerRow = document.createElement("tr");
-            ["Rank", "Adm No", "Name", ...currentSubjects, "Points", "Perf."].forEach(h => {
-                headerRow.innerHTML += `<th style="border:1px solid #000;padding:5px;background:#337ab7;color:#fff;font-weight:bold;text-align:center;">${h}</th>`;
-            });
-            rankingTable.appendChild(headerRow);
-
-            // Data
-            studentArray.forEach((student, idx) => {
-                const bg = idx % 2 === 0 ? "#f9f9f9" : "#fff";
-                const row = document.createElement("tr");
-                row.style.background = bg;
-
-                const subLevel = cbcUtils.getSubdivision(student.mean);
-                const mainLevel = cbcUtils.getPerformanceLevel(student.mean);
-
-                const rowData = [
-                    student.rank ?? "-",
-                    student.admissionNo,
-                    student.name,
-                    ...currentSubjects.map(sub => {
-                        const score = student.subjects[sub];
-                        return (score !== null && score !== undefined) ? score.toFixed(1) : '-';
-                    }),
-                    student.totalPoints ?? "-",
-                    subLevel
-                ];
-
-                rowData.forEach(val => {
-                    const td = document.createElement("td");
-                    td.style.border = "1px solid #000";
-                    td.style.padding = "5px";
-                    td.style.textAlign = "center";
-                    td.textContent = val;
-                    row.appendChild(td);
-                });
-                rankingTable.appendChild(row);
-            });
-
-            // Spacer row
-            const spacer = document.createElement("tr");
-            spacer.innerHTML = `<td colspan="${5 + currentSubjects.length}" style="height:15px;border:none;"></td>`;
-            rankingTable.appendChild(spacer);
-        });
-
-    } else {
-        // ===== JUNIOR SCHOOL PDF TABLE (existing logic) =====
-        let headHTML = "<tr>";
-        ["Rank", "Student", ...subjects.map(s => s.charAt(0).toUpperCase() + s.slice(1)), "Total Marks", "Total Points", "Avg Points", "Performance Level"].forEach(h => {
-          headHTML += `<th style="border:1px solid #000;padding:5px;background:#4CAF50;color:#fff;font-weight:bold;text-align:center;">${h}</th>`;
-        });
-        headHTML += "</tr>";
-        rankingTable.innerHTML = headHTML;
-
-        const grouped = stats.groupedByAssessment || {};
-        Object.keys(grouped).forEach(assessmentKey => {
-          const arr = grouped[assessmentKey];
-          if (!arr.length) return;
-          arr.forEach((student, idx) => {
-            const bg = idx % 2 === 0 ? "#f9f9f9" : "#fff";
-            const row = document.createElement("tr");
-            row.style.background = bg;
-            const rowData = [
-                (student.rank !== undefined) ? student.rank : "-",
-                student.name || "Unnamed",
-                ...subjects.map(sub => (student.subjects[sub] !== undefined && student.subjects[sub] !== null) ? student.subjects[sub] : "-"),
-                (student.total !== undefined) ? student.total : 0,
-                (student.totalPoints !== undefined) ? student.totalPoints : 0,
-                (student.avgPoints !== undefined) ? student.avgPoints.toFixed(2) : 0,
-                cbcUtils.getSubdivision(student.mean)
-            ];
-            rowData.forEach(val => {
-              const td = document.createElement("td");
-              td.style.border = "1px solid #000";
-              td.style.padding = "5px";
-              td.style.textAlign = "center";
-              td.textContent = val;
-              row.appendChild(td);
-            });
-            rankingTable.appendChild(row);
-          });
-        });
-    }
-    pdfContainer.appendChild(rankingTable);
-
-    // SUBJECT MEANS TABLE
-    const subjectTable = document.createElement("table");
-    subjectTable.style.width = "50%";
-    subjectTable.style.borderCollapse = "collapse";
-    subjectTable.style.marginBottom = "20px";
-    subjectTable.innerHTML = `
-      <tr>
-        <th style="border:1px solid #000;padding:5px;background:#2196F3;color:#fff;font-weight:bold;text-align:center;">Subject</th>
-        <th style="border:1px solid #000;padding:5px;background:#2196F3;color:#fff;font-weight:bold;text-align:center;">Mean</th>
-      </tr>
-    `;
-    subjects.forEach((sub, idx) => {
-      const bg = idx % 2 === 0 ? "#f1f1f1" : "#fff";
-      const mean = stats.subjectMeans[sub] !== undefined ? stats.subjectMeans[sub].toFixed(2) : "N/A";
-      subjectTable.innerHTML += `
-        <tr style="background:${bg}">
-          <td style="border:1px solid #000;padding:5px;text-align:center;">${sub.charAt(0).toUpperCase() + sub.slice(1)}</td>
-          <td style="border:1px solid #000;padding:5px;text-align:center;">${mean}</td>
-        </tr>
-      `;
-    });
-    pdfContainer.appendChild(subjectTable);
-
-     // QUICK STATS
-    const topMean = isSeniorSchool 
-        ? (stats.records > 0 ? Math.max(...stats.studentArray.map(s => s.mean)).toFixed(2) : "-")
-        : stats.topMean.toFixed(2);
-    const lowMean = isSeniorSchool
-        ? (stats.records > 0 ? Math.min(...stats.studentArray.map(s => s.mean)).toFixed(2) : "-")
-        : stats.lowMean.toFixed(2);
-    
-    const topSubjectName = (stats.topSubject && stats.topSubject !== '-') ? stats.topSubject.charAt(0).toUpperCase() + stats.topSubject.slice(1) : '-';
-    const lowSubjectName = (stats.lowSubject && stats.lowSubject !== '-') ? stats.lowSubject.charAt(0).toUpperCase() + stats.lowSubject.slice(1) : '-';
-
-    const statsDiv = document.createElement("div");
-    statsDiv.style.marginBottom = "15px";
-    statsDiv.style.padding = "10px";
-    statsDiv.style.border = "1px solid #000";
-    statsDiv.style.background = "#f0f0f0";
-    statsDiv.innerHTML = `
-      <strong>Class Mean:</strong> ${stats.classMean.toFixed(2)} <br><br>
-      <strong>Top Mean:</strong> ${topMean} |
-      <strong>Low Mean:</strong> ${lowMean} <br><br>
-      <strong>Top Subject:</strong> ${topSubjectName} |
-      <strong>Low Subject:</strong> ${lowSubjectName} <br><br>
-      <strong>Records:</strong> ${stats.records}
-    `;
-    pdfContainer.appendChild(statsDiv);
-
-    // ===== SUMMARY SECTION (Level Distribution + Performance Key) =====
-    const levelCounts = { EE1: 0, EE2: 0, ME1: 0, ME2: 0, AE1: 0, AE2: 0, BE1: 0, BE2: 0 };
-    stats.studentArray.forEach(s => {
-      const lvl = cbcUtils.getSubdivision(s.mean);
-      if (levelCounts[lvl] !== undefined) levelCounts[lvl]++;
-    });
-
-    const summaryWrapper = document.createElement("div");
-    summaryWrapper.style.display = "flex";
-    summaryWrapper.style.gap = "40px";
-    summaryWrapper.style.marginBottom = "20px";
-    summaryWrapper.style.pageBreakInside = "avoid";
-
-    // Level Distribution Table
-    const distDiv = document.createElement("div");
-    distDiv.style.flex = "0 0 160px";
-    distDiv.innerHTML = `
-      <h4 style="margin: 0 0 8px 0; font-size: 12px; color: #333;">Level Distribution</h4>
-      <table style="width:100%; border-collapse: collapse; font-size: 9px;">
-        <thead><tr style="background:#337ab7; color:white;">
-          <th style="border:1px solid #000; padding:4px;">Level</th>
-          <th style="border:1px solid #000; padding:4px;">Count</th>
-        </tr></thead>
-        <tbody>
-          ${Object.entries(levelCounts).map(([lvl, count]) => `
-            <tr>
-              <td style="border:1px solid #000; padding:3px; text-align:center;">${lvl}</td>
-              <td style="border:1px solid #000; padding:3px; text-align:center;">${count}</td>
-            </tr>
-          `).join('')}
-        </tbody>
-      </table>
-    `;
-
-    // Performance Key Table
-    const keyDiv = document.createElement("div");
-    keyDiv.style.flex = "0 0 200px";
-    keyDiv.innerHTML = `
-      <h4 style="margin: 0 0 8px 0; font-size: 12px; color: #333;">Performance Key</h4>
-      <table style="width:100%; border-collapse: collapse; font-size: 8px;">
-        <thead><tr style="background:#444; color:white;">
-          <th style="border:1px solid #000; padding:4px;">Level</th>
-          <th style="border:1px solid #000; padding:4px;">Range</th>
-          <th style="border:1px solid #000; padding:4px;">Pts</th>
-        </tr></thead>
-        <tbody>
-          ${[['EE1','90-100','8'],['EE2','75-89','7'],['ME1','58-74','6'],['ME2','41-57','5'],['AE1','31-40','4'],['AE2','21-30','3'],['BE1','11-20','2'],['BE2','0-10','1']]
-            .map(row => `<tr>${row.map(cell => `<td style="border:1px solid #000; padding:2px; text-align:center;">${cell}</td>`).join('')}</tr>`).join('')}
-        </tbody>
-      </table>
-    `;
-
-    summaryWrapper.appendChild(distDiv);
-    summaryWrapper.appendChild(keyDiv);
-    pdfContainer.appendChild(summaryWrapper);
-
-   
-    // GENERATE PDF
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF("l", "pt", "a4");
-    await doc.html(pdfContainer, {
-      callback: function(pdf) {
-        // Add footer to the first page only
-        const pageWidth = pdf.internal.pageSize.getWidth();
-        const pageHeight = pdf.internal.pageSize.getHeight();
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.getHeight();
+
+    const gradeNum = parseInt(gradeFilter?.value) || 0;
+    const isSeniorSchool = gradeNum >= 10 && gradeNum <= 12;
+    const stats = isSeniorSchool ? calculateSeniorSchoolStats(filtered) : calculateStats(filtered);
+    const subjects = (stats.subjects || []).filter(s => s && s !== 'null');
+    const assessmentLabel = getAssessmentLabel(assessmentFilter.value);
+
+    // 1. HEADER
+    doc.setFontSize(20);
+    doc.setFont("helvetica", "bold");
+    doc.text("CLASS ANALYSIS REPORT", pageWidth / 2, 45, { align: "center" });
+
+    doc.setFontSize(11);
+    doc.setFont("helvetica", "normal");
+    const subheader = `Grade: ${user.classGrade || "-"} | Term: ${termFilter.value || "-"} | Year: ${yearFilter.value || "-"} | Assessment: ${assessmentLabel}`;
+    doc.text(subheader, pageWidth / 2, 65, { align: "center" });
+
+    let yPos = 90;
+
+    // 2. RANKING TABLES (Grouped by assessment)
+    const grouped = stats.groupedByAssessment || {};
+    const assessmentKeys = Object.keys(grouped).sort();
+
+    for (const key of assessmentKeys) {
+      const arr = grouped[key];
+      if (!arr.length) continue;
+
+      // Determine subjects for this group
+      const currentSubjectsSet = new Set();
+      arr.forEach(s => {
+        if (s.subjects) Object.keys(s.subjects).forEach(sub => { if(sub && sub !== 'null') currentSubjectsSet.add(sub); });
+      });
+      const currentSubjects = Array.from(currentSubjectsSet).sort();
+
+      doc.setFontSize(13);
+      doc.setFont("helvetica", "bold");
+      doc.text(`Assessment: ${getAssessmentLabel(key)}`, 40, yPos);
+      yPos += 10;
+
+      let head, body, foot;
+    if (isSeniorSchool) {
+        head = [["Rank", "Name", ...currentSubjects, "Points", "Level"]];
+        body = arr.map(s => [
+          s.rank ?? "-",
+          s.name,
+          ...currentSubjects.map(sub => s.subjects[sub]?.toFixed(1) || '-'),
+          s.totalPoints ?? "-",
+          cbcUtils.getSubdivision(s.mean)
+        ]);
         
-        pdf.setPage(1);
-        pdf.setFontSize(9);
-        pdf.setTextColor(100);
+        const totalRow = ["", "TOTAL:"];
+        const meanRow = ["", "MEAN:"];
+        currentSubjects.forEach(sub => {
+          const sSum = arr.reduce((acc, s) => acc + (s.subjects[sub] || 0), 0);
+          const sCnt = arr.filter(s => s.subjects[sub] !== undefined).length || 1;
+          totalRow.push(sSum.toFixed(0));
+          meanRow.push((sSum / sCnt).toFixed(1));
+        });
+        const gPoints = arr.reduce((acc, s) => acc + (s.totalPoints || 0), 0);
+        const gMean = arr.reduce((acc, s) => acc + (s.mean || 0), 0) / (arr.length || 1);
+        totalRow.push(gPoints.toFixed(0), "");
+        meanRow.push((gPoints / (arr.length || 1)).toFixed(1), cbcUtils.getSubdivision(gMean));
+        foot = [totalRow, meanRow];
+    } else {
+        head = [["Rank", "Student", ...subjects, "Total Marks", "Total Points", "Avg Points", "Performance Level"]];
+        body = arr.map(s => [
+          s.rank ?? "-",
+          s.name || "Unnamed",
+          ...subjects.map(sub => s.subjects[sub] ?? "-"),
+          s.total ?? 0,
+          s.totalPoints ?? 0,
+          s.avgPoints.toFixed(2),
+          cbcUtils.getSubdivision(s.mean)
+        ]);
+
+        const fTotalMarks = arr.reduce((acc, s) => acc + s.total, 0);
+        const fTotalPoints = arr.reduce((acc, s) => acc + s.totalPoints, 0);
+        const fAvgPoints = arr.reduce((acc, s) => acc + s.avgPoints, 0);
+        const fMeanSum = arr.reduce((acc, s) => acc + s.mean, 0);
+        const fCount = arr.length || 1;
+
+        const totalRow = ["", "TOTAL:"];
+        const meanRow = ["", "MEAN:"];
+        subjects.forEach(sub => {
+          const sSum = arr.reduce((acc, s) => acc + (s.subjects[sub] || 0), 0);
+          const sCnt = arr.filter(s => s.subjects[sub] !== undefined).length || 1;
+          totalRow.push(sSum.toFixed(0));
+          meanRow.push((sSum / sCnt).toFixed(1));
+        });
+        totalRow.push(fTotalMarks.toFixed(0), fTotalPoints, fAvgPoints.toFixed(1), "");
+        meanRow.push((fTotalMarks / fCount).toFixed(1), (fTotalPoints / fCount).toFixed(1), (fAvgPoints / fCount).toFixed(2), cbcUtils.getSubdivision(fMeanSum / fCount));
+        foot = [totalRow, meanRow];
+      }
+
+      doc.autoTable({
+        startY: yPos,
+        head,
+        body,
+        foot,
+        theme: 'grid',
+        styles: { fontSize: 8, lineWidth: 0.1, lineColor: [0, 0, 0] },
+        headStyles: { fillColor: isSeniorSchool ? [51, 122, 183] : [76, 175, 80] },
+        footStyles: { fillColor: [241, 245, 249], textColor: [0, 0, 0], fontStyle: 'bold' },
+        showHead: 'everyPage',
+        showFoot: 'lastPage', // Keep totals/mean only on the last page of the ranking list
+        margin: { left: 40, right: 40 }
+      });
+      yPos = doc.lastAutoTable.finalY + 30;
+    }
+
+    // 3. SUBJECT MEANS
+    doc.setFontSize(12);
+    doc.setFont("helvetica", "bold");
+    doc.text("SUBJECT MEANS SUMMARY", 40, yPos);
+    doc.autoTable({
+       startY: yPos + 10,
+       head: [["Subject", "Mean Score"]],
+       body: subjects.map(sub => [sub.charAt(0).toUpperCase() + sub.slice(1), stats.subjectMeans[sub]?.toFixed(2) || "0.00"]),
+       theme: 'grid',
+       styles: { fontSize: 9, lineWidth: 0.1, lineColor: [0, 0, 0] },
+       headStyles: { fillColor: [33, 150, 243] },
+       tableWidth: 200,
+       margin: { left: 40 }, // Ensure consistent left margin
+       showHead: 'everyPage'
+    });
+
+    // 4. DOCUMENT FOOTER (Last Page Only)
+    const totalPages = doc.internal.getNumberOfPages();
+    const genText = "CompetenceHub Analytics";
+    const genTextWidth = doc.getTextWidth(genText);
+
+    for (let i = 1; i <= totalPages; i++) {
+      doc.setPage(i);
+      doc.setFontSize(9);
+      doc.setTextColor(100);
+      
+      // Page numbers on every page
+      doc.text(genText, (pageWidth / 2) - (genTextWidth / 2), pageHeight - 20, { align: "center" });
+      doc.text(`Page ${i} of ${totalPages}`, pageWidth - 40, pageHeight - 20, { align: "right" });
+
+      // Teacher info only on the last page
+      if (i === totalPages) {
         const teacherName = localStorage.getItem("teacherName") || user?.name || "Teacher";
         const dateGenerated = new Date().toLocaleString();
-        const footerText = `Generated by: ${teacherName} | Date: ${dateGenerated}`;
-        
-        pdf.text(footerText, pageWidth - 20, pageHeight - 20, { align: 'right' });
+        doc.text(`${teacherName} | Date: ${dateGenerated}`, 40, pageHeight - 20);
+      }
+    }
 
-        pdf.save(`Class_Report_Grade_${user.classGrade || "-"}.pdf`);
-        document.body.removeChild(pdfContainer);
-      },
-      x: 10,
-      y: 10,
-      width: 780,
-      windowWidth: pdfContainer.scrollWidth
-    });
+    doc.save(`Class_Report_Grade_${user.classGrade || "-"}.pdf`);
 
   } catch (err) {
     console.error("PDF export error:", err);

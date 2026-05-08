@@ -880,8 +880,8 @@ confirmPromotionBtn.addEventListener("click", async () => {
           subjectAllocPage = data.pagination?.page || page;
           subjectAllocTotalPages = data.pagination?.totalPages || 1;
           renderSubjectAllocations(data.data || data);
-          updateSubjectAllocPaginationControls();
           subjectAllocTableBody.dataset.loading = "false";
+          updateSubjectAllocPaginationControls();
           return;
         }
       }

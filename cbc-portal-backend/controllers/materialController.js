@@ -27,7 +27,7 @@ export const uploadRaw = async (req, res) => {
 export const addMaterial = async (req, res) => {
   try {
     const { grade, subject, pathway, course, title, description } = req.body;
-    const gradeNum = parseInt(grade);
+    const gradeNum = parseInt(String(grade).replace(/\D/g, ""), 10);
     const isSeniorSchool = gradeNum >= 10 && gradeNum <= 12;
 
     // --- CLOUDINARY FIX ---
@@ -153,7 +153,7 @@ export const getStudentMaterials = async (req, res) => {
       filter.grade = normalizedGradeStr; 
     }
 
-    const gradeNum = parseInt(normalizedGradeStr);
+    const gradeNum = parseInt(String(normalizedGradeStr).replace(/\D/g, ""), 10);
     const isSeniorSchool = gradeNum >= 10 && gradeNum <= 12;
 
     // ===== JUNIOR SCHOOL (1-9): Filter by subject =====

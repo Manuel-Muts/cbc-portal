@@ -95,7 +95,9 @@
   let userProfile = null;
   let usersTotalRecords = 0;
   let usersTotalPages = 1;
-  const usersCache = {};
+  const usersCache = {}; // In-memory fallback
+  const PERSISTENT_CACHE_PREFIX = "users_mgmt_cache_";
+  const CACHE_TTL = 10 * 60 * 1000; // 10 minutes
   let currentRoleTab = "student"; // Default view: Learners (Students)
 
   // ---------------------------
@@ -336,11 +338,25 @@
     if (!usersTableBody) return;
     
     const cacheKey = `${currentRoleTab}_${page}`;
+    const storageKey = PERSISTENT_CACHE_PREFIX + cacheKey;
 
-    if (!forceReload && usersCache[cacheKey]) {
-      renderUsers(usersCache[cacheKey]);
-      updateUsersPagination(page, usersTotalPages);
-      return;
+    if (!forceReload) {
+      // Check memory first, then localStorage
+      let data = usersCache[cacheKey];
+      if (!data) {
+        try {
+          const cached = JSON.parse(localStorage.getItem(storageKey));
+          if (cached && (Date.now() - cached.timestamp < CACHE_TTL)) data = cached.data;
+        } catch (e) {}
+      }
+
+      if (data) {
+        usersTotalPages = data.pages;
+        usersTotalRecords = data.total;
+        renderUsers(data.users);
+        updateUsersPagination(page, usersTotalPages);
+        return;
+      }
     }
 
     const colCount = currentRoleTab === "student" ? 6 : 4;
@@ -355,7 +371,13 @@
       const { users = [], total = 0, pages = 1 } = res;
       usersTotalPages = pages;
       usersTotalRecords = total;
-      usersCache[cacheKey] = users;
+
+      const cacheData = { users, total, pages };
+      usersCache[cacheKey] = cacheData;
+      try {
+        localStorage.setItem(storageKey, JSON.stringify({ timestamp: Date.now(), data: cacheData }));
+      } catch (e) {}
+
       renderUsers(users);
       updateUsersPagination(page, pages);
 
@@ -380,7 +402,14 @@
   }
 
   function clearUsersCache() {
+    // Clear in-memory
     Object.keys(usersCache).forEach(key => delete usersCache[key]);
+    // Clear persistent localStorage keys
+    Object.keys(localStorage).forEach(key => {
+      if (key.startsWith(PERSISTENT_CACHE_PREFIX)) {
+        localStorage.removeItem(key);
+      }
+    });
   }
 
   // ---------------------------

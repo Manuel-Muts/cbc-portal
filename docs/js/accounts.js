@@ -921,6 +921,78 @@
   }
 
   // ---------------------------
+  // GENERATE PDF FROM MODAL CONTENT
+  // ---------------------------
+  async function generateModalPDF(elementId, titleSuffix, customTitle) {
+    const contentElement = document.getElementById(elementId);
+    const headerElement = document.querySelector('#studentFeeModalBody .report-header');
+
+    if (!contentElement || !headerElement || !window.html2canvas || !window.jspdf) {
+      showToast("PDF generation components not ready.", "error");
+      return;
+    }
+    
+    // 1. Fetch school info to get the name
+    const school = await getSchoolInfo({ fields: 'name' });
+    const schoolName = (school.name || "SCHOOL NAME").toUpperCase();
+
+    // 2. Create a temporary, off-screen container for printing
+    const printContainer = document.createElement('div');
+    printContainer.style.position = 'absolute';
+    printContainer.style.left = '-9999px';
+    printContainer.style.width = '800px';
+    printContainer.style.padding = '20px';
+    printContainer.style.background = 'white';
+    printContainer.style.fontFamily = 'Arial, sans-serif';
+
+    // 3. Construct the printable content
+    printContainer.innerHTML = `
+        <div style="text-align:center; margin-bottom:20px;">
+            <h1 style="margin:0; font-size:22px;">${schoolName}</h1>
+        </div>
+    `;
+    
+    const clonedHeader = headerElement.cloneNode(true);
+    if (customTitle) {
+        const h2 = clonedHeader.querySelector('h2');
+        if (h2) h2.textContent = customTitle;
+    }
+    printContainer.appendChild(clonedHeader);
+    printContainer.appendChild(contentElement.cloneNode(true));
+    document.body.appendChild(printContainer);
+
+    try {
+      const canvas = await html2canvas(printContainer, { scale: 2, useCORS: true });
+      const imgData = canvas.toDataURL('image/png');
+      const { jsPDF } = window.jspdf;
+      const pdf = new jsPDF('p', 'mm', 'a4');
+      const imgWidth = 190;
+      const imgHeight = (canvas.height * imgWidth) / canvas.width;
+      
+      pdf.addImage(imgData, 'PNG', 10, 10, imgWidth, imgHeight);
+
+      // Add footer with current date
+      const dateStr = `Generated: ${new Date().toLocaleString()}`;
+      pdf.setFontSize(8);
+      pdf.setTextColor(100);
+      pdf.text(dateStr, 10, pdf.internal.pageSize.getHeight() - 10);
+      pdf.text(`Page 1 of 1`, pdf.internal.pageSize.getWidth() - 10, pdf.internal.pageSize.getHeight() - 10, { align: 'right' });
+
+      const fname = `${currentStudentDetails?.name || 'Student'}_${titleSuffix}.pdf`;
+      pdf.save(fname);
+    } catch(e) { 
+        console.error(e); 
+        showToast("PDF generation failed", "error"); 
+    } finally {
+        // 4. Clean up the temporary container
+        document.body.removeChild(printContainer);
+    }
+  }
+
+  if (dlStructureBtn) dlStructureBtn.addEventListener('click', () => generateModalPDF('fee-structure-for-pdf', 'Fee_Structure', 'FEE STRUCTURE AND BALANCE'));
+  if (dlStatementBtn) dlStatementBtn.addEventListener('click', () => generateModalPDF('payment-statement-for-pdf', 'Fee_Statement', 'FEE STATEMENT'));
+
+  // ---------------------------
   // GLOBAL FEE NOTE LOGIC
   // ---------------------------
   async function loadGlobalFeeNote(forceRefresh = false) {

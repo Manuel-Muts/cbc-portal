@@ -29,6 +29,37 @@
   // ---------------------------
   // HELPER FUNCTIONS (Logic Consolidation)
   // ---------------------------
+  const SCHOOL_TYPES_GRADES = {
+    full: ["1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12"],
+    primary_junior: ["1", "2", "3", "4", "5", "6", "7", "8", "9"],
+    senior: ["10", "11", "12"]
+  };
+
+  async function loadSchoolInfoAndPopulateGrades() {
+    try {
+      const res = await fetch(`${API_BASE}/my-school`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (!res.ok) throw new Error("Failed to fetch school info");
+      const school = await res.json();
+      
+      const type = school.schoolType || 'full';
+      const grades = SCHOOL_TYPES_GRADES[type] || SCHOOL_TYPES_GRADES.full;
+      
+      if (materialGrade) {
+        materialGrade.innerHTML = '<option value="">-- Select Grade --</option>';
+        grades.forEach(g => {
+          const opt = document.createElement("option");
+          opt.value = g;
+          opt.textContent = `Grade ${g}`;
+          materialGrade.appendChild(opt);
+        });
+      }
+    } catch (err) {
+      console.error("Error fetching school info for grade population:", err);
+    }
+  }
+
   const getGradeNum = (grade) => {
     const match = (grade || "").toString().match(/\d+/);
     return match ? parseInt(match[0]) : 0;
@@ -570,6 +601,7 @@
   // ---------------------------
   (async function init() {
     setupTabs();
+    await loadSchoolInfoAndPopulateGrades();
     await loadMaterials();
   })();
 

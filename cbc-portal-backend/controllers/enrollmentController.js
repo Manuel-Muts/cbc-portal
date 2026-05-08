@@ -22,7 +22,7 @@ export const adminSearchStudent = async (req, res) => {
     }
 
     const page = Math.max(1, parseInt(pageQuery, 10) || 1);
-    const limit = Math.min(100, Math.max(10, parseInt(limitQuery, 10) || 20));
+    const limit = Math.min(100, Math.max(10, parseInt(limitQuery, 10) || 15));
     const skip = (page - 1) * limit;
 
     const sanitizedQ = escapeRegex(q);
@@ -142,12 +142,12 @@ export const updateEnrollment = async (req, res) => {
     }
 
     // Normalize grade to "Grade X" format
-    const normalizeGrade = (grade) => {
-      if (!grade) return null;
-      if (!isNaN(grade)) {
-        return `Grade ${grade}`;
-      }
-      return grade;
+    const normalizeGrade = (g) => {
+      if (!g) return null;
+      const str = String(g).trim();
+      if (!isNaN(str) && str !== "") return `Grade ${str}`;
+      if (str.length <= 2 && /^\d+[A-Z]?$/i.test(str)) return `Grade ${str}`;
+      return str;
     };
 
     enrollment.academicYear = academicYear ?? enrollment.academicYear;
@@ -229,6 +229,73 @@ export const getMyEnrollment = async (req, res) => {
 };
 
 /**
+ * CLEAN UP ORPHANED ENROLLMENTS
+ * Deletes StudentEnrollment records that refer to non-existent User IDs.
+ */
+export const cleanOrphanedEnrollments = async (req, res) => {
+  try {
+    // Only admins or super_admins should be able to trigger this
+    if (!['admin', 'super_admin'].includes(req.user.role)) {
+      return res.status(403).json({ message: "Unauthorized to perform this action" });
+    }
+
+    const schoolId = req.user.schoolId; // Admin's schoolId
+
+    // Initial match for enrollments within the admin's school (if not super_admin)
+    const initialMatch = {};
+    if (req.user.role === 'admin' && schoolId) {
+      initialMatch.schoolId = new mongoose.Types.ObjectId(schoolId);
+    }
+
+    // Find orphaned enrollments using aggregation
+    const orphanedEnrollments = await StudentEnrollment.aggregate([
+      {
+        $match: initialMatch // Filter by school if admin
+      },
+      {
+        $lookup: {
+          from: "users", // The collection name for the User model
+          localField: "studentId",
+          foreignField: "_id",
+          as: "studentDetails"
+        }
+      },
+      {
+        $match: {
+          "studentDetails": { $eq: [] } // Match enrollments where no studentDetails were found
+        }
+      },
+      {
+        $project: {
+          _id: 1 // Only need the ID of the orphaned enrollment
+        }
+      }
+    ]);
+
+    const orphanedIds = orphanedEnrollments.map(e => e._id);
+
+    if (orphanedIds.length === 0) {
+      return res.status(200).json({ message: "No orphaned enrollments found.", deletedCount: 0 });
+    }
+
+    // Delete the identified orphaned enrollments
+    const deleteResult = await StudentEnrollment.deleteMany({ _id: { $in: orphanedIds } });
+
+    console.log(`[Cleanup] Deleted ${deleteResult.deletedCount} orphaned enrollment records.`);
+
+    res.status(200).json({
+      message: `Successfully deleted ${deleteResult.deletedCount} orphaned enrollment records.`,
+      deletedCount: deleteResult.deletedCount,
+      deletedIds: orphanedIds
+    });
+
+  } catch (err) {
+    console.error("cleanOrphanedEnrollments error:", err);
+    res.status(500).json({ message: "Server error during cleanup" });
+  }
+};
+
+/**
  * GET ALL STUDENTS IN A CLASS (by classLabel) - for Teachers to load students for marks entry
  * classLabel format: "Grade 5W", "Grade 3", etc.
  */
@@ -241,11 +308,11 @@ export const getStudentsByClass = async (req, res) => {
     }
     
     const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 20;
+    const limit = parseInt(req.query.limit) || 15;
     const skip = (page - 1) * limit;
 
     // Only authenticated users can access this
-    if (!req.user.id || !req.user.schoolId) {
+    if (!req.user || !req.user.schoolId) {
       return res.status(403).json({ message: "Unauthorized" });
     }
 
@@ -260,9 +327,11 @@ export const getStudentsByClass = async (req, res) => {
     const gradeNum = match[1];
     const stream = match[2] || null;
     
-    // Build query
+    // Build query for aggregation (requires ObjectId)
+    const schoolId = new mongoose.Types.ObjectId(req.user.schoolId);
+
     const query = {
-      schoolId: req.user.schoolId,
+      schoolId: schoolId,
       grade: `Grade ${gradeNum}`,
       status: "active",
       academicYear: new Date().getFullYear()
@@ -272,32 +341,50 @@ export const getStudentsByClass = async (req, res) => {
       query.stream = stream;
     }
 
-    const total = await StudentEnrollment.countDocuments(query);
+    // 🆕 Calculate total count using an aggregation pipeline to accurately reflect valid enrollments
+    const countPipeline = [
+      { $match: query },
+      {
+        $lookup: {
+            from: "users",
+            localField: "studentId",
+            foreignField: "_id",
+            as: "studentDetails"
+        }
+      },
+      { $unwind: "$studentDetails" },
+      { $count: "total" }
+    ];
+    const countResult = await StudentEnrollment.aggregate(countPipeline);
+    const total = countResult.length > 0 ? countResult[0].total : 0;
 
-    // Get enrollments and populate student details
-    const enrollments = await StudentEnrollment.find(query)
-      .populate({
-        path: "studentId",
-        select: "name admission",
-        model: "User"
-      })
-      .select("studentId grade stream academicYear classLabel")
-      .skip(skip)
-      .limit(limit)
-      .sort("studentId");
+    // Fetch the students with pagination
+    const dataPipeline = [
+      { $match: query },
+      {
+        $lookup: {
+          from: "users",
+          localField: "studentId",
+          foreignField: "_id",
+          as: "student"
+        }
+      },
+      { $unwind: "$student" },
+      { $sort: { "student.name": 1 } },
+      { $skip: skip },
+      { $limit: limit },
+      {
+        $project: {
+          _id: "$student._id",
+          name: "$student.name",
+          admissionNo: "$student.admission",
+          grade: "$grade",
+          stream: "$stream"
+        }
+      }
+    ];
 
-    // Filter out enrollments where studentId is null (orphaned records)
-    const validEnrollments = enrollments.filter(e => e.studentId);
-
-    // Format response
-    const students = validEnrollments.map(e => ({
-      _id: e.studentId._id,
-      name: e.studentId.name,
-      admissionNo: e.studentId.admission, // Maps DB 'admission' to API 'admissionNo'
-      grade: e.grade,
-      stream: e.stream,
-      classLabel: e.classLabel
-    }));
+    const students = await StudentEnrollment.aggregate(dataPipeline);
 
     res.json({
       students,
@@ -307,6 +394,6 @@ export const getStudentsByClass = async (req, res) => {
     });
   } catch (err) {
     console.error("getStudentsByClass error:", err);
-    res.status(500).json({ message: "Server error" });
+    res.status(500).json({ message: "Server error fetching students" });
   }
 };

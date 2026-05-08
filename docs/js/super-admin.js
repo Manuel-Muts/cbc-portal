@@ -163,12 +163,15 @@ const cached = getCache(cacheKey);
 if (!forceRefresh && cached) {
   metrics = cached;
 } else {
-  const overviewRes = await authFetch(`/overview`);
-  if (!overviewRes) break;
+ const overviewRes = await authFetch(`/overview`);
+if (!overviewRes) break;
 
-  metrics = await overviewRes.json();
-  setCache(cacheKey, metrics);
+metrics = await overviewRes.json();
+setCache(cacheKey, metrics);
 }
+
+        // Defensive check: has the user navigated away while we were fetching?
+        if (!document.getElementById("totalSchools")) break;
 
         document.getElementById("totalSchools").textContent = `Schools: ${metrics.totalSchools}`;
         document.getElementById("totalAdmins").textContent = `Admins: ${metrics.totalAdmins}`;
@@ -177,6 +180,7 @@ if (!forceRefresh && cached) {
 
 
         const ctx = document.getElementById("teachersStudentsPerSchoolChart");
+        if (!ctx) break;
         // Ensure a constant display height (CSS class ensures fixed height)
         ctx.classList.add('teachers-chart');
 
@@ -239,11 +243,11 @@ if (!forceRefresh && cached) {
         break;
 
       case "schools":
-        initSchoolsPage();
+        initSchoolsPage(forceRefresh);
         break;
 
       case "admins":
-        initAdminsPage();
+        initAdminsPage(forceRefresh);
         break;
 
       case "analytics":
@@ -289,6 +293,9 @@ if (!forceRefresh && cached) {
           let topSchoolsPage = 1;
           const totalTopSchoolPages = Math.max(1, Math.ceil(topSchools.length / ITEMS_PER_PAGE));
 
+          // Defensive check: ensure the analytics elements still exist
+          if (!topSchoolsPrevBtn || !topSchoolsNextBtn || !topSchoolsTbody) return;
+
           function renderTopSchoolsPage() {
             const start = (topSchoolsPage - 1) * ITEMS_PER_PAGE;
             const pageItems = topSchools.slice(start, start + ITEMS_PER_PAGE);
@@ -324,6 +331,7 @@ if (!forceRefresh && cached) {
 
           // Registrations chart
           const regCtx = document.getElementById('registrationsChart');
+          if (!regCtx) return;
           const regLabels = data.registrations.map(r => `${r._id.month}/${r._id.year}`);
           const regData = data.registrations.map(r => r.count);
           if (window.regChart) window.regChart.destroy();
@@ -382,7 +390,7 @@ if (!forceRefresh && cached) {
   // ---------------------------
   // SCHOOLS LOGIC (updated)
   // ---------------------------
-  async function initSchoolsPage() {
+  async function initSchoolsPage(forceRefresh = false) {
     contentArea.innerHTML = `
       <div class="card">
         <div class="card-header">
@@ -504,33 +512,63 @@ if (!forceRefresh && cached) {
       formData.append("allowSignatureUpload", document.getElementById("newSchoolAllowSignatureUpload").checked);
       if (logoFile) formData.append("logo", logoFile);
 
-      await authFetch(`/schools`, {
-        method: "POST",
-        body: formData
-      });
+      const res = await authFetch(`/schools`, {
+  method: "POST",
+  body: formData
+});
 
-      modal.classList.add("hidden");
-      loadSchools(1);
+if (res && res.ok) {
+  alert("School created successfully");
+  modal.classList.add("hidden");
+  loadSchools(1);
+} else {
+  const err = await res.json().catch(() => ({ msg: "Failed" }));
+  alert(err.msg || "Failed to create school");
+}
     });
 
     // ---------------------------
     // LOAD SCHOOLS
     // ---------------------------
-    async function loadSchools(page = 1) {
-      const search = document.getElementById("searchSchools").value.trim();
-      tableBody.innerHTML = '<tr><td colspan="7" style="text-align:center">Loading...</td></tr>';
-      
-      const res = await authFetch(`/schools?page=${page}&limit=10&search=${encodeURIComponent(search)}`);
-      if (!res) return;
-      
-      const data = await res.json();
+    async function loadSchools(page = 1, force = false) {
+      const searchEl = document.getElementById("searchSchools");
+      if (!searchEl || !tableBody) return;
+
+      const search = searchEl.value.trim();
+
+      const cacheKey = `schools_cache_p${page}_s${search}`;
+      const cached = getCache(cacheKey);
+      let data;
+
+      if (!force && cached) {
+        data = cached;
+      } else {
+        tableBody.innerHTML = '<tr><td colspan="7" style="text-align:center">Loading...</td></tr>';
+        const res = await authFetch(`/schools?page=${page}&limit=10&search=${encodeURIComponent(search)}`);
+        if (!res) return;
+        data = await res.json();
+        setCache(cacheKey, data);
+      }
+
       const schools = data.schools || [];
       totalSchoolPages = data.totalPages || 1;
       currentSchoolPage = data.currentPage || page;
 
-      document.getElementById("schoolsPageInfo").textContent = `Page ${currentSchoolPage} of ${totalSchoolPages}`;
-      document.getElementById("prevSchools").disabled = currentSchoolPage <= 1;
-      document.getElementById("nextSchools").disabled = currentSchoolPage >= totalSchoolPages;
+      const schoolsPageInfo = document.getElementById("schoolsPageInfo");
+const prevSchoolsBtn = document.getElementById("prevSchools");
+const nextSchoolsBtn = document.getElementById("nextSchools");
+
+if (schoolsPageInfo) {
+  schoolsPageInfo.textContent = `Page ${currentSchoolPage} of ${totalSchoolPages}`;
+}
+
+if (prevSchoolsBtn) {
+  prevSchoolsBtn.disabled = currentSchoolPage <= 1;
+}
+
+if (nextSchoolsBtn) {
+  nextSchoolsBtn.disabled = currentSchoolPage >= totalSchoolPages;
+}
 
       tableBody.innerHTML = "";
       if (schools.length === 0) {
@@ -631,7 +669,7 @@ if (!forceRefresh && cached) {
           const data = await res.json();
 
           const row = btn.closest("tr");
-          const statusCell = row.querySelector("td:nth-child(4)");
+          const statusCell = row.querySelector("td:nth-child(6)");
           statusCell.textContent = data.school.status;
           statusCell.className = data.school.status === "Suspended" ? "suspended-status" : "";
           btn.textContent = data.school.status === "Active" ? "Suspend" : "Activate";
@@ -666,12 +704,12 @@ if (!forceRefresh && cached) {
     });
 
     // Initial load
-    loadSchools(1);
+    loadSchools(1, forceRefresh);
   }
   // ---------------------------
   // ADMINS LOGIC
   // ---------------------------
-  async function initAdminsPage() {
+  async function initAdminsPage(forceRefresh = false) {
     contentArea.innerHTML = `
       <div class="card">
         <div class="card-header">
@@ -748,13 +786,26 @@ if (!forceRefresh && cached) {
       });
     }
 
-    async function loadAdmins(page = 1) {
-      const search = document.getElementById("searchAdmins").value.trim();
-      tableBody.innerHTML = '<tr><td colspan="6" style="text-align:center">Loading...</td></tr>';
+    async function loadAdmins(page = 1, force = false) {
+      const searchInput = document.getElementById("searchAdmins");
+      if (!searchInput || !tableBody) return;
 
-      const res = await authFetch(`/admins?page=${page}&limit=10&search=${encodeURIComponent(search)}`);
-      if (!res) return;
-      const data = await res.json();
+      const search = searchInput.value.trim();
+
+      const cacheKey = `admins_cache_p${page}_s${search}`;
+      const cached = getCache(cacheKey);
+      let data;
+
+      if (!force && cached) {
+        data = cached;
+      } else {
+        tableBody.innerHTML = '<tr><td colspan="6" style="text-align:center"><span class="spinner"></span> Loading admins...</td></tr>';
+        const res = await authFetch(`/admins?page=${page}&limit=10&search=${encodeURIComponent(search)}`);
+        if (!res) return;
+        data = await res.json();
+        setCache(cacheKey, data);
+      }
+
       const admins = data.admins || [];
       totalAdminPages = data.totalPages || 1;
       currentAdminPage = data.currentPage || page;
@@ -799,7 +850,7 @@ if (!forceRefresh && cached) {
             const schoolId = document.getElementById("editAdminSchool").value;
             await authFetch(`/admins/${id}`, { method: "PUT", body: JSON.stringify({ name, email, schoolId }) });
             document.getElementById("editAdminModal").classList.add("hidden");
-            loadAdmins(currentAdminPage);
+            loadAdmins(currentAdminPage, true); // Force refresh after update
           };
         });
       });
@@ -808,7 +859,7 @@ if (!forceRefresh && cached) {
         btn.addEventListener("click", async () => {
           if (!confirm("Are you sure?")) return;
           await authFetch(`/admins/${btn.dataset.id}`, { method: "DELETE" });
-          loadAdmins(currentAdminPage);
+          loadAdmins(currentAdminPage, true); // Force refresh after delete
         });
       });
     }
@@ -817,19 +868,19 @@ if (!forceRefresh && cached) {
     document.getElementById("searchAdmins").addEventListener("input", e => {
       clearTimeout(adminSearchDebounce);
       adminSearchDebounce = setTimeout(() => {
-        loadAdmins(1);
+        loadAdmins(1, true); // Force refresh on search
       }, 500);
     });
 
     document.getElementById("prevAdmins").addEventListener("click", () => {
       if (currentAdminPage > 1) {
-        loadAdmins(currentAdminPage - 1);
+        loadAdmins(currentAdminPage - 1, false);
       }
     });
 
     document.getElementById("nextAdmins").addEventListener("click", () => {
       if (currentAdminPage < totalAdminPages) {
-        loadAdmins(currentAdminPage + 1);
+        loadAdmins(currentAdminPage + 1, false);
       }
     });
 
@@ -843,13 +894,20 @@ if (!forceRefresh && cached) {
       const schoolId = document.getElementById("newAdminSchool").value;
       if (!name || !email || !schoolId) return alert("Fill all fields");
       const password = generatePassword();
-      await authFetch(`/admins`, { method: "POST", body: JSON.stringify({ name, email, schoolId, password }) });
-      modal.classList.add("hidden");
-      loadAdmins(1);
+      
+      const res = await authFetch(`/admins`, { method: "POST", body: JSON.stringify({ name, email, schoolId, password }) });
+      if (res && res.ok) {
+        alert("Admin registered successfully! Login details sent to email.");
+        modal.classList.add("hidden");
+        loadAdmins(1, true); // Force refresh after adding new admin
+      } else {
+        const errData = res ? await res.json().catch(() => ({ msg: "Registration failed" })) : { msg: "Connection error" };
+        alert(`Failed to register admin: ${errData.msg || errData.message}`);
+      }
     });
 
-    await loadSchoolsOptions();
-    loadAdmins(1);
+    await loadSchoolsOptions(); // This function doesn't need caching as it's for dropdown options
+    loadAdmins(1, forceRefresh); // Initial load with forceRefresh parameter
   }
 
   // ---------------------------

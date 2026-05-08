@@ -323,8 +323,8 @@ function processAnalysisData(allRaw, isSenior, assessment, allPrevRaw = null) {
     // Always show the chart type toggle if data is present
     if (toggleGroup) toggleGroup.style.display = sortedSubjects.length > 0 ? "block" : "none";
     
-    // Default to 'trend' (Timeline) view automatically
-    chartTypeToggle.value = "trend";
+    // Default to 'trend' only if no value is set
+    if (!chartTypeToggle.value) chartTypeToggle.value = "trend";
   }
 
   // Show results area
@@ -479,7 +479,45 @@ function renderRankingTable(students, subjects, isSenior) {
       <td>${s.points}</td><td>${cbcUtils.getSubdivision(s.mean)}</td>
     </tr>`;
   });
-  html += "</tbody></table>";
+
+  // Calculate Totals and Means for Footer
+  const groupCount = students.length || 1;
+  const groupTotalMarks = students.reduce((acc, s) => acc + (s.total || 0), 0);
+  const groupTotalPoints = students.reduce((acc, s) => acc + (s.points || 0), 0);
+  const groupMeanSum = students.reduce((acc, s) => acc + (s.mean || 0), 0);
+
+  html += `</tbody><tfoot style="background-color: #f8fafc; font-weight: bold; border-top: 2px solid #cbd5e0;">`;
+  
+  // TOTAL Row
+  html += `<tr><td colspan="3" style="text-align: right; padding: 8px;">TOTAL:</td>`;
+  subjects.forEach(sub => {
+    const subSum = students.reduce((acc, s) => acc + (s.subjects[sub] || 0), 0);
+    html += `<td style="text-align: center; padding: 8px;">${subSum.toFixed(0)}</td>`;
+  });
+  if (!isSenior) {
+    html += `<td style="text-align: center; padding: 8px;">${groupTotalMarks.toFixed(0)}</td>`;
+  }
+  html += `<td style="text-align: center; padding: 8px;"></td>`; // Mean col
+  html += `<td></td>`; // Progress column
+  html += `<td style="text-align: center; padding: 8px;">${groupTotalPoints}</td>`;
+  html += `<td></td>`; // Performance Level col
+  html += `</tr>`;
+
+  // MEAN Row
+  html += `<tr><td colspan="3" style="text-align: right; padding: 8px;">MEAN:</td>`;
+  subjects.forEach(sub => {
+    const subSum = students.reduce((acc, s) => acc + (s.subjects[sub] || 0), 0);
+    const subCount = students.filter(s => s.subjects[sub] !== undefined && s.subjects[sub] !== null).length || 1;
+    html += `<td style="text-align: center; padding: 8px;">${(subSum / subCount).toFixed(1)}</td>`;
+  });
+  if (!isSenior) {
+    html += `<td style="text-align: center; padding: 8px;">${(groupTotalMarks / groupCount).toFixed(1)}</td>`;
+  }
+  html += `<td style="text-align: center; padding: 8px;">${(groupMeanSum / groupCount).toFixed(1)}%</td>`;
+  html += `<td></td>`; // Progress column
+  html += `<td style="text-align: center; padding: 8px;">${(groupTotalPoints / groupCount).toFixed(1)}</td>`;
+  html += `<td style="text-align: center; padding: 8px; color: #1a237e;">${cbcUtils.getSubdivision(groupMeanSum / groupCount)}</td>`;
+  html += `</tr></tfoot></table>`;
   rankingTableWrap.innerHTML = html;
 }
 
@@ -534,6 +572,20 @@ async function downloadRankingAsPDF() {
 
   let headers = Array.from(table.querySelectorAll("thead th")).map(th => th.innerText);
   const tiedRowIndices = [];
+
+  // Extract footer row data if it exists (multiple rows)
+  let foot = Array.from(table.querySelectorAll("tfoot tr")).map(tr => {
+    const cells = Array.from(tr.querySelectorAll("td"));
+    const rowData = [];
+    cells.forEach(td => {
+      const colspan = td.colSpan || 1;
+      rowData.push(td.innerText);
+      for(let i=1; i<colspan; i++) rowData.push(""); // pad for autoTable
+    });
+    return rowData;
+  });
+  if (foot.length === 0) foot = null;
+
   let rows = Array.from(table.querySelectorAll("tbody tr")).map((tr, idx) => {
     if (tr.classList.contains("tied-rank")) {
       tiedRowIndices.push(idx);
@@ -545,14 +597,27 @@ async function downloadRankingAsPDF() {
   });
 
   // Remove "Mean" column from PDF export
-  const meanIdx = headers.indexOf("Mean");
-  if (meanIdx !== -1) {
-    headers.splice(meanIdx, 1);
+ // const meanIdx = headers.indexOf("Mean");
+ // if (meanIdx !== -1) {
+  //  headers.splice(meanIdx, 1);
+   // rows = rows.map(row => {
+   //   const newRow = [...row];
+    //  newRow.splice(meanIdx, 1);
+     // return newRow;
+   // });
+   // if (foot) foot = foot.map(row => { const nr = [...row]; nr.splice(meanIdx, 1); return nr; });
+  //}
+
+  // Remove "Adm" column from PDF export
+  const admIdx = headers.indexOf("Adm");
+  if (admIdx !== -1) {
+    headers.splice(admIdx, 1);
     rows = rows.map(row => {
       const newRow = [...row];
-      newRow.splice(meanIdx, 1);
+      newRow.splice(admIdx, 1);
       return newRow;
     });
+    if (foot) foot = foot.map(row => { const nr = [...row]; nr.splice(admIdx, 1); return nr; });
   }
 
   // Check if Progress column should be hidden (only N/A values)
@@ -566,6 +631,7 @@ async function downloadRankingAsPDF() {
         newRow.splice(progressIdx, 1);
         return newRow;
       });
+      if (foot) foot = foot.map(row => { const nr = [...row]; nr.splice(progressIdx, 1); return nr; });
     }
   }
 
@@ -580,11 +646,21 @@ async function downloadRankingAsPDF() {
     startY: yPos + 23, 
     head: [headers], 
     body: rows, 
-    theme: 'grid', 
-    styles: { fontSize: 8 }, 
+    foot: foot || [],
+    theme: 'grid',
+    styles: { fontSize: 8, lineWidth: 0.1, lineColor: [0, 0, 0] },
     headStyles: { fillColor: [52, 152, 219] },
-    showHead: 'firstPage', // Only show table headers on the first page
+    footStyles: { fillColor: [241, 245, 249], textColor: [0, 0, 0], fontStyle: 'bold' },
+    showHead: 'everyPage', // Repeat table headers on every page
+    showFoot: 'lastPage', // Only show totals/mean at the end of the ranking list
     didParseCell: (data) => {
+       if (data.section === 'body') {
+        // Make student name bold
+        const nameColumnIndex = headers.indexOf("Name");
+        if (nameColumnIndex !== -1 && data.column.index === nameColumnIndex) {
+          data.cell.styles.fontStyle = 'bold';
+        }
+      }
       if (data.section === 'body' && tiedRowIndices.includes(data.row.index)) {
         data.cell.styles.fillColor = [255, 249, 219]; // Light yellow matching .tied-rank CSS (#fff9db)
       }
@@ -596,30 +672,7 @@ async function downloadRankingAsPDF() {
       }
     },
     didDrawPage: (data) => {
-      if (data.pageNumber !== 1) return; // Only draw footer on the first page
-
-      const footerY = pageHeight - 20;
-      doc.setFontSize(9);
-      doc.setFont("helvetica", "normal");
-
-      // Printed date (right)
-      const dateStr = `Printed: ${new Date().toLocaleString()}`;
-      doc.text(dateStr, pageWidth - 14, footerY, { align: "right" });
-
-      // Dean's digital signature image
-       if (deanProfileData && deanProfileData.signatureBase64) {
-        try {
-          // Parameters: Image, Format, X, Y, Width, Height
-          doc.addImage(deanProfileData.signatureBase64, 'PNG', pageWidth - 54, footerY + 1, 40, 8);
-        } catch (e) {
-          console.warn("Could not embed Dean signature in PDF:", e);
-        }
-      }
-
-      // Dean signature space (right, below date)
-      doc.text("__________________________", pageWidth - 14, footerY + 10, { align: "right" });
-      doc.text("Dean's Signature", pageWidth - 14, footerY + 15, { align: "right" });
-    }
+    } // Footer moved to the end of function to appear on the last page
   });
 
   // 4. Level Distribution Summary
@@ -664,6 +717,42 @@ async function downloadRankingAsPDF() {
     tableWidth: 45,
     margin: { left: keyX }
   });
+
+  // --- DRAW FOOTER ON THE LAST PAGE ---
+  doc.setPage(doc.internal.getNumberOfPages());
+  const footerY = pageHeight - 20;
+  doc.setFontSize(9);
+  doc.setFont("helvetica", "normal");
+
+  // Printed date (right)
+  const dateStr = `Printed: ${new Date().toLocaleString()}`;
+  doc.text(dateStr, pageWidth - 14, footerY, { align: "right" });
+
+  // Dean's digital signature image
+  if (deanProfileData && deanProfileData.signatureBase64) {
+    try {
+      doc.addImage(deanProfileData.signatureBase64, 'PNG', pageWidth - 54, footerY + 1, 40, 8);
+    } catch (e) {
+      console.warn("Could not embed Dean signature in PDF:", e);
+    }
+  }
+
+  // Dean signature space (right, below date)
+  doc.text("__________________________", pageWidth - 14, footerY + 10, { align: "right" });
+  doc.text("Dean's Signature", pageWidth - 14, footerY + 15, { align: "right" });
+
+  // --- ADD PAGE NUMBERS & SYSTEM FOOTER TO ALL PAGES ---
+  const totalPages = doc.internal.getNumberOfPages();
+  for (let i = 1; i <= totalPages; i++) {
+    doc.setPage(i);
+    doc.setFontSize(8);
+    doc.setTextColor(150, 150, 150); // Professional subtle gray
+    doc.setFont("helvetica", "normal");
+    doc.text(`Page ${i} of ${totalPages}`, 14, pageHeight - 7);
+    const genText = "CompetenceHub Analytics";
+    const genTextWidth = doc.getTextWidth(genText);
+    doc.text(genText, (pageWidth / 2) - (genTextWidth / 2), pageHeight - 7);
+  }
 
   const fileName = `${schoolName}_${grade}_T${termVal}_${year}`.replace(/\s+/g, '_');
   doc.save(`${fileName}.pdf`);
@@ -736,34 +825,46 @@ async function downloadSubjectPerformanceAsPDF() {
     startY: yPos + 23, 
     head: [headers], 
     body: rows, 
-    theme: 'grid', 
-    styles: { fontSize: 10 },
-    columnStyles: { 3: { fontSize: 8, halign: 'center' } }, // Optimize Trend column for PDF
+    theme: 'grid',
+    styles: { fontSize: 10, lineWidth: 0.1, lineColor: [0, 0, 0] },
+    columnStyles: { 3: { fontSize: 8, halign: 'center' } },
     headStyles: { fillColor: [46, 204, 113] }, // Green theme for subject stats
-    showHead: 'firstPage', // Only show table headers on the first page
+    showHead: 'everyPage', // Repeat table headers on every page
     didParseCell: (data) => {
       if (data.section === 'body' && tiedRowIndices.includes(data.row.index)) {
         data.cell.styles.fillColor = [255, 249, 219];
       }
-    },
-    didDrawPage: (data) => {
-      if (data.pageNumber !== 1) return; // Only draw footer on the first page
-
-      const footerY = pageHeight - 20;
-      if (deanProfileData && deanProfileData.signatureBase64) {
-        try {
-           doc.addImage(deanProfileData.signatureBase64, 'PNG', pageWidth - 54, footerY + 1, 40, 8);
-        } catch (e) {
-          console.warn("Could not embed Dean signature in PDF:", e);
-        }
-      }
-      doc.setFontSize(9);
-      const dateStr = `Printed: ${new Date().toLocaleString()}`;
-      doc.text(dateStr, pageWidth - 14, footerY, { align: "right" });
-      doc.text("__________________________", pageWidth - 14, footerY + 10, { align: "right" });
-      doc.text("Dean's Signature", pageWidth - 14, footerY + 15, { align: "right" });
     }
   });
+
+  // --- DRAW FOOTER ON THE LAST PAGE ---
+  doc.setPage(doc.internal.getNumberOfPages());
+  const footerY = pageHeight - 20;
+  if (deanProfileData && deanProfileData.signatureBase64) {
+    try {
+      doc.addImage(deanProfileData.signatureBase64, 'PNG', pageWidth - 54, footerY + 1, 40, 8);
+    } catch (e) {
+      console.warn("Could not embed Dean signature in PDF:", e);
+    }
+  }
+  doc.setFontSize(9);
+  const dateStr = `Printed: ${new Date().toLocaleString()}`;
+  doc.text(dateStr, pageWidth - 14, footerY, { align: "right" });
+  doc.text("__________________________", pageWidth - 14, footerY + 10, { align: "right" });
+  doc.text("Dean's Signature", pageWidth - 14, footerY + 15, { align: "right" });
+
+  // --- ADD PAGE NUMBERS & SYSTEM FOOTER TO ALL PAGES ---
+  const totalPagesCount = doc.internal.getNumberOfPages();
+  for (let i = 1; i <= totalPagesCount; i++) {
+    doc.setPage(i);
+    doc.setFontSize(8);
+    doc.setTextColor(150, 150, 150); // Professional subtle gray
+    doc.setFont("helvetica", "normal");
+    doc.text(`Page ${i} of ${totalPagesCount}`, 14, pageHeight - 7);
+    const genText = "Generated by Competence Hub";
+    const genTextWidth = doc.getTextWidth(genText);
+    doc.text(genText, (pageWidth / 2) - (genTextWidth / 2), pageHeight - 7);
+  }
 
   const streamSuffix = selectedStream !== "all" ? `_S${selectedStream}` : "";
   const termSuffix = termVal === "all" ? "Year" : `T${termVal}`;

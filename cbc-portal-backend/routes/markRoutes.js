@@ -7,6 +7,7 @@ import {
   deleteMark,
   getStudentMarks,
   getMarksByGrade,
+  bulkAddUpdateMarks,
   getClassMarks,
   getPaginatedMarksByGrade
 } from "../controllers/MarkController.js";
@@ -28,6 +29,8 @@ router.post(
 router.get("/teacher", VerifyToken, getMarks);
 
 router.put("/:id", VerifyToken, attachEnrollmentToMarks, updateMark);
+
+router.route('/bulk-add-update').post(VerifyToken, attachEnrollmentToMarks, bulkAddUpdateMarks)
 
 router.delete("/:id", VerifyToken, deleteMark);
 

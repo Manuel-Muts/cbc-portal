@@ -19,149 +19,114 @@ const getPerformanceSubdivision = (score) => {
 };
 
 // ---------------------------
+// HELPER: Process Single Mark (for add, update, and bulk operations)
+// ---------------------------
+const processSingleMark = async (markData, reqUser, isNew = true) => {
+  const {
+    _id, // Only present for updates
+    admissionNo,
+    studentName,
+    grade,
+    stream,
+    term,
+    year,
+    subject,
+    pathway,
+    course,
+    assessment,
+    score,
+    continuousAssessment,
+    projectWork,
+    endTermExam
+  } = markData;
+
+  // Find student if new or if admissionNo is provided for update
+  let student;
+  if (isNew || admissionNo) { // For updates, admissionNo might not be in req.body, but it's in the mark object
+    student = await User.findOne({
+      admission: admissionNo,
+      role: "student",
+      schoolId: reqUser.schoolId
+    }).select("name admission _id");
+
+    if (!student) {
+      throw new Error(`Student with admission ${admissionNo} not found in your school`);
+    }
+  }
+
+  // Determine if senior school
+  const gradeNum = parseInt(String(grade).replace(/\D/g, ""), 10);
+  const isSeniorSchool = gradeNum >= 10 && gradeNum <= 12;
+
+  // Validation
+  if (isSeniorSchool) {
+    if (!pathway || !course) {
+      throw new Error("Pathway and course are required for senior school");
+    }
+    if (subject) {
+      throw new Error("Subject should not be provided for senior school");
+    }
+  } else {
+    if (!subject) {
+      throw new Error("Subject is required for junior school");
+    }
+    if (pathway || course) {
+      throw new Error("Pathway and course should not be provided for junior school");
+    }
+  }
+
+  // Robust Stream Resolution: If missing in payload, fetch from active enrollment
+  let streamToSave = stream;
+  if (!streamToSave && student) { // Only try to fetch if student is found
+    const enrollment = await StudentEnrollment.findOne({
+      studentId: student._id,
+      status: "active"
+    }).select("stream");
+    if (enrollment) streamToSave = enrollment.stream;
+  }
+
+  const markFields = {
+    admissionNo: student ? student.admission : admissionNo, // Use found student's admission if available
+    studentName: studentName || (student ? student.name : undefined),
+    grade,
+    stream: streamToSave || null,
+    term,
+    year,
+    assessment,
+    teacherId: reqUser.id,
+    schoolId: reqUser.schoolId,
+    enrollmentId: markData.enrollmentId || null // Preserve if provided
+  };
+
+  if (isSeniorSchool) {
+    markFields.subject = null; markFields.pathway = pathway; markFields.course = course; markFields.score = null;
+    markFields.continuousAssessment = continuousAssessment !== undefined ? Number(continuousAssessment) : null;
+    markFields.projectWork = projectWork !== undefined ? Number(projectWork) : null;
+    markFields.endTermExam = endTermExam !== undefined ? Number(endTermExam) : null;
+
+    if (markFields.continuousAssessment !== null || markFields.projectWork !== null || markFields.endTermExam !== null) {
+      const ca = markFields.continuousAssessment !== null ? markFields.continuousAssessment : 0;
+      const pw = markFields.projectWork !== null ? markFields.projectWork : 0;
+      const et = markFields.endTermExam !== null ? markFields.endTermExam : 0;
+      const finalScore = (ca * 0.3) + (pw * 0.2) + (et * 0.5);
+      markFields.finalScore = Math.round(finalScore * 10) / 10; markFields.performanceLevel = getPerformanceSubdivision(markFields.finalScore);
+    } else { markFields.finalScore = null; markFields.performanceLevel = null; }
+  } else {
+    markFields.subject = subject; markFields.pathway = null; markFields.course = null; markFields.score = score !== undefined ? Number(score) : null;
+    markFields.finalScore = null; markFields.performanceLevel = null;
+  }
+  return markFields;
+};
+
+// ---------------------------
 // ADD MARK
 // ---------------------------
 export const addMark = async (req, res) => {
   try {
     console.log("[addMark] Received payload:", req.body);
 
-    const {
-      admissionNo,
-      studentName,
-      grade,
-      stream,
-      term,
-      year,
-      subject,
-      pathway,
-      course,
-      assessment,
-      score,
-      continuousAssessment,
-      projectWork,
-      endTermExam
-    } = req.body;
-
-    const student = await User.findOne({
-      admission: admissionNo,
-      role: "student",
-      schoolId: req.user.schoolId
-    }).select("name admission _id");
-
-    if (!student) {
-      return res.status(404).json({ message: "Student not found in your school" });
-    }
-
-    // ✅ SAFE GRADE PARSING (FIXED)
-    const gradeNum = parseInt(String(grade).replace(/\D/g, ""), 10);
-    const isSeniorSchool = gradeNum >= 10 && gradeNum <= 12;
-
-    // ---------------------------
-    // VALIDATION
-    // ---------------------------
-    if (isSeniorSchool) {
-      if (!pathway || !course) {
-        return res.status(400).json({
-          message: "Pathway and course are required for senior school"
-        });
-      }
-      if (subject) {
-        return res.status(400).json({
-          message: "Subject should not be provided for senior school"
-        });
-      }
-    } else {
-      if (!subject) {
-        return res.status(400).json({
-          message: "Subject is required for junior school"
-        });
-      }
-      if (pathway || course) {
-        return res.status(400).json({
-          message: "Pathway and course should not be provided for junior school"
-        });
-      }
-    }
-
-    // 🆕 Robust Stream Resolution: If missing in payload, fetch from active enrollment
-    let streamToSave = stream;
-    if (!streamToSave) {
-      const enrollment = await StudentEnrollment.findOne({ 
-        studentId: student._id, 
-        status: "active" 
-      }).select("stream");
-      if (enrollment) streamToSave = enrollment.stream;
-    }
-
-    // ---------------------------
-    // BASE MARK DATA
-    // ---------------------------
-    const markData = {
-      admissionNo: student.admission,
-      studentName: studentName || student.name,
-      grade,
-      stream: streamToSave || null,
-      term,
-      year,
-      /**
-       * Assessment Mapping Convention:
-       * 1 - Opener Exam
-       * 2 - Assessment 2
-       * 3 - Assessment 3
-       * 4 - Assessment 4
-       * 5 - Midterm
-       * 6 - Assessment 6
-       * 7 - Assessment 7
-       * 8 - Endterm
-       */
-      assessment,
-      teacherId: req.user.id,
-      schoolId: req.user.schoolId,
-      enrollmentId: req.body.enrollmentId || null
-    };
-
-    // ---------------------------
-    // SENIOR SCHOOL
-    // ---------------------------
-    if (isSeniorSchool) {
-      markData.subject = null;
-      markData.pathway = pathway;
-      markData.course = course;
-      markData.score = null;
-
-      markData.continuousAssessment = continuousAssessment ? Number(continuousAssessment) : null;
-      markData.projectWork = projectWork ? Number(projectWork) : null;
-      markData.endTermExam = endTermExam ? Number(endTermExam) : null;
-
-      if (continuousAssessment || projectWork || endTermExam) {
-        const ca = continuousAssessment ? Number(continuousAssessment) : 0;
-        const pw = projectWork ? Number(projectWork) : 0;
-        const et = endTermExam ? Number(endTermExam) : 0;
-
-        const finalScore = (ca * 0.3) + (pw * 0.2) + (et * 0.5);
-        markData.finalScore = Math.round(finalScore * 10) / 10;
-
-        markData.performanceLevel = getPerformanceSubdivision(markData.finalScore);
-      } else {
-        // ✅ important reset
-        markData.finalScore = null;
-        markData.performanceLevel = null;
-      }
-    }
-
-    // ---------------------------
-    // JUNIOR SCHOOL
-    // ---------------------------
-    else {
-      markData.subject = subject;
-      markData.pathway = null;
-      markData.course = null;
-      markData.score = Number(score);
-      markData.finalScore = null;
-      markData.performanceLevel = null;
-    }
-
-    const mark = new Mark(markData);
+    const processedFields = await processSingleMark(req.body, req.user, true);
+    const mark = new Mark(processedFields);
     await mark.save();
 
     return res.status(201).json({
@@ -182,114 +147,22 @@ export const addMark = async (req, res) => {
 export const updateMark = async (req, res) => {
   try {
     const { id } = req.params;
-    const {
-      grade,
-      stream,
-      term,
-      year,
-      subject,
-      pathway,
-      course,
-      assessment,
-      score,
-      continuousAssessment,
-      projectWork,
-      endTermExam
-    } = req.body;
-
     const mark = await Mark.findById(id);
     if (!mark) return res.status(404).json({ message: "Mark not found" });
 
     if (mark.teacherId.toString() !== req.user.id) {
       return res.status(403).json({ message: "Unauthorized" });
     }
-
-    // ✅ SAFE GRADE PARSING (FIXED)
-    const gradeNum = parseInt(String(grade).replace(/\D/g, ""), 10);
-    const isSeniorSchool = gradeNum >= 10 && gradeNum <= 12;
-
-    // ---------------------------
-    // VALIDATION
-    // ---------------------------
-    if (isSeniorSchool) {
-      if (!pathway || !course) {
-        return res.status(400).json({
-          message: "Pathway and course are required for senior school"
-        });
-      }
-      if (subject) {
-        return res.status(400).json({
-          message: "Subject should not be provided for senior school"
-        });
-      }
-    } else {
-      if (!subject) {
-        return res.status(400).json({
-          message: "Subject is required for junior school"
-        });
-      }
-      if (pathway || course) {
-        return res.status(400).json({
-          message: "Pathway and course should not be provided for junior school"
-        });
-      }
-    }
-
-    // ---------------------------
-    // UPDATE COMMON FIELDS
-    // ---------------------------
-    mark.grade = grade;
-    mark.stream = stream || null;
-    mark.term = term;
-    mark.year = year;
-    mark.assessment = assessment;
-
-    // ---------------------------
-    // SENIOR SCHOOL UPDATE
-    // ---------------------------
-    if (isSeniorSchool) {
-      mark.subject = null;
-      mark.pathway = pathway;
-      mark.course = course;
-      mark.score = null;
-
-      mark.continuousAssessment = continuousAssessment ? Number(continuousAssessment) : null;
-      mark.projectWork = projectWork ? Number(projectWork) : null;
-      mark.endTermExam = endTermExam ? Number(endTermExam) : null;
-
-      if (continuousAssessment || projectWork || endTermExam) {
-        const ca = continuousAssessment ? Number(continuousAssessment) : 0;
-        const pw = projectWork ? Number(projectWork) : 0;
-        const et = endTermExam ? Number(endTermExam) : 0;
-
-        const finalScore = (ca * 0.3) + (pw * 0.2) + (et * 0.5);
-        mark.finalScore = Math.round(finalScore * 10) / 10;
-
-        mark.performanceLevel = getPerformanceSubdivision(mark.finalScore);
-      } else {
-        // ✅ reset when cleared
-        mark.finalScore = null;
-        mark.performanceLevel = null;
-      }
-    }
-
-    // ---------------------------
-    // JUNIOR SCHOOL UPDATE
-    // ---------------------------
-    else {
-      mark.subject = subject;
-      mark.pathway = null;
-      mark.course = null;
-      mark.score = Number(score);
-      mark.finalScore = null;
-      mark.performanceLevel = null;
-    }
-
-    await mark.save();
+    const processedFields = await processSingleMark({ ...req.body, _id: id, admissionNo: mark.admissionNo }, req.user, false); // Pass _id and admissionNo for context, isNew=false
+    const updatedMark = await Mark.findByIdAndUpdate(
+      id,
+      { $set: processedFields },
+      { new: true, runValidators: true }
+    );
 
     return res.status(200).json({
       message: "Mark updated successfully",
-      mark
+      mark: updatedMark
     });
 
   } catch (err) {
@@ -299,17 +172,85 @@ export const updateMark = async (req, res) => {
 };
 
 // ---------------------------
+// BULK ADD/UPDATE MARKS
+// ---------------------------
+export const bulkAddUpdateMarks = async (req, res) => {
+  try {
+    const marksArray = req.body;
+    if (!Array.isArray(marksArray) || marksArray.length === 0) {
+      return res.status(400).json({ message: "Request body must be an array of marks" });
+    }
+
+    let successCount = 0;
+    let failureCount = 0;
+    const errors = [];
+
+    for (const markData of marksArray) {
+      try {
+        const isUpdate = !!markData._id;
+        const processedFields = await processSingleMark(markData, req.user, !isUpdate);
+
+        if (isUpdate) {
+          const updatedMark = await Mark.findByIdAndUpdate(
+            markData._id,
+            { $set: processedFields },
+            { new: true, runValidators: true }
+          );
+          if (updatedMark) {
+            successCount++;
+          } else {
+            failureCount++;
+            errors.push({ mark: markData, message: "Mark not found for update" });
+          }
+        } else {
+          const newMark = new Mark(processedFields);
+          await newMark.save();
+          successCount++;
+        }
+      } catch (error) {
+        failureCount++;
+        errors.push({ mark: markData, message: error.message });
+      }
+    }
+
+    if (failureCount > 0) {
+      console.error("Bulk mark submission errors:", errors);
+    }
+
+    return res.status(200).json({
+      message: "Bulk mark operation completed",
+      successCount,
+      failureCount,
+      errors: errors.length > 0 ? errors : undefined
+    });
+
+  } catch (err) {
+    console.error("bulkAddUpdateMarks error:", err);
+    return res.status(500).json({ message: "Server error during bulk mark operation" });
+  }
+};
+
+// ---------------------------
 // GET MARKS FOR TEACHER
 // ---------------------------
 export const getMarks = async (req, res) => {
   try {
-    // Get all marks submitted by this teacher for their school
-    const marks = await Mark.find({
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 20;
+    const skip = (page - 1) * limit;
+
+    const query = {
       teacherId: req.user.id,
       schoolId: req.user.schoolId
-    }).sort({ year: -1, term: -1, assessment: -1 });
+    };
 
-    return res.json(marks);
+    const total = await Mark.countDocuments(query);
+    const marks = await Mark.find(query)
+      .sort({ year: -1, term: -1, assessment: -1, createdAt: -1 })
+      .skip(skip)
+      .limit(limit);
+
+    return res.json({ marks, total, totalPages: Math.ceil(total / limit), currentPage: page });
   } catch (err) {
     console.error("getMarks error:", err);
     return res.status(500).json({ message: err.message });
@@ -363,17 +304,11 @@ export const getStudentMarks = async (req, res) => {
       return res.json({ studentMarks: [], allClassMarks: [] });
     }
 
-    // Define context for class comparison (ranking)
-    // We use the first mark in the result set to determine the "context" for comparison
     const contextMark = studentMarks[0];
     const refTerm = contextMark.term;
     const refYear = contextMark.year;
     const refAssess = contextMark.assessment;
     const refGrade = contextMark.grade;
-
-    if (!studentMarks.length) {
-      return res.json({ studentMarks: [], allClassMarks: [] });
-    }
 
     // Optimized class comparison fetch: only fetch marks for the same grade/context
     const allClassMarks = await Mark.find({
@@ -398,8 +333,6 @@ export const getMarksByGrade = async (req, res) => {
       return text.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, "\\$&");
     };
 
-    const isClassTeacher = req.user.roles?.includes("classteacher");
-
     // 🔑 ALWAYS take grade from query
     const grade = req.query.grade;
     const schoolId = req.user.schoolId;
@@ -410,8 +343,7 @@ export const getMarksByGrade = async (req, res) => {
       });
     }
 
-    const filterByStream =
-      isClassTeacher && req.query.stream && req.query.stream !== "";
+    const filterByStream = req.query.stream && req.query.stream !== "" && req.query.stream !== "all";
 
     // ---------------------------
     // NORMALIZE GRADE

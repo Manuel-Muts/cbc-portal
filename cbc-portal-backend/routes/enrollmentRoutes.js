@@ -7,6 +7,7 @@ import { adminSearchStudent,
     getMyEnrollment,
     getStudentsByClass
 } from "../controllers/enrollmentController.js";
+import { cleanOrphanedEnrollments } from '../controllers/enrollmentController.js';
   
 import  verifyToken  from "../middleware/verifyToken.js";
 
@@ -29,5 +30,8 @@ router.get("/history", verifyToken, getEnrollmentHistory);
 router.get("/:id", verifyToken, getEnrollmentById);
 router.put("/:id", verifyToken, updateEnrollment);
 
+    
+// Route for cleaning up orphaned enrollments
+router.delete("/cleanup", verifyToken, cleanOrphanedEnrollments);
 
 export default router;

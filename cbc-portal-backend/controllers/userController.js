@@ -629,10 +629,10 @@ export const getMyAllocations = async (req, res) => {
   }
 };
 
-          // ---------------------------
-          // ASSIGN CLASS TEACHER (Admin Only)
-          // ---------------------------
-      export const assignClassTeacher = async (req, res) => {
+/**
+ * ASSIGN CLASS TEACHER (Admin Only)
+ */
+export const assignClassTeacher = async (req, res) => {
   try {
     if (req.user.role !== 'admin') {
       return res.status(403).json({ message: 'Only admins can assign class teachers' });
