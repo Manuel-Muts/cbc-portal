@@ -56,11 +56,14 @@ window.cbcUtils = {
      * Calculates weighted final score for Senior School (Grade 10-12)
      */
     calculateFinalScore: (ca, pw, exam) => {
-        const caVal = Number(ca || 0);
-        const pwVal = Number(pw || 0);
-        const examVal = Number(exam || 0);
+        const isAbsent = [ca, pw, exam].some(v => v === null || String(v).trim().toUpperCase() === 'X');
+        if (isAbsent) return "X";
+
+        const caVal = parseFloat(ca) || 0;
+        const pwVal = parseFloat(pw) || 0;
+        const examVal = parseFloat(exam) || 0;
         const total = (caVal * 0.30) + (pwVal * 0.20) + (examVal * 0.50);
-        return total > 0 ? parseFloat(total.toFixed(2)) : 0;
+        return parseFloat(total.toFixed(2));
     },
 
     getPerformanceLevel: (score) => {
@@ -75,6 +78,8 @@ window.cbcUtils = {
     },
 
     getPoints: (score) => {
+        const scoreStr = (score !== null && score !== undefined) ? String(score).trim().toUpperCase() : "";
+        if (score === null || score === undefined || score === "" || isNaN(score) || scoreStr === "X") return 0;
         if (score >= 90) return 8;
         if (score >= 75) return 7;
         if (score >= 58) return 6;
@@ -82,10 +87,13 @@ window.cbcUtils = {
         if (score >= 31) return 4;
         if (score >= 21) return 3;
         if (score >= 11) return 2;
-        return 1;
+        if (score >= 0) return 1;
+        return 0;
     },
 
     getSubdivision: (score) => {
+        const scoreStr = (score !== null && score !== undefined) ? String(score).trim().toUpperCase() : "";
+        if (score === null || score === undefined || score === "" || isNaN(score) || scoreStr === "X") return "ABS";
         if (score >= 90) return "EE1";
         if (score >= 75) return "EE2";
         if (score >= 58) return "ME1";

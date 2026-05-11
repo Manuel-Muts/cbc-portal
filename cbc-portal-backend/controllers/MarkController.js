@@ -3,6 +3,7 @@ import mongoose from "mongoose";
 import Mark from "../models/mark.js";
 import { User } from "../models/User.js";
 import StudentEnrollment from "../models/StudentEnrollment.js";
+import Setting from "../models/Setting.js";
 
 // ---------------------------
 // HELPER: Performance Level Subdivision
@@ -40,8 +41,19 @@ const processSingleMark = async (markData, reqUser, isNew = true) => {
     endTermExam
   } = markData;
 
+  // 🆕 Term Lock Check
+  // Prevents any modifications (add/update/bulk) if the school admin has locked the term.
+  // Lock keys are stored as: term_lock_{schoolId}_{year}_{termNum}
+  const lockKey = `term_lock_${reqUser.schoolId}_${year}_${term}`;
+  const isLocked = await Setting.findOne({ key: lockKey });
+
+  if (isLocked && isLocked.value === true && reqUser.role !== 'super_admin') {
+    throw new Error(`Action denied: Year ${year} Term ${term} is officially locked. Please contact the Dean or Admin to make corrections.`);
+  }
+
   // Find student if new or if admissionNo is provided for update
   let student;
+  let enrollment;
   if (isNew || admissionNo) { // For updates, admissionNo might not be in req.body, but it's in the mark object
     student = await User.findOne({
       admission: admissionNo,
@@ -51,6 +63,19 @@ const processSingleMark = async (markData, reqUser, isNew = true) => {
 
     if (!student) {
       throw new Error(`Student with admission ${admissionNo} not found in your school`);
+    }
+
+    // 🆕 Strict Active Enrollment Check
+    // Ensures marks can only be recorded for students with an "active" status for the given year.
+    enrollment = await StudentEnrollment.findOne({
+      studentId: student._id,
+      schoolId: reqUser.schoolId,
+      academicYear: Number(year),
+      status: "active"
+    });
+
+    if (!enrollment) {
+      throw new Error(`Recording failed: Student ${student.name} (${student.admission}) is not actively enrolled for ${year}. Check promotion status.`);
     }
   }
 
@@ -75,44 +100,53 @@ const processSingleMark = async (markData, reqUser, isNew = true) => {
     }
   }
 
-  // Robust Stream Resolution: If missing in payload, fetch from active enrollment
-  let streamToSave = stream;
-  if (!streamToSave && student) { // Only try to fetch if student is found
-    const enrollment = await StudentEnrollment.findOne({
-      studentId: student._id,
-      status: "active"
-    }).select("stream");
-    if (enrollment) streamToSave = enrollment.stream;
-  }
-
   const markFields = {
     admissionNo: student ? student.admission : admissionNo, // Use found student's admission if available
     studentName: studentName || (student ? student.name : undefined),
     grade,
-    stream: streamToSave || null,
+    stream: stream || (enrollment ? enrollment.stream : null),
     term,
     year,
     assessment,
     teacherId: reqUser.id,
     schoolId: reqUser.schoolId,
-    enrollmentId: markData.enrollmentId || null // Preserve if provided
+    enrollmentId: enrollment ? enrollment._id : (markData.enrollmentId || null)
+  };
+
+  // 🆕 Helper to safely parse input to Number or NULL (for "X" / Absence)
+  // This prevents Number(null) from becoming 0
+  const safeParse = (val) => {
+    if (val === null || val === undefined || String(val).trim() === "" || String(val).trim().toUpperCase() === "X") return null;
+    const n = Number(val);
+    return isNaN(n) ? null : n;
   };
 
   if (isSeniorSchool) {
     markFields.subject = null; markFields.pathway = pathway; markFields.course = course; markFields.score = null;
-    markFields.continuousAssessment = continuousAssessment !== undefined ? Number(continuousAssessment) : null;
-    markFields.projectWork = projectWork !== undefined ? Number(projectWork) : null;
-    markFields.endTermExam = endTermExam !== undefined ? Number(endTermExam) : null;
+    markFields.continuousAssessment = safeParse(continuousAssessment);
+    markFields.projectWork = safeParse(projectWork);
+    markFields.endTermExam = safeParse(endTermExam);
 
-    if (markFields.continuousAssessment !== null || markFields.projectWork !== null || markFields.endTermExam !== null) {
-      const ca = markFields.continuousAssessment !== null ? markFields.continuousAssessment : 0;
-      const pw = markFields.projectWork !== null ? markFields.projectWork : 0;
-      const et = markFields.endTermExam !== null ? markFields.endTermExam : 0;
+    // 🆕 Senior School Absence Logic: If ANY component is missing (null), the final score is null (Absent).
+    // This prevents "X" from turning into "0" when other components exist.
+    const isFullyTested = 
+        markFields.continuousAssessment !== null && 
+        markFields.projectWork !== null && 
+        markFields.endTermExam !== null;
+
+    if (isFullyTested) {
+      const ca = markFields.continuousAssessment;
+      const pw = markFields.projectWork;
+      const et = markFields.endTermExam;
       const finalScore = (ca * 0.3) + (pw * 0.2) + (et * 0.5);
       markFields.finalScore = Math.round(finalScore * 10) / 10; markFields.performanceLevel = getPerformanceSubdivision(markFields.finalScore);
-    } else { markFields.finalScore = null; markFields.performanceLevel = null; }
+    } else { 
+      markFields.finalScore = null; 
+      markFields.performanceLevel = null; 
+    }
   } else {
-    markFields.subject = subject; markFields.pathway = null; markFields.course = null; markFields.score = score !== undefined ? Number(score) : null;
+    markFields.subject = subject; markFields.pathway = null; markFields.course = null;
+    markFields.score = safeParse(score);
     markFields.finalScore = null; markFields.performanceLevel = null;
   }
   return markFields;
@@ -267,6 +301,13 @@ export const deleteMark = async (req, res) => {
 
     if (String(mark.teacherId) !== String(req.user.id)) {
       return res.status(403).json({ message: "Unauthorized" });
+    }
+
+    // 🆕 Check Lock before deletion
+    const lockKey = `term_lock_${req.user.schoolId}_${mark.year}_${mark.term}`;
+    const isLocked = await Setting.findOne({ key: lockKey });
+    if (isLocked && isLocked.value === true && req.user.role !== 'super_admin') {
+      return res.status(403).json({ message: "Cannot delete marks: This academic term is officially locked." });
     }
 
     await mark.deleteOne();

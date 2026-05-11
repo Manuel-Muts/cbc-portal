@@ -110,6 +110,9 @@ document.addEventListener("DOMContentLoaded", async () => {
 // Helper to convert image URL to base64 for reliable PDF embedding
 async function getImageBase64(url) {
   if (!url) return null;
+  // If it's already a data URI, return it immediately to avoid CSP issues with fetch
+  if (url.startsWith('data:')) return url;
+
   try {
     // Prepend backend URL if the path is relative (e.g., /uploads/...)
     const absoluteUrl = (url.startsWith('http') || url.startsWith('data:')) 

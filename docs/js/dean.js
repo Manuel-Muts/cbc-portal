@@ -1,3 +1,70 @@
+// ---------------------------
+// STYLES FOR SPINNER
+// ---------------------------
+const deanInjectedStyle = document.createElement("style");
+deanInjectedStyle.textContent = `
+  .spinner {
+    width: 14px;
+    height: 14px;
+    border: 2px solid rgba(255, 255, 255, 0.3);
+    border-top-color: #ffffff;
+    border-radius: 50%;
+    animation: dean-spin 0.8s linear infinite;
+    display: inline-block;
+    vertical-align: middle;
+    margin-right: 8px;
+  }
+  @keyframes dean-spin { to { transform: rotate(360deg); } }
+
+  /* 🆕 Sidebar Professional Blue Styling (Matches Admin Sidebar) */
+  .sidebar-nav {
+    background-color: #589be3 !important;
+    background-color: #2b6cb0 !important;
+    padding: 20px 0 !important;
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 4px !important;
+  }
+  .sidebar-nav .tab-btn {
+    background: transparent !important;
+    color: rgba(255, 255, 255, 0.85) !important;
+    border: none !important;
+    text-align: left !important;
+    padding: 12px 24px !important;
+    width: 100% !important;
+    display: flex !important;
+    align-items: center !important;
+    gap: 12px !important;
+    font-size: 0.88rem !important;
+    border-radius: 0 !important;
+    transition: all 0.2s ease !important;
+  }
+  .sidebar-nav .tab-btn:hover {
+    background: rgba(255, 255, 255, 0.1) !important;
+    color: white !important;
+  }
+  .sidebar-nav .tab-btn.active {
+    background-color: #9bb5d6 !important;
+    background-color: #1a4d8c !important;
+    color: white !important;
+    font-weight: 700 !important;
+    box-shadow: inset 5px 0 0 #fff !important;
+  }
+  .status-card-sidebar {
+    margin: auto 15px 20px 15px !important;
+    padding: 12px !important;
+    background: rgba(255, 255, 255, 0.1) !important;
+    border-radius: 8px !important;
+    border: 1px solid rgba(255, 255, 255, 0.2) !important;
+  }
+  .status-card-sidebar p {
+    color: #fff !important;
+    margin: 0 !important;
+    font-size: 0.75rem !important;
+  }
+`;
+document.head.appendChild(deanInjectedStyle);
+
 const API_BASE = config.api.baseURL;
 const logoutBtn = document.getElementById("logoutBtn");
 
@@ -12,6 +79,7 @@ const chartTypeToggle = document.getElementById("chartTypeToggle");
 const applyFiltersBtn = document.getElementById("applyFiltersBtn");
 const printReportBtn = document.getElementById("printReportBtn");
 const printSubjectReportBtn = document.getElementById("printSubjectReportBtn");
+const printMissingReportBtn = document.getElementById("printMissingReportBtn"); // 🆕 Print button for missing exams
 
 const analysisSection = document.getElementById("analysisSection");
 const classMeanEl = document.getElementById("classMean");
@@ -24,6 +92,7 @@ const recordsCountEl = document.getElementById("recordsCount");
 const rankingTableWrap = document.getElementById("rankingTableWrap");
 const subjectTableWrap = document.getElementById("subjectTableWrap");
 const subjectTableContainer = document.getElementById("subjectTableContainer");
+const missingExamsTableWrap = document.getElementById("missingExamsTableWrap"); // 🆕 Container for missing exams table
 
 const gradeTrendChartEl = document.getElementById("gradeTrendChart");
 let gradeTrendChart = null;
@@ -31,6 +100,7 @@ let deanProfileData = null;
 let currentAnalysisRawData = null;
 let currentPrevRawData = null;
 let currentIsSenior = false;
+let currentValidKeys = new Set();
 
 const CACHE_TTL = 15 * 60 * 1000; // 15 minutes
 const CACHE_KEY_PREFIX = "dean_analytics_cache_";
@@ -93,6 +163,9 @@ async function fetchWithAuth(url, options = {}) {
 
 async function getImageBase64(url) {
   if (!url) return null;
+  // If it's already a data URI, return it immediately to avoid CSP issues with fetch
+  if (url.startsWith('data:')) return url;
+
   try {
     // Prepend backend URL if the path is relative (e.g., /uploads/...)
     const BACKEND_URL = config.api.baseURL.replace('/api', '');
@@ -111,6 +184,19 @@ async function getImageBase64(url) {
     console.error("Image conversion error:", e);
     return null;
   }
+}
+
+/**
+ * Helper to extract image format from base64 data URI
+ */
+function getImageFormat(base64String) {
+  if (!base64String) return 'PNG';
+  const match = base64String.match(/^data:image\/([a-zA-Z+]+);base64,/);
+  if (match && match[1]) {
+    const format = match[1].toUpperCase();
+    return format === 'JPG' ? 'JPEG' : format;
+  }
+  return 'PNG';
 }
 
 function setText(element, text) {
@@ -152,6 +238,12 @@ async function generateReport() {
   const year = filterYearEl.value;
 
   if (!grade) return alert("Please select a grade.");
+
+  applyFiltersBtn.disabled = true;
+  applyFiltersBtn.innerHTML = '<span class="spinner"></span> Analyzing...';
+
+  // Allow UI to render spinner before potentially heavy cache/processing logic
+  await new Promise(resolve => setTimeout(resolve, 100));
   
   const cacheKey = `${grade}_${term}_${year}_${assessment}`;
   const cached = getAnalyticsCache(cacheKey);
@@ -160,23 +252,27 @@ async function generateReport() {
     console.log("✅ Using cached analytics for Grade: " + grade);
     analysisSection.style.display = "block";
     currentPrevRawData = cached.prevTermData;
-    processAnalysisData(cached.rawData, cached.isSenior, assessment, cached.prevTermData);
+    processAnalysisData(cached.rawData, cached.isSenior, assessment, cached.prevTermData, cached.roster);
+
+    applyFiltersBtn.disabled = false;
+    applyFiltersBtn.innerHTML = "🔍 View Results";
     return;
   }
   
-  applyFiltersBtn.disabled = true;
-  applyFiltersBtn.textContent = "Analyzing...";
   try {
-    const params = new URLSearchParams({ grade, term, year, assessment });
-    const data = await fetchWithAuth(`${API_BASE}/marks/by-grade?${params}`);
+    // 🚀 Fetch marks and the full class roster in parallel
+    const [marksData, rosterResponse] = await Promise.all([
+      fetchWithAuth(`${API_BASE}/marks/by-grade?${new URLSearchParams({ grade, term, year, assessment })}`),
+      fetchWithAuth(`${API_BASE}/enrollments/class/${grade}?limit=1000`)
+    ]);
+
+    const roster = rosterResponse.students || (Array.isArray(rosterResponse) ? rosterResponse : []);
     
-    // Fetch previous term data for progress analysis if term > 1
     let prevTermData = null;
     const termNum = parseInt(term);
     if (termNum > 1) {
       try {
-        const prevParams = new URLSearchParams({ grade, term: termNum - 1, year, assessment });
-        prevTermData = await fetchWithAuth(`${API_BASE}/marks/by-grade?${prevParams}`);
+        prevTermData = await fetchWithAuth(`${API_BASE}/marks/by-grade?${new URLSearchParams({ grade, term: termNum - 1, year, assessment })}`);
       } catch (e) {
         console.log("Progress analysis skipped: Previous term data not found.");
       }
@@ -188,12 +284,13 @@ async function generateReport() {
 
     currentPrevRawData = prevTermData;
     setAnalyticsCache(cacheKey, {
-      rawData: data,
+      rawData: marksData,
       isSenior: isSenior,
-      prevTermData: prevTermData
+      prevTermData: prevTermData,
+      roster: roster
     });
 
-    processAnalysisData(data, isSenior, assessment, prevTermData);
+    processAnalysisData(marksData, isSenior, assessment, prevTermData, roster);
   } catch (err) {
     if (err.message.includes("No marks found")) {
       analysisSection.style.display = "none";
@@ -204,11 +301,11 @@ async function generateReport() {
     }
   } finally {
     applyFiltersBtn.disabled = false;
-    applyFiltersBtn.textContent = "🔍 View Results";
+    applyFiltersBtn.innerHTML = "🔍 View Results";
   }
 }
 
-function processAnalysisData(allRaw, isSenior, assessment, allPrevRaw = null) {
+function processAnalysisData(allRaw, isSenior, assessment, allPrevRaw = null, roster = []) {
   const subjectsSet = new Set();
   const streamsSet = new Set();
 
@@ -246,6 +343,7 @@ function processAnalysisData(allRaw, isSenior, assessment, allPrevRaw = null) {
   const subjectTotals = {};
   const subjectCounts = {};
   const subjectTermStats = {}; // To track T1, T2, T3 means for trend line
+  const missingExamsMap = {}; // 🆕 Use a map to group missed subjects by student/assessment
 
   // Store current state for re-rendering
   currentAnalysisRawData = allRaw;
@@ -335,51 +433,161 @@ function processAnalysisData(allRaw, isSenior, assessment, allPrevRaw = null) {
     // Group by admission number if "All" is selected to show overall means
     const key = isAll ? m.admissionNo : `${m.admissionNo}_${m.assessment}`;
     if (!studentsMap[key]) {
-      studentsMap[key] = { name: m.studentName, adm: m.admissionNo, assess: isAll ? "Overall" : m.assessment, subjects: {}, _sum: {}, _cnt: {} };
       studentsMap[key] = { 
         name: m.studentName, 
         adm: m.admissionNo, 
         stream: m.stream || "Unassigned", // Fix: Retain stream for grouped analysis
-        assess: isAll ? "Overall" : m.assessment, 
-        subjects: {}, _sum: {}, _cnt: {} 
+        assess: isAll ? "Overall" : (m.assessment || "N/A"), 
+        subjects: {}, _sum: {}, _cnt: {},
+        hasAbsence: false
       };
     }
 
     m.subjects.forEach(sub => {
       const subName = isSenior ? sub.course : sub.subject;
       if (!subName) return;
-      const score = isSenior ? cbcUtils.calculateFinalScore(sub.continuousAssessment, sub.projectWork, sub.endTermExam) : sub.score;
-      if (score !== null) {
-          // Collect per-term stats for the trend line
-          const termNum = m.term;
-          if (termNum >= 1 && termNum <= 3) {
-            if (!subjectTermStats[subName]) {
-              subjectTermStats[subName] = {
-                1: { s: 0, c: 0 }, 2: { s: 0, c: 0 }, 3: { s: 0, c: 0 }
-              };
-            }
-            subjectTermStats[subName][termNum].s += score;
-            subjectTermStats[subName][termNum].c++;
-          }
+      
+      // Robust missing/absent detection (catches null, undefined, empty, or "X")
+      const isX = (v) => v === null || v === undefined || String(v).trim() === "" || (typeof v === 'string' && v.trim().toUpperCase() === "X");
+      
+      let isAbsent = isSenior 
+        ? (isX(sub.endTermExam) || isX(sub.continuousAssessment) || isX(sub.projectWork))
+        : isX(sub.score);
+      
+      const score = isSenior ? (isAbsent ? "X" : cbcUtils.calculateFinalScore(sub.continuousAssessment, sub.projectWork, sub.endTermExam)) : sub.score;
 
-        if (isAll) {
-          studentsMap[key]._sum[subName] = (studentsMap[key]._sum[subName] || 0) + score;
-          studentsMap[key]._cnt[subName] = (studentsMap[key]._cnt[subName] || 0) + 1;
-          studentsMap[key].subjects[subName] = parseFloat((studentsMap[key]._sum[subName] / studentsMap[key]._cnt[subName]).toFixed(1));
-        } else {
+      // Robust absence flag setting
+      const isExplicitlyAbsent = isAbsent || score === null || score === undefined || (typeof score === 'string' && score.trim().toUpperCase() === "X");
+      if (isExplicitlyAbsent) {
+        studentsMap[key].hasAbsence = true;
+      }
+      
+      if (score !== undefined) {
+
+        if (!isAll || studentsMap[key].subjects[subName] === undefined) {
           studentsMap[key].subjects[subName] = score;
         }
-        subjectTotals[subName] = (subjectTotals[subName] || 0) + score;
-        subjectCounts[subName] = (subjectCounts[subName] || 0) + 1;
+
+      // Only count numeric scores for individual student averages; ignore "X" or null
+      if (score !== "" && score !== null && !isNaN(score) && score !== "X" && score !== "x") {
+          const numScore = Number(score);
+
+        if (isAll) {
+          studentsMap[key]._sum[subName] = (studentsMap[key]._sum[subName] || 0) + numScore;
+          studentsMap[key]._cnt[subName] = (studentsMap[key]._cnt[subName] || 0) + 1;
+          studentsMap[key].subjects[subName] = parseFloat((studentsMap[key]._sum[subName] / studentsMap[key]._cnt[subName]).toFixed(1));
+        }
+      }
       }
     });
   });
 
-  const studentArray = Object.values(studentsMap).map(s => {
-    const scores = Object.values(s.subjects);
-    const total = scores.reduce((a, b) => a + b, 0);
-    const mean = scores.length ? total / scores.length : 0;
-    const points = scores.reduce((sum, sc) => sum + cbcUtils.getPoints(sc), 0);
+  // 🆕 SECOND PASS: Strict Incomplete/Absence Detection
+  // A student must have a valid numeric score for EVERY subject found in the class roster to be ranked.
+  // This catches both explicit "X" and missing subject records (entirely unsubmitted).
+  Object.values(studentsMap).forEach(s => {
+    sortedSubjects.forEach(subName => {
+      const score = s.subjects[subName];
+      // Robust detection: Catch undefined (missing record), null (X from DB), or explicit 'X' string
+      // This ensures that even if one assessment record is missing, the student is disqualified from ranking.
+      const isMissing = score === undefined || score === null || (typeof score === 'string' && score.trim().toUpperCase() === "X");
+
+      if (isMissing) {
+        s.hasAbsence = true;
+
+        // Group markers into the missing exams map
+        const studentAssessKey = isAll ? `${s.adm}_overall` : `${s.adm}_${s.assess}`;
+        
+        if (!missingExamsMap[studentAssessKey]) {
+          const mapping = window.ASSESSMENT_MAPPING || {};
+          missingExamsMap[studentAssessKey] = {
+            name: s.name,
+            adm: s.adm,
+            stream: s.stream || "Unassigned",
+            assess: isAll ? "Overall Performance" : (mapping[s.assess] || `Assessment ${s.assess}`),
+            subjects: []
+          };
+        }
+        if (!missingExamsMap[studentAssessKey].subjects.includes(subName)) {
+          missingExamsMap[studentAssessKey].subjects.push(subName);
+        }
+      }
+    });
+  });
+
+  // 🆕 Update global set of valid keys for chart consistency
+  currentValidKeys = new Set(
+    Object.values(studentsMap)
+      .filter(s => !s.hasAbsence)
+      .map(s => isAll ? s.adm : `${s.adm}_${s.assess}`)
+  );
+
+  // 🆕 THIRD PASS: Calculate Subject Stats excluding disqualified learners
+  // This ensures Subject Means and Trend Lines only reflect consistent data from fully-tested students.
+  raw.forEach(m => {
+    const key = isAll ? m.admissionNo : `${m.admissionNo}_${m.assessment}`;
+    const student = studentsMap[key];
+    
+    // Only process scores for students who are NOT disqualified
+    if (student && !student.hasAbsence) {
+      m.subjects.forEach(sub => {
+        const subName = isSenior ? sub.course : sub.subject;
+        if (!subName) return;
+
+        const score = isSenior ? cbcUtils.calculateFinalScore(sub.continuousAssessment, sub.projectWork, sub.endTermExam) : sub.score;
+        const scoreStr = String(score).trim().toUpperCase();
+
+        if (score !== "" && score !== null && !isNaN(score) && scoreStr !== "X") {
+          const numScore = Number(score);
+          const termNum = m.term;
+          
+          // Collect per-term stats for the trend line
+          if (termNum >= 1 && termNum <= 3) {
+            if (!subjectTermStats[subName]) subjectTermStats[subName] = { 1: { s: 0, c: 0 }, 2: { s: 0, c: 0 }, 3: { s: 0, c: 0 } };
+            subjectTermStats[subName][termNum].s += numScore;
+            subjectTermStats[subName][termNum].c++;
+          }
+
+          subjectTotals[subName] = (subjectTotals[subName] || 0) + numScore;
+          subjectCounts[subName] = (subjectCounts[subName] || 0) + 1;
+        }
+      });
+    }
+  });
+
+  // 🆕 IDENTIFY UNGRADED LEARNERS: Compare roster against marks fetched
+  // This finds students who have NO record at all for the current context
+  if (roster && roster.length > 0 && assessment !== "all") {
+    const submittedAdms = new Set(allRaw.map(m => m.admissionNo));
+    const mapping = window.ASSESSMENT_MAPPING || {};
+    const currentAssessLabel = mapping[assessment] || `Assessment ${assessment}`;
+
+    roster.forEach(student => {
+      const adm = student.admissionNo || student.admission;
+      if (!submittedAdms.has(adm)) {
+        // Filter by stream if selected
+        if (selectedStream !== "all" && student.stream !== selectedStream) return;
+
+        missingExamsMap[`${adm}_ungraded`] = {
+          name: student.name,
+          adm: adm,
+          stream: student.stream || "Unassigned",
+          assess: currentAssessLabel,
+          subjects: ["RECORDS NOT FOUND (Entirely Ungraded)"]
+        };
+      }
+    });
+  }
+
+  const studentArray = Object.values(studentsMap)
+    .filter(s => !s.hasAbsence) // 🚫 Exclude students with any "X" or missing component from ranking
+    .map(s => {
+    const rawScores = Object.values(s.subjects);
+    // Filter out non-numeric scores (like "X") for student total and mean calculation
+    const validScores = rawScores.filter(v => v !== null && v !== undefined && v !== "" && !isNaN(v) && v !== "X" && v !== "x").map(Number);
+    const total = validScores.reduce((a, b) => a + b, 0);
+    const mean = validScores.length ? total / validScores.length : 0;
+    const points = rawScores.reduce((sum, sc) => sum + cbcUtils.getPoints(sc), 0);
 
     const studentKey = isAll ? s.adm : `${s.adm}_${s.assess}`;
     const pMean = prevStudentMeans[studentKey];
@@ -387,6 +595,10 @@ function processAnalysisData(allRaw, isSenior, assessment, allPrevRaw = null) {
 
     return { ...s, total, mean, points, progress };
   }).sort((a, b) => b.mean - a.mean);
+
+  // Convert map to list and sort missing list by name
+  const missingExamsList = Object.values(missingExamsMap);
+  missingExamsList.sort((a, b) => a.name.localeCompare(b.name));
 
   // Calculate ranks with ties (Standard Competition Ranking)
   let prevMean = null;
@@ -443,6 +655,7 @@ function processAnalysisData(allRaw, isSenior, assessment, allPrevRaw = null) {
   updateDashboardChart();
   renderRankingTable(studentArray, sortedSubjects, isSenior);
   renderSubjectStats(sortedSubjects, subjectTotals, subjectCounts, prevSubjectMeans, subjectTermStats);
+  renderMissingExamsTable(missingExamsList); // 🆕 Call renderer for missing exams
 }
 
 function renderRankingTable(students, subjects, isSenior) {
@@ -454,7 +667,7 @@ function renderRankingTable(students, subjects, isSenior) {
 
   const totalHeader = !isSenior ? '<th class="total-column-header">Total</th>' : '';
   let html = `<table class="marks-table" style="width:100%; border-collapse: collapse;">
-    <thead><tr><th>Rank</th><th>Name</th><th>Adm</th>${subjects.map(s => `<th>${s}</th>`).join("")}${totalHeader}<th>Mean</th><th>Progress</th><th>Points</th><th>Level</th></tr></thead>
+    <thead><tr><th>Rank</th><th>Name</th><th>Adm</th>${subjects.map(s => `<th>${s} <small style="display:block; font-size:0.6rem; font-weight:normal; opacity:0.7;">(Score & Pts)</small></th>`).join("")}${totalHeader}<th>Mean</th><th>Progress</th><th>Total Points</th><th>Level</th></tr></thead>
     <tbody>`;
   
   students.forEach((s, idx) => {
@@ -472,7 +685,15 @@ function renderRankingTable(students, subjects, isSenior) {
     // Store progress value in a data attribute for PDF generation
     html += `<tr${tiedClass} data-progress="${s.progress !== null ? s.progress : ''}">
       <td>${s.rank}</td><td>${s.name}</td><td>${s.adm}</td>
-      ${subjects.map(sub => `<td>${s.subjects[sub] !== undefined ? s.subjects[sub] : "-"}</td>`).join("")}
+      ${subjects.map(sub => {
+        const score = s.subjects[sub];
+        const isAbs = score === undefined || score === null || String(score).toUpperCase() === "X";
+        if (isAbs) {
+          return `<td><span style="color:#ef4444; font-weight:700;">ABS</span> <span style="font-size: 0.72rem; color: #64748b; font-weight: 700;">(0)</span></td>`;
+        }
+        const pts = cbcUtils.getPoints(Number(score));
+        return `<td>${score} <span style="font-size: 0.72rem; color: #64748b; font-weight: 700;">(${pts})</span></td>`;
+      }).join("")}
       ${totalCell}
       <td>${s.mean.toFixed(1)}%</td>
       <td>${progressHtml}</td>
@@ -525,6 +746,13 @@ async function downloadRankingAsPDF() {
   const table = rankingTableWrap.querySelector("table");
   if (!table || !window.jspdf) return;
 
+  const originalHTML = printReportBtn.innerHTML;
+  printReportBtn.disabled = true;
+  printReportBtn.innerHTML = '<span class="spinner"></span> Generating PDF...';
+
+  // Allow UI to render spinner before heavy PDF task blocks the thread
+  await new Promise(resolve => setTimeout(resolve, 100));
+
   const schoolName = deanProfileData?.schoolName || "SCHOOL NAME";
 
   const { jsPDF } = window.jspdf;
@@ -540,110 +768,98 @@ async function downloadRankingAsPDF() {
   const selectedStream = filterStreamEl?.value || "all";
   const streamInfo = selectedStream !== "all" ? ` | Stream: ${selectedStream}` : "";
 
-  let yPos = 15;
+  let yPos = 12;
 
-  // 1. Header - School Logo & Name
+  try {
+  // Header - School Logo & Name
   if (deanProfileData && deanProfileData.schoolLogoBase64) {
     try {
-      doc.addImage(deanProfileData.schoolLogoBase64, 'PNG', pageWidth / 2 - 15, yPos - 10, 30, 15);
-      yPos += 12; // Adjust vertical position for text if logo is present
+      // Use pre-calculated properties to avoid expensive re-parsing
+      const imgProps = deanProfileData.logoProps || doc.getImageProperties(deanProfileData.schoolLogoBase64);
+      const format = deanProfileData.logoFormat || getImageFormat(deanProfileData.schoolLogoBase64);
+      const imgWidth = 25; 
+      const imgHeight = (imgProps.height * imgWidth) / imgProps.width;
+      doc.addImage(deanProfileData.schoolLogoBase64, format, (pageWidth - imgWidth) / 2, yPos - 8, imgWidth, imgHeight, undefined, 'FAST');
+      yPos += imgHeight;
     } catch (e) {
       console.warn("Could not embed school logo in PDF:", e);
     }
   }
 
-  // 1. Header - School Name
   doc.setFontSize(18);
   doc.setFont("helvetica", "bold");
-  doc.text(schoolName, pageWidth / 2, yPos, { align: "center" });
+  doc.text(schoolName, pageWidth / 2, yPos - 5, { align: "center" });
 
   // 2. Subheader - Year | Term | Assessment
   doc.setFontSize(12);
   doc.setFont("helvetica", "normal");
-  doc.text(`${year} | ${termLabel} | ${assessLabel}${streamInfo}`, pageWidth / 2, yPos + 7, { align: "center" });
+  doc.text(`${year} | ${termLabel} | ${assessLabel}${streamInfo}`, pageWidth / 2, yPos - 1, { align: "center" });
 
   // 3. Title Line
   doc.setFontSize(14);
-  doc.text(`Grade Ranking Report: ${grade}${selectedStream !== "all" ? ' - Stream ' + selectedStream : ''}`, 14, yPos + 17);
+  doc.text(`CLASS GRADING REPORT: ${grade}${selectedStream !== "all" ? ' - Stream ' + selectedStream : ''}`, 14, yPos + 5);
 
-  // Extract headers and rows from the existing DOM table
-  const significantDropRowIndices = [];
-  const SIGNIFICANT_DROP_THRESHOLD = -5; // Define what constitutes a "significant drop"
+  // OPTIMIZATION: Extract column mapping once to avoid repeated indexOf lookups
+  const rawHeaders = Array.from(table.querySelectorAll("thead th")).map(th => th.textContent.trim());
+  const nameIdx = rawHeaders.indexOf("Name");
+  const admIdx = rawHeaders.indexOf("Adm");
+  const progressIdx = rawHeaders.indexOf("Progress");
+  const levelIdx = rawHeaders.length - 1;
 
-  let headers = Array.from(table.querySelectorAll("thead th")).map(th => th.innerText);
+  // Determine which columns to skip for PDF clarity
+  const skipIndices = new Set();
+  if (admIdx !== -1) skipIndices.add(admIdx);
+  
+  // Check if Progress column should be hidden (only N/A values)
+  const tbodyRows = Array.from(table.querySelectorAll("tbody tr"));
+  const hasMeaningfulProgress = tbodyRows.some(tr => {
+    const p = tr.querySelectorAll("td")[progressIdx]?.textContent.trim();
+    return p && p !== "N/A" && p !== "-";
+  });
+  if (!hasMeaningfulProgress && progressIdx !== -1) skipIndices.add(progressIdx);
+
+  const headers = rawHeaders.filter((_, i) => !skipIndices.has(i));
+
+  // Single-pass row processing: Extract data, level counts, and metadata
   const tiedRowIndices = [];
+  const significantDropRowIndices = [];
+  const SIGNIFICANT_DROP_THRESHOLD = -5;
+  const levelCounts = { EE1: 0, EE2: 0, ME1: 0, ME2: 0, AE1: 0, AE2: 0, BE1: 0, BE2: 0 };
 
-  // Extract footer row data if it exists (multiple rows)
-  let foot = Array.from(table.querySelectorAll("tfoot tr")).map(tr => {
+  const rows = tbodyRows.map((tr, rowIdx) => {
     const cells = Array.from(tr.querySelectorAll("td"));
+    
+    // Metadata for styling
+    if (tr.classList.contains("tied-rank")) tiedRowIndices.push(rowIdx);
+    const progVal = parseFloat(tr.dataset.progress);
+    if (!isNaN(progVal) && progVal < SIGNIFICANT_DROP_THRESHOLD) significantDropRowIndices.push(rowIdx);
+
+    // Count levels for summary while iterating
+    const levelStr = cells[levelIdx]?.textContent.trim();
+    if (levelCounts[levelStr] !== undefined) levelCounts[levelStr]++;
+
+    return cells
+      .filter((_, colIdx) => !skipIndices.has(colIdx))
+      .map(td => td.textContent.trim());
+  });
+
+  // Optimized Footer Extraction
+  const foot = Array.from(table.querySelectorAll("tfoot tr")).map(tr => {
+    let colCounter = 0;
     const rowData = [];
-    cells.forEach(td => {
+    tr.querySelectorAll("td").forEach(td => {
       const colspan = td.colSpan || 1;
-      rowData.push(td.innerText);
-      for(let i=1; i<colspan; i++) rowData.push(""); // pad for autoTable
+      const text = td.textContent.trim();
+      for(let i=0; i<colspan; i++) {
+        if (!skipIndices.has(colCounter)) rowData.push(i === 0 ? text : "");
+        colCounter++;
+      }
     });
     return rowData;
   });
-  if (foot.length === 0) foot = null;
-
-  let rows = Array.from(table.querySelectorAll("tbody tr")).map((tr, idx) => {
-    if (tr.classList.contains("tied-rank")) {
-      tiedRowIndices.push(idx);
-    }
-    if (tr.dataset.progress && parseFloat(tr.dataset.progress) < SIGNIFICANT_DROP_THRESHOLD) {
-      significantDropRowIndices.push(idx);
-    }
-    return Array.from(tr.querySelectorAll("td")).map(td => td.innerText);
-  });
-
-  // Remove "Mean" column from PDF export
- // const meanIdx = headers.indexOf("Mean");
- // if (meanIdx !== -1) {
-  //  headers.splice(meanIdx, 1);
-   // rows = rows.map(row => {
-   //   const newRow = [...row];
-    //  newRow.splice(meanIdx, 1);
-     // return newRow;
-   // });
-   // if (foot) foot = foot.map(row => { const nr = [...row]; nr.splice(meanIdx, 1); return nr; });
-  //}
-
-  // Remove "Adm" column from PDF export
-  const admIdx = headers.indexOf("Adm");
-  if (admIdx !== -1) {
-    headers.splice(admIdx, 1);
-    rows = rows.map(row => {
-      const newRow = [...row];
-      newRow.splice(admIdx, 1);
-      return newRow;
-    });
-    if (foot) foot = foot.map(row => { const nr = [...row]; nr.splice(admIdx, 1); return nr; });
-  }
-
-  // Check if Progress column should be hidden (only N/A values)
-  const progressIdx = headers.indexOf("Progress");
-  if (progressIdx !== -1) {
-    const allNA = rows.every(row => row[progressIdx] === "N/A");
-    if (allNA) {
-      headers.splice(progressIdx, 1);
-      rows = rows.map(row => {
-        const newRow = [...row];
-        newRow.splice(progressIdx, 1);
-        return newRow;
-      });
-      if (foot) foot = foot.map(row => { const nr = [...row]; nr.splice(progressIdx, 1); return nr; });
-    }
-  }
-
-  // Calculate Level Distribution
-  const levelCounts = { EE1: 0, EE2: 0, ME1: 0, ME2: 0, AE1: 0, AE2: 0, BE1: 0, BE2: 0 };
-  rows.forEach(row => {
-    const level = row[row.length - 1];
-    if (levelCounts[level] !== undefined) levelCounts[level]++;
-  });
 
   doc.autoTable({ 
-    startY: yPos + 23, 
+    startY: yPos + 9, 
     head: [headers], 
     body: rows, 
     foot: foot || [],
@@ -653,6 +869,8 @@ async function downloadRankingAsPDF() {
     footStyles: { fillColor: [241, 245, 249], textColor: [0, 0, 0], fontStyle: 'bold' },
     showHead: 'everyPage', // Repeat table headers on every page
     showFoot: 'lastPage', // Only show totals/mean at the end of the ranking list
+    rowPageBreak: 'avoid', // 🆕 Prevents a single student row from being split across two pages
+    margin: { left: 14, right: 14, bottom: 35 }, // 🆕 Leaves space for the signature and footer
     didParseCell: (data) => {
        if (data.section === 'body') {
         // Make student name bold
@@ -675,34 +893,40 @@ async function downloadRankingAsPDF() {
     } // Footer moved to the end of function to appear on the last page
   });
 
-  // 4. Level Distribution Summary
-  const summaryStartY = doc.lastAutoTable.finalY + 10;
-  
+  // 4. Summary Section with Multi-page Safety
+  // Threshold: If we have less than 75mm remaining (A4 landscape height ~210mm), move summary to new page
+  let summaryStartY = doc.lastAutoTable.finalY + 8;
+  if (summaryStartY > pageHeight - 75) {
+    doc.addPage();
+    summaryStartY = 25;
+  }
+
   doc.setFontSize(11);
   doc.setFont("helvetica", "bold");
   doc.text("REPORT SUMMARY", 14, summaryStartY); 
 
   doc.setFontSize(9);
-  doc.text("Level Distribution", 14, summaryStartY + 6);
+  doc.text("Level Distribution", 14, summaryStartY + 5);
 
+  // Level Distribution Table
   doc.autoTable({
-    startY: summaryStartY + 8,
+    startY: summaryStartY + 7,
     head: [['Level', 'Count']],
     body: Object.entries(levelCounts).map(([lvl, count]) => [lvl, count]),
     theme: 'grid',
-    styles: { fontSize: 8, cellPadding: 1 },
+    styles: { fontSize: 9, cellPadding: 2, lineWidth: 0.2, lineColor: [0, 0, 0] },
     headStyles: { fillColor: [52, 152, 219] },
-    tableWidth: 40,
+    tableWidth: 50,
     margin: { left: 14 }
   });
 
-  // Table 2 Label
-  const keyX = 14 + 40 + 15; // margin + table1 width + gap
-  doc.text("Performance Key", keyX, summaryStartY + 6);
+  // Performance Key Label (Placed next to Distribution)
+  const keyX = 14 + 50 + 20; // margin + table1 width + gap
+  doc.text("Performance Key", keyX, summaryStartY + 5);
 
-  // 5. Performance Key (Last Page)
+  // 5. Performance Key Table
   doc.autoTable({
-    startY: summaryStartY + 8,
+    startY: summaryStartY + 7,
     head: [['Level', 'Range', 'Pts']],
     body: [
       // Original Performance Key data
@@ -712,15 +936,22 @@ async function downloadRankingAsPDF() {
       ['BE1', '11-20', '2'], ['BE2', '0-10', '1']
     ],
     theme: 'grid',
-    styles: { fontSize: 7, cellPadding: 1 },
+    styles: { fontSize: 9, cellPadding: 2, lineWidth: 0.2, lineColor: [0, 0, 0] },
     headStyles: { fillColor: [44, 62, 80] }, // Darker theme for the key
-    tableWidth: 45,
+    tableWidth: 70,
     margin: { left: keyX }
   });
 
   // --- DRAW FOOTER ON THE LAST PAGE ---
   doc.setPage(doc.internal.getNumberOfPages());
-  const footerY = pageHeight - 20;
+  
+  // Safety: If summary tables ended too close to the footer, add one more page for the signature
+  let footerY = pageHeight - 20;
+  if (doc.lastAutoTable.finalY > footerY - 5) {
+    doc.addPage();
+    footerY = pageHeight - 20;
+  }
+
   doc.setFontSize(9);
   doc.setFont("helvetica", "normal");
 
@@ -731,7 +962,8 @@ async function downloadRankingAsPDF() {
   // Dean's digital signature image
   if (deanProfileData && deanProfileData.signatureBase64) {
     try {
-      doc.addImage(deanProfileData.signatureBase64, 'PNG', pageWidth - 54, footerY + 1, 40, 8);
+      const sigFormat = deanProfileData.sigFormat || getImageFormat(deanProfileData.signatureBase64);
+      doc.addImage(deanProfileData.signatureBase64, sigFormat, pageWidth - 54, footerY + 1, 40, 8, undefined, 'FAST');
     } catch (e) {
       console.warn("Could not embed Dean signature in PDF:", e);
     }
@@ -756,11 +988,157 @@ async function downloadRankingAsPDF() {
 
   const fileName = `${schoolName}_${grade}_T${termVal}_${year}`.replace(/\s+/g, '_');
   doc.save(`${fileName}.pdf`);
+  } catch (err) {
+    console.error("PDF Export Error:", err);
+  } finally {
+    printReportBtn.disabled = false;
+    printReportBtn.innerHTML = originalHTML;
+  }
+}
+
+/**
+ * 🆕 Renders the list of learners who missed exams
+ */
+function renderMissingExamsTable(missingList) {
+  if (!missingExamsTableWrap) return;
+
+  if (missingList.length === 0) {
+    missingExamsTableWrap.innerHTML = `
+      <div style="text-align:center; padding:30px; background:#f8fafc; border-radius:12px; border: 1px dashed #cbd5e0; color:#64748b;">
+        <i class="fas fa-check-circle" style="font-size:2rem; color:#10b981; margin-bottom:10px; display:block;"></i>
+        <strong>Excellent!</strong> No learners were recorded as absent ("X") for any subjects in this selection.
+      </div>`;
+    return;
+  }
+
+  let html = `<table class="marks-table" style="width:100%; border-collapse: collapse;">
+    <thead>
+      <tr>
+        <th>Name</th>
+        <th>Adm</th>
+        <th>Stream</th>
+        <th>Assessment</th>
+        <th style="color:#e53e3e;">Missed Subject(s)</th>
+      </tr>
+    </thead>
+    <tbody>`;
+
+  missingList.forEach(m => {
+    html += `
+      <tr>
+        <td><strong>${m.name}</strong></td>
+        <td>${m.adm}</td>
+        <td>${m.stream}</td>
+        <td>${m.assess}</td>
+        <td>
+          ${m.subjects.map(s => `<span style="display:inline-block; background:#fff5f5; color:#c53030; padding:2px 8px; border-radius:4px; border:1px solid #feb2b2; margin:2px; font-size:0.75rem; font-weight:600;">${s}</span>`).join("")}
+        </td>
+      </tr>`;
+  });
+
+  html += `</tbody></table>`;
+  missingExamsTableWrap.innerHTML = html;
+}
+
+/**
+ * 🆕 Download the Missing Exams list as a PDF
+ */
+async function downloadMissingExamsAsPDF() {
+  const table = missingExamsTableWrap.querySelector("table");
+  if (!table || !window.jspdf) return;
+
+  const originalHTML = printMissingReportBtn.innerHTML;
+  printMissingReportBtn.disabled = true;
+  printMissingReportBtn.innerHTML = '<span class="spinner"></span> Generating PDF...';
+
+  // Allow UI to render spinner before heavy PDF task blocks the thread
+  await new Promise(resolve => setTimeout(resolve, 100));
+
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF();
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const pageHeight = doc.internal.pageSize.getHeight();
+
+  const schoolName = deanProfileData?.schoolName || "SCHOOL NAME";
+  const grade = filterGradeEl.value;
+  const termVal = filterTermEl.value;
+  const termLabel = termVal === "all" ? "Full Year" : `Term ${termVal}`;
+  const year = filterYearEl.value;
+
+    let yPos = 12;
+
+  try {
+    // Header - School Logo & Name
+    if (deanProfileData && deanProfileData.schoolLogoBase64) {
+      const imgProps = deanProfileData.logoProps || doc.getImageProperties(deanProfileData.schoolLogoBase64);
+      const format = deanProfileData.logoFormat || getImageFormat(deanProfileData.schoolLogoBase64);
+      const imgWidth = 25; 
+      const imgHeight = (imgProps.height * imgWidth) / imgProps.width;
+        doc.addImage(deanProfileData.schoolLogoBase64, format, (pageWidth - imgWidth) / 2, yPos - 8, imgWidth, imgHeight, undefined, 'FAST');
+      yPos += imgHeight;
+    }
+
+    doc.setFontSize(18);
+    doc.setFont("helvetica", "bold");
+      doc.text(schoolName, pageWidth / 2, yPos - 5, { align: "center" });
+
+    doc.setFontSize(12);
+    doc.setFont("helvetica", "normal");
+      doc.text(`${year} | ${termLabel} | Missing Exams Report`, pageWidth / 2, yPos - 1, { align: "center" });
+
+    doc.setFontSize(14);
+      doc.text(`Learners Recorded as Absent: ${grade}`, 14, yPos + 5);
+
+    const headers = [["Name", "Adm", "Stream", "Assessment", "Missed Subjects"]];
+    const rows = Array.from(table.querySelectorAll("tbody tr")).map(tr => 
+      Array.from(tr.querySelectorAll("td")).map(td => td.textContent.trim())
+    );
+
+    doc.autoTable({
+        startY: yPos + 9, 
+      head: headers, 
+      body: rows, 
+      theme: 'grid',
+      headStyles: { fillColor: [231, 76, 60] }, // Red for "Missing"
+      styles: { fontSize: 9 },
+      rowPageBreak: 'avoid', // 🆕 Prevents splitting a student's missing subjects list
+      margin: { bottom: 35 } // 🆕 Space for signature
+    });
+
+    // Ensure Dean Signature doesn't overlap
+    doc.setPage(doc.internal.getNumberOfPages());
+    if (doc.lastAutoTable.finalY > pageHeight - 30) {
+        doc.addPage();
+    }
+
+    const totalPages = doc.internal.getNumberOfPages();
+    for (let i = 1; i <= totalPages; i++) {
+      doc.setPage(i);
+      doc.setFontSize(8);
+      doc.setTextColor(150);
+      doc.text(`Page ${i} of ${totalPages}`, 14, pageHeight - 10);
+      doc.text(`Printed: ${new Date().toLocaleString()} | CompetenceHub`, pageWidth - 14, pageHeight - 10, { align: "right" });
+    }
+
+    doc.save(`Absent_Learners_${grade}_T${termVal}_${year}.pdf`);
+  } catch (err) {
+    console.error("PDF Export Error:", err);
+  } finally {
+    printMissingReportBtn.disabled = false;
+    printMissingReportBtn.innerHTML = originalHTML;
+  }
 }
 
 async function downloadSubjectPerformanceAsPDF() {
   const table = subjectTableWrap.querySelector("table");
   if (!table || !window.jspdf) return;
+
+  const originalHTML = printSubjectReportBtn.innerHTML;
+  printSubjectReportBtn.disabled = true;
+  printSubjectReportBtn.innerHTML = '<span class="spinner"></span> Generating PDF...';
+
+  // Allow UI to render spinner before heavy PDF task blocks the thread
+  await new Promise(resolve => setTimeout(resolve, 100));
 
   const schoolName = deanProfileData?.schoolName || "SCHOOL NAME";
 
@@ -779,11 +1157,17 @@ async function downloadSubjectPerformanceAsPDF() {
 
   let yPos = 15;
 
-  // 1. Header - School Logo & Name
+  try {
+  // Header - School Logo & Name
   if (deanProfileData && deanProfileData.schoolLogoBase64) {
     try {
-      doc.addImage(deanProfileData.schoolLogoBase64, 'PNG', pageWidth / 2 - 15, yPos - 10, 30, 15);
-      yPos += 12; // Adjust vertical position for text if logo is present
+      // Use pre-calculated properties to avoid expensive re-parsing
+      const imgProps = deanProfileData.logoProps || doc.getImageProperties(deanProfileData.schoolLogoBase64);
+      const format = deanProfileData.logoFormat || getImageFormat(deanProfileData.schoolLogoBase64);
+      const imgWidth = 25; 
+      const imgHeight = (imgProps.height * imgWidth) / imgProps.width;
+      doc.addImage(deanProfileData.schoolLogoBase64, format, (pageWidth - imgWidth) / 2, yPos - 10, imgWidth, imgHeight, undefined, 'FAST');
+      yPos += imgHeight;
     } catch (e) {
       console.warn("Could not embed school logo in PDF:", e);
     }
@@ -791,45 +1175,48 @@ async function downloadSubjectPerformanceAsPDF() {
 
   doc.setFontSize(18);
   doc.setFont("helvetica", "bold");
-  doc.text(schoolName, pageWidth / 2, yPos, { align: "center" });
+  doc.text(schoolName, pageWidth / 2, yPos - 7, { align: "center" });
 
   doc.setFontSize(12);
   doc.setFont("helvetica", "normal");
-  doc.text(`${year} | ${termLabel} | ${assessLabel}${streamInfo}`, pageWidth / 2, yPos + 7, { align: "center" });
+  doc.text(`${year} | ${termLabel} | ${assessLabel}${streamInfo}`, pageWidth / 2, yPos, { align: "center" });
 
   doc.setFontSize(14);
-  doc.text(`Subject Performance Analysis: ${grade}${selectedStream !== "all" ? ' - Stream ' + selectedStream : ''}`, 14, yPos + 17);
+  doc.text(`Subject Performance Analysis: ${grade}${selectedStream !== "all" ? ' - Stream ' + selectedStream : ''}`, 14, yPos + 10);
 
-  let headers = Array.from(table.querySelectorAll("thead th")).map(th => th.innerText);
-  const tiedRowIndices = [];
-  let rows = Array.from(table.querySelectorAll("tbody tr")).map((tr, idx) => {
-    if (tr.classList.contains("tied-rank")) tiedRowIndices.push(idx);
-    return Array.from(tr.querySelectorAll("td")).map(td => td.innerText);
+  const rawHeaders = Array.from(table.querySelectorAll("thead th")).map(th => th.textContent.trim());
+  const progressIdx = rawHeaders.indexOf("Progress");
+  const tbodyRows = Array.from(table.querySelectorAll("tbody tr"));
+
+  // Check if Progress column should be hidden
+  const hasMeaningfulProgress = tbodyRows.some(tr => {
+    const p = tr.querySelectorAll("td")[progressIdx]?.textContent.trim();
+    return p && p !== "N/A" && p !== "-";
   });
 
-  // Check if Progress column should be hidden (only N/A values)
-  const progressIdx = headers.indexOf("Progress");
-  if (progressIdx !== -1) {
-    const allNA = rows.every(row => row[progressIdx] === "N/A");
-    if (allNA) {
-      headers.splice(progressIdx, 1);
-      rows = rows.map(row => {
-        const newRow = [...row];
-        newRow.splice(progressIdx, 1);
-        return newRow;
-      });
-    }
-  }
+  const skipIndices = new Set();
+  if (!hasMeaningfulProgress && progressIdx !== -1) skipIndices.add(progressIdx);
+
+  const headers = rawHeaders.filter((_, i) => !skipIndices.has(i));
+  const tiedRowIndices = [];
+
+  const rows = tbodyRows.map((tr, idx) => {
+    if (tr.classList.contains("tied-rank")) tiedRowIndices.push(idx);
+    return Array.from(tr.querySelectorAll("td"))
+      .filter((_, colIdx) => !skipIndices.has(colIdx))
+      .map(td => td.textContent.trim());
+  });
 
   doc.autoTable({ 
-    startY: yPos + 23, 
+    startY: yPos + 9, 
     head: [headers], 
     body: rows, 
     theme: 'grid',
-    styles: { fontSize: 10, lineWidth: 0.1, lineColor: [0, 0, 0] },
-    columnStyles: { 3: { fontSize: 8, halign: 'center' } },
+    styles: { fontSize: 9, lineWidth: 0.1, lineColor: [0, 0, 0] },
     headStyles: { fillColor: [46, 204, 113] }, // Green theme for subject stats
-    showHead: 'everyPage', // Repeat table headers on every page
+    showHead: 'everyPage', 
+    rowPageBreak: 'avoid', // 🆕 Prevents subject rows from splitting
+    margin: { bottom: 35 }, // 🆕 Space for signature
     didParseCell: (data) => {
       if (data.section === 'body' && tiedRowIndices.includes(data.row.index)) {
         data.cell.styles.fillColor = [255, 249, 219];
@@ -837,12 +1224,20 @@ async function downloadSubjectPerformanceAsPDF() {
     }
   });
 
-  // --- DRAW FOOTER ON THE LAST PAGE ---
+  // --- DRAW SIGNATURE ON THE LAST PAGE ---
   doc.setPage(doc.internal.getNumberOfPages());
-  const footerY = pageHeight - 20;
+  
+  // Safety: check for overlap
+  let footerY = pageHeight - 20;
+  if (doc.lastAutoTable.finalY > footerY - 5) {
+    doc.addPage();
+    footerY = pageHeight - 20;
+  }
+
   if (deanProfileData && deanProfileData.signatureBase64) {
     try {
-      doc.addImage(deanProfileData.signatureBase64, 'PNG', pageWidth - 54, footerY + 1, 40, 8);
+      const sigFormat = deanProfileData.sigFormat || getImageFormat(deanProfileData.signatureBase64);
+      doc.addImage(deanProfileData.signatureBase64, sigFormat, pageWidth - 54, footerY + 1, 40, 8, undefined, 'FAST');
     } catch (e) {
       console.warn("Could not embed Dean signature in PDF:", e);
     }
@@ -861,7 +1256,7 @@ async function downloadSubjectPerformanceAsPDF() {
     doc.setTextColor(150, 150, 150); // Professional subtle gray
     doc.setFont("helvetica", "normal");
     doc.text(`Page ${i} of ${totalPagesCount}`, 14, pageHeight - 7);
-    const genText = "Generated by Competence Hub";
+    const genText = "CompetenceHub Analytics";
     const genTextWidth = doc.getTextWidth(genText);
     doc.text(genText, (pageWidth / 2) - (genTextWidth / 2), pageHeight - 7);
   }
@@ -870,6 +1265,12 @@ async function downloadSubjectPerformanceAsPDF() {
   const termSuffix = termVal === "all" ? "Year" : `T${termVal}`;
   const fileName = `${schoolName}_Subjects_${grade}${streamSuffix}_${termSuffix}_${year}`.replace(/\s+/g, '_');
   doc.save(`${fileName}.pdf`);
+  } catch (err) {
+    console.error("Subject PDF Export Error:", err);
+  } finally {
+    printSubjectReportBtn.disabled = false;
+    printSubjectReportBtn.innerHTML = originalHTML;
+  }
 }
 
 function renderSubjectStats(subjects, totals, counts, prevMeans = {}, termStats = {}) {
@@ -961,14 +1362,23 @@ function updateDashboardChart() {
   if (!currentAnalysisRawData) return;
   const type = chartTypeToggle?.value || "trend";
 
+  // 🆕 Filter out disqualified learners for consistency across the dashboard
+  const assessment = filterAssessmentEl?.value;
+  const isAll = assessment === "all" || filterTermEl?.value === "all";
+  
+  const filteredData = currentAnalysisRawData.filter(m => {
+    const key = isAll ? m.admissionNo : `${m.admissionNo}_${m.assessment}`;
+    return currentValidKeys.has(key);
+  });
+
   // Respect stream filter for trend analysis
   const selectedStream = filterStreamEl?.value || "all";
-  const dataToChart = selectedStream === "all" ? currentAnalysisRawData : currentAnalysisRawData.filter(m => m.stream === selectedStream);
+  const dataToChart = selectedStream === "all" ? filteredData : filteredData.filter(m => m.stream === selectedStream);
 
   if (type === "trend") {
     renderTrendChart(dataToChart, currentIsSenior);
   } else {
-    renderStreamBarChart(currentAnalysisRawData, currentIsSenior);
+    renderStreamBarChart(filteredData, currentIsSenior);
   }
 }
 
@@ -1387,6 +1797,9 @@ async function loadDeanProfile() {
     // Pre-load signature for PDF generation
     if (deanProfileData.signatureUrl) {
       deanProfileData.signatureBase64 = await getImageBase64(deanProfileData.signatureUrl);
+      try {
+        deanProfileData.sigFormat = getImageFormat(deanProfileData.signatureBase64);
+      } catch(e){}
     }
 
     // Pre-load school info and logo for PDF generation (always fresh, no cache)
@@ -1395,7 +1808,7 @@ async function loadDeanProfile() {
       const SCHOOL_CACHE_KEY = "dean_school_info_cache";
       localStorage.removeItem(SCHOOL_CACHE_KEY);
       
-      schoolInfo = await fetchWithAuth(`${API_BASE}/users/my-school`);
+      schoolInfo = await fetchWithAuth(`${API_BASE}/users/my-school?includeLogo=true`);
       if (schoolInfo) {
         // Cache briefly for performance but always refresh on page load
         localStorage.setItem(SCHOOL_CACHE_KEY, JSON.stringify({
@@ -1405,8 +1818,23 @@ async function loadDeanProfile() {
         
         deanProfileData.schoolName = (schoolInfo.name || "School Name").toUpperCase();
         if (schoolInfo.logo) {
-          // Note: getImageBase64 now handles both relative paths and absolute URLs
-          deanProfileData.schoolLogoBase64 = await getImageBase64(schoolInfo.logo);
+          let logoSrc = schoolInfo.logo;
+          // If the logo is raw base64 (doesn't start with / or http), prepend the data URI prefix
+          if (!logoSrc.startsWith('http') && !logoSrc.startsWith('/') && !logoSrc.startsWith('data:')) {
+            const mimeType = schoolInfo.logoMimeType || 'image/png';
+            logoSrc = `data:${mimeType};base64,${logoSrc}`;
+          }
+          
+          // Note: getImageBase64 handles relative paths, absolute URLs, and data URIs
+          deanProfileData.schoolLogoBase64 = await getImageBase64(logoSrc);
+
+          // Pre-calculate properties once to speed up subsequent PDF generations
+          try {
+            const { jsPDF } = window.jspdf;
+            const tempDoc = new jsPDF();
+            deanProfileData.logoProps = tempDoc.getImageProperties(deanProfileData.schoolLogoBase64);
+            deanProfileData.logoFormat = getImageFormat(deanProfileData.schoolLogoBase64);
+          } catch (e) { console.warn("Failed to pre-parse logo:", e); }
         }
       }
     } catch (e) {
@@ -1422,18 +1850,36 @@ async function loadDeanProfile() {
   }
 }
 
-if (applyFiltersBtn) {
-  applyFiltersBtn.addEventListener("click", generateReport);
-}
+// --- EVENT LISTENERS INITIALIZATION ---
 
-if (printReportBtn) {
-  printReportBtn.addEventListener("click", downloadRankingAsPDF);
-}
+if (applyFiltersBtn) applyFiltersBtn.addEventListener("click", generateReport);
+if (printReportBtn) printReportBtn.addEventListener("click", downloadRankingAsPDF);
+if (printSubjectReportBtn) printSubjectReportBtn.addEventListener("click", downloadSubjectPerformanceAsPDF);
+if (printMissingReportBtn) printMissingReportBtn.addEventListener("click", downloadMissingExamsAsPDF);
 
-if (printSubjectReportBtn) {
-  printSubjectReportBtn.addEventListener("click", downloadSubjectPerformanceAsPDF);
+if (filterSubjectEl) {
+  filterSubjectEl.addEventListener("change", () => updateDashboardChart());
 }
-
+if (filterTargetEl) {
+  filterTargetEl.addEventListener("input", () => updateDashboardChart());
+}
+if (filterStreamEl) {
+  filterStreamEl.addEventListener("change", () => {
+    if (currentAnalysisRawData) {
+      // 🆕 Retrieve cached roster to ensure "Ungraded" logic continues to work on stream change
+      const grade = filterGradeEl.value;
+      const term = filterTermEl.value;
+      const year = filterYearEl.value;
+      const assessment = filterAssessmentEl.value;
+      const cacheKey = `${grade}_${term}_${year}_${assessment}`;
+      const cached = getAnalyticsCache(cacheKey);
+      processAnalysisData(currentAnalysisRawData, currentIsSenior, assessment, currentPrevRawData, cached?.roster || []);
+    }
+  });
+}
+if (chartTypeToggle) {
+  chartTypeToggle.addEventListener("change", () => updateDashboardChart());
+}
 
 window.addEventListener("DOMContentLoaded", () => {
   // Implement Logout with Confirmation
@@ -1445,31 +1891,8 @@ window.addEventListener("DOMContentLoaded", () => {
       }
     });
   }
+  
+  // Initialize the dashboard
   loadDeanProfile();
 });
-
-if (filterSubjectEl) {
-  filterSubjectEl.addEventListener("change", () => {
-    updateDashboardChart();
-  });
-}
-
-if (filterTargetEl) {
-  filterTargetEl.addEventListener("input", () => {
-    updateDashboardChart();
-  });
-}
-
-if (filterStreamEl) {
-  filterStreamEl.addEventListener("change", () => {
-    if (currentAnalysisRawData) {
-      processAnalysisData(currentAnalysisRawData, currentIsSenior, filterAssessmentEl.value, currentPrevRawData);
-    }
-  });
-}
-
-if (chartTypeToggle) {
-  chartTypeToggle.addEventListener("change", () => {
-    updateDashboardChart();
-  });
-}
+   

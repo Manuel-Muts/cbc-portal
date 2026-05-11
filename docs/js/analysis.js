@@ -324,7 +324,7 @@ document.addEventListener("DOMContentLoaded", () => {
         subjects: Array.isArray(m.subjects) ? m.subjects.map(s => ({
           _id: s._id, 
           subject: s.subject ? String(s.subject) : null, 
-          score: s.score !== undefined ? Number(s.score) : 0,
+          score: (s.score !== undefined && s.score !== null && s.score !== "") ? Number(s.score) : null,
           course: s.course || null,
           pathway: s.pathway || null,
           continuousAssessment: s.continuousAssessment,
@@ -366,11 +366,20 @@ document.addEventListener("DOMContentLoaded", () => {
       const key = `${m.admissionNo}_${m.assessment}_${m.term}_${m.year}`;
       m.subjects.forEach(s => subjectsSet.add(s.subject));
 
-      if (!students[key]) students[key] = { admissionNo: m.admissionNo, name: m.studentName || "Unnamed", grade: m.grade, assessment: m.assessment, term: m.term, year: m.year, subjects: {} };
-      m.subjects.forEach(s => { students[key].subjects[s.subject] = Number(s.score) || 0; });
+      if (!students[key]) students[key] = { admissionNo: m.admissionNo, name: m.studentName || "Unnamed", grade: m.grade, assessment: m.assessment, term: m.term, year: m.year, subjects: {}, hasAbsence: false };
+      m.subjects.forEach(s => { 
+        const scoreVal = s.score;
+        // Robust absence check: catch null (X from DB), undefined, explicit 'X', or empty
+        const isAbs = scoreVal === null || scoreVal === undefined || (typeof scoreVal === 'string' && scoreVal.trim().toUpperCase() === "X") || String(scoreVal).trim() === "";
+        
+        if (isAbs) students[key].hasAbsence = true;
+        students[key].subjects[s.subject] = isAbs ? null : Number(scoreVal); 
+      });
     });
 
-    const studentArray = Object.values(students).map(s => {
+    const studentArray = Object.values(students)
+      .filter(s => !s.hasAbsence) // 🚫 Exclude students with any "X" or missing component from ranking
+      .map(s => {
       const scores = Object.values(s.subjects);
       const total = scores.reduce((a, b) => a + b, 0);
       const mean = scores.length ? total / scores.length : 0;
@@ -397,18 +406,26 @@ document.addEventListener("DOMContentLoaded", () => {
       });
     });
 
-    const subjectTotals = {}, subjectCounts = {};
-    filtered.forEach(m => m.subjects.forEach(s => {
-      subjectTotals[s.subject] = (subjectTotals[s.subject] || 0) + Number(s.score);
-      subjectCounts[s.subject] = (subjectCounts[s.subject] || 0) + 1;
-    }));
-
     const subjects = Array.from(subjectsSet);
-    const subjectMeans = {};
-    subjects.forEach(sub => { subjectMeans[sub] = (subjectTotals[sub] || 0) / (subjectCounts[sub] || 1); });
-
     const classMean = studentArray.length ? studentArray.reduce((a, s) => a + s.mean, 0) / studentArray.length : 0;
     
+    // 🆕 Calculate Subject Means only from qualified students
+    const subjectTotals = {}, subjectCounts = {};
+    studentArray.forEach(s => {
+      subjects.forEach(sub => {
+        const score = s.subjects[sub];
+        if (score !== null && score !== undefined) {
+          subjectTotals[sub] = (subjectTotals[sub] || 0) + score;
+          subjectCounts[sub] = (subjectCounts[sub] || 0) + 1;
+        }
+      });
+    });
+
+    const subjectMeans = {};
+    subjects.forEach(sub => { 
+      subjectMeans[sub] = subjectCounts[sub] ? (subjectTotals[sub] / subjectCounts[sub]) : 0; 
+    });
+
     // Fix: Calculate actual min/max means from the student array
     // This ensures topMean and lowMean reflect the actual student performance, not just subject averages
     let topMean = 0;
@@ -453,7 +470,8 @@ document.addEventListener("DOMContentLoaded", () => {
           name: m.studentName || "Unnamed",
           grade: m.grade,
           assessment: m.assessment,
-          subjects: {}
+          subjects: {},
+          hasAbsence: false
         };
       }
   
@@ -465,8 +483,11 @@ document.addEventListener("DOMContentLoaded", () => {
         
         subjectsSet.add(subjectName);
         const finalScore = cbcUtils.calculateFinalScore(sub.continuousAssessment, sub.projectWork, sub.endTermExam);
-        
-        if (finalScore !== null) {
+        const isAbs = finalScore === null || finalScore === "X";
+
+        if (isAbs) students[studentKey].hasAbsence = true;
+
+        if (finalScore !== null && !isAbs) {
           students[studentKey].subjects[subjectName] = finalScore;
           subjectTotals[subjectName] = (subjectTotals[subjectName] || 0) + finalScore;
           subjectCounts[subjectName] = (subjectCounts[subjectName] || 0) + 1;
@@ -475,7 +496,9 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   
     // 2. Calculate total, mean, and points for each student
-    const studentArray = Object.values(students).map(s => {
+    const studentArray = Object.values(students)
+      .filter(s => !s.hasAbsence) // 🚫 Exclude students with any "X" or missing component from ranking
+      .map(s => {
       const scores = Object.values(s.subjects).filter(score => score !== null);
       const total = scores.reduce((a, b) => a + b, 0);
       const mean = scores.length ? total / scores.length : 0;
@@ -554,7 +577,12 @@ document.addEventListener("DOMContentLoaded", () => {
       arr.forEach(s => { // Use getAssessmentLabel for row as well
         let assessLabelRow = getAssessmentLabel(s.assessment);
         html += `<tr><td>${s.rank}</td><td>${s.name}</td><td>${assessLabelRow}</td>`;
-        stats.subjects.forEach(sub => html += `<td>${s.subjects[sub] ?? '-'}</td>`);
+        stats.subjects.forEach(sub => {
+          const score = s.subjects[sub];
+          const isAbs = score === undefined || score === null || String(score).trim().toUpperCase() === "X";
+          const display = isAbs ? '<span style="color:#ef4444; font-weight:700;">ABS</span>' : score;
+          html += `<td>${display}</td>`;
+        });
         html += `<td>${s.total}</td><td><strong>${s.totalPoints}</strong></td><td>${s.avgPoints.toFixed(2)}</td><td>${cbcUtils.getSubdivision(s.mean)}</td></tr>`;
       });
 
@@ -743,11 +771,11 @@ html += `
               <td style="padding:8px; border:1px solid #ccc;">${isSeniorSchool ? (sub.course || '-') : (sub.subject || '-')}</td>
               
               ${isSeniorSchool ? `
-                <td style="padding:8px; border:1px solid #ccc;"><input type="number" class="ca-in" value="${sub.continuousAssessment ?? ''}" style="width:50px;"></td>
-                <td style="padding:8px; border:1px solid #ccc;"><input type="number" class="pw-in" value="${sub.projectWork ?? ''}" style="width:50px;"></td>
-                <td style="padding:8px; border:1px solid #ccc;"><input type="number" class="et-in" value="${sub.endTermExam ?? ''}" style="width:50px;"></td>
+                <td style="padding:8px; border:1px solid #ccc;"><input type="text" class="ca-in" inputmode="decimal" value="${sub.continuousAssessment ?? ''}" style="width:50px;"></td>
+                <td style="padding:8px; border:1px solid #ccc;"><input type="text" class="pw-in" inputmode="decimal" value="${sub.projectWork ?? ''}" style="width:50px;"></td>
+                <td style="padding:8px; border:1px solid #ccc;"><input type="text" class="et-in" inputmode="decimal" value="${sub.endTermExam ?? ''}" style="width:50px;"></td>
               ` : `
-                <td style="padding:8px; border:1px solid #ccc;"><input type="number" class="sc-in" value="${sub.score}" style="width:60px;"></td>
+                <td style="padding:8px; border:1px solid #ccc;"><input type="text" class="sc-in" inputmode="decimal" value="${sub.score}" style="width:60px;"></td>
               `}
               
               <td style="padding:8px; border:1px solid #ccc;">
@@ -990,7 +1018,9 @@ html += `
         
         currentSubjects.forEach(sub => {
           const score = s.subjects[sub];
-          html += `<td style='border:1px solid #ddd;padding:8px;text-align:center;'>${score !== null && score !== undefined ? score.toFixed(1) : '-'}</td>`;
+          const isAbs = score === undefined || score === null || String(score).trim().toUpperCase() === "X";
+          const display = isAbs ? '<span style="color:#ef4444; font-weight:700;">ABS</span>' : score.toFixed(1);
+          html += `<td style='border:1px solid #ddd;padding:8px;text-align:center;'>${display}</td>`;
         });
         
         html += `<td style='border:1px solid #ddd;padding:8px;text-align:center;'><strong>${s.totalPoints}</strong></td>`;
@@ -1086,7 +1116,11 @@ async function exportPdf() {
         body = arr.map(s => [
           s.rank ?? "-",
           s.name,
-          ...currentSubjects.map(sub => s.subjects[sub]?.toFixed(1) || '-'),
+          ...currentSubjects.map(sub => {
+            const score = s.subjects[sub];
+            const isAbs = score === undefined || score === null || String(score).trim().toUpperCase() === "X";
+            return isAbs ? "ABS" : score.toFixed(1);
+          }),
           s.totalPoints ?? "-",
           cbcUtils.getSubdivision(s.mean)
         ]);
@@ -1109,7 +1143,11 @@ async function exportPdf() {
         body = arr.map(s => [
           s.rank ?? "-",
           s.name || "Unnamed",
-          ...subjects.map(sub => s.subjects[sub] ?? "-"),
+          ...subjects.map(sub => {
+            const score = s.subjects[sub];
+            const isAbs = score === undefined || score === null || String(score).trim().toUpperCase() === "X";
+            return isAbs ? "ABS" : score;
+          }),
           s.total ?? 0,
           s.totalPoints ?? 0,
           s.avgPoints.toFixed(2),

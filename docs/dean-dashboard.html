@@ -28,10 +28,13 @@ content="style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://c
     <div class="dashboard-layout">
       <!-- Sidebar Navigation -->
       <aside class="sidebar-nav">
-        <h4>Dashboard</h4>
         <button class="tab-btn active" data-tab="overviewTab"><i class="fas fa-th-large"></i> Overview</button>
         <button class="tab-btn" data-tab="rankingsTab"><i class="fas fa-users"></i> Learner Rankings</button>
         <button class="tab-btn" data-tab="analyticsTab"><i class="fas fa-chart-line"></i> Analytics</button>
+        <button class="tab-btn" data-tab="missingExamsTab"><i class="fas fa-user-times"></i> Missing Exams</button>
+        <button class="tab-btn" data-tab="timetableTab"><i class="fas fa-calendar-alt"></i> Timetables</button>
+        <button class="tab-btn" data-tab="learnersReportsTab"><i class="fas fa-file-invoice"></i> Learners Reports</button>
+       
         
         <div class="status-card-sidebar">
           <p id="deanStatus">Checking...</p>
@@ -129,6 +132,39 @@ content="style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://c
             <div class="dashboard-card">
               <h3>Performance Visualization</h3>
               <div class="chart-wrap" style="height: 280px;"><canvas id="gradeTrendChart"></canvas></div>
+            </div>
+          </div>
+
+          <!-- Missing Exams Tab -->
+          <div id="missingExamsTab" class="tab-pane">
+            <div class="dashboard-card">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+                <h3 style="margin: 0;">Learners Who Missed Exams</h3>
+                <button id="printMissingReportBtn" class="btn primary-btn" style="padding: 6px 12px; font-size: 0.85rem;">📄 Print PDF</button>
+              </div>
+              <div id="missingExamsTableWrap"></div>
+            </div>
+          </div>
+
+          <!-- Timetable Tab -->
+          <div id="timetableTab" class="tab-pane">
+            <div class="dashboard-card">
+              <div style="text-align: center; padding: 40px; color: #64748b;">
+                <i class="fas fa-calendar-alt" style="font-size: 3rem; margin-bottom: 15px; opacity: 0.5;"></i>
+                <h3>Class Timetables</h3>
+                <p>The Timetable management module is currently under development.</p>
+              </div>
+            </div>
+          </div>
+
+          <!-- Learners Reports Tab -->
+          <div id="learnersReportsTab" class="tab-pane">
+            <div class="dashboard-card">
+              <div style="text-align: center; padding: 40px; color: #64748b;">
+                <i class="fas fa-file-invoice" style="font-size: 3rem; margin-bottom: 15px; opacity: 0.5;"></i>
+                <h3>Learners Reports</h3>
+                <p>Individual learner report generation and management is currently under development.</p>
+              </div>
             </div>
           </div>
         </div>

@@ -29,6 +29,54 @@ document.addEventListener("DOMContentLoaded", () => {
     .marks-input-grid {
       gap: 4px !important;
     }
+
+    /* Fixed Toast Container for visibility on mobile when scrolling */
+    #toastContainer {
+      position: fixed;
+      top: 20px;
+      right: 15px;
+      z-index: 99999;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      pointer-events: none;
+      align-items: flex-end;
+    }
+    .toast {
+      pointer-events: auto;
+      position: relative !important; /* Override fixed pos from teachers.css */
+      top: auto !important;
+      left: auto !important;
+      right: auto !important;
+      transform: none !important;
+      padding: 12px 18px;
+      border-radius: 8px;
+      color: white !important;
+      font-weight: 600;
+      font-size: 0.9rem;
+      box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+      min-width: 200px;
+      max-width: 350px;
+      box-sizing: border-box;
+      animation: toastFadeIn 0.3s ease-out, toastFadeOut 0.5s ease-in 3.2s forwards;
+      white-space: normal;
+      word-wrap: break-word;
+      overflow-wrap: break-word;
+      display: block;
+    }
+    .toast-success { background: #38a169 !important; }
+    .toast-error { background: #e53e3e !important; }
+    .toast-warning { background: #d69e2e !important; }
+    .toast-info { background: #3182ce !important; }
+
+    @keyframes toastFadeIn {
+      from { opacity: 0; transform: translateX(20px); }
+      to { opacity: 1; transform: translateX(0); }
+    }
+    @keyframes toastFadeOut {
+      from { opacity: 1; }
+      to { opacity: 0; transform: translateY(-10px); }
+    }
   
     #schoolName {
       display: block;
@@ -51,6 +99,28 @@ document.addEventListener("DOMContentLoaded", () => {
     @media (min-width: 768px) {
       #schoolName { width: auto; text-align: left; margin-bottom: 0; font-size: 1.25rem !important; }
       #teacherName { width: auto; justify-content: flex-end; }
+    }
+
+    @media (max-width: 767px) {
+      #toastContainer {
+        top: 10px;
+        left: 50%;
+        right: auto;
+        transform: translateX(-50%);
+        width: 95%;
+        max-width: 450px;
+        align-items: stretch;
+      }
+      .toast {
+        width: 100%;
+        min-width: auto;
+        max-width: 100%;
+        text-align: center;
+      }
+      @keyframes toastFadeIn {
+        from { opacity: 0; transform: translateY(-20px); }
+        to { opacity: 1; transform: translateY(0); }
+      }
     }
   `;
   document.head.appendChild(compactStyle);
@@ -773,13 +843,13 @@ document.addEventListener("DOMContentLoaded", () => {
   <td data-label="Marks" class="marks-entry-cell">
     ${isSeniorSchool ? `
       <div class="marks-input-grid">
-        <input type="number" class="marks-entry-input ca-input" min="0" max="100" placeholder="CA" value="${existingMark?.continuousAssessment ?? ''}" />
-        <input type="number" class="marks-entry-input pw-input" min="0" max="100" placeholder="PW" value="${existingMark?.projectWork ?? ''}" />
-        <input type="number" class="marks-entry-input exam-input" min="0" max="100" placeholder="Exam" value="${existingMark?.endTermExam ?? ''}" />
-        <input type="number" class="marks-entry-input final-input" min="0" max="100" placeholder="Final" value="${existingMark?.finalScore ?? ''}" readonly />
+        <input type="text" class="marks-entry-input ca-input" inputmode="decimal" placeholder="CA" value="${existingMark?.continuousAssessment ?? ''}" />
+        <input type="text" class="marks-entry-input pw-input" inputmode="decimal" placeholder="PW" value="${existingMark?.projectWork ?? ''}" />
+        <input type="text" class="marks-entry-input exam-input" inputmode="decimal" placeholder="Exam" value="${existingMark?.endTermExam ?? ''}" />
+        <input type="text" class="marks-entry-input final-input" placeholder="Final" value="${existingMark?.finalScore ?? ''}" readonly />
       </div>
     ` : `
-      <input type="number" class="marks-entry-input marks-input" min="0" max="100" placeholder="Score" value="${existingMark?.score ?? ''}" />
+      <input type="text" class="marks-entry-input marks-input" inputmode="decimal" placeholder="Score (or X for Absent)" value="${existingMark?.score ?? ''}" />
     `}
   </td>
 `;
@@ -793,7 +863,7 @@ document.addEventListener("DOMContentLoaded", () => {
         
         const updateFinal = () => {
           const score = cbcUtils.calculateFinalScore(caInput.value, pwInput.value, examInput.value);
-          finalInput.value = score > 0 ? score : "";
+          finalInput.value = (caInput.value !== "" || pwInput.value !== "" || examInput.value !== "") ? score : "";
         };
 
         caInput.addEventListener("input", updateFinal);
@@ -824,24 +894,24 @@ document.addEventListener("DOMContentLoaded", () => {
     const inputElement = e.target;
     let inputValue = inputElement.value.trim(); // Trim input value immediately
 
-    // Only apply validation to number inputs for marks
-    if (inputElement.type === "number" && (
-        inputElement.classList.contains("marks-input") ||
+    // Apply validation allowing numbers 0-100 OR 'X'
+    if (inputElement.classList.contains("marks-input") ||
         inputElement.classList.contains("ca-input") ||
         inputElement.classList.contains("pw-input") ||
-        inputElement.classList.contains("exam-input")
-    )) {
-        let numericValue = Number(inputValue); // Convert trimmed value
+        inputElement.classList.contains("exam-input")) {
+        
+        const isAbsent = inputValue.toUpperCase() === 'X';
+        let numericValue = Number(inputValue);
 
-        if (isNaN(numericValue) && inputValue !== "") { // Check against trimmed value
-            showToast("Please enter a valid number.", "error");
-            inputElement.value = ""; // Clear invalid input
+        if (!isAbsent && isNaN(numericValue) && inputValue !== "") {
+            showToast("Please enter a number (0-100) or 'X' for Absent.", "warning");
+            inputElement.value = "";
             inputValue = "";
-        } else if (numericValue > 100) {
+        } else if (!isAbsent && numericValue > 100) {
             inputElement.value = ""; // Make it empty
             inputValue = "";
             showToast("Marks cannot exceed 100. Input cleared.", "error"); // Changed to error
-        } else if (numericValue < 0) {
+        } else if (!isAbsent && numericValue < 0 && inputValue !== "") {
             inputElement.value = ""; // Make it empty
             inputValue = "";
             showToast("Marks cannot be less than 0. Input cleared.", "warning");
@@ -876,23 +946,23 @@ document.addEventListener("DOMContentLoaded", () => {
       markData.course = selectedSubject;
       markData.pathway = null;
       if (inputElement.classList.contains("ca-input")) {
-          markData.continuousAssessment = inputValue === "" ? null : inputValue;
+          markData.continuousAssessment = inputValue.toUpperCase() === "X" ? "X" : (inputValue === "" ? null : inputValue);
       } else if (inputElement.classList.contains("pw-input")) {
-          markData.projectWork = inputValue === "" ? null : inputValue;
+          markData.projectWork = inputValue.toUpperCase() === "X" ? "X" : (inputValue === "" ? null : inputValue);
       } else if (inputElement.classList.contains("exam-input")) {
-          markData.endTermExam = inputValue === "" ? null : inputValue;
+          markData.endTermExam = inputValue.toUpperCase() === "X" ? "X" : (inputValue === "" ? null : inputValue);
       }
       // Recalculate final score if any component changes
       const ca = row.querySelector(".ca-input")?.value;
       const pw = row.querySelector(".pw-input")?.value;
       const exam = row.querySelector(".exam-input")?.value;
       const finalScore = cbcUtils.calculateFinalScore(ca, pw, exam);
-      row.querySelector(".final-input").value = finalScore > 0 ? finalScore : "";
-      markData.finalScore = finalScore > 0 ? finalScore : null;
+      row.querySelector(".final-input").value = finalScore !== null ? finalScore : "";
+      markData.finalScore = finalScore;
     } else {
       markData.subject = selectedSubject;
       if (inputElement.classList.contains("marks-input")) {
-          markData.score = inputValue === "" ? null : inputValue;
+          markData.score = inputValue.toUpperCase() === "X" ? "X" : (inputValue === "" ? null : inputValue);
       }
     }
 
@@ -1279,15 +1349,15 @@ document.addEventListener("DOMContentLoaded", () => {
           
           markPayload.pathway = pathway;
           markPayload.course = course;
-          markPayload.continuousAssessment = markData.continuousAssessment ? Number(markData.continuousAssessment) : null;
-          markPayload.projectWork = markData.projectWork ? Number(markData.projectWork) : null;
-          markPayload.endTermExam = markData.endTermExam ? Number(markData.endTermExam) : null;
-          markPayload.finalScore = markData.finalScore ? Number(markData.finalScore) : null;
+          markPayload.continuousAssessment = (String(markData.continuousAssessment).toUpperCase() === "X") ? null : (markData.continuousAssessment !== null && markData.continuousAssessment !== "" ? Number(markData.continuousAssessment) : null);
+          markPayload.projectWork = (String(markData.projectWork).toUpperCase() === "X") ? null : (markData.projectWork !== null && markData.projectWork !== "" ? Number(markData.projectWork) : null);
+          markPayload.endTermExam = (String(markData.endTermExam).toUpperCase() === "X") ? null : (markData.endTermExam !== null && markData.endTermExam !== "" ? Number(markData.endTermExam) : null);
+          markPayload.finalScore = (String(markData.finalScore).toUpperCase() === "X") ? null : (markData.finalScore !== null && markData.finalScore !== "" ? Number(markData.finalScore) : null);
 
         }
         else {
           markPayload.subject = markData.subject;
-          markPayload.score = markData.score ? Number(markData.score) : null;
+          markPayload.score = (String(markData.score).toUpperCase() === "X") ? null : (markData.score !== null && markData.score !== "" ? Number(markData.score) : null);
         }
 
         if (markPayload._id) {

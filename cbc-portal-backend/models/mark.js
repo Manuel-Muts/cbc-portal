@@ -53,9 +53,17 @@ const markSchema = new mongoose.Schema({
     ref: "User",
     required: true
   }
-
 }, { timestamps: true });
 
+markSchema.index({ 
+  schoolId: 1, 
+  grade: 1, 
+  year: 1, 
+  term: 1, 
+  assessment: 1 
+});
+
+markSchema.index({ schoolId: 1, subject: 1, year: 1, term: 1 });
 const Mark = mongoose.model("Mark", markSchema);
 
 export default Mark;
