@@ -42,7 +42,7 @@ document.addEventListener("DOMContentLoaded", () => {
       pointer-events: none;
       align-items: flex-end;
     }
-    .toast {
+    #toastContainer .toast {
       pointer-events: auto;
       position: relative !important; /* Override fixed pos from teachers.css */
       top: auto !important;
@@ -111,11 +111,17 @@ document.addEventListener("DOMContentLoaded", () => {
         max-width: 450px;
         align-items: stretch;
       }
-      .toast {
+      #toastContainer .toast {
         width: 100%;
         min-width: auto;
         max-width: 100%;
         text-align: center;
+      }
+      .confirm-toast {
+        width: 92% !important;
+        min-width: auto !important;
+        max-width: 400px !important;
+        z-index: 100001 !important; /* Ensure it stays above standard toasts */
       }
       @keyframes toastFadeIn {
         from { opacity: 0; transform: translateY(-20px); }
