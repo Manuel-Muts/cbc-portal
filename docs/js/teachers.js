@@ -849,13 +849,13 @@ document.addEventListener("DOMContentLoaded", () => {
   <td data-label="Marks" class="marks-entry-cell">
     ${isSeniorSchool ? `
       <div class="marks-input-grid">
-        <input type="text" class="marks-entry-input ca-input" inputmode="decimal" placeholder="CA" value="${existingMark?.continuousAssessment ?? ''}" />
-        <input type="text" class="marks-entry-input pw-input" inputmode="decimal" placeholder="PW" value="${existingMark?.projectWork ?? ''}" />
-        <input type="text" class="marks-entry-input exam-input" inputmode="decimal" placeholder="Exam" value="${existingMark?.endTermExam ?? ''}" />
+        <input type="text" class="marks-entry-input ca-input" inputmode="text" placeholder="CA" value="${existingMark?.continuousAssessment ?? ''}" />
+        <input type="text" class="marks-entry-input pw-input" inputmode="text" placeholder="PW" value="${existingMark?.projectWork ?? ''}" />
+        <input type="text" class="marks-entry-input exam-input" inputmode="text" placeholder="Exam" value="${existingMark?.endTermExam ?? ''}" />
         <input type="text" class="marks-entry-input final-input" placeholder="Final" value="${existingMark?.finalScore ?? ''}" readonly />
       </div>
     ` : `
-      <input type="text" class="marks-entry-input marks-input" inputmode="decimal" placeholder="Score (or X for Absent)" value="${existingMark?.score ?? ''}" />
+      <input type="text" class="marks-entry-input marks-input" inputmode="text" placeholder="Score (or X for Absent)" value="${existingMark?.score ?? ''}" />
     `}
   </td>
 `;
@@ -898,7 +898,7 @@ document.addEventListener("DOMContentLoaded", () => {
    const studentId = row.dataset.studentId;
 
     const inputElement = e.target;
-    let inputValue = inputElement.value.trim(); // Trim input value immediately
+    let inputValue = inputElement.value;
 
     // Apply validation allowing numbers 0-100 OR 'X'
     if (inputElement.classList.contains("marks-input") ||
@@ -906,23 +906,32 @@ document.addEventListener("DOMContentLoaded", () => {
         inputElement.classList.contains("pw-input") ||
         inputElement.classList.contains("exam-input")) {
         
-        const isAbsent = inputValue.toUpperCase() === 'X';
-        let numericValue = Number(inputValue);
+    // 1. Filter characters: allow only digits and 'X'/'x'
+        inputValue = inputValue.replace(/[^0-9Xx]/g, '');
 
-        if (!isAbsent && isNaN(numericValue) && inputValue !== "") {
-            showToast("Please enter a number (0-100) or 'X' for Absent.", "warning");
-            inputElement.value = "";
-            inputValue = "";
-        } else if (!isAbsent && numericValue > 100) {
-            inputElement.value = ""; // Make it empty
-            inputValue = "";
-            showToast("Marks cannot exceed 100. Input cleared.", "error"); // Changed to error
-        } else if (!isAbsent && numericValue < 0 && inputValue !== "") {
-            inputElement.value = ""; // Make it empty
-            inputValue = "";
-            showToast("Marks cannot be less than 0. Input cleared.", "warning");
+        // 2. Handle 'X'/'x': if present, it should be the only character and uppercase
+        if (inputValue.toUpperCase().includes('X')) {
+            inputValue = 'X';
+        } else if (inputValue !== '') {
+            // 3. Handle numeric input: ensure it's within 0-100
+            let num = parseInt(inputValue, 10);
+            if (isNaN(num)) {
+                inputValue = ''; // Clear if not a valid number
+            } else if (num < 0) {
+                inputValue = '0';
+            } else if (num > 100) {
+                  inputValue = ''; // Clear if exceeding 100
+                  showToast("Marks cannot exceed 100. Input cleared.", "warning");
+            }
         }
-    }
+
+        // Update the input element's value
+        inputElement.value = inputValue.toUpperCase(); // Ensure 'x' becomes 'X'
+
+        // Now, use the cleaned and validated inputValue for further processing
+        inputValue = inputElement.value; // Re-assign to ensure subsequent logic uses the corrected value
+        }
+    
 
     const admission = row.dataset.admission;
     const name = row.dataset.name;
@@ -1081,60 +1090,6 @@ document.addEventListener("DOMContentLoaded", () => {
     return `marks-draft-${selectedAllocationData.classLabel}-${selectedSubject}-${marksTermSelect.value}-${marksAssessmentSelect.value}-${marksYearInput.value}`;
   }
 
-  // This function is no longer needed as marks are collected directly into allMarksEntered
-  /*
-  function collectMarksDataFromDOM() {
-    const marksData = new Map();
-    marksEntryTableBody.querySelectorAll("tr").forEach(row => { // Only collects from current page
-      const studentId = row.dataset.studentId;
-      const isSeniorSchool = cbcUtils.isSeniorGrade(row.dataset.grade);
-
-      const markEntryKey = getMarkEntryKey(studentId);
-      let mark = allMarksEntered.get(markEntryKey) || {}; // Get existing or new
-
-      if (isSeniorSchool) {
-        mark.continuousAssessment = row.querySelector(".ca-input")?.value;
-        mark.projectWork = row.querySelector(".pw-input")?.value;
-        mark.endTermExam = row.querySelector(".exam-input")?.value;
-      } else {
-        marks: marksInput?.value || "",
-        ca: caInput?.value || "",
-        pw: pwInput?.value || "",
-        exam: examInput?.value || ""
-      };
-    });
-    return marksData;
-  }
-
-  function populateMarksFromDraft(marksData) {
-    marksEntryTableBody.querySelectorAll("tr").forEach(row => {
-      const admission = row.dataset.admission;
-      if (marksData[admission]) {
-        const data = marksData[admission];
-        const marksInput = row.querySelector(".marks-input");
-        const caInput = row.querySelector(".ca-input");
-        const pwInput = row.querySelector(".pw-input");
-        const examInput = row.querySelector(".exam-input");
-
-        if (marksInput && data.marks) marksInput.value = data.marks;
-        if (caInput && data.ca) {
-          caInput.value = data.ca;
-          // Trigger auto-calculation
-          caInput.dispatchEvent(new Event("input", { bubbles: true }));
-        }
-        if (pwInput && data.pw) {
-          pwInput.value = data.pw;
-          pwInput.dispatchEvent(new Event("input", { bubbles: true }));
-        }
-        if (examInput && data.exam) {
-          examInput.value = data.exam;
-          examInput.dispatchEvent(new Event("input", { bubbles: true }));
-        }
-
-        row.style.backgroundColor = "#fffacd"; // Light yellow to show restored
-      }
-    });
-  }*/
 
   function saveDraft(isAutoSave = false) {
     if (!selectedAllocationData || !selectedSubject || allMarksEntered.size === 0) {

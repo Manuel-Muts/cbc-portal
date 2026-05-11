@@ -439,7 +439,7 @@ if (filterByStream) {
   const enrollmentFilter = {
     schoolId: schoolId,
     grade: { $in: studentGradeVariants },
-    status: "active"
+    // status: "active" // 🛑 REMOVE THIS FILTER FOR HISTORICAL ANALYSIS
   };
 
   // If streams are used, filter by requested stream; otherwise use stream=null

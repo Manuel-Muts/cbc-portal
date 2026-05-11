@@ -580,7 +580,7 @@ function processAnalysisData(allRaw, isSenior, assessment, allPrevRaw = null, ro
   }
 
   const studentArray = Object.values(studentsMap)
-    .filter(s => !s.hasAbsence) // 🚫 Exclude students with any "X" or missing component from ranking
+    .filter(s => !s.hasAbsence) // TODO: Re-evaluate this. Maybe display with ABS, but exclude from ranking.
     .map(s => {
     const rawScores = Object.values(s.subjects);
     // Filter out non-numeric scores (like "X") for student total and mean calculation

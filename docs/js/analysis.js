@@ -771,11 +771,11 @@ html += `
               <td style="padding:8px; border:1px solid #ccc;">${isSeniorSchool ? (sub.course || '-') : (sub.subject || '-')}</td>
               
               ${isSeniorSchool ? `
-                <td style="padding:8px; border:1px solid #ccc;"><input type="text" class="ca-in" inputmode="decimal" value="${sub.continuousAssessment ?? ''}" style="width:50px;"></td>
-                <td style="padding:8px; border:1px solid #ccc;"><input type="text" class="pw-in" inputmode="decimal" value="${sub.projectWork ?? ''}" style="width:50px;"></td>
-                <td style="padding:8px; border:1px solid #ccc;"><input type="text" class="et-in" inputmode="decimal" value="${sub.endTermExam ?? ''}" style="width:50px;"></td>
+                <td style="padding:8px; border:1px solid #ccc;"><input type="text" class="ca-in" inputmode="text" value="${sub.continuousAssessment ?? ''}" style="width:50px;"></td>
+                <td style="padding:8px; border:1px solid #ccc;"><input type="text" class="pw-in" inputmode="text" value="${sub.projectWork ?? ''}" style="width:50px;"></td>
+                <td style="padding:8px; border:1px solid #ccc;"><input type="text" class="et-in" inputmode="text" value="${sub.endTermExam ?? ''}" style="width:50px;"></td>
               ` : `
-                <td style="padding:8px; border:1px solid #ccc;"><input type="text" class="sc-in" inputmode="decimal" value="${sub.score}" style="width:60px;"></td>
+                <td style="padding:8px; border:1px solid #ccc;"><input type="text" class="sc-in" inputmode="text" value="${sub.score}" style="width:60px;"></td>
               `}
               
               <td style="padding:8px; border:1px solid #ccc;">
@@ -803,6 +803,38 @@ html += `
         
         attachSaveListeners(students);
 
+        // 🆕 Add input filtering for marks fields
+        document.getElementById("editorTableContainer").addEventListener("input", (e) => {
+          const inputElement = e.target;
+          if (inputElement.classList.contains("ca-in") ||
+              inputElement.classList.contains("pw-in") ||
+              inputElement.classList.contains("et-in") ||
+              inputElement.classList.contains("sc-in")) {
+
+            let inputValue = inputElement.value;
+
+            // 1. Filter characters: allow only digits and 'X'/'x'
+            inputValue = inputValue.replace(/[^0-9Xx]/g, '');
+
+            // 2. Handle 'X'/'x': if present, it should be the only character and uppercase
+            if (inputValue.toUpperCase().includes('X')) {
+                inputValue = 'X';
+            } else if (inputValue !== '') {
+                // 3. Handle numeric input: ensure it's within 0-100
+                let num = parseInt(inputValue, 10);
+                if (isNaN(num)) {
+                    inputValue = ''; // Clear if not a valid number
+                } else if (num < 0) {
+                    inputValue = '0';
+                } else if (num > 100) {
+                    inputValue = ''; // Clear if exceeding 100
+                    cbcUtils.showToast("Marks cannot exceed 100. Input cleared.", "warning");
+                }
+            }
+            inputElement.value = inputValue.toUpperCase(); // Ensure 'x' becomes 'X'
+          }
+        });
+
         } catch(e) {
           console.error("Page load error:", e);
           document.getElementById("editorTableContainer").innerHTML = '<div style="text-align:center;color:red;padding:20px;">Error loading data</div>';
@@ -817,20 +849,26 @@ html += `
           const btn = e.target;
           
           let payload = {};
+          const isX = (v) => v !== null && v !== undefined && String(v).trim().toUpperCase() === "X";
+          const validateRange = (v) => {
+            if (isX(v)) return true;
+            const n = parseFloat(v);
+            return !isNaN(n) && n >= 0 && n <= 100;
+          };
           
           if (isSeniorSchool) {
             payload.continuousAssessment = row.querySelector('.ca-in').value;
             payload.projectWork = row.querySelector('.pw-in').value;
             payload.endTermExam = row.querySelector('.et-in').value;
             // Basic validation
-            if((payload.continuousAssessment && (payload.continuousAssessment < 0 || payload.continuousAssessment > 100)) ||
-               (payload.projectWork && (payload.projectWork < 0 || payload.projectWork > 100)) ||
-               (payload.endTermExam && (payload.endTermExam < 0 || payload.endTermExam > 100))) {
-                 alert("Marks must be between 0 and 100"); return;
+            if((payload.continuousAssessment && !validateRange(payload.continuousAssessment)) ||
+               (payload.projectWork && !validateRange(payload.projectWork)) ||
+               (payload.endTermExam && !validateRange(payload.endTermExam))) {
+                 alert("Marks must be between 0 and 100, or 'X' for Absent."); return;
             }
           } else {
             const score = row.querySelector('.sc-in').value;
-            if (!score || score < 0 || score > 100) { alert("Invalid score"); return; }
+            if (!score || !validateRange(score)) { alert("Invalid score. Enter 0-100 or 'X'."); return; }
             payload.score = score;
           }
 
