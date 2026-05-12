@@ -124,12 +124,16 @@ if (!allowedRoles.includes(role)) {
     const hashedPassword = await bcrypt.hash(rawPassword, 10);
 
     // Normalize grade to "Grade X" format helper
-    const normalizeGrade = (g) => {
+    const normalizeGrade = (g) => { // Removed 's' as it's not used for grade normalization
       if (!g) return null;
-      const str = String(g).trim();
-      if (!isNaN(str) && str !== "") return `Grade ${str}`;
-      if (str.length <= 2 && /^\d+[A-Z]?$/i.test(str)) return `Grade ${str}`;
-      return str;
+      let str = String(g).trim();
+      const match = str.match(/\d+/); // Extract only the numeric part
+      if (match) {
+        return `Grade ${match[0]}`;
+      }
+      // If no numeric part, but it's already "Grade X", return as is.
+      // Otherwise, if it's just a string, return it as is (e.g., "PP1", "PP2")
+      return str.toLowerCase().startsWith("grade") ? str : str;
     };
 
     const newUser = new User({
@@ -417,13 +421,24 @@ export const getAllUsers = async (req, res) => {
       return res.status(403).json({ message: 'Only admins can view users' });
     }
 
-    // Cache key based on school and query
-    const cacheKey = `users_${user.schoolId || 'global'}_${JSON.stringify(req.query)}`;
+    // 1. Determine Pagination immediately (Moved up to fix ReferenceErrors and cache consistency)
+    const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+    const requestedLimit = parseInt(req.query.limit, 10);
+    // Allow higher limits for exports (up to 5000), but clamp standard UI requests to 50
+    const limit = requestedLimit > 50 ? Math.min(requestedLimit, 5000) : Math.min(50, Math.max(1, requestedLimit || 20));
+    const skip = (page - 1) * limit;
+
+    // Construct cache key. We ignore '_t' for standard browsing (limit <= 50) to maximize hits.
+    // We KEEP '_t' for exports (limit > 50) so cache-busting works as intended.
+    const queryForCache = { ...req.query };
+    if (requestedLimit <= 50 || isNaN(requestedLimit)) delete queryForCache._t;
+
+    const cacheKey = `users_${user.schoolId || 'global'}_${JSON.stringify(queryForCache)}`;
     const cachedResult = cache.get(cacheKey);
     if (cachedResult) {
       return res.json(cachedResult);
     }
-
+    
     let query = {};
     let sort = { createdAt: -1, _id: -1 };
     let projection = { password: 0 };
@@ -448,10 +463,34 @@ export const getAllUsers = async (req, res) => {
       ];
     }
 
-    // Pagination
-    const page = Math.max(1, parseInt(req.query.page, 10) || 1);
-    const limit = Math.min(20, Math.max(10, parseInt(req.query.limit, 10) || 20)); // Limit between 10 and 20
-    const skip = (page - 1) * limit;
+    // 🆕 Filter by grade and stream for students
+    const { grade, stream } = req.query;
+    if (query.role === 'student' && (grade || stream)) {
+      const enrollmentFilter = {
+        schoolId: user.schoolId,
+        academicYear: new Date().getFullYear(), // Assume current year for active enrollments
+        status: 'active'
+      };
+      if (grade && grade !== 'all') {
+        enrollmentFilter.grade = grade;
+      }
+      if (stream && stream !== 'all') {
+        enrollmentFilter.stream = stream;
+      }
+
+      const matchingEnrollments = await StudentEnrollment.find(enrollmentFilter).select('studentId').lean();
+      const studentIds = matchingEnrollments.map(e => e.studentId);
+
+      // If no enrollments match, return empty array early
+      if (studentIds.length === 0) {
+        const response = { users: [], total: 0, page, limit, pages: 0 };
+        cache.set(cacheKey, response, 60); // Cache for 60 seconds
+        return res.json(response);
+      }
+
+      // Add studentId filter to the main user query
+      query._id = { $in: studentIds };
+    }
 
     const total = await User.countDocuments(query);
     const users = await User.find(query)

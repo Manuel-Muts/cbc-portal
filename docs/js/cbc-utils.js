@@ -44,12 +44,13 @@ window.cbcUtils = {
     normalizeGrade: (g) => {
         if (!g) return "";
         const str = String(g).trim();
-        // If it's just a number (e.g., "5"), prefix it
-        if (!isNaN(str) && str !== "") return `Grade ${str}`;
-        // If it's a string like "5W", prefix it
-        if (str.length <= 2 && /^\d+[A-Z]?$/i.test(str)) return `Grade ${str}`;
-        // Fallback for everything else
-        return str;
+        const match = str.match(/\d+/); // Extract only the numeric part
+        if (match) {
+            return `Grade ${match[0]}`;
+        }
+        // If no numeric part, but it's already "Grade X", return as is.
+        // Otherwise, if it's just a string, return it as is (e.g., "PP1", "PP2")
+        return str.toLowerCase().startsWith("grade") ? str : str;
     },
 
     /**

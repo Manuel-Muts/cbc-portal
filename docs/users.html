@@ -18,6 +18,8 @@
     <ul class="menu">
       <li class="active" data-section="registerTab">➕ Register New User</li>
       <li data-section="userManagement">📋 Registered Users</li>
+      <!-- NEW TAB FOR CSV DOWNLOAD -->
+      <li data-section="downloadStudentDataTab">⬇️ Download Student Data</li>
     </ul>
     
     <a href="/admin" class="btn primary-btn" style="width: 100%; text-align: center; margin-top: auto;">← Back to Admin</a>
@@ -110,7 +112,7 @@
               <input type="file" id="importUsersFile" accept=".csv, .xlsx, .xls" style="display:none;" />
               <button id="importUsersBtn" class="btn primary-btn">📂 Import Learners</button>
               <button id="refreshUsersBtn" class="btn secondary-btn">🔄 Refresh</button>
-              <button id="exportUsersBtn" class="btn secondary-btn">📄 Export PDF</button>
+              <!--<button id="exportUsersBtn" class="btn secondary-btn">📄 Export PDF</button>-->
             </div>
           </div>
 
@@ -148,6 +150,36 @@
         </div>
       </div>
     </section>
+
+      <!-- NEW: DOWNLOAD STUDENT DATA TAB -->
+      <div id="downloadStudentDataTab" class="tab-section" style="display:none;">
+        <div class="card">
+          <h3 style="margin-bottom: 20px;">⬇️ Download Student Data (CSV)</h3>
+          <p style="color: #666; margin-bottom: 25px;">Filter and download a CSV file containing student names, admission numbers, grades, and streams.</p>
+
+          <div class="flex-row" style="gap: 15px; margin-bottom: 25px; flex-wrap: wrap;">
+            <div class="col form-group" style="flex: 1;">
+              <label for="csvGradeFilter">Filter by Grade</label>
+              <select id="csvGradeFilter" style="width: 100%;">
+                <option value="all">All Grades</option>
+                <!-- Options populated by JS -->
+              </select>
+            </div>
+            <div class="col form-group" style="flex: 1;">
+              <label for="csvStreamFilter">Filter by Stream</label>
+              <select id="csvStreamFilter" style="width: 100%;">
+                <option value="all">All Streams</option>
+                <!-- Options populated by JS -->
+              </select>
+            </div>
+          </div>
+
+          <button id="downloadFilteredStudentsCsvBtn" class="btn primary-btn" style="width: 100%; padding: 12px 20px; font-size: 1rem;">
+            📊 Download Filtered Student List (CSV)
+          </button>
+        </div>
+      </div>
+
   </main>
 </div>
 

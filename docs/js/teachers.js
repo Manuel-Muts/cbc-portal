@@ -103,7 +103,8 @@ document.addEventListener("DOMContentLoaded", () => {
 
     @media (max-width: 767px) {
       #toastContainer {
-        top: 10px;
+        top: auto !important;
+        bottom: 40px !important;
         left: 50%;
         right: auto;
         transform: translateX(-50%);
@@ -124,7 +125,7 @@ document.addEventListener("DOMContentLoaded", () => {
         z-index: 100001 !important; /* Ensure it stays above standard toasts */
       }
       @keyframes toastFadeIn {
-        from { opacity: 0; transform: translateY(-20px); }
+        from { opacity: 0; transform: translateY(20px); }
         to { opacity: 1; transform: translateY(0); }
       }
     }
@@ -145,6 +146,7 @@ document.addEventListener("DOMContentLoaded", () => {
   let submittedMarks = []; // in-memory marks list
   let editingMarkId = null;
   let teacher = null;
+  let isSingleEditMode = false;
 
   // Pagination for individual student tables inside Submitted Marks
   const STUDENTS_PER_TABLE_PAGE = 10;
@@ -732,6 +734,11 @@ document.addEventListener("DOMContentLoaded", () => {
     const totalCount = window.lastStudentsFetchTotalCount || 0;
     const currentBatchSize = currentBatch ? currentBatch.length : 0;
     
+    if (isSingleEditMode) {
+      if (paginationEl) paginationEl.innerHTML = "";
+      return;
+    }
+
     // Calculate the range of students being displayed
     const start = totalCount > 0 ? (currentStudentPage - 1) * STUDENTS_PER_PAGE + 1 : 0;
     const end = Math.min(start + currentBatchSize - 1, totalCount); // Corrected: Calculate end of current batch, capped by totalCount
@@ -1038,6 +1045,7 @@ document.addEventListener("DOMContentLoaded", () => {
     marksColumnHeader.innerHTML = "Marks (%)";
     allMarksEntered = new Map(); // Clear the global store
     loadedStudents = [];
+    isSingleEditMode = false;
     const paginationEl = document.getElementById("studentsPagination");
     if (paginationEl) {
       paginationEl.innerHTML = "";
@@ -1052,7 +1060,7 @@ document.addEventListener("DOMContentLoaded", () => {
     
     // 🆕 Step 1: Ensure all students in the class roster have been loaded and accounted for
     const totalExpectedCount = window.lastStudentsFetchTotalCount || 0;
-    if (totalExpectedCount > 0 && allMarksEntered.size < totalExpectedCount) {
+    if (!isSingleEditMode && totalExpectedCount > 0 && allMarksEntered.size < totalExpectedCount) {
       errors.push(`Class incomplete: You have only captured data for ${allMarksEntered.size} of ${totalExpectedCount} learners. Please scroll through all pages before submitting.`);
     }
 
@@ -1223,6 +1231,8 @@ document.addEventListener("DOMContentLoaded", () => {
       console.log(`   Term: ${marksTermSelect.options[marksTermSelect.selectedIndex].text}`);
       console.log(`   Assessment: ${marksAssessmentSelect.options[marksAssessmentSelect.selectedIndex].text}`);
       console.log(`   Year: ${marksYearInput.value}`);
+
+      isSingleEditMode = false;
 
       loadStudentsBtn.disabled = true;
       loadStudentsBtn.innerHTML = '<span class="spinner"></span>Loading...';
@@ -1869,6 +1879,9 @@ document.addEventListener("DOMContentLoaded", () => {
 
       // 3. Trigger a 'change' on the allocation select to update internal state
       subjectAllocationSelect.dispatchEvent(new Event('change', { bubbles: true }));
+
+      // 🆕 Set single edit mode AFTER change event which triggers resetMarksTable
+      isSingleEditMode = true;
 
       // 4. Create a mock student object from the mark data
       const studentToEdit = {

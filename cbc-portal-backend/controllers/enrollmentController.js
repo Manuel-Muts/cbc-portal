@@ -145,9 +145,13 @@ export const updateEnrollment = async (req, res) => {
     const normalizeGrade = (g) => {
       if (!g) return null;
       const str = String(g).trim();
-      if (!isNaN(str) && str !== "") return `Grade ${str}`;
-      if (str.length <= 2 && /^\d+[A-Z]?$/i.test(str)) return `Grade ${str}`;
-      return str;
+      const match = str.match(/\d+/); // Extract only the numeric part
+      if (match) {
+        return `Grade ${match[0]}`;
+      }
+      // If no numeric part, but it's already "Grade X", return as is.
+      // Otherwise, if it's just a string, return it as is (e.g., "PP1", "PP2")
+      return str.toLowerCase().startsWith("grade") ? str : str;
     };
 
     enrollment.academicYear = academicYear ?? enrollment.academicYear;
@@ -395,5 +399,31 @@ export const getStudentsByClass = async (req, res) => {
   } catch (err) {
     console.error("getStudentsByClass error:", err);
     res.status(500).json({ message: "Server error fetching students" });
+  }
+};
+
+// ---------------------------
+// GET UNIQUE STREAMS (for filters)
+// ---------------------------
+export const getUniqueStreams = async (req, res) => {
+  try {
+    if (!req.user.schoolId) {
+      return res.status(400).json({ message: "School ID missing" });
+    }
+    const { grade } = req.query; // 🆕 Get grade from query
+    
+    const filter = {
+      schoolId: req.user.schoolId,
+      stream: { $ne: null, $ne: '' }
+    };
+
+    if (grade && grade !== 'all') { // 🆕 Apply grade filter if provided
+      filter.grade = grade;
+    }
+    const streams = await StudentEnrollment.distinct('stream', filter); // 🆕 Use the filter object
+    res.json(streams);
+  } catch (err) {
+    console.error("getUniqueStreams error:", err);
+    res.status(500).json({ message: "Server error fetching streams" });
   }
 };

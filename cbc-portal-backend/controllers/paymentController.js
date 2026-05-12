@@ -356,7 +356,7 @@ export const listSchoolFeeStructures = async (req, res) => {
     const skip = (page - 1) * limit;
 
     const query = { schoolId: req.user.schoolId };
-    
+   
     if (req.query.academicYear) query.academicYear = Number(req.query.academicYear);
     if (req.query.grade) query.grade = req.query.grade;
 
@@ -472,8 +472,13 @@ export const reversePayment = async (req, res) => {
 // ---------------------------
 export const getAllStudentAccounts = async (req, res) => {
   try {
-    // Generate a unique cache key based on school and query params
-    const cacheKey = `accounts_${req.user.schoolId}_${JSON.stringify(req.query)}`;
+    const requestedLimit = parseInt(req.query.limit, 10);
+
+    // Construct cache key (ignore '_t' for standard UI browsing)
+    const queryForCache = { ...req.query };
+    if (requestedLimit <= 50 || isNaN(requestedLimit)) delete queryForCache._t;
+
+    const cacheKey = `accounts_${req.user.schoolId}_${JSON.stringify(queryForCache)}`;
     const cachedResult = cache.get(cacheKey);
     
     if (cachedResult) {

@@ -455,8 +455,12 @@ export const getOutstandingFees = async (req, res) => {
     };
     const allowedGrades = SCHOOL_TYPES[schoolType].gradeOptions;
 
-    // Cache key specific to school and query parameters
-    const cacheKey = `outstanding_${req.user.schoolId}_${schoolType}_${JSON.stringify(req.query)}`;
+    // Construct cache key (ignore '_t' for standard UI browsing)
+    const queryForCache = { ...req.query };
+    const limitQueryInt = parseInt(limitQuery, 10);
+    if (limitQueryInt <= 50 || isNaN(limitQueryInt)) delete queryForCache._t;
+
+    const cacheKey = `outstanding_${req.user.schoolId}_${schoolType}_${JSON.stringify(queryForCache)}`;
     const cachedData = cache.get(cacheKey);
     if (cachedData) {
       return res.json(cachedData);

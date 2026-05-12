@@ -1,14 +1,13 @@
 //routes/enrollmentRoutes.js
 import express from "express";
-import { adminSearchStudent, 
-    updateEnrollment,
-    getEnrollmentHistory,
-    getEnrollmentById,
-    getMyEnrollment,
-    getStudentsByClass
-} from "../controllers/enrollmentController.js";
-import { cleanOrphanedEnrollments } from '../controllers/enrollmentController.js';
-  
+import { adminSearchStudent,
+     getEnrollmentById, 
+     updateEnrollment,
+      getEnrollmentHistory, 
+      getMyEnrollment, 
+      cleanOrphanedEnrollments, 
+      getStudentsByClass, 
+      getUniqueStreams } from "../controllers/enrollmentController.js";
 import  verifyToken  from "../middleware/verifyToken.js";
 
 
@@ -23,6 +22,9 @@ router.get("/class/:classLabel", verifyToken, getStudentsByClass);
 // Student route - get current enrollment with stream
 router.get("/my-enrollment", verifyToken, getMyEnrollment);
 
+// Get unique streams for filters
+router.get("/unique-streams", verifyToken, getUniqueStreams);
+
 // History route with verification
 router.get("/history", verifyToken, getEnrollmentHistory);
 
@@ -30,7 +32,6 @@ router.get("/history", verifyToken, getEnrollmentHistory);
 router.get("/:id", verifyToken, getEnrollmentById);
 router.put("/:id", verifyToken, updateEnrollment);
 
-    
 // Route for cleaning up orphaned enrollments
 router.delete("/cleanup", verifyToken, cleanOrphanedEnrollments);
 

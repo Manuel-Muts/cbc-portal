@@ -13,9 +13,13 @@ import { calculateBalance } from "../services/balanceService.js";
 const normalizeGrade = (grade) => {
   if (!grade) return null;
   const str = String(grade).trim();
-  if (!isNaN(str) && str !== "") return `Grade ${str}`;
-  if (str.length <= 2 && /^\d+[A-Z]?$/i.test(str)) return `Grade ${str}`;
-  return grade;
+  const match = str.match(/\d+/); // Extract only the numeric part
+  if (match) {
+    return `Grade ${match[0]}`;
+  }
+  // If no numeric part, but it's already "Grade X", return as is.
+  // Otherwise, if it's just a string, return it as is (e.g., "PP1", "PP2")
+  return str.toLowerCase().startsWith("grade") ? str : str;
 };
 
 
