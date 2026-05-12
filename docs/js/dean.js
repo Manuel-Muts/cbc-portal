@@ -237,7 +237,7 @@ async function generateReport() {
   const assessment = filterAssessmentEl.value;
   const year = filterYearEl.value;
 
-  if (!grade) return alert("Please select a grade.");
+  if (!grade) return cbcUtils.showToast("Please select a grade.", "error");
 
   applyFiltersBtn.disabled = true;
   applyFiltersBtn.innerHTML = '<span class="spinner"></span> Analyzing...';
@@ -265,6 +265,12 @@ async function generateReport() {
       fetchWithAuth(`${API_BASE}/marks/by-grade?${new URLSearchParams({ grade, term, year, assessment })}`),
       fetchWithAuth(`${API_BASE}/enrollments/class/${grade}?limit=1000`)
     ]);
+
+    if (!marksData || marksData.length === 0) {
+      analysisSection.style.display = "none";
+      cbcUtils.showToast("No marks found for the selected filters.", "error");
+      return;
+    }
 
     const roster = rosterResponse.students || (Array.isArray(rosterResponse) ? rosterResponse : []);
     
@@ -294,10 +300,10 @@ async function generateReport() {
   } catch (err) {
     if (err.message.includes("No marks found")) {
       analysisSection.style.display = "none";
-      alert("No results found for the selected filters.");
+      cbcUtils.showToast("No results found for the selected filters.", "error");
     } else {
       console.error("Analysis Error:", err);
-      alert("Failed to analyze grade results.");
+      cbcUtils.showToast("Failed to analyze grade results.", "error");
     }
   } finally {
     applyFiltersBtn.disabled = false;
@@ -312,6 +318,7 @@ function processAnalysisData(allRaw, isSenior, assessment, allPrevRaw = null, ro
   // This is crucial for the "All Streams" absence check, so a student isn't penalized
   // for not taking a subject that only another stream takes.
   const streamExpectedSubjectsMap = {};
+  const allSubjectsInGrade = new Set(); // 🆕 Track all unique subjects in this grade
   allRaw.forEach(m => {
     const stream = m.stream || "Unassigned"; // Handle students without a stream explicitly
     if (!streamExpectedSubjectsMap[stream]) {
@@ -319,12 +326,24 @@ function processAnalysisData(allRaw, isSenior, assessment, allPrevRaw = null, ro
     }
     m.subjects.forEach(sub => {
       const subName = isSenior ? sub.course : sub.subject;
-      if (subName) streamExpectedSubjectsMap[stream].add(subName);
+      if (subName) {
+        streamExpectedSubjectsMap[stream].add(subName);
+        allSubjectsInGrade.add(subName);
+      }
     });
   });
   // Convert sets to sorted arrays for consistent iteration
   Object.keys(streamExpectedSubjectsMap).forEach(stream => {
     streamExpectedSubjectsMap[stream] = Array.from(streamExpectedSubjectsMap[stream]).sort();
+  });
+
+  // 🆕 Identify cross-stream subject discrepancies (where a stream is missing a subject others have)
+  const streamDiscrepancies = [];
+  Object.entries(streamExpectedSubjectsMap).forEach(([stream, subjects]) => {
+    const missingInStream = Array.from(allSubjectsInGrade).filter(s => !subjects.includes(s));
+    if (missingInStream.length > 0) {
+      streamDiscrepancies.push({ stream, missingSubjects: missingInStream });
+    }
   });
 
   // Discover all streams available in this dataset
@@ -693,7 +712,7 @@ function processAnalysisData(allRaw, isSenior, assessment, allPrevRaw = null, ro
   updateDashboardChart();
   renderRankingTable(studentArray, sortedSubjects, isSenior);
   renderSubjectStats(sortedSubjects, subjectTotals, subjectCounts, prevSubjectMeans, subjectTermStats);
-  renderMissingExamsTable(missingExamsList); // 🆕 Call renderer for missing exams
+  renderMissingExamsTable(missingExamsList, streamDiscrepancies); // 🆕 Call renderer for missing exams
 }
 
 function renderRankingTable(students, subjects, isSenior) {
@@ -1037,10 +1056,10 @@ async function downloadRankingAsPDF() {
 /**
  * 🆕 Renders the list of learners who missed exams
  */
-function renderMissingExamsTable(missingList) {
+function renderMissingExamsTable(missingList, streamDiscrepancies = []) {
   if (!missingExamsTableWrap) return;
 
-  if (missingList.length === 0) {
+  if (missingList.length === 0 && streamDiscrepancies.length === 0) {
     missingExamsTableWrap.innerHTML = `
       <div style="text-align:center; padding:30px; background:#f8fafc; border-radius:12px; border: 1px dashed #cbd5e0; color:#64748b;">
         <i class="fas fa-check-circle" style="font-size:2rem; color:#10b981; margin-bottom:10px; display:block;"></i>
@@ -1049,7 +1068,34 @@ function renderMissingExamsTable(missingList) {
     return;
   }
 
-  let html = `<table class="marks-table" style="width:100%; border-collapse: collapse;">
+  let html = "";
+
+  // 🆕 Add Stream-Level Warnings (Subject Discrepancies)
+  if (streamDiscrepancies.length > 0) {
+    html += `
+      <div style="margin-bottom: 25px; border-radius: 12px; overflow: hidden; border: 1px solid #fee2e2; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);">
+        <div style="background: #fef2f2; padding: 12px 20px; border-bottom: 1px solid #fee2e2; display: flex; align-items: center; gap: 10px;">
+          <i class="fas fa-exclamation-triangle" style="color: #ef4444;"></i>
+          <h4 style="margin: 0; color: #991b1b; font-size: 0.95rem;">System Warning: Stream-Level Missing Data</h4>
+        </div>
+        <div style="padding: 15px 20px; background: white;">
+          <p style="font-size: 0.85rem; color: #4b5563; margin-top: 0; line-height: 1.5;">
+            The following subjects have marks in other streams for this grade, but <strong>no marks at all</strong> in the streams listed below. 
+            This usually means a teacher has not yet submitted any results for that specific class.
+          </p>
+          <ul style="margin: 10px 0 0 0; padding-left: 20px; font-size: 0.85rem; color: #1f2937;">
+            ${streamDiscrepancies.map(d => `
+              <li style="margin-bottom: 8px;">
+                <span style="font-weight: 700; color: #1f2937;">Stream ${d.stream}:</span> Entirely missing ${d.missingSubjects.map(s => `<code style="background: #f3f4f6; padding: 2px 6px; border-radius: 4px; color: #c53030; font-family: inherit; font-weight: 600;">${s}</code>`).join(", ")}
+              </li>
+            `).join("")}
+          </ul>
+        </div>
+      </div>`;
+  }
+
+  if (missingList.length > 0) {
+    html += `<table class="marks-table" style="width:100%; border-collapse: collapse;">
     <thead>
       <tr>
         <th>Name</th>
@@ -1074,7 +1120,13 @@ function renderMissingExamsTable(missingList) {
       </tr>`;
   });
 
-  html += `</tbody></table>`;
+    html += `</tbody></table>`;
+  } else if (streamDiscrepancies.length > 0) {
+    html += `<div style="text-align:center; padding:15px; background:#f0fdf4; border-radius:8px; border: 1px solid #bcf0da; color:#166534; font-size:0.85rem;">
+      <i class="fas fa-check-circle" style="margin-right:5px;"></i> All individual learner exams accounted for.
+    </div>`;
+  }
+
   missingExamsTableWrap.innerHTML = html;
 }
 
@@ -1083,7 +1135,7 @@ function renderMissingExamsTable(missingList) {
  */
 async function downloadMissingExamsAsPDF() {
   const table = missingExamsTableWrap.querySelector("table");
-  if (!table || !window.jspdf) return;
+  if (!missingExamsTableWrap || !window.jspdf) return;
 
   const originalHTML = printMissingReportBtn.innerHTML;
   printMissingReportBtn.disabled = true;
@@ -1127,21 +1179,45 @@ async function downloadMissingExamsAsPDF() {
     doc.setFontSize(14);
       doc.text(`Learners Recorded as Absent: ${grade}`, 14, yPos + 5);
 
-    const headers = [["Name", "Adm", "Stream", "Assessment", "Missed Subjects"]];
-    const rows = Array.from(table.querySelectorAll("tbody tr")).map(tr => 
-      Array.from(tr.querySelectorAll("td")).map(td => td.textContent.trim())
-    );
+    // 🆕 Export Stream Discrepancies to PDF if they exist
+    const discrepancyBlock = missingExamsTableWrap.querySelector('div[style*="border: 1px solid #fee2e2"]');
+    if (discrepancyBlock) {
+      const discItems = Array.from(discrepancyBlock.querySelectorAll('li')).map(li => [li.innerText]);
+      doc.autoTable({
+        startY: yPos + 9,
+        head: [["🚨 STREAM-LEVEL MISSING SUBJECTS (Data Integrity Warning)"]],
+        body: discItems,
+        theme: 'grid',
+        headStyles: { fillColor: [197, 48, 48] }, // #c53030
+        styles: { fontSize: 8, fontStyle: 'bold' },
+        margin: { bottom: 10 }
+      });
+      yPos = doc.lastAutoTable.finalY + 5;
+      doc.setFontSize(12);
+      doc.text(`Individual Absences:`, 14, yPos + 5);
+      yPos += 7;
+    }
 
-    doc.autoTable({
-        startY: yPos + 9, 
-      head: headers, 
-      body: rows, 
-      theme: 'grid',
-      headStyles: { fillColor: [231, 76, 60] }, // Red for "Missing"
-      styles: { fontSize: 9 },
-      rowPageBreak: 'avoid', // 🆕 Prevents splitting a student's missing subjects list
-      margin: { bottom: 35 } // 🆕 Space for signature
-    });
+    if (table) {
+      const headers = [["Name", "Adm", "Stream", "Assessment", "Missed Subjects"]];
+      const rows = Array.from(table.querySelectorAll("tbody tr")).map(tr => 
+        Array.from(tr.querySelectorAll("td")).map(td => td.textContent.trim())
+      );
+
+      doc.autoTable({
+        startY: yPos + 2, 
+        head: headers, 
+        body: rows, 
+        theme: 'grid',
+        headStyles: { fillColor: [231, 76, 60] }, // Red for "Missing"
+        styles: { fontSize: 9 },
+        rowPageBreak: 'avoid', // 🆕 Prevents splitting a student's missing subjects list
+        margin: { bottom: 35 } // 🆕 Space for signature
+      });
+    } else {
+      doc.setFontSize(10);
+      doc.text("No individual learner absences recorded.", 14, yPos + 5);
+    }
 
     // Ensure Dean Signature doesn't overlap
     doc.setPage(doc.internal.getNumberOfPages());

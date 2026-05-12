@@ -73,6 +73,12 @@
   let subjectAllocTotalPages = 1;
   let isRefreshing = false;
 // ---------------------------
+  // Term Lock Management DOM elements
+  const termLockYearSelect = document.getElementById("termLockYearSelect");
+  const termLockTermSelect = document.getElementById("termLockTermSelect");
+  const termLockStatusDisplay = document.getElementById("termLockStatusDisplay");
+  const termLockToggleButton = document.getElementById("termLockToggleButton");
+  const saveTermLockBtn = document.getElementById("saveTermLockBtn");
 // FETCH SCHOOL INFO
 // ---------------------------
 // Derive BACKEND_URL from config (removes /api suffix)
@@ -330,6 +336,7 @@ function attachAdminSignatureLogic() {
       .menu li[data-section="studentPromotion"]::before { content: "🎓"; }
       .menu li[data-section="studentSearch"]::before { content: "🔍"; }
       .menu li[data-section="signatureUploadSection"]::before { content: "✍️"; } /* New icon for signature */
+      .menu li[data-section="termLockManagementSection"]::before { content: "🔒"; } /* New icon for term lock management */
       
       .menu li a { display: block; padding: 12px 15px; color: rgba(255,255,255,0.8); text-decoration: none; font-weight: 500; transition: all 0.2s; }
       .menu li a:hover { color: white; background: rgba(255, 255, 255, 0.1); }
@@ -1124,7 +1131,8 @@ async function openHistoryModal(studentId) {
       "classAllocSection": "Class Allocations",
       "searchSection": "Learner Search",
       "promotionSection": "Learner Promotion",
-      "signatureUploadSection": "Digital Signature" // New section title
+      "signatureUploadSection": "Digital Signature", // New section title
+      "termLockManagementSection": "Term Lock Management" // 🆕 New section title
     }; 
 
     tabs.forEach(tab => {
@@ -1153,6 +1161,9 @@ async function openHistoryModal(studentId) {
 
         if (targetId === "signatureUploadSection") {
           renderAdminSignature(); // Render/re-render signature UI when its tab is active
+        } else if (targetId === "termLockManagementSection") {
+          populateTermLockYearOptions();
+          loadTermLockStatus(); // Load status for default year/term
         }
       });
     });
@@ -1161,6 +1172,110 @@ async function openHistoryModal(studentId) {
     const active = document.querySelector(".menu li.active[data-section]") || document.querySelector(".menu li[data-section]");
     if (active) active.click();
   }
+
+// ---------------------------
+// TERM LOCK MANAGEMENT LOGIC (🆕)
+// ---------------------------
+function populateTermLockYearOptions() {
+  if (!termLockYearSelect) return;
+  const currentYear = new Date().getFullYear();
+  termLockYearSelect.innerHTML = '';
+  for (let y = currentYear - 2; y <= currentYear + 100; y++) { // Show a range of years
+    const opt = document.createElement('option');
+    opt.value = y;
+    opt.textContent = y;
+    if (y === currentYear) opt.selected = true;
+    termLockYearSelect.appendChild(opt);
+  }
+  // Ensure term select is also populated
+  populateTermLockTermOptions();
+}
+
+function populateTermLockTermOptions() {
+  if (!termLockTermSelect) return;
+  termLockTermSelect.innerHTML = `
+    <option value="1">Term 1</option>
+    <option value="2">Term 2</option>
+    <option value="3">Term 3</option>
+  `;
+  // Set default term based on current month
+  const month = new Date().getMonth() + 1;
+  let defaultTerm = "1";
+  if (month >= 5 && month <= 8) defaultTerm = "2";
+  else if (month >= 9) defaultTerm = "3";
+  termLockTermSelect.value = defaultTerm;
+}
+
+async function loadTermLockStatus() {
+  if (!termLockYearSelect || !termLockTermSelect || !termLockStatusDisplay || !termLockToggleButton) return;
+
+  const year = termLockYearSelect.value;
+  const term = termLockTermSelect.value;
+
+  if (!year || !term) {
+    termLockStatusDisplay.textContent = "Select year and term";
+    termLockToggleButton.disabled = true;
+    return;
+  }
+
+  termLockStatusDisplay.textContent = "Loading...";
+  termLockToggleButton.disabled = true;
+
+  try {
+    const res = await secureFetch(`${API_BASE}/settings/term-lock?year=${year}&term=${term}`);
+    if (res) {
+      const isLocked = res.isLocked;
+      termLockStatusDisplay.textContent = isLocked ? "LOCKED" : "UNLOCKED";
+      termLockStatusDisplay.style.color = isLocked ? "red" : "green";
+      termLockToggleButton.checked = isLocked;
+      termLockToggleButton.disabled = false;
+    }
+  } catch (err) {
+    console.error("Error loading term lock status:", err);
+    termLockStatusDisplay.textContent = "Error loading status";
+    termLockStatusDisplay.style.color = "orange";
+    termLockToggleButton.disabled = true;
+  }
+}
+
+async function saveTermLockStatus() {
+  if (!termLockYearSelect || !termLockTermSelect || !termLockToggleButton || !saveTermLockBtn) return;
+
+  const year = termLockYearSelect.value;
+  const term = termLockTermSelect.value;
+  const isLocked = termLockToggleButton.checked;
+
+  if (!year || !term) {
+    showToast("Please select a year and term.", "error");
+    return;
+  }
+
+  saveTermLockBtn.disabled = true;
+  saveTermLockBtn.innerHTML = '<span class="spinner"></span> Saving...';
+
+  try {
+    const res = await secureFetch(`${API_BASE}/settings/term-lock`, {
+      method: "PUT",
+      body: JSON.stringify({ year: Number(year), term: Number(term), isLocked })
+    });
+
+    if (res) {
+      showToast(res.message, "success");
+      loadTermLockStatus(); // Refresh status display
+    }
+  } catch (err) {
+    console.error("Error saving term lock status:", err);
+    showToast("Failed to save term lock status: " + err.message, "error");
+  } finally {
+    saveTermLockBtn.disabled = false;
+    saveTermLockBtn.innerHTML = "Save Lock Status";
+  }
+}
+
+// Event Listeners for Term Lock Management
+termLockYearSelect?.addEventListener("change", loadTermLockStatus);
+termLockTermSelect?.addEventListener("change", loadTermLockStatus);
+saveTermLockBtn?.addEventListener("click", saveTermLockStatus);
 
   // IMPORTANT: Ensure your admin.html file has the following list item within the <ul class="menu">
   // for the "Digital Signature" navigation to appear:

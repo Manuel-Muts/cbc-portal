@@ -23,7 +23,9 @@
             <li data-section="promotionSection">Learner Promotion</li>
             <li><a href="users.html">👥 User Management</a></li> 
             <li data-section="signatureUploadSection">Digital Signature</li>
-            <!--<li><a href="settings.html">⚙️ Settings</a></li>-->
+            <li data-section="termLockManagementSection">
+                <a href="#">Term Lock Management</a>
+            </li>
         </ul>
         
         <button id="refreshBtn" class="refresh-btn">🔄 Refresh</button><br><br>
@@ -224,6 +226,40 @@
     <!-- 5. Digital Signature Tab -->
     <div id="signatureUploadSection" class="tab-section" style="display:none;"></div>
         </section>
+        <!-- In your admin.html, within the main content area, add this section: -->
+<section id="termLockManagementSection" class="tab-section hidden">
+  <div class="card">
+    <div class="admin-section-header-row">
+      <h3>Term Lock Management</h3>
+    </div>
+    <p style="margin-bottom: 20px; color: #6b7280;">
+      Control mark entry for specific academic terms. Locking a term prevents teachers from adding, updating, or deleting marks for that period.
+    </p>
+
+    <div class="form-group">
+      <label for="termLockYearSelect">Academic Year:</label>
+      <select id="termLockYearSelect" class="form-control"></select>
+    </div>
+
+    <div class="form-group">
+      <label for="termLockTermSelect">Term:</label>
+      <select id="termLockTermSelect" class="form-control"></select>
+    </div>
+
+    <div class="form-group" style="display: flex; align-items: center; gap: 15px; margin-top: 20px;">
+      <label>Current Status:</label>
+      <span id="termLockStatusDisplay" style="font-weight: bold; font-size: 1.1rem;">Loading...</span>
+      <label class="switch">
+        <input type="checkbox" id="termLockToggleButton">
+        <span class="slider round"></span>
+      </label>
+      <span style="font-size: 0.9rem; color: #6b7280;">(Toggle to Lock/Unlock)</span>
+    </div>
+
+    <button id="saveTermLockBtn" class="btn primary-btn" style="margin-top: 20px;">Save Lock Status</button>
+  </div>
+</section>
+
     </main>
 </div>
 

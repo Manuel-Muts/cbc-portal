@@ -55,15 +55,20 @@ const markSchema = new mongoose.Schema({
   }
 }, { timestamps: true });
 
+// 🚀 Optimized Indexes
+
+// For Duplication Checks & Controller uniqueness logic
+markSchema.index({
+  schoolId: 1, admissionNo: 1, year: 1, term: 1, assessment: 1, subject: 1, course: 1
+}, { name: "idx_uniqueness_check", unique: true });
+
+// For Teacher Dashboard queries (getMarks)
 markSchema.index({ 
-  schoolId: 1, 
-  grade: 1, 
-  year: 1, 
-  term: 1, 
-  assessment: 1 
+  teacherId: 1, schoolId: 1, year: -1, term: -1, assessment: -1 
 });
 
-markSchema.index({ schoolId: 1, subject: 1, year: 1, term: 1 });
-const Mark = mongoose.model("Mark", markSchema);
+// For Student & Class Performance queries
+markSchema.index({ schoolId: 1, grade: 1, year: 1, term: 1, assessment: 1 });
 
+const Mark = mongoose.model("Mark", markSchema);
 export default Mark;

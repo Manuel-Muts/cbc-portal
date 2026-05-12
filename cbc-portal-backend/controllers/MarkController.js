@@ -19,10 +19,24 @@ const getPerformanceSubdivision = (score) => {
   return "BE2";
 };
 
+// 🆕 Helper to safely parse input to Number or NULL (for "X" / Absence)
+const safeParse = (val) => {
+  if (val === null || val === undefined || String(val).trim() === "" || String(val).trim().toUpperCase() === "X") return null;
+  const n = Number(val);
+  return isNaN(n) ? null : n;
+};
+
+// Helper to extract numeric grade
+const getGradeLevel = (grade) => parseInt(String(grade).replace(/\D/g, ""), 10);
+
 // ---------------------------
 // HELPER: Process Single Mark (for add, update, and bulk operations)
 // ---------------------------
 const processSingleMark = async (markData, reqUser, isNew = true) => {
+  // Determine school level early to avoid ReferenceErrors
+  const gradeNum = getGradeLevel(markData.grade);
+  const isSeniorSchool = gradeNum >= 10 && gradeNum <= 12;
+
   const {
     _id, // Only present for updates
     admissionNo,
@@ -79,9 +93,29 @@ const processSingleMark = async (markData, reqUser, isNew = true) => {
     }
   }
 
-  // Determine if senior school
-  const gradeNum = parseInt(String(grade).replace(/\D/g, ""), 10);
-  const isSeniorSchool = gradeNum >= 10 && gradeNum <= 12;
+  // 🆕 NEW: Check for existing mark if this is a new submission
+  if (isNew) {
+    const existingMarkQuery = {
+      admissionNo: student.admission,
+      schoolId: reqUser.schoolId,
+      teacherId: reqUser.id, // Important: same teacher
+      term: Number(term),
+      year: Number(year),
+      assessment: Number(assessment),
+    };
+
+    if (isSeniorSchool) {
+      existingMarkQuery.pathway = pathway;
+      existingMarkQuery.course = course;
+    } else {
+      existingMarkQuery.subject = subject;
+    }
+
+    const existingMark = await Mark.findOne(existingMarkQuery);
+    if (existingMark) {
+      throw new Error("Duplicate, marks already exist.");
+    }
+  }
 
   // Validation
   if (isSeniorSchool) {
@@ -111,14 +145,6 @@ const processSingleMark = async (markData, reqUser, isNew = true) => {
     teacherId: reqUser.id,
     schoolId: reqUser.schoolId,
     enrollmentId: enrollment ? enrollment._id : (markData.enrollmentId || null)
-  };
-
-  // 🆕 Helper to safely parse input to Number or NULL (for "X" / Absence)
-  // This prevents Number(null) from becoming 0
-  const safeParse = (val) => {
-    if (val === null || val === undefined || String(val).trim() === "" || String(val).trim().toUpperCase() === "X") return null;
-    const n = Number(val);
-    return isNaN(n) ? null : n;
   };
 
   if (isSeniorSchool) {
@@ -215,46 +241,48 @@ export const bulkAddUpdateMarks = async (req, res) => {
       return res.status(400).json({ message: "Request body must be an array of marks" });
     }
 
-    let successCount = 0;
-    let failureCount = 0;
+    const ops = [];
     const errors = [];
+    let validationFailures = 0;
 
+    // Step 1: Process and Validate all marks in the array
     for (const markData of marksArray) {
       try {
         const isUpdate = !!markData._id;
         const processedFields = await processSingleMark(markData, req.user, !isUpdate);
 
         if (isUpdate) {
-          const updatedMark = await Mark.findByIdAndUpdate(
-            markData._id,
-            { $set: processedFields },
-            { new: true, runValidators: true }
-          );
-          if (updatedMark) {
-            successCount++;
-          } else {
-            failureCount++;
-            errors.push({ mark: markData, message: "Mark not found for update" });
-          }
+          ops.push({
+            updateOne: {
+              filter: { _id: markData._id },
+              update: { $set: processedFields }
+            }
+          });
         } else {
-          const newMark = new Mark(processedFields);
-          await newMark.save();
-          successCount++;
+          ops.push({
+            insertOne: {
+              document: processedFields
+            }
+          });
         }
       } catch (error) {
-        failureCount++;
+        validationFailures++;
         errors.push({ mark: markData, message: error.message });
       }
     }
 
-    if (failureCount > 0) {
-      console.error("Bulk mark submission errors:", errors);
+    // Step 2: Execute all operations in a single database round-trip
+    let successCount = 0;
+    if (ops.length > 0) {
+      const bulkResult = await Mark.bulkWrite(ops, { ordered: false });
+      // Count inserts, updates (modified), and matches (no change needed) as successes
+      successCount = (bulkResult.insertedCount || 0) + (bulkResult.matchedCount || 0) + (bulkResult.upsertedCount || 0);
     }
 
     return res.status(200).json({
       message: "Bulk mark operation completed",
       successCount,
-      failureCount,
+      failureCount: marksArray.length - successCount,
       errors: errors.length > 0 ? errors : undefined
     });
 
@@ -302,7 +330,7 @@ export const deleteMark = async (req, res) => {
     if (String(mark.teacherId) !== String(req.user.id)) {
       return res.status(403).json({ message: "Unauthorized" });
     }
-
+    
     // 🆕 Check Lock before deletion
     const lockKey = `term_lock_${req.user.schoolId}_${mark.year}_${mark.term}`;
     const isLocked = await Setting.findOne({ key: lockKey });
@@ -315,6 +343,62 @@ export const deleteMark = async (req, res) => {
   } catch (err) {
     console.error("deleteMark error:", err);
     return res.status(500).json({ message: err.message });
+  }
+};
+
+// ---------------------------
+// BULK DELETE MARKS
+// ---------------------------
+export const bulkDeleteMarks = async (req, res) => {
+  try {
+    const { markIds } = req.body; // Expect an array of Mark _id's
+
+    if (!Array.isArray(markIds) || markIds.length === 0) {
+      return res.status(400).json({ message: "An array of mark IDs is required for bulk deletion." });
+    }
+
+    // 1. Fetch the actual mark documents to validate ownership and check term locks
+    const marksToDelete = await Mark.find({
+      _id: { $in: markIds },
+      schoolId: req.user.schoolId // Ensure marks belong to the user's school
+    });
+
+    if (marksToDelete.length !== markIds.length) {
+      // This means some IDs provided either don't exist or don't belong to this school
+      return res.status(404).json({ message: "One or more marks not found or unauthorized for your school." });
+    }
+
+    // 2. Validate ownership (all marks must belong to the requesting teacher)
+    const unauthorizedMarks = marksToDelete.filter(mark => String(mark.teacherId) !== String(req.user.id));
+    if (unauthorizedMarks.length > 0) {
+      return res.status(403).json({ message: "You can only delete your own marks." });
+    }
+
+    // 3. Perform Term Lock Check
+    // Collect all unique (year, term) combinations for the marks to be deleted
+    const uniqueTerms = [...new Set(marksToDelete.map(mark => `${mark.year}_${mark.term}`))];
+
+    for (const termKey of uniqueTerms) {
+      const [year, term] = termKey.split('_');
+      const lockKey = `term_lock_${req.user.schoolId}_${year}_${term}`;
+      const isLocked = await Setting.findOne({ key: lockKey });
+
+      if (isLocked && isLocked.value === true && req.user.role !== 'super_admin') {
+        return res.status(403).json({ message: `Cannot delete marks: Academic Term ${term} (Year ${year}) is officially locked.` });
+      }
+    }
+
+    // 4. Execute bulk deletion
+    const deleteResult = await Mark.deleteMany({
+      _id: { $in: markIds },
+      teacherId: req.user.id, // Double-check ownership during deletion
+      schoolId: req.user.schoolId
+    });
+
+    return res.status(200).json({ message: `Successfully deleted ${deleteResult.deletedCount} marks.` });
+  } catch (err) {
+    console.error("bulkDeleteMarks error:", err);
+    return res.status(500).json({ message: "Server error during bulk deletion." });
   }
 };
 
@@ -624,5 +708,45 @@ export const getClassMarks = async (req, res) => {
   } catch (err) {
     console.error("getClassMarks error:", err);
     return res.status(500).json({ message: "Server error fetching class marks" });
+  }
+};
+
+// ---------------------------
+// GET MARKS BY GRADE AND STUDENTS (for frontend pre-filling)
+// ---------------------------
+export const getMarksByGradeAndStudents = async (req, res) => {
+  try {
+    const { grade, term, year, assessment, subject, course, admissionNos } = req.query;
+    const schoolId = req.user.schoolId;
+
+    if (!grade || !term || !year || !assessment || (!subject && !course) || !admissionNos) {
+      return res.status(400).json({ message: "Missing required query parameters for fetching existing marks." });
+    }
+
+    const admissionsArray = admissionNos.split(',');
+
+    const query = {
+      schoolId: new mongoose.Types.ObjectId(schoolId),
+      term: Number(term),
+      year: Number(year),
+      assessment: Number(assessment),
+      admissionNo: { $in: admissionsArray }
+    };
+
+    const gradeNum = parseInt(String(grade).replace(/\D/g, ""), 10);
+    const isSeniorSchool = gradeNum >= 10 && gradeNum <= 12;
+
+    if (isSeniorSchool) {
+      query.course = course;
+    } else {
+      query.subject = subject;
+    }
+
+    const marks = await Mark.find(query).lean();
+
+    return res.json(marks);
+  } catch (err) {
+    console.error("getMarksByGradeAndStudents error:", err);
+    return res.status(500).json({ message: "Server error fetching existing marks" });
   }
 };

@@ -59,7 +59,7 @@ document.addEventListener("DOMContentLoaded", () => {
       max-width: 350px;
       box-sizing: border-box;
       animation: toastFadeIn 0.3s ease-out, toastFadeOut 0.5s ease-in 3.2s forwards;
-      white-space: normal;
+      white-space: pre-wrap; /* Allow newlines to render */
       word-wrap: break-word;
       overflow-wrap: break-word;
       display: block;
@@ -78,6 +78,41 @@ document.addEventListener("DOMContentLoaded", () => {
       to { opacity: 0; transform: translateY(-10px); }
     }
   
+    /* Specific styling for the lock message when it's placed next to the heading */
+    .marks-controls .lock-message-wrapper #termLockMessage {
+      margin-bottom: 0 !important; /* Remove bottom margin when in the header row */
+    }
+    .marks-controls .lock-message-wrapper h3 {
+      margin-bottom: 0 !important; /* Remove bottom margin from heading for flex alignment */
+    }
+
+    #termLockMessage {
+      display: none;
+      background: #fffaf0 !important;
+      border: 1px solid #feebc8 !important;
+      color: #7b341e !important;
+      padding: 12px 16px !important;
+      border-radius: 10px !important;
+      margin-bottom: 20px !important;
+      align-items: center !important;
+      gap: 14px !important;
+      font-weight: 500 !important;
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05) !important;
+      border-left: 6px solid #f6ad55 !important;
+    }
+
+    .locked-state-overlay {
+      position: relative;
+      opacity: 0.75;
+      pointer-events: none;
+      filter: grayscale(0.1);
+      transition: all 0.3s ease;
+    }
+    /* Ensure the marks entry table itself has a min-width for horizontal scrolling on small screens */
+    .marks-entry-table {
+      min-width: 700px; /* Adjust as needed for content */
+    }
+
     #schoolName {
       display: block;
       width: 100%;
@@ -146,6 +181,8 @@ document.addEventListener("DOMContentLoaded", () => {
   let submittedMarks = []; // in-memory marks list
   let editingMarkId = null;
   let teacher = null;
+  let currentTermLocked = false; // Global variable to store lock status
+  const termLockMessageEl = document.getElementById("termLockMessage"); // Element to display lock message
   let isSingleEditMode = false;
 
   // Pagination for individual student tables inside Submitted Marks
@@ -208,6 +245,73 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   // ---------------------------
+  // NEW: CHECK TERM LOCK STATUS
+  // ---------------------------
+  async function checkTermLockStatus() {
+    const term = marksTermSelect.value;
+    const year = marksYearInput.value;
+
+    if (!term || !year) {
+      currentTermLocked = false;
+      updateUIForTermLock();
+      return;
+    }
+
+    try {
+      const token = authService.getToken();
+      const res = await fetch(`${API_BASE}/settings/term-lock?year=${year}&term=${term}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+
+      if (!res.ok) throw new Error("Failed to fetch term lock status");
+      const data = await res.json();
+      currentTermLocked = data.isLocked;
+      updateUIForTermLock();
+    } catch (err) {
+      console.error("Error checking term lock status:", err);
+      currentTermLocked = false; // Default to unlocked on error
+      updateUIForTermLock();
+      showToast("Error checking term lock status. Please refresh.", "error");
+    }
+  }
+
+  // ---------------------------
+  // NEW: UPDATE UI BASED ON TERM LOCK STATUS
+  // ---------------------------
+  function updateUIForTermLock() {
+    const inputs = marksEntryTableBody?.querySelectorAll("input") || [];
+    const buttons = [submitAllMarksBtn, saveDraftBtn, loadStudentsBtn]; // Also disable save draft and load students
+
+    inputs.forEach(input => {
+      // Only disable if not a readonly input (like final score)
+      if (!input.readOnly) input.disabled = currentTermLocked;
+    });
+
+    buttons.forEach(btn => {
+      if (btn) btn.disabled = currentTermLocked;
+    });
+
+    if (termLockMessageEl) {
+      if (currentTermLocked) {
+        termLockMessageEl.innerHTML = ` 
+          <div style="font-size: 1.3rem; background: #feebc8; width: 42px; height: 42px; display: flex; align-items: center; justify-content: center; border-radius: 50%; flex-shrink: 0;">🔒</div> 
+          <div style="flex-grow: 1;"> 
+            <div style="font-size: 1rem; font-weight: 700; color: #7b341e;">Viewing Finalized Term</div> 
+            <div style="font-size: 0.82rem; line-height: 1.4; color: #975a16; margin-top: 1px;"> 
+              This period is officially finalized. Marks are in <strong>read-only mode</strong> to ensure record integrity. New entries or changes cannot be saved. 
+            </div> 
+          </div>
+        `;
+        termLockMessageEl.style.display = "flex";
+        marksTableContainer?.classList.add("locked-state-overlay");
+      } else {
+        termLockMessageEl.style.display = "none";
+        marksTableContainer?.classList.remove("locked-state-overlay");
+      }
+    }
+  }
+
+  // ---------------------------
   // SET DEFAULT YEAR TO CURRENT YEAR (AUTO & READ-ONLY)
   // ---------------------------
   const currentYear = new Date().getFullYear();
@@ -235,6 +339,10 @@ document.addEventListener("DOMContentLoaded", () => {
     el?.addEventListener("change", () => {
       if (marksEntryTableBody && marksEntryTableBody.innerHTML !== "") {
         resetMarksTable();
+      }
+      // 🆕 Re-check lock status when term or year changes
+      if (el === marksTermSelect || el === marksYearInput) {
+        checkTermLockStatus();
       }
     });
   });
@@ -856,13 +964,13 @@ document.addEventListener("DOMContentLoaded", () => {
   <td data-label="Marks" class="marks-entry-cell">
     ${isSeniorSchool ? `
       <div class="marks-input-grid">
-        <input type="text" class="marks-entry-input ca-input" inputmode="text" placeholder="CA" value="${existingMark?.continuousAssessment ?? ''}" />
-        <input type="text" class="marks-entry-input pw-input" inputmode="text" placeholder="PW" value="${existingMark?.projectWork ?? ''}" />
-        <input type="text" class="marks-entry-input exam-input" inputmode="text" placeholder="Exam" value="${existingMark?.endTermExam ?? ''}" />
+        <input type="text" class="marks-entry-input ca-input" inputmode="text" placeholder="CA" value="${existingMark?.continuousAssessment ?? ''}" ${currentTermLocked ? 'disabled' : ''} />
+        <input type="text" class="marks-entry-input pw-input" inputmode="text" placeholder="PW" value="${existingMark?.projectWork ?? ''}" ${currentTermLocked ? 'disabled' : ''} />
+        <input type="text" class="marks-entry-input exam-input" inputmode="text" placeholder="Exam" value="${existingMark?.endTermExam ?? ''}" ${currentTermLocked ? 'disabled' : ''} />
         <input type="text" class="marks-entry-input final-input" placeholder="Final" value="${existingMark?.finalScore ?? ''}" readonly />
       </div>
     ` : `
-      <input type="text" class="marks-entry-input marks-input" inputmode="text" placeholder="Score (or X for Absent)" value="${existingMark?.score ?? ''}" />
+      <input type="text" class="marks-entry-input marks-input" inputmode="text" placeholder="Score (or X for Absent)" value="${existingMark?.score ?? ''}" ${currentTermLocked ? 'disabled' : ''} />
     `}
   </td>
 `;
@@ -973,7 +1081,7 @@ document.addEventListener("DOMContentLoaded", () => {
           markData.projectWork = inputValue.toUpperCase() === "X" ? "X" : (inputValue === "" ? null : inputValue);
       } else if (inputElement.classList.contains("exam-input")) {
           markData.endTermExam = inputValue.toUpperCase() === "X" ? "X" : (inputValue === "" ? null : inputValue);
-      }
+    } 
       // Recalculate final score if any component changes
       const ca = row.querySelector(".ca-input")?.value;
       const pw = row.querySelector(".pw-input")?.value;
@@ -1045,11 +1153,14 @@ document.addEventListener("DOMContentLoaded", () => {
     marksColumnHeader.innerHTML = "Marks (%)";
     allMarksEntered = new Map(); // Clear the global store
     loadedStudents = [];
+    currentStudentPage = 1;
     isSingleEditMode = false;
     const paginationEl = document.getElementById("studentsPagination");
     if (paginationEl) {
       paginationEl.innerHTML = "";
     }
+    // Remove subject title if present
+    document.querySelector('.selected-subject-title')?.remove();
   }
 
   // ---------------------------
@@ -1225,6 +1336,13 @@ document.addEventListener("DOMContentLoaded", () => {
         return;
       }
 
+      if (currentTermLocked) { // Early exit if term is locked
+        showToast("Cannot load students for a locked term.", "error");
+        loadStudentsBtn.disabled = false;
+        loadStudentsBtn.innerHTML = "📥 Load Learners";
+        return;
+      }
+
       console.log("🔄 Loading Learners...");
       console.log(`   Class: ${selectedAllocationData.classLabel}`);
       console.log(`   Subject: ${selectedSubject}`);
@@ -1253,6 +1371,7 @@ document.addEventListener("DOMContentLoaded", () => {
       window.lastStudentsFetchTotalCount = response.total || students.length;
 
       displayStudentsInMarksTable(students);
+      updateUIForTermLock(); // Ensure UI is updated after students are loaded
 
       if (students.length > 0) {
         showToast(`✅ Loaded ${students.length} Learner(s) from ${selectedAllocationData.classLabel}`, "success");
@@ -1269,7 +1388,14 @@ document.addEventListener("DOMContentLoaded", () => {
   // ---------------------------
   if (submitAllMarksBtn) {
     submitAllMarksBtn.addEventListener("click", async () => {
+      // Guard: prevent multiple clicks while logic is running or confirmation is pending
+      if (submitAllMarksBtn.disabled) return;
+
       if (allMarksEntered.size === 0) {
+        showToast("No marks entered to submit.", "error");
+        return;
+      }
+      if (currentTermLocked) { // Early exit if term is locked
         showToast("No marks entered to submit.", "error");
         return;
       }
@@ -1306,7 +1432,7 @@ document.addEventListener("DOMContentLoaded", () => {
           let pathway = null;
 
           for (const pway in seniorSchoolPathways) {
-            if (seniorSchoolPathways[pway].map(s => s.toLowerCase()).includes(course.toLowerCase())) {
+            if (seniorSchoolPathways[pway].map(s => s.toLowerCase().trim()).includes(course.toLowerCase().trim())) {
               pathway = pway;
               break;
             }
@@ -1341,12 +1467,40 @@ document.addEventListener("DOMContentLoaded", () => {
 
       if (hasCriticalErrors) return;
 
-      let confirmationMessage = `You are submitting ${marksToSubmit.length} marks (${newMarksCount} new, ${updatedMarksCount} updates). Do you want to continue?`; // This message is still accurate
+      let absentCount = 0;
+      allMarksEntered.forEach(m => {
+        const isSenior = cbcUtils.isSeniorGrade(m.grade);
+        if (isSenior) {
+          if (m.continuousAssessment === "X" || m.projectWork === "X" || m.endTermExam === "X") absentCount++;
+        } else if (m.score === "X") {
+          absentCount++;
+        }
+      });
+
+      let confirmationMessage = `
+        <div style="text-align: left; padding: 5px;">
+          <h4 style="margin: 0 0 10px 0; color: #2c5282; font-size: 1.1rem;">📝 Data Accuracy Check</h4>
+          <p style="margin-bottom: 10px; font-size: 0.9rem;">You are preparing to finalize marks for <strong>${selectedAllocationData.classLabel}</strong> (${selectedSubject}).</p>
+          <ul style="margin: 0 0 15px 0; padding-left: 20px; font-size: 0.85rem; line-height: 1.6;">
+            <li><strong>Total Records:</strong> ${marksToSubmit.length}</li>
+            <li><strong>New / Updated:</strong> ${newMarksCount} new, ${updatedMarksCount} changes</li>
+            <li><strong>Learners Absent:</strong> ${absentCount > 0 ? `<span style="color:#e53e3e; font-weight:700;">${absentCount}</span>` : 'None (Full attendance)'}</li>
+          </ul>
+          <p style="margin: 0; font-size: 0.8rem; color: #718096; border-top: 1px solid #edf2f7; padding-top: 8px; margin-top: 8px;">
+            <strong>Note:</strong> These results will be reviewed by the <strong>Dean of Studies</strong> for ranking and performance analysis.
+          </p>
+        </div>
+      `;
+
+      // Disable immediately before showing the modal to prevent double-clicks spawning multiple toasts
+      submitAllMarksBtn.disabled = true;
+      const originalBtnHTML = submitAllMarksBtn.innerHTML;
+
       if (!await cbcUtils.showConfirmToast(confirmationMessage)) {
+        submitAllMarksBtn.disabled = false;
         return;
       }
 
-    submitAllMarksBtn.disabled = true;
     submitAllMarksBtn.innerHTML = '<span class="spinner"></span>Submitting...';
 
     try {
@@ -1371,14 +1525,51 @@ document.addEventListener("DOMContentLoaded", () => {
 
       const result = await res.json(); // Expecting { successCount, failureCount } from backend
 
-      showToast(`✅ Processed: ${result.successCount} mark(s) saved/updated, ${result.failureCount} failed`, result.successCount > 0 ? "success" : "error");
+      if (result.failureCount > 0) {
+        let errorMessage = `Processed: ${result.successCount} saved, ${result.failureCount} failed.`; // Initial summary
+        if (result.errors && result.errors.length > 0) {
+          const duplicateStudents = [];
+          const otherErrors = [];
+
+          result.errors.forEach(err => {
+            if (err.message === "Duplicate, marks already exist.") {
+              duplicateStudents.push(err.mark.studentName || err.mark.admissionNo);
+            } else {
+              otherErrors.push(`- ${err.mark.studentName || err.mark.admissionNo}: ${err.message}`);
+            }
+          });
+
+          if (duplicateStudents.length > 0) {
+            errorMessage += `\nDuplicate marks for: ${duplicateStudents.join(", ")}.`;
+          }
+          if (otherErrors.length > 0) {
+            errorMessage += `\nOther failures:\n${otherErrors.join("\n")}`;
+          }
+        }
+        showToast(errorMessage, "error");
+      } else {
+        showToast(`✅ Processed: ${result.successCount} mark(s) saved/updated.`, "success");
+      }
 
       if (result.successCount > 0) { // Check result.successCount from backend
+        // 🆕 Clear roster cache for this class to ensure fresh data for next load
+        const classLabel = selectedAllocationData?.classLabel;
+        if (classLabel) {
+          for (let i = localStorage.length - 1; i >= 0; i--) {
+            const key = localStorage.key(i);
+            if (key && key.startsWith(`students_cache_${classLabel}`)) {
+              localStorage.removeItem(key);
+            }
+          }
+        }
+
+        localStorage.removeItem("teacher_marks_cache");
         await loadSubmittedMarks(true); // Force refresh after submission
+        
+        clearDraft(); 
         marksEntryTableBody.innerHTML = "";
-        // marksTableContainer.style.display = "none"; // Keep visible for next entry
         subjectAllocationSelect.value = "";
-        clearDraft(); // Clear saved draft after successful submission
+        subjectAllocationSelect.dispatchEvent(new Event('change')); 
 
         // Auto-switch to Submitted Marks tab
         const submittedTabBtn = document.querySelector('[data-tab="submittedMarks"]');
@@ -1389,14 +1580,12 @@ document.addEventListener("DOMContentLoaded", () => {
       showToast("Error submitting marks", "error");
     } finally {
       submitAllMarksBtn.disabled = false;
-      submitAllMarksBtn.innerHTML = "✅ Submit All Marks";
+      submitAllMarksBtn.innerHTML = originalBtnHTML;
     }
     });
   }
 
-  // ---------------------------
-  // GRADE & SUBJECTS DATA
-  // ---------------------------
+  
   // ---------------------------
   // SENIOR SCHOOL PATHWAYS & COURSES
   // ---------------------------
@@ -1530,7 +1719,13 @@ document.addEventListener("DOMContentLoaded", () => {
       displayPaginatedMarksGroups(submittedMarksCurrentPage); // Call new function
     } catch (err) {
       console.error("Load marks error:", err);
-      console.error("Error stack:", err.stack);
+      if (submittedMarksContainer) {
+        submittedMarksContainer.innerHTML = `
+          <div style="text-align:center; padding:20px; color:#e53e3e; background:#fff5f5; border-radius:12px; border:1px solid #feb2b2;">
+            <strong>⚠️ Connection Error</strong><br>
+            Could not fetch your submitted marks. Please check your internet or try refreshing.
+          </div>`;
+      }
     }
   }
 
@@ -1633,14 +1828,13 @@ document.addEventListener("DOMContentLoaded", () => {
         const details = document.createElement('details');
         details.open = openAccordions.has(key); // Persist open state
         details.className = 'marks-accordion';
-        details.ontoggle = () => {
-            console.log(`Accordion ${key} toggled. New state: ${details.open}`); // Debug log
+        details.ontoggle = () => { // Use native details behavior, just track state
             if (details.open) {
-                openAccordions.add(key);
-                contentWrapper.style.display = 'block'; // Explicitly show content
+              openAccordions.add(key);
+              contentWrapper.style.display = 'block'; // Ensure content shows when opened
             } else {
-                openAccordions.delete(key);
-                contentWrapper.style.display = 'none'; // Explicitly hide content
+              openAccordions.delete(key);
+              contentWrapper.style.display = 'none';
             }
         };
         const mapping = window.ASSESSMENT_MAPPING || {};
@@ -1661,7 +1855,7 @@ document.addEventListener("DOMContentLoaded", () => {
         // 🏗️ Wrap accordion content in a div to prevent nesting/rendering glitches
         const contentWrapper = document.createElement('div');
         contentWrapper.className = 'marks-accordion-content';
-        contentWrapper.style.display = details.open ? 'block' : 'none'; // Set initial display based on open state
+        contentWrapper.style.display = details.open ? 'block' : 'none'; // Initial state
         
        // const pdfBtn = document.createElement('button');
        // pdfBtn.className = 'pdf-btn';
@@ -1685,6 +1879,14 @@ document.addEventListener("DOMContentLoaded", () => {
           subTablePageMap.set(key, 1); // Reset to first page on search
           displayPaginatedMarksGroups(submittedMarksCurrentPage);
         });
+
+        // 🆕 Delete Entire Table Button
+        const deleteGroupBtn = document.createElement('button');
+        deleteGroupBtn.className = 'btn danger-btn';
+        deleteGroupBtn.innerHTML = '🗑️ Delete Table';
+        deleteGroupBtn.style.cssText = "padding: 3px 10px; font-size: 0.72rem; border-radius: 8px; margin-left: 10px; font-weight: 700; height: 28px; vertical-align: middle;";
+        deleteGroupBtn.dataset.action = "delete-group";
+        deleteGroupBtn.dataset.key = key;
 
         // Restore focus and cursor position after re-render
         if (activeSearchInfo.key === key) {
@@ -1756,6 +1958,7 @@ document.addEventListener("DOMContentLoaded", () => {
         details.appendChild(summary);
         // contentWrapper.appendChild(pdfBtn);
         contentWrapper.appendChild(searchInput);
+        contentWrapper.appendChild(deleteGroupBtn);
         contentWrapper.appendChild(table);
 
         // Sub-pagination controls for the individual table
@@ -1831,6 +2034,67 @@ document.addEventListener("DOMContentLoaded", () => {
     if (!btn) return;
     const row = btn.closest("tr");
     const id = row?.dataset.id;
+    
+    // 🆕 HANDLE BULK DELETE FOR ENTIRE GROUP
+    if (btn.dataset.action === "delete-group") {
+      const key = btn.dataset.key;
+      // Identify all marks belonging to this specific table group
+      const marksToDelete = submittedMarks.filter(m => {
+        const gradeNorm = cbcUtils.normalizeGrade(m.grade);
+        const isSenior = cbcUtils.isSeniorGrade(m.grade);
+        const subjectKey = isSenior ? (m.course || 'no-course') : (m.subject || 'no-subject');
+        return `${subjectKey}_${m.assessment}_${gradeNorm}_${m.term}_${m.year}` === key;
+      });
+
+      if (!marksToDelete.length) return;
+
+      const confirmMsg = `Are you sure you want to permanently delete ALL ${marksToDelete.length} records in this table? This action cannot be undone.`;
+      if (!await showConfirm(confirmMsg)) return;
+
+      // Check Term Lock for the group before processing (using the first mark as reference)
+      const sample = marksToDelete[0];
+      try {
+        const token = authService.getToken();
+        const lockRes = await fetch(`${API_BASE}/settings/term-lock?year=${sample.year}&term=${sample.term}`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        const lockData = await lockRes.json();
+        if (lockData.isLocked && teacher.role !== 'super_admin') {
+          return showToast("Cannot delete: This academic term is officially locked.", "error");
+        }
+      } catch (e) { console.warn("Lock check failed, proceeding with deletion attempt..."); }
+
+      btn.disabled = true;
+      const originalHTML = btn.innerHTML;
+      btn.innerHTML = '<span class="spinner"></span> Deleting...';
+
+      try {
+        const token = authService.getToken();
+        // Process individual deletes in parallel
+        const results = await Promise.all(marksToDelete.map(m => 
+          fetch(`${API_BASE}/marks/${m._id}`, {
+            method: "DELETE",
+            headers: { Authorization: `Bearer ${token}` }
+          })
+        ));
+
+        const successCount = results.filter(r => r.ok).length;
+        if (successCount === marksToDelete.length) {
+          showToast(`Successfully deleted all ${successCount} records.`, "success");
+        } else {
+          showToast(`Deleted ${successCount} marks, but ${marksToDelete.length - successCount} failed.`, "warning");
+        }
+        await loadSubmittedMarks(true); // Force refresh UI
+      } catch (err) {
+        console.error("Bulk delete error:", err);
+        showToast("Failed to complete bulk deletion.", "error");
+      } finally {
+        btn.disabled = false;
+        btn.innerHTML = originalHTML;
+      }
+      return;
+    }
+
     if (btn.dataset.action === "edit") {
       // NEW EDIT LOGIC FOR TABLE-BASED ENTRY
       const mark = submittedMarks.find(m => m._id === id);
@@ -2033,6 +2297,31 @@ document.addEventListener("DOMContentLoaded", () => {
     setupTabs();
     
     console.log("📝 Step 2: Loading school name...");
+
+    // 🆕 Move termLockMessageEl to the desired position
+    const marksControls = document.querySelector('.marks-controls');
+    const step1Heading = marksControls?.querySelector('h3'); // Assuming "Step 1" is an h3
+    const termLockMessageEl = document.getElementById("termLockMessage");
+
+    if (marksControls && step1Heading && termLockMessageEl) {
+        // Create a wrapper for the heading and the lock message
+        const headerWrapper = document.createElement('div');
+        headerWrapper.className = 'lock-message-wrapper'; // Add a class for specific styling
+        headerWrapper.style.cssText = 'display: flex; justify-content: space-between; align-items: center; width: 100%; flex-wrap: wrap; margin-bottom: 15px;';
+
+        // Move the h3 into the wrapper
+        headerWrapper.appendChild(step1Heading);
+
+        // Move the termLockMessageEl into the wrapper
+        headerWrapper.appendChild(termLockMessageEl);
+
+        // Prepend the wrapper to marksControls
+        marksControls.prepend(headerWrapper);
+    } else if (marksControls && termLockMessageEl) {
+        // Fallback if h3 is not found, just prepend the message
+        marksControls.prepend(termLockMessageEl);
+    }
+
     await loadSchoolName();
     console.log("✅ Step 2 complete");
 
@@ -2047,6 +2336,10 @@ document.addEventListener("DOMContentLoaded", () => {
     await loadSubmittedMarks();
     console.log("✅ Step 4 complete (Materials dashboard separated)");
     
+    // 🆕 Initial check for term lock status
+    console.log("📝 Step 5: Checking term lock status...");
+    await checkTermLockStatus();
+    console.log("✅ Step 5 complete");
     console.log("🎉 Dashboard initialization complete!");
   })();
 });

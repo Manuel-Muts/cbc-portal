@@ -7,6 +7,7 @@ import {
   deleteMark,
   getStudentMarks,
   getMarksByGrade,
+  getMarksByGradeAndStudents, // 🆕 Import new function
   bulkAddUpdateMarks,
   getClassMarks,
   getPaginatedMarksByGrade
@@ -34,6 +35,7 @@ router.route('/bulk-add-update').post(VerifyToken, attachEnrollmentToMarks, bulk
 
 router.delete("/:id", VerifyToken, deleteMark);
 
+router.get("/by-grade-and-students", VerifyToken, getMarksByGradeAndStudents); // 🆕 New route
 // Class teacher route
 router.get("/by-grade", VerifyToken, isClassTeacher, getMarksByGrade);
 router.get("/paginated-by-grade", VerifyToken, isClassTeacher, getPaginatedMarksByGrade);

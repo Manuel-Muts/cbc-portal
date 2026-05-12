@@ -64,7 +64,11 @@ window.cbcUtils = {
         const pwVal = parseFloat(pw) || 0;
         const examVal = parseFloat(exam) || 0;
         const total = (caVal * 0.30) + (pwVal * 0.20) + (examVal * 0.50);
-        return parseFloat(total.toFixed(2));
+        // Ensure score is between 0 and 100
+        const clampedTotal = Math.max(0, Math.min(100, total));
+        return parseFloat(clampedTotal.toFixed(2));
+
+
     },
 
     getPerformanceLevel: (score) => {
