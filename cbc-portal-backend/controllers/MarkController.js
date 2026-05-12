@@ -453,10 +453,6 @@ if (filterByStream) {
 
   const admissions = enrollments.map(e => (e.studentId && e.studentId.admission) ? e.studentId.admission : null).filter(Boolean);
 
-  if (!admissions.length) {
-    return res.status(404).json({ message: "No students found for selected class" });
-  }
-
   // Combine admission filter with existing search filters properly
   if (markQuery.$or) {
     markQuery.$and = [
@@ -552,12 +548,6 @@ if (filterByStream) {
     }
 
     const data = await Mark.aggregate(pipeline).allowDiskUse(true);
-
-    if (!data.length) {
-      return res.status(404).json({
-        message: "No marks found"
-      });
-    }
 
     return res.json(data);
 

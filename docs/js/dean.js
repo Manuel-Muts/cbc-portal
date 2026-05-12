@@ -306,18 +306,34 @@ async function generateReport() {
 }
 
 function processAnalysisData(allRaw, isSenior, assessment, allPrevRaw = null, roster = []) {
-  const subjectsSet = new Set();
   const streamsSet = new Set();
 
-  // Discover all subjects and streams available in this dataset
+  // 🆕 Build a map of streams to their expected subjects from allRaw (before stream filtering)
+  // This is crucial for the "All Streams" absence check, so a student isn't penalized
+  // for not taking a subject that only another stream takes.
+  const streamExpectedSubjectsMap = {};
   allRaw.forEach(m => {
-    if (m.stream) streamsSet.add(m.stream);
+    const stream = m.stream || "Unassigned"; // Handle students without a stream explicitly
+    if (!streamExpectedSubjectsMap[stream]) {
+      streamExpectedSubjectsMap[stream] = new Set();
+    }
     m.subjects.forEach(sub => {
       const subName = isSenior ? sub.course : sub.subject;
-      if (subName) subjectsSet.add(subName);
+      if (subName) streamExpectedSubjectsMap[stream].add(subName);
     });
   });
-  const sortedSubjects = Array.from(subjectsSet).sort();
+  // Convert sets to sorted arrays for consistent iteration
+  Object.keys(streamExpectedSubjectsMap).forEach(stream => {
+    streamExpectedSubjectsMap[stream] = Array.from(streamExpectedSubjectsMap[stream]).sort();
+  });
+
+  // Discover all streams available in this dataset
+  allRaw.forEach(m => { if (m.stream) streamsSet.add(m.stream); });
+
+  // 🆕 Ensure streams that haven't submitted any marks yet still appear in the filter
+  if (roster && Array.isArray(roster)) {
+    roster.forEach(s => { if (s.stream) streamsSet.add(s.stream); });
+  }
 
   // Populate Stream Filter
   if (filterStreamEl) {
@@ -331,13 +347,23 @@ function processAnalysisData(allRaw, isSenior, assessment, allPrevRaw = null, ro
     if (currentVal && Array.from(filterStreamEl.options).some(o => o.value === currentVal)) {
       filterStreamEl.value = currentVal;
     }
-    filterStreamEl.style.display = streamsSet.size > 0 ? "inline-block" : "none";
+    // Only show stream filter if there's more than one stream to choose from
+    filterStreamEl.style.display = streamsSet.size > 1 ? "inline-block" : "none";
   }
 
   // Filter data based on current stream selection
   const selectedStream = filterStreamEl?.value || "all";
   const raw = selectedStream === "all" ? allRaw : allRaw.filter(m => m.stream === selectedStream);
   const prevRaw = (allPrevRaw && selectedStream !== "all") ? allPrevRaw.filter(m => m.stream === selectedStream) : allPrevRaw;
+
+  // --- IMPORTANT CHANGE HERE ---
+  // Discover subjects *after* stream filtering, from the 'raw' data
+  const subjectsSet = new Set();
+  raw.forEach(m => {
+    m.subjects.forEach(sub => { const subName = isSenior ? sub.course : sub.subject; if (subName) subjectsSet.add(subName); });
+  });
+  const sortedSubjects = Array.from(subjectsSet).sort();
+  // --- END IMPORTANT CHANGE ---
 
   const studentsMap = {};
   const subjectTotals = {};
@@ -483,20 +509,30 @@ function processAnalysisData(allRaw, isSenior, assessment, allPrevRaw = null, ro
   });
 
   // 🆕 SECOND PASS: Strict Incomplete/Absence Detection
-  // A student must have a valid numeric score for EVERY subject found in the class roster to be ranked.
-  // This catches both explicit "X" and missing subject records (entirely unsubmitted).
+  // A student is marked as having an absence if they are missing a score (or have an 'X')
+  // for any subject they *were expected to take*.
   Object.values(studentsMap).forEach(s => {
-    sortedSubjects.forEach(subName => {
+    let subjectsToValidateAgainst = [];
+
+    if (selectedStream === "all") {
+      // When viewing all streams, validate against subjects expected for the student's *own* stream
+      subjectsToValidateAgainst = streamExpectedSubjectsMap[s.stream || "Unassigned"] || [];
+    } else {
+      // When viewing a specific stream, validate against all subjects found in that stream's data
+      // (sortedSubjects is already filtered by selectedStream in this case)
+      subjectsToValidateAgainst = sortedSubjects;
+    }
+
+    subjectsToValidateAgainst.forEach(subName => {
       const score = s.subjects[subName];
       // Robust detection: Catch undefined (missing record), null (X from DB), or explicit 'X' string
-      // This ensures that even if one assessment record is missing, the student is disqualified from ranking.
       const isMissing = score === undefined || score === null || (typeof score === 'string' && score.trim().toUpperCase() === "X");
 
       if (isMissing) {
         s.hasAbsence = true;
 
         // Group markers into the missing exams map
-        const studentAssessKey = isAll ? `${s.adm}_overall` : `${s.adm}_${s.assess}`;
+        const studentAssessKey = isAll ? `${s.adm}_overall` : `${s.adm}_${s.assess}`; // Key for missing exams map
         
         if (!missingExamsMap[studentAssessKey]) {
           const mapping = window.ASSESSMENT_MAPPING || {};
@@ -556,13 +592,15 @@ function processAnalysisData(allRaw, isSenior, assessment, allPrevRaw = null, ro
   });
 
   // 🆕 IDENTIFY UNGRADED LEARNERS: Compare roster against marks fetched
-  // This finds students who have NO record at all for the current context
-  if (roster && roster.length > 0 && assessment !== "all") {
-    const submittedAdms = new Set(allRaw.map(m => m.admissionNo));
+  // This finds students who have NO record at all for the current filtered context
+  let filteredRoster = roster;
+  if (selectedStream !== "all") { filteredRoster = roster.filter(s => s.stream === selectedStream); }
+  if (filteredRoster && filteredRoster.length > 0 && assessment !== "all") {
+    const submittedAdms = new Set(raw.map(m => m.admissionNo)); // Use 'raw' data for submitted admissions
     const mapping = window.ASSESSMENT_MAPPING || {};
     const currentAssessLabel = mapping[assessment] || `Assessment ${assessment}`;
 
-    roster.forEach(student => {
+    filteredRoster.forEach(student => { // Iterate over filtered roster
       const adm = student.admissionNo || student.admission;
       if (!submittedAdms.has(adm)) {
         // Filter by stream if selected

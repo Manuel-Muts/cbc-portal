@@ -1939,7 +1939,7 @@ document.addEventListener("DOMContentLoaded", () => {
       }, 100); // Short delay for DOM render
     }
     if (btn.dataset.action === "delete") {
-      if (!confirm("Delete this mark?")) return;
+      if (!await showConfirm("Are you sure you want to permanently delete this mark? This action cannot be undone.")) return;
       try {
         const token = authService.getToken();
         const res = await fetch(`${API_BASE}/marks/${id}`, {
