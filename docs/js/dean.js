@@ -1322,7 +1322,7 @@ async function downloadSubjectPerformanceAsPDF() {
   });
 
   doc.autoTable({ 
-    startY: yPos + 9, 
+    startY: yPos + 15, 
     head: [headers], 
     body: rows, 
     theme: 'grid',
