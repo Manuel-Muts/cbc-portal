@@ -489,17 +489,30 @@ async function getImageBase64(url) {
       const filename = `Report_${user.grade || "Grade"}_${latestMark.term || "Term"}_${currentYear}.pdf`;
 
       const opt = {
-        margin: [0.3, 0.3, 0.3, 0.3],
+        margin: [10, 10, 15, 10], // Adjusted margins in mm to accommodate the footer
         filename,
         image: { type: "png", quality: 1 },
         html2canvas: { scale: 2, useCORS: true, scrollY: 0, logging: false, letterRendering: true },
         jsPDF: { unit: "mm", format: "a4", orientation: "portrait" },
-        pagebreak: { mode: ["avoid-all", "css", "legacy"] },
+        pagebreak: { mode: ["avoid-all", "css", "legacy"] }
       };
 
-      // Use worker-based approach to ensure images are ready
-      const worker = html2pdf().set(opt).from(reportElement).toPdf();
-      worker.save().then(() => {
+      // Use worker-based approach to inject CompetenceHub Analytics branding and page numbering into the PDF footer
+      html2pdf().set(opt).from(reportElement).toPdf().get('pdf').then((pdf) => {
+        const totalPages = pdf.internal.getNumberOfPages();
+        const pageHeight = pdf.internal.pageSize.getHeight();
+        const pageWidth = pdf.internal.pageSize.getWidth();
+        const marginX = 10;
+
+        for (let i = 1; i <= totalPages; i++) {
+          pdf.setPage(i);
+          pdf.setFontSize(8);
+          pdf.setTextColor(150); // Subtle gray color for footer text
+          const dateStr = `Generated: ${new Date().toLocaleString()} | CompetenceHub Analytics | ${user.grade || ''}`;
+          pdf.text(dateStr, marginX, pageHeight - 8);
+          pdf.text(`Page ${i} of ${totalPages}`, pageWidth - marginX, pageHeight - 8, { align: 'right' });
+        }
+      }).save().then(() => {
         document.querySelector(".report-controls").style.display = "block";
       });
     });

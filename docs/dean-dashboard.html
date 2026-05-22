@@ -6,6 +6,7 @@
   <title>DEAN DASHBOARD</title>
   <link rel="stylesheet" href="css/teachers.css" />
   <link rel="stylesheet" href="css/dean.css" />
+  <link rel="stylesheet" href="css/timetables.css" />
   <link rel="icon" type="image/png" href="/images/favicon.png"/> 
  <meta http-equiv="Content-Security-Policy" 
 content="style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com; font-src https://fonts.gstatic.com https://cdnjs.cloudflare.com;">
@@ -14,6 +15,8 @@ content="style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://c
   <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.28/jspdf.plugin.autotable.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
 </head>
 <body>
   <header>
@@ -123,6 +126,7 @@ content="style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://c
                 <h3 style="margin: 0;">Grade Ranking Report</h3>
                 <button id="printReportBtn" class="btn primary-btn" style="padding: 6px 12px; font-size: 0.85rem;">📄 Print PDF</button>
               </div>
+              <div id="rankingExtras" style="display:flex; flex-wrap:wrap; gap:18px; margin-bottom:16px;"></div>
               <div id="rankingTableWrap"></div>
             </div>
           </div>
@@ -149,10 +153,31 @@ content="style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://c
           <!-- Timetable Tab -->
           <div id="timetableTab" class="tab-pane">
             <div class="dashboard-card">
-              <div style="text-align: center; padding: 40px; color: #64748b;">
-                <i class="fas fa-calendar-alt" style="font-size: 3rem; margin-bottom: 15px; opacity: 0.5;"></i>
-                <h3>Class Timetables</h3>
-                <p>The Timetable management module is currently under development.</p>
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                <h3 style="margin: 0;">Class Timetable Generator</h3>
+                <div class="actions">
+                  <button id="generateTimetableBtn" class="btn primary-btn"><i class="fas fa-magic"></i> Auto-Generate</button>
+                  <button id="printTimetableBtn" class="btn secondary-btn"><i class="fas fa-file-pdf"></i> Save PDF</button>
+                </div>
+              </div>
+
+              <div class="filter-grid" style="background: #f8fafc; padding: 15px; border-radius: 10px; margin-bottom: 20px; border: 1px solid #e2e8f0;">
+                <div class="filter-group">
+                  <label>Select Grade</label>
+                  <select id="ttGradeSelect"><option value="">-- Choose --</option></select>
+                </div>
+                <div class="filter-group">
+                  <label>Term</label>
+                  <select id="ttTermSelect"><option value="1">Term 1</option><option value="2">Term 2</option><option value="3">Term 3</option></select>
+                </div>
+                <div class="filter-group">
+                  <label>Academic Year</label>
+                  <select id="ttYearSelect"></select>
+                </div>
+              </div>
+
+              <div id="timetableOutput" class="timetable-wrapper">
+                <p style="text-align: center; color: #94a3b8; padding: 40px;">Select a grade and click "Auto-Generate" to build a schedule.</p>
               </div>
             </div>
           </div>
@@ -160,10 +185,21 @@ content="style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://c
           <!-- Learners Reports Tab -->
           <div id="learnersReportsTab" class="tab-pane">
             <div class="dashboard-card">
-              <div style="text-align: center; padding: 40px; color: #64748b;">
-                <i class="fas fa-file-invoice" style="font-size: 3rem; margin-bottom: 15px; opacity: 0.5;"></i>
-                <h3>Learners Reports</h3>
-                <p>Individual learner report generation and management is currently under development.</p>
+              <div style="text-align: center; padding: 20px; border-bottom: 1px solid #edf2f7; margin-bottom: 20px;">
+                <i class="fas fa-file-invoice" style="font-size: 2.5rem; color: #2b6cb0; margin-bottom: 10px;"></i>
+                <h3>Bulk Report Card Generation</h3>
+                <p style="color: #64748b; font-size: 0.9rem;">Generate professional report cards for all learners in the selected grade.</p>
+              </div>
+              
+              <div id="reportsGenerationUI" style="display: none; text-align: center; padding: 30px;">
+                <p id="reportsStatusText" style="margin-bottom: 20px; font-weight: 600; color: #2d3748;"></p>
+                <button id="generateBulkReportsBtn" class="btn primary-btn" style="padding: 12px 30px; font-size: 1rem;">
+                  <i class="fas fa-file-pdf"></i> Generate & Download All Report Cards
+                </button>
+              </div>
+
+              <div id="reportsPlaceholder" style="text-align: center; padding: 40px; color: #94a3b8;">
+                <p>Please apply filters and click "View Results" above to enable bulk report generation for a grade.</p>
               </div>
             </div>
           </div>
@@ -176,6 +212,8 @@ content="style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://c
   <script src="js/auth-service.js"></script>
   <script src="js/cbc-utils.js"></script>
   <script src="js/ui.js"></script>
+  <script src="js/subject-data.js"></script>
   <script src="js/dean.js"></script>
+  <script src="js/timetables.js"></script>
 </body>
 </html>

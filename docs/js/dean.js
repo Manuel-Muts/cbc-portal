@@ -17,6 +17,13 @@ deanInjectedStyle.textContent = `
   @keyframes dean-spin { to { transform: rotate(360deg); } }
 
   /* 🆕 Sidebar Professional Blue Styling (Matches Admin Sidebar) */
+  header .header-actions {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    z-index: 10; /* Ensure buttons are above the centered title */
+  }
+
   .sidebar-nav {
     background-color: #589be3 !important;
     background-color: #2b6cb0 !important;
@@ -92,6 +99,7 @@ const recordsCountEl = document.getElementById("recordsCount");
 const rankingTableWrap = document.getElementById("rankingTableWrap");
 const subjectTableWrap = document.getElementById("subjectTableWrap");
 const subjectTableContainer = document.getElementById("subjectTableContainer");
+const rankingExtras = document.getElementById("rankingExtras");
 const missingExamsTableWrap = document.getElementById("missingExamsTableWrap"); // 🆕 Container for missing exams table
 
 const gradeTrendChartEl = document.getElementById("gradeTrendChart");
@@ -100,6 +108,8 @@ let deanProfileData = null;
 let currentAnalysisRawData = null;
 let currentPrevRawData = null;
 let currentIsSenior = false;
+let lastProcessedStudents = []; // 🆕 For reports tab
+let lastProcessedSubjects = []; // 🆕 For reports tab
 let currentValidKeys = new Set();
 
 const CACHE_TTL = 15 * 60 * 1000; // 15 minutes
@@ -129,6 +139,33 @@ function getSchoolTypeKey() {
 function getGradeOptionsForSchool() {
   const schoolType = getSchoolTypeKey();
   return SCHOOL_TYPES[schoolType].gradeOptions.map(g => `Grade ${g}`);
+}
+
+function getStudentRemark(score) {
+  if (score === null || score === undefined || isNaN(score)) return "N/A";
+  if (score >= 75) return "Excellent";
+  if (score >= 41) return "Good";
+  if (score >= 21) return "Average";
+  return "Needs Improvement";
+}
+
+function getSubjectRemark(subject, score) {
+  const normalizedSubject = String(subject || "").trim().toLowerCase();
+  if (score === null || score === undefined || score === "" || isNaN(score) || String(score).toUpperCase() === "X") {
+    return "ABSENT";
+  }
+
+  if (normalizedSubject.includes("kiswahili")) {
+    if (score >= 75) return "Nzuri Sana";
+    if (score >= 41) return "Nzuri";
+    if (score >= 21) return "Inahitaji Kazi Zaidi";
+    return "Jitahadie Zaidi";
+  }
+
+  if (score >= 75) return "Excellent";
+  if (score >= 41) return "Good";
+  if (score >= 21) return "Average";
+  return "Needs Improvement";
 }
 
 function getAnalyticsCache(key) {
@@ -226,6 +263,13 @@ function setupTabs() {
         if (target === "analyticsTab") {
            setTimeout(updateDashboardChart, 50);
         }
+
+        // 🆕 Initialize Timetable Logic when tab is opened
+        if (target === "timetableTab" && window.TimetableModule) {
+           // Ensure the container section is visible regardless of academic analysis status
+           if (analysisSection) analysisSection.style.display = "block";
+           window.TimetableModule.init();
+        }
       }
     });
   });
@@ -253,6 +297,12 @@ async function generateReport() {
     analysisSection.style.display = "block";
     currentPrevRawData = cached.prevTermData;
     processAnalysisData(cached.rawData, cached.isSenior, assessment, cached.prevTermData, cached.roster);
+
+    // 🆕 Update Reports Tab UI
+    const reportsUI = document.getElementById("reportsGenerationUI");
+    const reportsPlaceholder = document.getElementById("reportsPlaceholder");
+    if (reportsUI) reportsUI.style.display = "block";
+    if (reportsPlaceholder) reportsPlaceholder.style.display = "none";
 
     applyFiltersBtn.disabled = false;
     applyFiltersBtn.innerHTML = "🔍 View Results";
@@ -287,6 +337,12 @@ async function generateReport() {
     analysisSection.style.display = "block";
     const gradeNum = parseInt(grade.match(/\d+/)?.[0] || 0);
     const isSenior = gradeNum >= 10;
+
+    // 🆕 Update Reports Tab UI
+    const reportsUI = document.getElementById("reportsGenerationUI");
+    const reportsPlaceholder = document.getElementById("reportsPlaceholder");
+    if (reportsUI) reportsUI.style.display = "block";
+    if (reportsPlaceholder) reportsPlaceholder.style.display = "none";
 
     currentPrevRawData = prevTermData;
     setAnalyticsCache(cacheKey, {
@@ -653,6 +709,11 @@ function processAnalysisData(allRaw, isSenior, assessment, allPrevRaw = null, ro
     return { ...s, total, mean, points, progress };
   }).sort((a, b) => b.mean - a.mean);
 
+  lastProcessedStudents = studentArray; // 🆕 Store for bulk reports
+  lastProcessedSubjects = sortedSubjects; // 🆕 Store for bulk reports
+  const statusText = document.getElementById("reportsStatusText");
+  if (statusText) statusText.textContent = `Ready to generate reports for ${studentArray.length} learners in ${filterGradeEl.value}.`;
+
   // Convert map to list and sort missing list by name
   const missingExamsList = Object.values(missingExamsMap);
   missingExamsList.sort((a, b) => a.name.localeCompare(b.name));
@@ -721,6 +782,13 @@ function renderRankingTable(students, subjects, isSenior) {
   students.forEach(s => {
     rankCounts[s.rank] = (rankCounts[s.rank] || 0) + 1;
   });
+
+  const classMean = students.length ? students.reduce((acc, s) => acc + (s.mean || 0), 0) / students.length : 0;
+
+  if (rankingExtras) {
+    rankingExtras.innerHTML = '';
+    rankingExtras.style.display = 'none';
+  }
 
   const totalHeader = !isSenior ? '<th class="total-column-header">Total</th>' : '';
   let html = `<table class="marks-table" style="width:100%; border-collapse: collapse;">
@@ -1896,9 +1964,55 @@ function initFilters() {
 }
 
 async function loadDeanProfile() {
+  // 🆕 Show Initialization Overlay (similar to timetable.js)
+  const overlay = document.createElement('div');
+  overlay.id = 'deanInitOverlay';
+  overlay.style.cssText = `
+    position: fixed; inset: 0; background: rgba(255, 255, 255, 0.96); 
+    z-index: 20000; display: flex; align-items: center; justify-content: center; 
+    backdrop-filter: blur(6px); transition: opacity 0.4s ease;
+  `;
+  overlay.innerHTML = `
+    <div style="text-align: center; padding: 45px; background: white; border-radius: 24px; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.15); border: 1px solid #e2e8f0; max-width: 420px; width: 92%;">
+      <div class="spinner" style="width: 50px; height: 50px; border-width: 5px; border-top-color: #2b6cb0; border-right-color: #2b6cb0; display: inline-block; margin-right: 0;"></div>
+      <h2 style="margin: 25px 0 10px 0; color: #1e293b; font-size: 1.6rem; font-weight: 800; letter-spacing: -0.025em; text-transform: uppercase;">Dean's Dashboard</h2>
+      <p style="color: #64748b; font-size: 1rem; font-weight: 500; line-height: 1.6; margin: 0;">Authenticating session and synchronizing academic analytics...</p>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+
+  // 🆕 Dynamically add Refresh button and group header actions
+  const header = document.querySelector('header');
+  const logoutBtn = document.getElementById('logoutBtn');
+  if (header && logoutBtn) {
+    const headerActions = document.createElement('div');
+    headerActions.className = 'header-actions';
+
+    const refreshBtn = document.createElement('button');
+    refreshBtn.id = 'refreshDeanBtn';
+    refreshBtn.className = 'btn secondary-btn';
+    refreshBtn.innerHTML = '<i class="fas fa-sync-alt"></i> Refresh';
+    refreshBtn.title = 'Refresh Dashboard Data';
+    refreshBtn.addEventListener('click', () => {
+      // Clear relevant caches to ensure a fresh load
+      Object.keys(localStorage).forEach(key => {
+        if (key.startsWith(CACHE_KEY_PREFIX) || key === 'dean_school_info_cache' || key === 'user_profile_cache') {
+          localStorage.removeItem(key);
+        }
+      });
+      window.location.reload();
+    });
+    headerActions.appendChild(refreshBtn);
+    headerActions.appendChild(logoutBtn); // Move existing logout button
+    header.appendChild(headerActions); // Append the new container to the header
+  }
+
   try {
     deanProfileData = await authService.getUserProfile(["teacher", "classteacher"]);
-    if (!deanProfileData) return;
+    if (!deanProfileData) {
+      if (overlay) overlay.remove();
+      return;
+    }
 
     if (!deanProfileData.isDean) {
       alert("Only Deans can access this page.");
@@ -1908,23 +2022,23 @@ async function loadDeanProfile() {
     setText(document.getElementById("deanRoleText"), "Authorized Dean access enabled.");
     setText(document.getElementById("deanStatus"), "Authorized");
 
-    // Pre-load signature for PDF generation
-    if (deanProfileData.signatureUrl) {
-      deanProfileData.signatureBase64 = await getImageBase64(deanProfileData.signatureUrl);
-      try {
-        deanProfileData.sigFormat = getImageFormat(deanProfileData.signatureBase64);
-      } catch(e){}
-    }
-
-    // Pre-load school info and logo for PDF generation (always fresh, no cache)
+    // 🚀 Parallelize: Fetch school info and convert images concurrently
+    const SCHOOL_CACHE_KEY = "dean_school_info_cache";
+    localStorage.removeItem(SCHOOL_CACHE_KEY);
+    
     try {
-      // Force clear any cached school info to get latest schoolType
-      const SCHOOL_CACHE_KEY = "dean_school_info_cache";
-      localStorage.removeItem(SCHOOL_CACHE_KEY);
-      
-      schoolInfo = await fetchWithAuth(`${API_BASE}/users/my-school?includeLogo=true`);
+      // Start fetching school info and signature conversion in parallel
+      const [schoolResponse] = await Promise.all([
+        fetchWithAuth(`${API_BASE}/users/my-school?includeLogo=true`),
+        deanProfileData.signatureUrl ? getImageBase64(deanProfileData.signatureUrl).then(base64 => {
+          deanProfileData.signatureBase64 = base64;
+          deanProfileData.sigFormat = getImageFormat(base64);
+          return base64;
+        }).catch(e => console.warn("Signature conversion failed:", e)) : Promise.resolve(null)
+      ]);
+
+      schoolInfo = schoolResponse;
       if (schoolInfo) {
-        // Cache briefly for performance but always refresh on page load
         localStorage.setItem(SCHOOL_CACHE_KEY, JSON.stringify({
           timestamp: Date.now(),
           data: schoolInfo
@@ -1939,29 +2053,178 @@ async function loadDeanProfile() {
             logoSrc = `data:${mimeType};base64,${logoSrc}`;
           }
           
-          // Note: getImageBase64 handles relative paths, absolute URLs, and data URIs
+          // Convert logo to base64 and extract format upfront (skip jsPDF instantiation)
           deanProfileData.schoolLogoBase64 = await getImageBase64(logoSrc);
-
-          // Pre-calculate properties once to speed up subsequent PDF generations
-          try {
-            const { jsPDF } = window.jspdf;
-            const tempDoc = new jsPDF();
-            deanProfileData.logoProps = tempDoc.getImageProperties(deanProfileData.schoolLogoBase64);
-            deanProfileData.logoFormat = getImageFormat(deanProfileData.schoolLogoBase64);
-          } catch (e) { console.warn("Failed to pre-parse logo:", e); }
+          deanProfileData.logoFormat = getImageFormat(deanProfileData.schoolLogoBase64);
         }
       }
     } catch (e) {
-      console.warn("Failed to pre-load school logo for Dean:", e);
+      console.warn("Failed to pre-load school info or logo:", e);
       deanProfileData.schoolName = "SCHOOL NAME";
     }
 
     setupTabs();
     initFilters();
+
+    // 🆕 Gracefully remove overlay once everything is ready
+    setTimeout(() => {
+      overlay.style.opacity = '0';
+      setTimeout(() => overlay.remove(), 400);
+    }, 600);
+
   } catch (error) {
     console.error(error.message || "Unable to load dean profile.");
     window.location.href = "teacher-dashboard.html";
   }
+}
+
+/**
+ * 🆕 Generates a high-quality merged PDF for all students in the grade
+ * This logic uses data ALREADY in memory to avoid extra database costs.
+ */
+async function generateBulkReportCards() {
+    if (!lastProcessedStudents.length) return;
+
+    const btn = document.getElementById("generateBulkReportsBtn");
+    const originalHTML = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner"></span> Compiling Reports...';
+
+    await new Promise(r => setTimeout(r, 100)); // UI Breath
+
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.getHeight();
+    
+    const schoolName = deanProfileData?.schoolName || "SCHOOL NAME";
+    const termVal = filterTermEl.value;
+    const year = filterYearEl.value;
+    const assessLabel = filterAssessmentEl.options[filterAssessmentEl.selectedIndex]?.text || "Report";
+    const selectedStream = filterStreamEl?.value || "all";
+
+    for (let i = 0; i < lastProcessedStudents.length; i++) {
+        const s = lastProcessedStudents[i];
+        if (i > 0) doc.addPage();
+
+        // 1. Report Header
+        let headerY = 12;
+        if (deanProfileData?.schoolLogoBase64) {
+            try {
+                const logoSize = 20;
+                const logoFormat = deanProfileData.logoFormat || getImageFormat(deanProfileData.schoolLogoBase64);
+                doc.addImage(deanProfileData.schoolLogoBase64, logoFormat, (pageWidth / 2) - (logoSize / 2), headerY, logoSize, logoSize);
+                headerY += logoSize + 4;
+            } catch (e) {
+                console.warn('Dean report logo insert failed:', e);
+            }
+        } else {
+            headerY += 2;
+        }
+
+        doc.setFont("helvetica", "bold").setFontSize(15).text(schoolName, pageWidth / 2, headerY, { align: "center" });
+        headerY += 7;
+        doc.setFont("helvetica", "normal").setFontSize(10).text("LEARNER'S PROGRESS REPORT", pageWidth / 2, headerY, { align: "center" });
+        headerY += 6;
+        doc.setFontSize(9).text(`${assessLabel} - Term ${termVal}, ${year}`, pageWidth / 2, headerY, { align: "center" });
+        headerY += 8;
+
+        // 2. Student Info Box
+        const studentStream = s.stream || "N/A";
+        const infoBoxY = headerY + 2;
+        doc.setDrawColor(200).setLineWidth(0.3).rect(15, infoBoxY, pageWidth - 30, 28);
+        doc.setFont("helvetica", "bold").setFontSize(8.5).text(`Name: ${s.name}`, 18, infoBoxY + 7);
+        doc.setFont("helvetica", "normal").setFontSize(8.5).text(`ADM: ${s.adm}`, 18, infoBoxY + 13);
+        doc.text(`Grade: ${filterGradeEl.value}`, pageWidth - 70, infoBoxY + 7);
+        doc.text(`Stream: ${studentStream}`, pageWidth - 70, infoBoxY + 13);
+        doc.text(`Rank: ${s.rank} of ${lastProcessedStudents.length}`, 18, infoBoxY + 19);
+
+        // 3. Subject Grid
+        const headers = [["Subject", "Score", "Level", "Pts", "Remarks"]];
+        const tableStartY = infoBoxY + 26;
+        const rows = lastProcessedSubjects.map(sub => {
+            const score = s.subjects[sub];
+            const val = (score === undefined || score === null) ? "ABS" : score;
+            const remark = getSubjectRemark(sub, score);
+            return [sub, val, cbcUtils.getSubdivision(score), cbcUtils.getPoints(score), remark];
+        });
+
+        doc.autoTable({
+            startY: tableStartY,
+            head: headers,
+            body: rows,
+            theme: 'grid',
+            headStyles: { fillColor: [29, 78, 216], textColor: 255 },
+            styles: { fontSize: 7.5, cellPadding: 2 },
+            bodyStyles: { valign: 'middle' },
+            alternateRowStyles: { fillColor: [247, 248, 250] },
+            margin: { left: 15, right: 15 },
+            tableWidth: pageWidth - 30
+        });
+
+        // 4. Summary & Remarks
+        const finalY = doc.lastAutoTable.finalY + 8;
+        const studentRemark = getStudentRemark(s.mean);
+        const metaX = 15;
+        const metaX2 = pageWidth / 2 + 5;
+        const lineHeight = 5.5;
+
+        const summaryRows = [
+            [`Total Marks`, `${s.total}`],
+            [`Total Points`, `${s.points}`],
+            [`Overall Performance`, `${cbcUtils.getSubdivision(s.mean)}`],
+            [`Learner Remark`, `${studentRemark}`],
+            [`Class Teacher`, `${cbcUtils.getTeacherComment(s.mean)}`],
+            [`Headteacher`, `${cbcUtils.getHeadteacherComment(s.mean)}`]
+        ];
+
+        summaryRows.forEach((row, index) => {
+            const x = index < 3 ? metaX : metaX2;
+            const y = finalY + ((index % 3) * lineHeight);
+            doc.setFont("helvetica", "bold").setFontSize(8).text(`${row[0]}:`, x, y);
+            doc.setFont("helvetica", "normal").text(`${row[1]}`, x + 45, y);
+        });
+
+        const keyStartY = finalY + 20;
+        doc.setFont("helvetica", "bold").setFontSize(9).text("Performance Key", metaX, keyStartY);
+        doc.autoTable({
+            startY: keyStartY + 3,
+            head: [["Level", "Range", "Points"]],
+            body: cbcUtils.PERFORMANCE_KEY.map(item => [item.subdivision, item.range, item.points]),
+            theme: 'grid',
+            headStyles: { fillColor: [29, 78, 216], textColor: 255 },
+            styles: { fontSize: 7, cellPadding: 2 },
+            margin: { left: metaX },
+            tableWidth: 75
+        });
+
+        const signatureY = Math.max(doc.lastAutoTable.finalY + 16, pageHeight - 45);
+        doc.setFont("helvetica", "normal");
+        doc.line(20, signatureY, 80, signatureY);
+        doc.text("Class Teacher's Signature", 20, signatureY + 5);
+        doc.line(pageWidth - 80, signatureY, pageWidth - 20, signatureY);
+        doc.text("Headteacher's Signature", pageWidth - 80, signatureY + 5);
+
+        // Embed Dean's actual signature if we have it
+        if (deanProfileData?.signatureBase64) {
+            try {
+                const sigFormat = deanProfileData.sigFormat || getImageFormat(deanProfileData.signatureBase64);
+                doc.addImage(deanProfileData.signatureBase64, sigFormat, pageWidth - 65, signatureY - 12, 40, 10);
+            } catch(e){}
+        }
+
+        // Footer branding on every report page
+        doc.setFontSize(8);
+        doc.setTextColor(120);
+        const printedTimestamp = new Date().toLocaleString();
+        doc.text(`Printed: ${printedTimestamp}, CompetenceHub Analytics`, pageWidth / 2, pageHeight - 10, { align: "center" });
+    }
+
+    const streamSuffix = selectedStream !== "all" ? `_${selectedStream.replace(/\s+/g, '_')}` : "";
+    doc.save(`Reports_${filterGradeEl.value.replace(/\s+/g, '_')}${streamSuffix}_T${termVal}_${year}.pdf`);
+    btn.disabled = false;
+    btn.innerHTML = originalHTML;
+    cbcUtils.showToast("Reports downloaded successfully!", "success");
 }
 
 // --- EVENT LISTENERS INITIALIZATION ---
@@ -1970,6 +2233,9 @@ if (applyFiltersBtn) applyFiltersBtn.addEventListener("click", generateReport);
 if (printReportBtn) printReportBtn.addEventListener("click", downloadRankingAsPDF);
 if (printSubjectReportBtn) printSubjectReportBtn.addEventListener("click", downloadSubjectPerformanceAsPDF);
 if (printMissingReportBtn) printMissingReportBtn.addEventListener("click", downloadMissingExamsAsPDF);
+if (document.getElementById("generateBulkReportsBtn")) {
+    document.getElementById("generateBulkReportsBtn").addEventListener("click", generateBulkReportCards);
+}
 
 if (filterSubjectEl) {
   filterSubjectEl.addEventListener("change", () => updateDashboardChart());

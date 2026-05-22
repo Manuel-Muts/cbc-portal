@@ -1589,68 +1589,7 @@ document.addEventListener("DOMContentLoaded", () => {
   // ---------------------------
   // SENIOR SCHOOL PATHWAYS & COURSES
   // ---------------------------
-  const seniorSchoolPathways = {
-    STEM: [
-      "Mathematics",
-      "Biology",
-      "Chemistry",
-      "Physics",
-      "Business Studies",
-      "Computer Studies",
-      "Environmental Science",
-      "Engineering Technology",
-      "Applied Sciences",
-      "Electricity",
-      "Aviation",
-      "Agriculture",
-      "Marine and Fisheries",
-      "Building and Construction",
-      "Woodwork",
-      "Metalwork",
-      "Power Mechanics",
-      "General Science",
-      "Home Science",
-      "Media Technology"
-    ],
-    "Social Sciences": [
-      "History & Citizenship",
-      "Geography",
-      "Mathematics",
-      "Business Studies",
-      "Political Studies",
-      "Christian Religious Studies (CRE)",
-      "Kenya Sign Language",
-      "Literature in English",
-      "Fasihi ya Kiswahili",
-      "Indigenous Language",
-      "Hindu Religious Education",
-      "French",
-      "German",
-      "Islamic Religious Education",
-    ],
-    "Arts & Sports Science": [
-      "French",
-      "Hindu Religious Education",
-      "Mathematics",
-      "Computer Studies",
-      "Literature in English",
-      "Islamic Religious Education",
-      "German",
-      "Fasihi ya Kiswahili",
-      "Kiswahili",
-      "History & Citizenship",
-      "Geography",
-      "Biology",
-      "General Science",
-      "Fine Art",
-      "Film & Media Studies",
-      "Fashion & Design",
-      "Fasihi ya Kiswahili",
-       "Music and Dance",
-      "Theatre and Film",
-      "Sports and Recreation"
-    ]
-  };
+  const seniorSchoolPathways = SUBJECT_DATA.seniorSchoolPathways;
 
 
 

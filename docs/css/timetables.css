@@ -1,0 +1,14 @@
+/* docs/css/timetables.css */
+.timetable-wrapper {
+    min-height: 300px;
+    border: 1px dashed #e2e8f0;
+    border-radius: 12px;
+    margin-top: 10px;
+    transition: all 0.3s ease;
+}
+
+.loading-state {
+    color: #64748b;
+    font-weight: 500;
+    font-size: 0.9rem;
+}

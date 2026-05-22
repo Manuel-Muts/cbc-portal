@@ -91,6 +91,7 @@ function showToast(message, type = "success") {
   if (!container) {
     container = document.createElement("div");
     container.id = "toastContainer";
+    container.style.zIndex = "99999"; // High z-index to stay above scheduling modals
     document.body.appendChild(container);
   }
   const t = document.createElement("div");

@@ -357,7 +357,7 @@ function attachAdminSignatureLogic() {
       table th { padding: 10px 10px !important; }
       
       /* Modern Toast Styles */
-      #toastContainer { position: fixed; right: 20px; bottom: 20px; z-index: 10000; display: flex; flex-direction: column; gap: 10px; }
+      #toastContainer { position: fixed; right: 20px; bottom: 20px; z-index: 99999; display: flex; flex-direction: column; gap: 10px; }
       .toast { 
         padding: 12px 18px; border-radius: 8px; color: white !important; font-weight: 600; font-size: 0.9rem;
         box-shadow: 0 4px 15px rgba(0,0,0,0.2); min-width: 250px;
@@ -679,74 +679,10 @@ confirmPromotionBtn.addEventListener("click", async () => {
   // ---------------------------
   // GRADE SUBJECTS
   // ---------------------------
-  const gradeSubjects = {
-    "1-3": ["Mathematics", "Kiswahili", "English", "Environmental Activities", "Social Studies", "Christian Religious Education", "Creative Arts and Sports"],
-    "4-6": ["Mathematics", "English", "Kiswahili", "Integrated Science", "Social Studies", "Christian Religious Education", "Creative Arts and Sports"],
-    "7-9": ["Mathematics", "English", "Kiswahili", "Integrated Science", "Social Studies", "Pre-Technical Studies", "Agriculture", "Christian Religious Education", "Creative Arts and Sports"]
-  };
+  const gradeSubjects = SUBJECT_DATA.gradeSubjects;
 
   // SENIOR SCHOOL PATHWAYS & COURSES (Grade 10-12)
-  const seniorSchoolPathways = {
-    STEM: [
-      "Mathematics",
-      "Biology",
-      "Chemistry",
-      "Physics",
-      "Business Studies",
-      "Computer Studies",
-      "Environmental Science",
-      "Engineering Technology",
-      "Applied Sciences",
-      "Electricity",
-      "Aviation",
-      "Agriculture",
-      "Marine and Fisheries",
-      "Building and Construction",
-      "Woodwork",
-      "Metalwork",
-      "Power Mechanics",
-      "General Science",
-      "Home Science",
-      "Media Technology"
-    ],
-    "Social Sciences": [
-      "History & Citizenship",
-      "Geography",
-      "Mathematics",
-      "Business Studies",
-      "Political Studies",
-      "Christian Religious Education",
-      "Kenya Sign Language",
-      "Literature in English",
-      "Fasihi ya Kiswahili",
-      "Indigenous Language",
-      "Hindu Religious Education",
-      "French",
-      "German",
-      "Islamic Religious Education"
-    ],
-    "Arts & Sports Science": [
-      "French",
-      "Hindu Religious Education",
-      "Mathematics",
-      "Computer Studies",
-      "Literature in English",
-      "Islamic Religious Education",
-      "German",
-      "Fasihi ya Kiswahili",
-      "Kiswahili",
-      "History & Citizenship",
-      "Geography",
-      "Biology",
-      "General Science",
-      "Fine Art",
-      "Film & Media Studies",
-      "Fashion & Design",
-      "Music and Dance",
-      "Theatre and Film",
-      "Sports and Recreation"
-    ]
-  };
+  const seniorSchoolPathways = SUBJECT_DATA.seniorSchoolPathways;
 
   // ---------------------------
   // RENDER HELPERS

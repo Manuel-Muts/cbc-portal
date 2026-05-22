@@ -465,17 +465,34 @@ export const getAllUsers = async (req, res) => {
 
     // 🆕 Filter by grade and stream for students
     const { grade, stream } = req.query;
-    if (query.role === 'student' && (grade || stream)) {
+    const normalizeQueryGrade = (g) => {
+      if (!g) return null;
+      let value = String(g).trim();
+      const numeric = value.match(/\d+/);
+      if (numeric) return `Grade ${numeric[0]}`;
+      return value;
+    };
+    const normalizeQueryStream = (s) => {
+      if (!s) return null;
+      let value = String(s).trim();
+      if (/^stream\s+/i.test(value)) value = value.replace(/^stream\s+/i, "");
+      return value.toUpperCase();
+    };
+
+    const normalizedGrade = normalizeQueryGrade(grade);
+    const normalizedStream = normalizeQueryStream(stream);
+
+    if (query.role === 'student' && (normalizedGrade || normalizedStream)) {
       const enrollmentFilter = {
         schoolId: user.schoolId,
         academicYear: new Date().getFullYear(), // Assume current year for active enrollments
         status: 'active'
       };
-      if (grade && grade !== 'all') {
-        enrollmentFilter.grade = grade;
+      if (normalizedGrade && normalizedGrade !== 'all') {
+        enrollmentFilter.grade = normalizedGrade;
       }
-      if (stream && stream !== 'all') {
-        enrollmentFilter.stream = stream;
+      if (normalizedStream && normalizedStream !== 'all') {
+        enrollmentFilter.stream = normalizedStream;
       }
 
       const matchingEnrollments = await StudentEnrollment.find(enrollmentFilter).select('studentId').lean();
@@ -581,7 +598,7 @@ export const getSubjectAllocations = async (req, res) => {
     const cached = cache.get(cacheKey);
 
     const query = { role: 'teacher' };
-    if (req.user.role === 'admin') {
+    if (req.user.schoolId) {
       query.schoolId = req.user.schoolId;
     }
 

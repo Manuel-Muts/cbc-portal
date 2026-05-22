@@ -456,6 +456,7 @@ export const getOutstandingFees = async (req, res) => {
     const allowedGrades = SCHOOL_TYPES[schoolType].gradeOptions;
 
     // Construct cache key (ignore '_t' for standard UI browsing)
+    const { name, class: classFilter, academicYear, term, page: pageQuery, limit: limitQuery, sort } = req.query;
     const queryForCache = { ...req.query };
     const limitQueryInt = parseInt(limitQuery, 10);
     if (limitQueryInt <= 50 || isNaN(limitQueryInt)) delete queryForCache._t;
@@ -466,7 +467,6 @@ export const getOutstandingFees = async (req, res) => {
       return res.json(cachedData);
     }
 
-    const { name, class: classFilter, academicYear, term, page: pageQuery, limit: limitQuery, sort } = req.query;
     const page = parseInt(pageQuery) || 1;
     const limit = parseInt(limitQuery) || 10;
     const yearToUse = parseInt(academicYear) || new Date().getFullYear();

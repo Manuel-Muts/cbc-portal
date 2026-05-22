@@ -752,21 +752,28 @@ const displayStudentTables = async () => {
       list.forEach(m => {
         if (isSenior) {
           const final = cbcUtils.calculateFinalScore(m.continuousAssessment, m.projectWork, m.endTermExam);
+          const isAbsentFinal = final === null || String(final).toUpperCase() === "X";
+          const finalDisplay = isAbsentFinal ? '<span style="color:#ef4444; font-weight:700;">ABS</span>' : (final + "%");
+          const finalLevel = isAbsentFinal ? "-" : cbcUtils.getSubdivision(final);
+
           tbody += `
             <tr>
               <td>${(m.course || "Unknown").replace(/-/g, " ")}</td>
               <td>${m.continuousAssessment ?? "-"}</td>
               <td>${m.projectWork ?? "-"}</td>
               <td>${m.endTermExam ?? "-"}</td>
-              <td><strong>${final !== null ? final + "%" : "-"}</strong></td>
-              <td>${final !== null ? cbcUtils.getSubdivision(final) : "-"}</td>
+              <td><strong>${finalDisplay}</strong></td>
+              <td>${finalLevel}</td>
             </tr>`;
         } else {
+          const scorePresent = m.score !== undefined && m.score !== null && String(m.score).trim() !== "";
+          const scoreDisplay = scorePresent ? (Number(m.score) + "%") : "-";
+          const levelDisplay = scorePresent ? cbcUtils.getSubdivision(Number(m.score)) : "-";
           tbody += `
             <tr>
               <td>${(m.subject || "Unknown").replace(/-/g, " ")}</td>
-              <td>${m.score ?? 0}%</td>
-              <td>${cbcUtils.getSubdivision(m.score || 0)}</td>
+              <td>${scoreDisplay}</td>
+              <td>${levelDisplay}</td>
             </tr>`;
         }
       });
@@ -811,10 +818,11 @@ const displayStudentTables = async () => {
             if (m.projectWork !== null) { pwSum += Number(m.projectWork); pwCount++; }
             if (m.endTermExam !== null) { etSum += Number(m.endTermExam); etCount++; }
             const fs = cbcUtils.calculateFinalScore(m.continuousAssessment, m.projectWork, m.endTermExam);
-            if (fs !== null) {
-              fsSum += fs;
+            const isFsAbsent = fs === null || String(fs).toUpperCase() === "X";
+            if (!isFsAbsent) {
+              fsSum += Number(fs);
               fsCount++;
-              courseScores.push({ course: (m.course || "Unknown").replace(/-/g, " "), score: fs });
+              courseScores.push({ course: (m.course || "Unknown").replace(/-/g, " "), score: Number(fs) });
             }
           });
 

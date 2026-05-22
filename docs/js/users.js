@@ -45,7 +45,7 @@
     }
 
     /* Modern Toast & Confirm Styles */
-    #toastContainer { position: fixed; right: 20px; bottom: 20px; z-index: 10000; display: flex; flex-direction: column; gap: 10px; }
+    #toastContainer { position: fixed; right: 20px; bottom: 20px; z-index: 99999; display: flex; flex-direction: column; gap: 10px; }
     .toast { 
       padding: 12px 18px; border-radius: 8px; color: white !important; font-weight: 600; font-size: 0.9rem;
       box-shadow: 0 4px 15px rgba(0,0,0,0.2); min-width: 250px;
@@ -911,6 +911,16 @@ if (usersNextPageBtn) {
     } catch (e) { console.error("Failed to load streams:", e); }
   }
 
+  function getStudentExportName(user) {
+    return String(user.name || user.fullName || user.firstName || user.lastName || "").trim();
+  }
+
+  function sortStudentsAlphabetically(students) {
+    return [...students].sort((a, b) => {
+      return getStudentExportName(a).localeCompare(getStudentExportName(b), undefined, { sensitivity: "base", numeric: true });
+    });
+  }
+
   // 🆕 Download Students List as CSV Button Logic
   if (downloadStudentsCsvBtn) {
     downloadStudentsCsvBtn.addEventListener("click", async () => {
@@ -926,7 +936,7 @@ if (usersNextPageBtn) {
         const res = await secureFetch(`${API_BASE}/users?${queryParams}`);
         if (!res || !res.users) throw new Error("Failed to fetch student data for CSV.");
 
-        const students = res.users;
+        const students = sortStudentsAlphabetically(res.users);
         if (students.length === 0) {
           showToast("No students found for the selected filters.", "info");
           return;
@@ -1043,8 +1053,11 @@ if (usersNextPageBtn) {
       downloadFilteredStudentsCsvBtn.innerHTML = '<span class="spinner"></span> Generating CSV...';
 
       // Robustly fetch current values from the DOM to avoid stale/null references
-      const gradeVal = document.getElementById("csvGradeFilter")?.value;
-      const streamVal = document.getElementById("csvStreamFilter")?.value;
+      const rawGradeVal = document.getElementById("csvGradeFilter")?.value;
+      const rawStreamVal = document.getElementById("csvStreamFilter")?.value;
+      const gradeVal = rawGradeVal ? rawGradeVal.trim() : "";
+      let streamVal = rawStreamVal ? rawStreamVal.trim() : "";
+      if (/^stream\s+/i.test(streamVal)) streamVal = streamVal.replace(/^stream\s+/i, "");
 
       try {
         // 🆕 Added '_t' (timestamp) to bypass backend/browser caching and fix "stuck" filters
@@ -1055,7 +1068,7 @@ if (usersNextPageBtn) {
         const res = await secureFetch(`${API_BASE}/users?${params.toString()}`);
         if (!res || !res.users) throw new Error("Failed to fetch student data for CSV.");
 
-        const students = res.users;
+        const students = sortStudentsAlphabetically(res.users);
         if (students.length === 0) {
           showToast("No students found for the selected filters.", "info");
           return;
@@ -1209,7 +1222,10 @@ if (usersNextPageBtn) {
             populateCsvGradeFilter();
             populateCsvStreamFilter();
             // Ensure change listener is only attached once
-            csvGradeFilter.onchange = () => populateCsvStreamFilter();
+            csvGradeFilter.onchange = () => {
+              populateCsvStreamFilter();
+              if (csvStreamFilter) csvStreamFilter.value = "all";
+            };
           }
         }
       });

@@ -411,14 +411,22 @@ export const getUniqueStreams = async (req, res) => {
       return res.status(400).json({ message: "School ID missing" });
     }
     const { grade } = req.query; // 🆕 Get grade from query
-    
+    const normalizeQueryGrade = (g) => {
+      if (!g) return null;
+      let value = String(g).trim();
+      const numeric = value.match(/\d+/);
+      if (numeric) return `Grade ${numeric[0]}`;
+      return value;
+    };
+    const normalizedGrade = normalizeQueryGrade(grade);
+
     const filter = {
       schoolId: req.user.schoolId,
       stream: { $ne: null, $ne: '' }
     };
 
-    if (grade && grade !== 'all') { // 🆕 Apply grade filter if provided
-      filter.grade = grade;
+    if (normalizedGrade && normalizedGrade !== 'all') { // 🆕 Apply grade filter if provided
+      filter.grade = normalizedGrade;
     }
     const streams = await StudentEnrollment.distinct('stream', filter); // 🆕 Use the filter object
     res.json(streams);

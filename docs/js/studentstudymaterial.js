@@ -51,12 +51,7 @@ document.addEventListener("DOMContentLoaded", () => {
     } catch (e) {}
   };
 
-  const gradeSubjects = {
-    "1-3": ["Mathematics", "Kiswahili", "English", "Environmental Activities", "Social Studies", "Religious Studies (CRE)", "Creative Arts and Sports"],
-    "4-6": ["Mathematics", "English", "Kiswahili", "Integrated Science", "Social Studies", "Religious Education (CRE)", "Creative Arts and Sports"],
-    "7-9": ["Mathematics", "English", "Kiswahili", "Integrated Science", "Social Studies", "Pre-Technical Studies", "Agriculture", "Religious Studies (CRE)", "Creative Arts and Sports"],
-    "10-12": ["Mathematics", "English", "Kiswahili", "Physics", "Chemistry", "Biology", "History", "Geography", "Religious Studies (CRE)", "Business Studies", "Computer Science", "Home Science"]
-  };
+  const gradeSubjects = SUBJECT_DATA.gradeSubjects;
 
   const slugify = (s = "") => s.toLowerCase().replace(/\s+/g, "-");
 

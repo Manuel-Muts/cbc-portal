@@ -3,6 +3,8 @@ import fs from 'fs';
 import path from 'path';
 import { Material } from '../models/Material.js';
 import Payment from '../models/Payment.js';
+import LoginAttempt from '../models/LoginAttempt.js';
+import Timetable from '../models/Timetable.js';
 import { cleanOrphanedEnrollments } from '../controllers/enrollmentController.js'; // Import the cleanup function
 //import { S3Client } from '@aws-sdk/client-s3';
 //import { Upload } from '@aws-sdk/lib-storage';
@@ -174,6 +176,53 @@ export const startCronJobs = () => {
       console.log('✅ Daily backup job completed.');
     } catch (err) {
       console.error('❌ Error during payments backup job:', err);
+    }
+  });
+
+  // 🆕 Cron Job: Explicit cleanup of login attempts
+  // This acts as a safety net for M0 clusters where TTL indexes can be unreliable.
+  // Runs every day at 2:00 AM (0 2 * * *)
+  cron.schedule('0 2 * * *', async () => {
+    console.log('🕒 [Cleanup Job] Starting daily removal of login attempts older than 7 days...');
+    try {
+      const oneWeekAgo = new Date();
+      oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
+      
+      const result = await LoginAttempt.deleteMany({ createdAt: { $lt: oneWeekAgo } });
+      console.log(`✅ [Cleanup Job] Deleted ${result.deletedCount} login attempt records.`);
+      
+      // 💡 Future Expansion: Add cleanup for other logging collections (e.g. AuditLogs) here.
+      // const thirtyDaysAgo = new Date();
+      // thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+      // await ActivityLog.deleteMany({ createdAt: { $lt: thirtyDaysAgo } });
+    } catch (err) {
+      console.error('❌ Error during login attempts cleanup job:', err);
+    }
+  });
+
+  // 🆕 Cron Job: Clear saved timetables once a term is over
+  // Runs at 4:00 AM on the 1st of January, May, and September.
+  cron.schedule('0 4 1 1,5,9 *', async () => {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = now.getMonth() + 1; // 1-indexed (Jan=1, May=5, Sep=9)
+
+    let targetTerm = "";
+    let targetYear = year;
+
+    // Determine the term that just ended
+    if (month === 1) { targetTerm = "Term 3"; targetYear = year - 1; }
+    else if (month === 5) { targetTerm = "Term 1"; targetYear = year; }
+    else if (month === 9) { targetTerm = "Term 2"; targetYear = year; }
+
+    if (targetTerm) {
+      console.log(`🕒 [Cleanup Job] Term end reached. Clearing timetables for ${targetTerm} ${targetYear}...`);
+      try {
+        const result = await Timetable.deleteMany({ term: targetTerm, academicYear: targetYear });
+        console.log(`✅ [Cleanup Job] Deleted ${result.deletedCount} old timetable records.`);
+      } catch (err) {
+        console.error('❌ Error during timetables cleanup job:', err);
+      }
     }
   });
 };

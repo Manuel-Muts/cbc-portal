@@ -124,6 +124,73 @@ window.cbcUtils = {
     },
 
     /**
+     * Returns an abbreviated subject name for display in compact contexts like PDFs.
+     * @param {string} subject - The full subject name.
+     * @returns {string} The abbreviated name, or the original if no abbreviation is found.
+     */
+    getAbbreviatedSubjectName: (subject) => {
+        const abbreviations = {
+            "Physics": "PHY",
+            "Chemistry": "CHEM",
+            "Biology": "BIO",
+            "Science and Technology": "SCI&T", // Added for junior school
+            "History": "HIST",
+            "Geography": "GEOG",
+            "English": "ENG",
+            "Kiswahili": "KISW",
+            "Social Studies": "S/S",
+            "Mathematics": "MATHS",
+            "Agriculture": "AGRI",
+            "Christian Religious Studies": "CRE", // Added for robustness
+            "Christian Religious Education": "CRE", // Added for robustness
+            "Christian Religion": "CRE", // Added to catch common variations/typos
+            "Creative Arts and Sports": "C/A",
+            "Pre-Technical Studies": "PRE-TECH",
+            "Christian Religious Studies (CRE)": "CRE",
+            "Integrated Science": "I/SCI",
+            "Environmental Activities": "EA",
+            "Physical Health Education": "PHE",
+            "Business Studies": "BS",
+            "Home Science": "HS",
+            "Computer Science": "CS",
+            "Computer Studies": "CS",
+            "History & Citizenship": "H&C",
+            "Political Studies": "PS",
+            "Kenya Sign Language": "KSL",
+            "Literature in English": "Lit Eng",
+            "Fasihi ya Kiswahili": "Fasihi K",
+            "Indigenous Language": "IL",
+            "Hindu Religious Education": "HRE",
+            "Islamic Religious Education": "IRE",
+            "Environmental Science": "ES",
+            "Engineering Technology": "ET",
+            "Applied Sciences": "AS",
+            "Marine and Fisheries": "M&F",
+            "Building and Construction": "B&C",
+            "Woodwork": "WW",
+            "Metalwork": "MW",
+            "Power Mechanics": "PM",
+            "General Science": "GS",
+            "Media Technology": "MT",
+            "Film & Media Studies": "F&MS",
+            "Fashion & Design": "F&D",
+            "Music and Dance": "M&D",
+            "Theatre and Film": "T&F",
+            "Sports and Recreation": "S&R",
+            "PPI": "PPI", // Ensure PPI is recognized
+            "PE": "PE"    // Ensure PE is recognized
+        };
+
+        const normalizedSubject = (subject || "").trim().toLowerCase();
+        for (const key in abbreviations) {
+            if (key.trim().toLowerCase() === normalizedSubject) {
+                return abbreviations[key];
+            }
+        }
+        return subject; // Return original if no abbreviation found
+    },
+
+    /**
      * Centralized Toast Notification
      */
     showToast: (msg, type = "success") => {
