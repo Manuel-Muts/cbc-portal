@@ -379,6 +379,13 @@ setCache(cacheKey, metrics);
               <label><input type="checkbox" id="maintenanceMode"> Maintenance Mode</label><br>
               <label><input type="checkbox" id="registrationOpen"> Allow Registrations</label><br>
               <button id="saveSettingsBtn" class="primary-btn">Save Settings</button>
+              
+              <hr style="margin: 25px 0; border: 0; border-top: 1px solid #eee;">
+              <h3>System Maintenance</h3>
+              <div style="display: flex; gap: 10px; flex-wrap: wrap; margin-top: 15px;">
+                <button id="manualCleanOrphansBtn" class="btn secondary-btn" style="background: #64748b; color: white; padding: 8px 15px; border-radius: 6px; border: none; cursor: pointer;">🧹 Clean Orphaned Enrollments</button>
+                <button id="manualCleanLoginsBtn" class="btn secondary-btn" style="background: #64748b; color: white; padding: 8px 15px; border-radius: 6px; border: none; cursor: pointer;">🛡️ Clean Old Login Attempts</button>
+              </div>
             </div>
           </div>
         `;
@@ -410,7 +417,9 @@ setCache(cacheKey, metrics);
               <th>Actions</th>
             </tr>
           </thead>
-          <tbody id="schoolsTable"></tbody>
+          <tbody id="schoolsTable">
+            <tr><td colspan="7" style="text-align:center">Loading...</td></tr>
+          </tbody>
         </table>
         <p id="noSchoolsFound" style="display:none; text-align:center; margin-top:10px; color:#888;">No results found</p>
         <div class="pagination-controls" style="margin-top:15px; display:flex; justify-content:center; gap:10px; align-items:center;">
@@ -520,6 +529,7 @@ setCache(cacheKey, metrics);
 if (res && res.ok) {
   alert("School created successfully");
   modal.classList.add("hidden");
+  localStorage.removeItem("admin_schools_options_cache"); // Clear options cache for dropdowns
   loadSchools(1);
 } else {
   const err = await res.json().catch(() => ({ msg: "Failed" }));
@@ -653,6 +663,7 @@ if (nextSchoolsBtn) {
       document.querySelectorAll(".deleteSchoolBtn").forEach(btn => {
         btn.addEventListener("click", async () => {
           if (!confirm("Are you sure?")) return;
+          localStorage.removeItem("admin_schools_options_cache");
           await authFetch(`/schools/${btn.dataset.id}`, { method: "DELETE" });
           loadSchools(currentSchoolPage);
         });
@@ -728,7 +739,9 @@ if (nextSchoolsBtn) {
               <th>Actions</th>
             </tr>
           </thead>
-          <tbody id="adminsTable"></tbody>
+          <tbody id="adminsTable">
+            <tr><td colspan="6" style="text-align:center"><span class="spinner"></span> Loading admins...</td></tr>
+          </tbody>
         </table>
         <div class="pagination-controls" style="margin-top:15px; display:flex; justify-content:center; gap:10px; align-items:center;">
           <button id="prevAdmins" class="btn secondary-btn" disabled>Prev</button>
@@ -774,14 +787,34 @@ if (nextSchoolsBtn) {
     let currentAdminPage = 1;
     let totalAdminPages = 1;
     let adminSearchDebounce;
+    
+    async function loadSchoolsOptions(force = false) {
+      const CACHE_KEY = "admin_schools_options_cache";
+      
+      if (!force) {
+        const cached = getCache(CACHE_KEY);
+        if (cached) {
+          populateDropdowns(cached);
+          return;
+        }
+      }
 
-    async function loadSchoolsOptions() {
+      // Use a high limit to ensure we get all active schools for dropdown selection
+      // The backend now excludes heavy logo fields, making this fetch very lightweight.
       const res = await authFetch(`/schools?limit=1000`);
       if (!res) return;
+      
       const data = await res.json();
       const schools = data.schools || [];
+      
+      setCache(CACHE_KEY, schools);
+      populateDropdowns(schools);
+    }
+
+    function populateDropdowns(schools) {
       [newAdminSchool, editAdminSchool].forEach(sel => {
-        sel.innerHTML = "";
+        if (!sel) return;
+        sel.innerHTML = '<option value="">-- Select School --</option>';
         schools.forEach(s => sel.innerHTML += `<option value="${s._id}">${s.name}</option>`);
       });
     }
@@ -906,8 +939,8 @@ if (nextSchoolsBtn) {
       }
     });
 
-    await loadSchoolsOptions(); // This function doesn't need caching as it's for dropdown options
-    loadAdmins(1, forceRefresh); // Initial load with forceRefresh parameter
+    loadAdmins(1, forceRefresh);
+    loadSchoolsOptions(forceRefresh); // Load dropdown options in background to prevent blocking table UI
   }
 
   // ---------------------------
@@ -923,6 +956,49 @@ if (nextSchoolsBtn) {
       document.getElementById('maintenanceMode').checked = !!s.maintenanceMode;
       document.getElementById('registrationOpen').checked = s.registrationOpen !== false; // default true
       const saveBtn = document.getElementById('saveSettingsBtn');
+
+      // Maintenance Button Logic
+      const cleanOrphansBtn = document.getElementById('manualCleanOrphansBtn');
+      const cleanLoginsBtn = document.getElementById('manualCleanLoginsBtn');
+
+      if (cleanOrphansBtn) {
+        cleanOrphansBtn.onclick = async () => {
+          if (!confirm("Permanently remove enrollment records for students who no longer exist in the system?")) return;
+          cleanOrphansBtn.disabled = true;
+          cleanOrphansBtn.textContent = 'Processing...';
+          try {
+            const res = await authFetch('/enrollments/cleanup', { method: 'DELETE' });
+            if (res && res.ok) {
+              const data = await res.json();
+              alert(`Cleanup complete: ${data.deletedCount} orphaned records removed.`);
+            } else {
+              alert("Cleanup failed or returned no orphans.");
+            }
+          } finally {
+            cleanOrphansBtn.disabled = false;
+            cleanOrphansBtn.innerHTML = '🧹 Clean Orphaned Enrollments';
+          }
+        };
+      }
+
+      if (cleanLoginsBtn) {
+        cleanLoginsBtn.onclick = async () => {
+          if (!confirm("Delete all login attempt logs older than 7 days?")) return;
+          cleanLoginsBtn.disabled = true;
+          cleanLoginsBtn.textContent = 'Clearing...';
+          try {
+            const res = await authFetch('/clean-login-attempts', { method: 'DELETE' });
+            if (res && res.ok) {
+              const data = await res.json();
+              alert(`Logs cleared: ${data.deletedCount} old attempts removed.`);
+            }
+          } finally {
+            cleanLoginsBtn.disabled = false;
+            cleanLoginsBtn.innerHTML = '🛡️ Clean Old Login Attempts';
+          }
+        };
+      }
+
       saveBtn.addEventListener('click', async () => {
         const payload = {
           maintenanceMode: document.getElementById('maintenanceMode').checked,

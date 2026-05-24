@@ -5,12 +5,21 @@
   // Inject CSS to reduce row height in the users table
   const compactUsersStyle = document.createElement("style");
   compactUsersStyle.textContent = `
+    #usersTable {
+      font-size: 0.82rem !important;
+    }
     #usersTable td {
-      padding: 4px 10px !important;
+      padding: 2px 8px !important;
       vertical-align: middle !important;
     }
+    .action-cell {
+      display: flex;
+      gap: 6px;
+      white-space: nowrap;
+      align-items: center;
+    }
     #usersTable th {
-      padding: 8px 10px !important;
+      padding: 5px 8px !important;
       position: sticky;
       top: 0;
       background: #f8f9fa;
@@ -19,12 +28,12 @@
     .user-type-tabs {
       display: flex;
       list-style: none;
-      padding: 0;
-      margin: 5px 0 10px 0;
+      padding: 0 5px;
+      margin: 2px 0 8px 0;
       border-bottom: 1px solid #dee2e6;
     }
     .user-type-tabs li {
-      padding: 10px 20px;
+      padding: 6px 16px;
       cursor: pointer;
       border-bottom: 3px solid transparent;
       color: #6c757d;
@@ -36,12 +45,12 @@
       color: #2563eb;
     }
 
-    .tab-section { padding-top: 0 !important; margin-top: 0 !important; align-self: flex-start !important; }
-    .card { padding: 10px 15px !important; margin-top: 0 !important; }
-    .card h2, .card h3 { margin-top: 0 !important; margin-bottom: 10px !important; }
+    .tab-section { padding-top: 0 !important; margin-top: 0 !important; align-self: flex-start !important; } /* Keep as is */
+    .card { padding: 8px 12px !important; margin-top: 0 !important; }
+    .card h2, .card h3 { margin-top: 0 !important; margin-bottom: 8px !important; }
     
     .admin-section-header-row {
-      margin-bottom: 10px !important;
+      margin-bottom: 8px !important;
     }
 
     /* Modern Toast & Confirm Styles */
@@ -314,8 +323,8 @@
           <td>${u.admission || u.admissionNo || ""}</td>
           <td>${gradeDisplay}</td>
           <td>${u.contact || ""}</td>
-          <td>
-            <button data-id="${u._id}" class="btn danger-btn delete-user-btn" style="padding: 4px 8px; font-size: 12px;">🗑️ Delete</button>
+          <td class="action-cell">
+            <button data-id="${u._id}" class="btn danger-btn delete-user-btn" style="padding: 2px 6px; font-size: 11px;">🗑️ Delete</button>
           </td>
         `;
       } else {
@@ -323,9 +332,9 @@
           <td>${u.name}</td>
           <td>${u.role}</td>
           <td>${u.email || (u.role === "student" ? u.admission : "")}</td>
-          <td>
-            <button data-id="${u._id}" class="btn danger-btn delete-user-btn" style="padding: 4px 8px; font-size: 12px;">🗑️ Delete</button>
-            ${u.role !== "student" ? `<button data-id="${u._id}" class="btn secondary-btn resend-creds-btn" style="padding: 4px 8px; font-size: 12px;">📧 Resend</button>` : ""}
+          <td class="action-cell">
+            <button data-id="${u._id}" class="btn danger-btn delete-user-btn" style="padding: 2px 6px; font-size: 11px;">🗑️ Delete</button>
+            ${u.role !== "student" ? `<button data-id="${u._id}" class="btn secondary-btn resend-creds-btn" style="padding: 2px 6px; font-size: 11px;">📧 Resend</button>` : ""}
           </td>
         `;
       }

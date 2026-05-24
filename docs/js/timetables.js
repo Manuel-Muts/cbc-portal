@@ -10,6 +10,7 @@ const TimetableModule = (function() {
     let currentTimetableData = null; // 🆕 To store the generated snapshot for saving
     let sharedActivityOrder = null; // 🆕 Shared activities order across grades
     let activeEditSlot = null; // 🆕 Tracks { dayIdx, lessonIdx } during manual edits
+    let subjectPlacements = {}; // 🆕 Tracks placement preferences [grade][subject]
 
     /**
      * 🆕 Categorizes subjects for intelligent placement
@@ -73,8 +74,8 @@ const TimetableModule = (function() {
         lessonsPerDay: 9,
         breaks: [
             { name: "BREAK", afterLesson: 2, duration: 15 },
-            { name: "BREAK", afterLesson: 4, duration: 30 },
-            { name: "LUNCH", afterLesson: 6, duration: 60 }
+            { name: "BREAK", afterLesson: 4, duration: 20 },
+            { name: "LUNCH", afterLesson: 6, duration: 70 }
         ],
         schoolDayEnd: "17:05" // Standard CBE end time
     };
@@ -85,19 +86,13 @@ const TimetableModule = (function() {
         coreSubjectsPreference: {
             enabled: true,
             beforeLunchOnly: true,
-            subjects: ["Mathematics", "English", "Kiswahili"]
+            subjects: ["Mathematics", "English", "Kiswahili", "Math", "Eng", "Kisw"]
         },
         // Technical subjects - reduce afternoon placement
         technicalSubjectsPreference: {
             enabled: true,
             preferMorning: true,
             allowAfternoon: false // If true, allows afternoon placement; if false, minimizes it
-        },
-        // PE - only after lunch
-        pePreference: {
-            enabled: true,
-            onlyAfterLunch: true,
-            avoidConsecutiveDays: true
         },
         // PPI - Friday mornings only
         ppiPreference: {
@@ -108,6 +103,19 @@ const TimetableModule = (function() {
         creativePreference: {
             enabled: true,
             afternoonOnly: true
+        },
+        // 🆕 Specific priorities for Junior/Primary skills
+        sportsPreference: {
+            enabled: true,
+            preferBreaks: true // Logic handles Lesson 3-4
+        },
+        visualArtsPreference: {
+            enabled: true,
+            preferBreaks: true // Logic handles Lesson 4 or 6
+        },
+        doubleLessons: {
+            enabled: true,
+            subjects: ["Integrated Science", "Agriculture", "Pre-Technical Studies", "Performing Arts C/A(p)"]
         }
     };
 
@@ -145,8 +153,11 @@ const TimetableModule = (function() {
         return true;
     }
 
-    const CACHE_TTL = 15 * 60 * 1000; // 15 minutes
+    const CACHE_TTL = 5 * 60 * 1000; // 5 minutes (Optimized for better data freshness)
     const SCHOOL_INFO_CACHE_KEY = "timetable_school_info_cache";
+    const ALLOCATIONS_CACHE_KEY = "timetable_allocations_cache";
+    const TIMETABLES_CACHE_TTL = 2 * 60 * 1000; // 2 minutes
+    const SAVED_TIMETABLES_CACHE_KEY = "timetable_saved_cache";
 
     function init() {
         if (isInitialized) return;
@@ -230,6 +241,18 @@ const TimetableModule = (function() {
                         transform: translateY(-20px);
                     }
                 }
+                /* 🆕 Added spinner definition for visual feedback in controls */
+                .spinner {
+                    width: 14px;
+                    height: 14px;
+                    border: 2px solid rgba(0, 0, 0, 0.1);
+                    border-top-color: #2b6cb0;
+                    border-radius: 50%;
+                    animation: tt-spin 0.8s linear infinite;
+                    display: inline-block;
+                    vertical-align: middle;
+                }
+                @keyframes tt-spin { to { transform: rotate(360deg); } }
             `;
             document.head.appendChild(styleEl);
         }
@@ -243,6 +266,7 @@ const TimetableModule = (function() {
             <div class="timetable-dashboard" style="display: grid; grid-template-columns: 280px 1fr; gap: 20px;">
                 <aside class="tt-sidebar" style="background: #f8fafc; padding: 20px; border-radius: 12px; border: 1px solid #e2e8f0;">
                     <h4 style="margin-top:0; color: #1e293b;"><i class="fas fa-cogs"></i> Timetable Controls</h4>
+                    <div id="ttLastSync" style="font-size: 0.65rem; color: #94a3b8; margin-top: -10px; margin-bottom: 15px; font-weight: 500;">Last synced: Loading...</div>
                     
                     <div class="filter-group" style="margin-bottom: 15px;">
                         <label style="display:block; font-size: 0.8rem; font-weight:700; margin-bottom: 5px;">VIEW MODE</label>
@@ -315,6 +339,9 @@ const TimetableModule = (function() {
                         <hr style="border:0; border-top:1px solid #e2e8f0; margin: 10px 0;">
                         <button id="generateTimetableBtn" class="btn primary-btn" style="width:100%; background:#334155; color:white; font-weight:700;">
                             <i class="fas fa-magic"></i> <span id="ttBtnText">Generate Timetable</span>
+                        </button>
+                        <button id="backToAnalyticsBtn" class="btn secondary-btn" style="width:100%; text-align:left; display:none;">
+                            <i class="fas fa-arrow-left"></i> Back to Analytics
                         </button>
                     </div>
                 </aside>
@@ -422,24 +449,6 @@ const TimetableModule = (function() {
                             </div>
                         </div>
 
-                        <!-- PE -->
-                        <div style="padding:15px; background:#f8fafc; border-radius:8px; margin-bottom:15px; border-left:4px solid #16a34a;">
-                            <label style="display:flex; align-items:center; gap:10px; cursor:pointer; margin-bottom:8px;">
-                                <input type="checkbox" id="pe_enabled" style="width:18px; height:18px; cursor:pointer;">
-                                <span style="font-weight:700; color:#1e293b;">Physical Education (PE)</span>
-                            </label>
-                            <div style="margin-left:28px; color:#64748b; font-size:0.85rem;">
-                                <label style="display:flex; align-items:center; gap:8px; margin-bottom:8px;">
-                                    <input type="checkbox" id="pe_afterLunch" style="width:16px; height:16px; cursor:pointer;">
-                                    <span>Schedule only after lunch</span>
-                                </label>
-                                <label style="display:flex; align-items:center; gap:8px;">
-                                    <input type="checkbox" id="pe_noDays" style="width:16px; height:16px; cursor:pointer;">
-                                    <span>Avoid consecutive days</span>
-                                </label>
-                            </div>
-                        </div>
-
                         <!-- PPI -->
                         <div style="padding:15px; background:#f8fafc; border-radius:8px; margin-bottom:15px; border-left:4px solid #7c3aed;">
                             <label style="display:flex; align-items:center; gap:10px; cursor:pointer; margin-bottom:8px;">
@@ -464,6 +473,33 @@ const TimetableModule = (function() {
                                 <label style="display:flex; align-items:center; gap:8px;">
                                     <input type="checkbox" id="creative_afternoon" style="width:16px; height:16px; cursor:pointer;">
                                     <span>Schedule in afternoon only</span>
+                                </label>
+                            </div>
+                        </div>
+
+                        <!-- Sports & Arts -->
+                        <div style="padding:15px; background:#f8fafc; border-radius:8px; margin-bottom:15px; border-left:4px solid #10b981;">
+                            <label style="display:flex; align-items:center; gap:10px; cursor:pointer; margin-bottom:8px;">
+                                <input type="checkbox" id="sports_enabled" style="width:18px; height:18px; cursor:pointer;">
+                                <span style="font-weight:700; color:#1e293b;">Physical Education / Sports</span>
+                            </label>
+                            <div style="margin-left:28px; color:#64748b; font-size:0.85rem;">
+                                <label style="display:flex; align-items:center; gap:8px;">
+                                    <input type="checkbox" id="sports_breaks" style="width:16px; height:16px; cursor:pointer;">
+                                    <span>Prioritize placement towards long breaks (Lesson 3-4)</span>
+                                </label>
+                            </div>
+                        </div>
+
+                        <div style="padding:15px; background:#f8fafc; border-radius:8px; margin-bottom:15px; border-left:4px solid #3b82f6;">
+                            <label style="display:flex; align-items:center; gap:10px; cursor:pointer; margin-bottom:8px;">
+                                <input type="checkbox" id="visualArts_enabled" style="width:18px; height:18px; cursor:pointer;">
+                                <span style="font-weight:700; color:#1e293b;">Visual Arts</span>
+                            </label>
+                            <div style="margin-left:28px; color:#64748b; font-size:0.85rem;">
+                                <label style="display:flex; align-items:center; gap:8px;">
+                                    <input type="checkbox" id="visualArts_breaks" style="width:16px; height:16px; cursor:pointer;">
+                                    <span>Prioritize placement towards long break (4) or lunch (6)</span>
                                 </label>
                             </div>
                         </div>
@@ -647,7 +683,12 @@ const TimetableModule = (function() {
      */
     async function refreshTimetableDashboard() {
         const btn = document.getElementById('ttRefreshBtn');
-        if (btn) btn.disabled = true;
+        const originalHTML = btn ? btn.innerHTML : null;
+
+        if (btn) {
+            btn.disabled = true;
+            btn.innerHTML = `<span class="spinner" style="width:12px; height:12px; border-width:2px; margin-right:5px;"></span> Refreshing...`;
+        }
 
         try {
             // Clear the current timetable output
@@ -662,7 +703,7 @@ const TimetableModule = (function() {
             
             // Refresh dropdown data
             await fetchSchoolInfoAndCache();
-            await fetchSchedulingContext();
+            await fetchSchedulingContext(true);
             
             // Reset view mode to default
             const viewModeSelect = document.getElementById('ttViewMode');
@@ -684,7 +725,10 @@ const TimetableModule = (function() {
             console.error("Error refreshing timetable dashboard:", err);
             cbcUtils.showToast("Error refreshing dashboard. Try again.", "error");
         } finally {
-            if (btn) btn.disabled = false;
+            if (btn) {
+                btn.disabled = false;
+                btn.innerHTML = originalHTML;
+            }
         }
     }
 
@@ -693,7 +737,11 @@ const TimetableModule = (function() {
         // Handle the static "Save PDF" button in the dashboard header
         document.getElementById('printTimetableBtn')?.addEventListener('click', () => downloadTimetablePDF());
 
-        document.getElementById('ttViewMode')?.addEventListener('change', (e) => {
+        document.getElementById('ttViewMode')?.addEventListener('change', async (e) => {
+            // 🆕 Optimization: Refresh scheduling context (allocations & saved TTs) 
+            // when switching views to ensure data is current.
+            await fetchSchedulingContext();
+
             const mode = e.target.value;
             const isTeacherMode = mode === 'teacher';
             const isBlockMode = mode === 'block';
@@ -731,6 +779,11 @@ const TimetableModule = (function() {
                 }
                 cbcUtils.showToast('Activities order reshuffled across grades.', 'success');
                 return;
+            }
+            
+            const autoFixBtn = e.target.closest('#autoFixClashesBtn');
+            if (autoFixBtn) {
+                autoFixClashes();
             }
 
             // 🆕 Manual Slot Edit Trigger
@@ -835,31 +888,61 @@ const TimetableModule = (function() {
         });
     }
 
+    // 🆕 Add event listener for "Back to Analytics" button
+    const backBtn = document.getElementById('backToAnalyticsBtn');
+    if (backBtn) {
+        if (document.body.classList.contains('standalone-view')) {
+            backBtn.style.display = 'block'; // Make it visible
+            backBtn.addEventListener('click', () => {
+                window.close(); // Close the current standalone window
+            });
+        }
+    }
+
     /**
      * 🆕 Fetch all school-wide data required for clash detection
      */
-    async function fetchSchedulingContext() {
+    async function fetchSchedulingContext(forceRefresh = false) {
         try {
             const API_BASE = window.config.api.baseURL;
             const token = localStorage.getItem("token");
+            if (!token) return authService.redirectToLogin();
             const headers = { "Authorization": `Bearer ${token}` };
 
-            // 1. Fetch all subject allocations for the school
-            const allocRes = await fetch(`${API_BASE}/users/subjects/allocations?limit=1000`, { headers });
-            if (allocRes.ok) {
-                const allocData = await allocRes.json();
-                schoolAllocations = Array.isArray(allocData) ? allocData : allocData.data || [];
-                console.log(`📡 Loaded ${schoolAllocations.length} teacher allocations for scheduling.`);
-                
-                // 🆕 After loading context, if a grade is already selected, update its streams
-                const currentGrade = document.getElementById('ttGradeSelect')?.value;
-                if (currentGrade) {
-                    updateStreamOptions(currentGrade);
+            // 1. Fetch all subject allocations for the school with caching
+            let shouldFetchAllocations = true;
+            if (!forceRefresh) {
+                const cached = localStorage.getItem(ALLOCATIONS_CACHE_KEY);
+                if (cached) {
+                    try {
+                        const { timestamp, data } = JSON.parse(cached);
+                        if (Date.now() - timestamp < CACHE_TTL) {
+                            schoolAllocations = data;
+                            console.log(`📡 Loaded ${schoolAllocations.length} teacher allocations from cache.`);
+                            shouldFetchAllocations = false;
+                        }
+                    } catch (e) {
+                        localStorage.removeItem(ALLOCATIONS_CACHE_KEY);
+                    }
                 }
-                
-                // 🆕 Always update teacher list so it's ready when switching modes
-                updateTeacherOptions();
             }
+
+            if (shouldFetchAllocations) {
+                const allocRes = await fetch(`${API_BASE}/users/subjects/allocations?limit=1000`, { headers });
+                if (allocRes.ok) {
+                    const allocData = await allocRes.json();
+                    schoolAllocations = Array.isArray(allocData) ? allocData : allocData.data || [];
+                    localStorage.setItem(ALLOCATIONS_CACHE_KEY, JSON.stringify({ timestamp: Date.now(), data: schoolAllocations }));
+                    console.log(`📡 Fetched ${schoolAllocations.length} teacher allocations from server.`);
+                }
+            }
+
+            // 🆕 Always refresh stream and teacher options as they depend on the allocations
+            const currentGrade = document.getElementById('ttGradeSelect')?.value;
+            if (currentGrade) {
+                updateStreamOptions(currentGrade);
+            }
+            updateTeacherOptions();
 
             // 2. Fetch all currently saved timetables for this academic year
             const yearEl = document.getElementById('ttYearSelect');
@@ -867,18 +950,43 @@ const TimetableModule = (function() {
             const termEl = document.getElementById('ttTermSelect');
             const term = termEl ? termEl.value : "Term 1";
 
-            // 🆕 Ensure header is present for every scheduling request
-            if (!token) return authService.redirectToLogin();
+            const ttCacheKey = `${SAVED_TIMETABLES_CACHE_KEY}_${year}_${term}`;
+            let shouldFetchTimetables = true;
 
-            // 🆕 Use both 'year' and 'academicYear' to ensure compatibility with backend controllers
-            const ttRes = await fetch(`${API_BASE}/timetables/all?academicYear=${year}&year=${year}&term=${term}`, { headers });
-            if (ttRes.ok) {
-                const ttData = await ttRes.json();
-                allSavedTimetables = Array.isArray(ttData) ? ttData : (ttData.timetables || ttData.data || []);
-                console.log(`📡 Loaded ${allSavedTimetables.length} saved class timetables.`);
+            if (!forceRefresh) {
+                const cachedTT = localStorage.getItem(ttCacheKey);
+                if (cachedTT) {
+                    try {
+                        const { timestamp, data } = JSON.parse(cachedTT);
+                        if (Date.now() - timestamp < TIMETABLES_CACHE_TTL) {
+                            allSavedTimetables = data;
+                            console.log(`📡 Loaded ${allSavedTimetables.length} saved timetables from cache for ${term} ${year}.`);
+                            shouldFetchTimetables = false;
+                        }
+                    } catch (e) {
+                        localStorage.removeItem(ttCacheKey);
+                    }
+                }
+            }
+
+            if (shouldFetchTimetables) {
+                // 🆕 Use both 'year' and 'academicYear' to ensure compatibility with backend controllers
+                const ttRes = await fetch(`${API_BASE}/timetables/all?academicYear=${year}&year=${year}&term=${term}`, { headers });
+                if (ttRes.ok) {
+                    const ttData = await ttRes.json();
+                    allSavedTimetables = Array.isArray(ttData) ? ttData : (ttData.timetables || ttData.data || []);
+                    localStorage.setItem(ttCacheKey, JSON.stringify({ timestamp: Date.now(), data: allSavedTimetables }));
+                    console.log(`📡 Fetched ${allSavedTimetables.length} saved class timetables from server.`);
+                }
             }
         } catch (err) {
             console.error("Failed to fetch scheduling context:", err);
+        } finally {
+            // 🆕 Update Sync Timestamp in UI
+            const syncEl = document.getElementById('ttLastSync');
+            if (syncEl) {
+                syncEl.textContent = `Last synced: ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}`;
+            }
         }
     }
 
@@ -905,7 +1013,6 @@ const TimetableModule = (function() {
         // 🆕 Inject mandatory junior/primary subjects if not present
         if (grade && !window.cbcUtils.isSeniorGrade(grade)) {
             subjects.add("PPI");
-            subjects.add("PE");
         }
 
         return Array.from(subjects).sort();
@@ -931,14 +1038,23 @@ const TimetableModule = (function() {
         }
 
         const currentFreqs = lessonFrequencies[grade] || {};
+        const currentPlacements = subjectPlacements[grade] || {};
 
-        container.innerHTML = subjects.map(sub => `
-            <div style="display:flex; justify-content:space-between; align-items:center; padding:10px; border-bottom:1px solid #f1f5f9;">
-                <span style="font-weight:600; color:#475569;">${sub}</span>
+        container.innerHTML = subjects.map(sub => {
+            const pref = currentPlacements[sub] || 'any';
+            return `
+            <div style="display:flex; justify-content:space-between; align-items:center; padding:10px; border-bottom:1px solid #f1f5f9; gap:10px;">
+                <span style="font-weight:600; color:#475569; flex:1;">${sub}</span>
+                <select data-subject="${sub}" class="placement-input" style="width:110px; padding:5px; border:1px solid #cbd5e0; border-radius:4px; font-size:0.75rem;">
+                    <option value="any">Anytime</option>
+                    <option value="before4" ${pref === 'before4' ? 'selected' : ''}>Before L4</option>
+                    <option value="before6" ${pref === 'before6' ? 'selected' : ''}>Before L6</option>
+                    <option value="after6" ${pref === 'after6' ? 'selected' : ''}>After L6</option>
+                </select>
                 <input type="number" data-subject="${sub}" class="freq-input" value="${currentFreqs[sub] !== undefined ? currentFreqs[sub] : getDefaultFrequency(sub)}" min="0" max="15" 
                        style="width:60px; padding:5px; border:1px solid #cbd5e0; border-radius:4px; text-align:center;">
-            </div>
-        `).join('');
+            </div>`;
+        }).join('');
 
         modal.style.display = 'flex';
     }
@@ -946,10 +1062,17 @@ const TimetableModule = (function() {
     function saveCurrentFrequencies() {
         const grade = document.getElementById('ttGradeSelect').value;
         const inputs = document.querySelectorAll('.freq-input');
+        const placementInputs = document.querySelectorAll('.placement-input');
+        
         if (!lessonFrequencies[grade]) lessonFrequencies[grade] = {};
+        if (!subjectPlacements[grade]) subjectPlacements[grade] = {};
         
         inputs.forEach(input => {
             lessonFrequencies[grade][input.dataset.subject] = parseInt(input.value);
+        });
+
+        placementInputs.forEach(input => {
+            subjectPlacements[grade][input.dataset.subject] = input.value;
         });
     }
 
@@ -993,12 +1116,6 @@ const TimetableModule = (function() {
         document.getElementById('technical_preferMorning').checked = placementRules.technicalSubjectsPreference.preferMorning;
         document.getElementById('technical_preferMorning').disabled = !placementRules.technicalSubjectsPreference.enabled;
 
-        document.getElementById('pe_enabled').checked = placementRules.pePreference.enabled;
-        document.getElementById('pe_afterLunch').checked = placementRules.pePreference.onlyAfterLunch;
-        document.getElementById('pe_noDays').checked = placementRules.pePreference.avoidConsecutiveDays;
-        document.getElementById('pe_afterLunch').disabled = !placementRules.pePreference.enabled;
-        document.getElementById('pe_noDays').disabled = !placementRules.pePreference.enabled;
-
         document.getElementById('ppi_enabled').checked = placementRules.ppiPreference.enabled;
         document.getElementById('ppi_friday').checked = placementRules.ppiPreference.fridayMorningOnly;
         document.getElementById('ppi_friday').disabled = !placementRules.ppiPreference.enabled;
@@ -1006,6 +1123,14 @@ const TimetableModule = (function() {
         document.getElementById('creative_enabled').checked = placementRules.creativePreference.enabled;
         document.getElementById('creative_afternoon').checked = placementRules.creativePreference.afternoonOnly;
         document.getElementById('creative_afternoon').disabled = !placementRules.creativePreference.enabled;
+
+        document.getElementById('sports_enabled').checked = placementRules.sportsPreference.enabled;
+        document.getElementById('sports_breaks').checked = placementRules.sportsPreference.preferBreaks;
+        document.getElementById('sports_breaks').disabled = !placementRules.sportsPreference.enabled;
+
+        document.getElementById('visualArts_enabled').checked = placementRules.visualArtsPreference.enabled;
+        document.getElementById('visualArts_breaks').checked = placementRules.visualArtsPreference.preferBreaks;
+        document.getElementById('visualArts_breaks').disabled = !placementRules.visualArtsPreference.enabled;
 
         // Add event listeners to enable/disable dependent checkboxes
         const attachToggle = (parentId, dependentIds) => {
@@ -1019,9 +1144,10 @@ const TimetableModule = (function() {
 
         attachToggle('coreSubs_enabled', ['coreSubs_beforeLunch']);
         attachToggle('technical_enabled', ['technical_preferMorning']);
-        attachToggle('pe_enabled', ['pe_afterLunch', 'pe_noDays']);
         attachToggle('ppi_enabled', ['ppi_friday']);
         attachToggle('creative_enabled', ['creative_afternoon']);
+        attachToggle('sports_enabled', ['sports_breaks']);
+        attachToggle('visualArts_enabled', ['visualArts_breaks']);
 
         modal.style.display = 'flex';
     }
@@ -1037,15 +1163,17 @@ const TimetableModule = (function() {
         placementRules.technicalSubjectsPreference.preferMorning = document.getElementById('technical_preferMorning').checked;
         placementRules.technicalSubjectsPreference.allowAfternoon = !document.getElementById('technical_preferMorning').checked;
 
-        placementRules.pePreference.enabled = document.getElementById('pe_enabled').checked;
-        placementRules.pePreference.onlyAfterLunch = document.getElementById('pe_afterLunch').checked;
-        placementRules.pePreference.avoidConsecutiveDays = document.getElementById('pe_noDays').checked;
-
         placementRules.ppiPreference.enabled = document.getElementById('ppi_enabled').checked;
         placementRules.ppiPreference.fridayMorningOnly = document.getElementById('ppi_friday').checked;
 
         placementRules.creativePreference.enabled = document.getElementById('creative_enabled').checked;
         placementRules.creativePreference.afternoonOnly = document.getElementById('creative_afternoon').checked;
+
+        placementRules.sportsPreference.enabled = document.getElementById('sports_enabled').checked;
+        placementRules.sportsPreference.preferBreaks = document.getElementById('sports_breaks').checked;
+
+        placementRules.visualArtsPreference.enabled = document.getElementById('visualArts_enabled').checked;
+        placementRules.visualArtsPreference.preferBreaks = document.getElementById('visualArts_breaks').checked;
 
         // Save to localStorage for persistence
         localStorage.setItem('timetable_placement_rules', JSON.stringify(placementRules));
@@ -1066,11 +1194,6 @@ const TimetableModule = (function() {
                 preferMorning: true,
                 allowAfternoon: false
             },
-            pePreference: {
-                enabled: true,
-                onlyAfterLunch: true,
-                avoidConsecutiveDays: true
-            },
             ppiPreference: {
                 enabled: true,
                 fridayMorningOnly: true
@@ -1078,6 +1201,18 @@ const TimetableModule = (function() {
             creativePreference: {
                 enabled: true,
                 afternoonOnly: true
+            },
+            sportsPreference: {
+                enabled: true,
+                preferBreaks: true
+            },
+            visualArtsPreference: {
+                enabled: true,
+                preferBreaks: true
+            },
+            doubleLessons: {
+                enabled: true,
+                subjects: ["Integrated Science", "Agriculture", "Pre-Technical Studies", "Performing Arts C/A(p)"]
             }
         };
         localStorage.removeItem('timetable_placement_rules');
@@ -1207,6 +1342,77 @@ const TimetableModule = (function() {
         const h = Math.floor(totalMinutes / 60);
         const m = totalMinutes % 60;
         return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+    }
+
+    /**
+     * 🆕 Automatically attempts to resolve teacher clashes by swapping slots
+     */
+    async function autoFixClashes() {
+        if (!currentTimetableData) return;
+        const { grid, grade, stream } = currentTimetableData;
+
+        const clashes = [];
+        for (let l = 0; l < grid.length; l++) {
+            for (let d = 0; d < 5; d++) {
+                const sub = grid[l][d];
+                if (!sub) continue;
+                const t = getTeacherForSubject(grade, stream, sub);
+                if (isTeacherBusy(t?.id, d, l, grade, stream)) {
+                    clashes.push({ l, d, sub, tId: t.id });
+                }
+            }
+        }
+
+        if (clashes.length === 0) {
+            cbcUtils.showToast("No teacher clashes detected.", "info");
+            return;
+        }
+
+        let fixedCount = 0;
+        const totalToFix = clashes.length;
+
+        // Strategy: Try to swap the clashing subject with any other non-clashing slot
+        for (const clash of clashes) {
+            let fixed = false;
+            
+            for (let l2 = 0; l2 < grid.length; l2++) {
+                for (let d2 = 0; d2 < 5; d2++) {
+                    const sub2 = grid[l2][d2];
+                    if (!sub2 || (clash.l === l2 && clash.d === d2)) continue;
+
+                    const t2 = getTeacherForSubject(grade, stream, sub2);
+                    if (!t2) continue;
+
+                    // Check if current subject (clash.sub) can move to new slot (l2, d2)
+                    if (isTeacherBusy(clash.tId, d2, l2, grade, stream)) continue;
+                    
+                    // Check if swap subject (sub2) can move to old slot (clash.l, clash.d)
+                    if (isTeacherBusy(t2.id, clash.d, clash.l, grade, stream)) continue;
+
+                    // Check placement preferences (L4/L6 rules) if they exist
+                    const pref1 = (subjectPlacements[grade] || {})[clash.sub] || "any";
+                    const pref2 = (subjectPlacements[grade] || {})[sub2] || "any";
+                    
+                    if (pref1 === "before4" && l2 > 3) continue;
+                    if (pref2 === "before4" && clash.l > 3) continue;
+
+                    // Perform the swap
+                    grid[clash.l][clash.d] = sub2;
+                    grid[l2][d2] = clash.sub;
+                    fixedCount++;
+                    fixed = true;
+                    break;
+                }
+                if (fixed) break;
+            }
+        }
+
+        if (fixedCount > 0) {
+            cbcUtils.showToast(`Fixed ${fixedCount} of ${totalToFix} clashes via reshuffling.`, fixedCount === totalToFix ? "success" : "warning");
+            renderGrid(grade, stream, false);
+        } else {
+            cbcUtils.showToast("Could not auto-fix clashes. Teachers may be fully booked across all available slots.", "error");
+        }
     }
 
     async function generateTimetable() {
@@ -1441,10 +1647,11 @@ const TimetableModule = (function() {
 
                     doc.autoTable({
                         startY: 75,
+                        startY: 70,
                         head,
                         body,
                         theme: 'grid',
-                        styles: { fontSize: 7, cellPadding: 4, overflow: 'linebreak', valign: 'middle' },
+                        styles: { fontSize: 7, cellPadding: 4, overflow: 'linebreak', valign: 'middle', lineWidth: 0.5, lineColor: [40, 40, 40] },
                         headStyles: { fillColor: [51, 65, 85], textColor: 255, halign: 'center', fontSize: 6.5 },
                         showHead: 'everyPage', // Repeat time/lesson headers on every page
                         rowPageBreak: 'avoid', // 🆕 Ensures a single day (e.g. Friday) is never split across pages
@@ -1498,6 +1705,65 @@ const TimetableModule = (function() {
                         }
                     });
                 });
+
+                // 🆕 Multi-Column Teacher Workload Summary Page
+                const globalWorkload = {};
+                currentTimetableData.timetables.forEach(tt => {
+                    (tt.grid || []).forEach(row => {
+                        (row || []).forEach(subject => {
+                            if (subject) {
+                                const teacherInfo = getTeacherForSubject(tt.grade, tt.stream, subject);
+                                const tName = teacherInfo ? teacherInfo.name : 'Unassigned';
+                                globalWorkload[tName] = (globalWorkload[tName] || 0) + 1;
+                            }
+                        });
+                    });
+                });
+
+                const workloadPairs = Object.entries(globalWorkload)
+                    .sort((a, b) => a[0].localeCompare(b[0]))
+                    .map(([name, count]) => [name, `${count} lessons`]);
+
+                if (workloadPairs.length > 0) {
+                    doc.addPage();
+                    drawDocHeader("TEACHER WORKLOAD SUMMARY PER WEEK");
+
+                    const colWidth = 240;
+                    const gap = 20;
+                    const startY = 80;
+                    const maxRowsPerCol = 22; // Fits comfortably on landscape A4
+                    const colsPerPage = 3;
+                    const itemsPerPage = maxRowsPerCol * colsPerPage;
+
+                    for (let i = 0; i < workloadPairs.length; i += itemsPerPage) {
+                        if (i > 0) {
+                            doc.addPage();
+                            drawDocHeader("TEACHER WORKLOAD SUMMARY PER WEEK (CONT.)");
+                        }
+
+                        const pageBatch = workloadPairs.slice(i, i + itemsPerPage);
+                        
+                        // Render up to 3 tables side-by-side
+                        for (let colIdx = 0; colIdx < colsPerPage; colIdx++) {
+                            const startIdx = colIdx * maxRowsPerCol;
+                            const colItems = pageBatch.slice(startIdx, startIdx + maxRowsPerCol);
+                            
+                            if (colItems.length > 0) {
+                                doc.autoTable({
+                                    startY: startY,
+                                    head: [['Teacher Name', 'Workload']],
+                                    body: colItems,
+                                    theme: 'grid',
+                                    styles: { fontSize: 8, cellPadding: 5, halign: 'center', lineWidth: 0.5, lineColor: [40, 40, 40] },
+                                    headStyles: { fillColor: [51, 65, 85], textColor: 255 },
+                                    columnStyles: { 0: { halign: 'left', fontStyle: 'bold', width: 175 }, 1: { width: 65 } },
+                                    tableWidth: colWidth,
+                                    margin: { left: 40 + (colIdx * (colWidth + gap)) }
+                                });
+                            }
+                        }
+                    }
+                }
             } else if (isTeacher) { // Individual Teacher Timetable PDF Generation
                 drawDocHeader(`${currentTimetableData.grade} PERSONAL SCHEDULE`);
                 const tSettings = currentTimetableData.settings || settings;
@@ -1534,7 +1800,15 @@ const TimetableModule = (function() {
                     head,
                     body,
                     theme: 'grid',
-                    styles: { fontSize: 8, cellPadding: 6, halign: 'center', valign: 'middle', overflow: 'linebreak' },
+                    styles: { 
+                        fontSize: 7.5, 
+                        cellPadding: 5, 
+                        halign: 'center', 
+                        valign: 'middle', 
+                        overflow: 'linebreak',
+                        lineWidth: 0.5,
+                        lineColor: [40, 40, 40]
+                    },
                     headStyles: { fillColor: [51, 65, 85], halign: 'center', fontSize: 8.5 },
                     showHead: 'everyPage',
                     rowPageBreak: 'avoid',
@@ -1569,16 +1843,47 @@ const TimetableModule = (function() {
 
                             doc.setFont("helvetica", "bold");
                             doc.setFontSize(9); // Reduced font for subject
+                            doc.setFontSize(8); // Reduced font for subject
                             doc.setTextColor(15, 23, 42); // slate-900
                             doc.text(data.cell.text[0], x, y, { align: 'center', maxWidth: cell.width - 6 }); // Subject
 
                             doc.setFont("helvetica", "normal");
                             doc.setFontSize(7); // Reduced font for class label
+                            doc.setFontSize(6.5); // Reduced font for class label
                             doc.setTextColor(37, 99, 235); // blue-600
                             doc.text(data.cell.text[1], x, y + 11, { align: 'center', maxWidth: cell.width - 6 }); // Class Label
                         }
                     }
                 });
+
+                // 🆕 Add Workload Summary below the main table for Teachers
+                const workloadCounts = {};
+                currentTimetableData.grid.forEach(row => {
+                    row.forEach(slot => {
+                        if (slot && slot.subject) {
+                            const key = `${slot.subject} (${slot.classLabel})`;
+                            workloadCounts[key] = (workloadCounts[key] || 0) + 1;
+                        }
+                    });
+                });
+
+                const workloadRows = Object.entries(workloadCounts).map(([label, count]) => [label, `${count} lessons`]);
+                const totalLessons = Object.values(workloadCounts).reduce((a, b) => a + b, 0);
+                
+                if (workloadRows.length > 0) {
+                    workloadRows.push([{ content: 'TOTAL WEEKLY WORKLOAD', styles: { fontStyle: 'bold', fillColor: [241, 245, 249] } }, { content: `${totalLessons} lessons`, styles: { fontStyle: 'bold', fillColor: [241, 245, 249] } }]);
+
+                    doc.autoTable({
+                        startY: doc.lastAutoTable.finalY + 20,
+                        head: [['Subject (Grade)', 'Lessons per Week']],
+                        body: workloadRows,
+                        theme: 'grid',
+                        styles: { fontSize: 8, cellPadding: 4, lineWidth: 0.5, lineColor: [40, 40, 40] },
+                        headStyles: { fillColor: [71, 85, 105] },
+                        tableWidth: 250,
+                        margin: { left: 85 } // Align with the start of the schedule columns
+                    });
+                }
             } else { // Individual Class Timetable PDF Generation
                 // Individual Class or Teacher View
                 // 🆕 Use the 'title' variable already correctly constructed at the top of the function
@@ -1629,14 +1934,16 @@ const TimetableModule = (function() {
                     body,
                     theme: 'grid',
                     styles: { 
-                        fontSize: 9, 
-                        cellPadding: 8, 
-                        minCellHeight: 80, // 🆕 Significantly taller rows to utilize PDF height
+                        fontSize: 7, 
+                        cellPadding: 4, 
+                        minCellHeight: 50, 
                         halign: 'center', 
                         valign: 'middle', 
-                        overflow: 'linebreak' 
+                        overflow: 'linebreak',
+                        lineWidth: 0.5,
+                        lineColor: [40, 40, 40]
                     },
-                    headStyles: { fillColor: [51, 65, 85], halign: 'center', fontSize: 9, minCellHeight: 40 },
+                    headStyles: { fillColor: [51, 65, 85], halign: 'center', fontSize: 8, minCellHeight: 30 },
                     showHead: 'everyPage',
                     rowPageBreak: 'avoid',
                     columnStyles: { 0: { fontStyle: 'bold', halign: 'left', width: 85, fillColor: [248, 250, 252] } },
@@ -1665,19 +1972,30 @@ const TimetableModule = (function() {
                             const centerY = cell.y + cell.height / 2;
 
                             doc.setFont("helvetica", "bold");
-                            doc.setFontSize(9); // Reduced for better fit
+                            doc.setFontSize(7); 
                             doc.setTextColor(15, 23, 42); // slate-900 // Abbreviate subject before rendering
                             // Draw subject slightly above center
                             doc.text(window.cbcUtils.getAbbreviatedSubjectName(data.cell.text[0]), centerX, centerY - 4, { align: 'center', maxWidth: cell.width - 10 }); 
 
                             doc.setFont("helvetica", "normal");
-                            doc.setFontSize(7.5); // Reduced for better fit
+                            doc.setFontSize(5.5); 
                             doc.setTextColor(37, 99, 235); // blue-600
                             // Draw teacher name slightly below center
                             doc.text(data.cell.text[1], centerX, centerY + 10, { align: 'center', maxWidth: cell.width - 10 }); 
                         }
                     }
                 });
+
+                // 🆕 Add Class Teacher at the bottom of the individual class timetable
+                const classTeacherName = getClassTeacherForGrade(currentTimetableData.grade, currentTimetableData.stream);
+                if (classTeacherName) {
+                    const finalY = doc.lastAutoTable.finalY + 30;
+                    doc.setFontSize(10);
+                    doc.setFont("helvetica", "bold");
+                    doc.setTextColor(15, 23, 42); // slate-900
+                    doc.text(`CLASS TEACHER: ${classTeacherName.toUpperCase()}`, 40, finalY);
+                    
+                }
             }
 
             // 🆕 Add Footer to every page (Printed date/time + Branding)
@@ -1752,6 +2070,10 @@ const TimetableModule = (function() {
 
             if (res.ok) {
                 window.showToast("Timetable saved successfully to the portal!", "success");
+                // 🆕 Invalidate the saved timetables cache so it picks up the change for clash detection
+                const year = Number(currentTimetableData.academicYear);
+                const term = document.getElementById('ttTermSelect')?.value || "Term 1";
+                localStorage.removeItem(`${SAVED_TIMETABLES_CACHE_KEY}_${year}_${term}`);
             } else {
                 const err = await res.json();
                 window.showToast(err.message || "Failed to save timetable.", "error");
@@ -1784,6 +2106,24 @@ const TimetableModule = (function() {
     }
 
     /**
+     * 🆕 Finds the class teacher for a specific grade and stream
+     */
+    function getClassTeacherForGrade(grade, stream) {
+        if (!grade) return null;
+        const normalizedTarget = (window.cbcUtils?.normalizeGrade(grade) || grade).toLowerCase().trim();
+        const streamTarget = (stream || "").toLowerCase().trim();
+
+        // Search through schoolAllocations which now includes assignedClass/Stream
+        const teacher = schoolAllocations.find(t => {
+            if (!t.assignedClass) return false;
+            const assignedGrade = (window.cbcUtils?.normalizeGrade(t.assignedClass) || t.assignedClass).toLowerCase().trim();
+            const assignedStream = (t.assignedStream || "").toLowerCase().trim();
+            return assignedGrade === normalizedTarget && assignedStream === streamTarget;
+        });
+        return teacher ? teacher.name : null;
+    }
+
+    /**
      * 🆕 Opens the manual override modal for a specific timetable slot
      */
     function openEditSlotModal(dayIdx, lessonIdx) {
@@ -1808,9 +2148,13 @@ const TimetableModule = (function() {
         const subjects = getAllocatedSubjectsForGrade(currentTimetableData.grade, stream);
         selectEl.innerHTML = '<option value="">-- Remove Subject (Empty) --</option>';
         subjects.forEach(sub => {
+            const teacherInfo = getTeacherForSubject(currentTimetableData.grade, stream, sub);
+            const isBusy = teacherInfo ? isTeacherBusy(teacherInfo.id, dayIdx, lessonIdx, currentTimetableData.grade, stream) : false;
+
             const opt = document.createElement('option');
             opt.value = sub;
-            opt.textContent = sub;
+            opt.textContent = teacherInfo ? `${sub} (${teacherInfo.name}${isBusy ? ' - BUSY' : ''})` : sub;
+            if (isBusy) opt.style.color = "#ef4444";
             if (sub === currentSub) opt.selected = true;
             selectEl.appendChild(opt);
         });
@@ -1821,17 +2165,31 @@ const TimetableModule = (function() {
     /**
      * 🆕 Updates the local state and re-renders the grid without re-shuffling everything
      */
-    function saveSlotEdit() {
+    async function saveSlotEdit() {
         if (!activeEditSlot || !currentTimetableData) return;
 
         const newSubject = document.getElementById('editSlotSubjectSelect').value;
         const { dayIdx, lessonIdx } = activeEditSlot;
+        const grade = currentTimetableData.grade;
+        const stream = currentTimetableData.stream;
+
+        // 🆕 Teacher Availability Verification
+        if (newSubject) {
+            const teacherInfo = getTeacherForSubject(grade, stream, newSubject);
+            if (teacherInfo && isTeacherBusy(teacherInfo.id, dayIdx, lessonIdx, grade, stream)) {
+                const proceed = await window.cbcUtils.showConfirmToast(
+                    `Teacher ${teacherInfo.name} is already scheduled in another class during this lesson. Do you want to save anyway?`,
+                    { confirmText: "Yes, Clash it", cancelText: "Cancel" }
+                );
+                if (!proceed) return;
+            }
+        }
 
         // Update the grid state directly
         currentTimetableData.grid[lessonIdx][dayIdx] = newSubject;
 
         // Re-render using the updated state
-        renderGrid(currentTimetableData.grade, currentTimetableData.stream, false);
+        renderGrid(grade, stream, false);
 
         document.getElementById('editSlotModal').style.display = 'none';
         cbcUtils.showToast("Slot updated manually.", "info");
@@ -1843,8 +2201,7 @@ const TimetableModule = (function() {
      */
     async function resetDay(dayIdx) {
         if (!currentTimetableData) return;
-        const grade = currentTimetableData.grade;
-        const stream = currentTimetableData.stream;
+        const { grid, grade, stream } = currentTimetableData;
         const days = ["MON", "TUE", "WED", "THU", "FRI"];
         
         const confirmed = await window.cbcUtils.showConfirmToast(`Reset all lessons for ${days[dayIdx]}? Other days will remain unchanged.`);
@@ -1870,50 +2227,71 @@ const TimetableModule = (function() {
         // Shuffle the pool for this day
         dayPool.sort(() => Math.random() - 0.5);
 
-        // 3. Re-fill the column for dayIdx
+        // 3. 🆕 Re-fill the day while respecting Double Lesson constraints
+        const dayColumn = Array(settings.lessonsPerDay).fill("");
         const subjectsScheduledThisDay = new Set();
-        for (let lesson = 1; lesson <= settings.lessonsPerDay; lesson++) {
-            const lIdx = lesson - 1;
-            const isFridayMorning = (dayIdx === 4 && lesson <= 4);
-            const isAfterLunch = lesson > 6;
-            let subject = "";
 
-            // Priorities
-            if (isFridayMorning) {
-                const ppiIdx = dayPool.findIndex(p => p.includes("PPI"));
-                if (ppiIdx !== -1) {
-                    subject = dayPool[ppiIdx];
-                    dayPool.splice(ppiIdx, 1);
+        // 3a. 🆕 Pre-place double lessons if any double-eligible subjects have 2+ lessons today
+        if (placementRules.doubleLessons.enabled) {
+            const doublesCandidates = placementRules.doubleLessons.subjects;
+            
+            for (const subName of doublesCandidates) {
+                const countInDay = dayPool.filter(s => s === subName).length;
+                if (countInDay < 2) continue;
+
+                // 🆕 Ensure we only place one double per week for this subject
+                let alreadyHasDouble = false;
+                for (let d = 0; d < 5; d++) {
+                    if (d === dayIdx) continue;
+                    for (let l = 0; l < grid.length - 1; l++) {
+                        if (grid[l][d] === subName && grid[l + 1][d] === subName) {
+                            alreadyHasDouble = true;
+                            break;
+                        }
+                    }
+                    if (alreadyHasDouble) break;
                 }
-            }
-            if (isAfterLunch && !subject) {
-                const peIdx = dayPool.findIndex(p => p === "PE");
-                if (peIdx !== -1) {
-                    // 🆕 Consecutive Day Check for PE
-                    const peYesterday = dayIdx > 0 && currentTimetableData.grid.some(row => row[dayIdx-1] === "PE");
-                    const peTomorrow = dayIdx < 4 && currentTimetableData.grid.some(row => row[dayIdx+1] === "PE");
-                    
-                    if (!peYesterday && !peTomorrow) {
-                        subject = dayPool[peIdx];
-                        dayPool.splice(peIdx, 1);
+
+                if (!alreadyHasDouble) {
+                    const validPairs = [[0, 1], [2, 3], [4, 5], [6, 7]];
+                    for (const [l1, l2] of validPairs) {
+                        if (l2 >= settings.lessonsPerDay) continue;
+                        const t = getTeacherForSubject(grade, stream, subName);
+                        if (!isTeacherBusy(t?.id, dayIdx, l1, grade, stream) && !isTeacherBusy(t?.id, dayIdx, l2, grade, stream)) {
+                            dayColumn[l1] = subName;
+                            dayColumn[l2] = subName;
+                            subjectsScheduledThisDay.add(subName);
+                            // Remove exactly 2 instances from dayPool
+                            let removed = 0;
+                            for (let i = dayPool.length - 1; i >= 0 && removed < 2; i--) {
+                                if (dayPool[i] === subName) { dayPool.splice(i, 1); removed++; }
+                            }
+                            break;
+                        }
                     }
                 }
+            }
+        }
+
+        // 3b. Fill remaining single slots
+        for (let lIdx = 0; lIdx < settings.lessonsPerDay; lIdx++) {
+            if (dayColumn[lIdx]) continue;
+
+            const lesson = lIdx + 1;
+            const isFridayMorning = (dayIdx === 4 && lesson <= 4);
+            let subject = "";
+
+            if (isFridayMorning && placementRules.ppiPreference.fridayMorningOnly) {
+                const ppiIdx = dayPool.findIndex(p => p === "PPI");
+                if (ppiIdx !== -1) { subject = dayPool[ppiIdx]; dayPool.splice(ppiIdx, 1); }
             }
 
             if (!subject) {
                 for (let i = 0; i < dayPool.length; i++) {
                     const candidate = dayPool[i];
-                    const cType = getSubjectType(candidate);
-                    
-                    if (candidate === "PE") {
-                        if (!isAfterLunch) continue;
-                        const peYesterday = dayIdx > 0 && currentTimetableData.grid.some(row => row[dayIdx-1] === "PE");
-                        const peTomorrow = dayIdx < 4 && currentTimetableData.grid.some(row => row[dayIdx+1] === "PE");
-                        if (peYesterday || peTomorrow) continue;
-                    }
-
                     if (candidate === "P.P.I" && !isFridayMorning) continue;
-                    if (cType === "ACTIVITY" && lesson <= 4) continue;
+                    const cType = getSubjectType(candidate);
+                    if (placementRules.creativePreference.afternoonOnly && cType === "ACTIVITY" && lesson <= 4) continue;
                     if (subjectsScheduledThisDay.has(candidate) && (currentTimetableData.lessonFrequencies[candidate] || 0) <= 5) continue;
 
                     const teacherInfo = getTeacherForSubject(grade, stream, candidate);
@@ -1924,12 +2302,14 @@ const TimetableModule = (function() {
                     break;
                 }
             }
-
-            // Final fallback
             if (!subject && dayPool.length > 0) subject = dayPool.shift();
-
-            currentTimetableData.grid[lIdx][dayIdx] = subject;
+            dayColumn[lIdx] = subject;
             if (subject) subjectsScheduledThisDay.add(subject);
+        }
+
+        // 4. Update the actual grid data from our reconstructed column
+        for (let l = 0; l < settings.lessonsPerDay; l++) {
+            grid[l][dayIdx] = dayColumn[l];
         }
 
         // 4. Refresh UI
@@ -2383,29 +2763,71 @@ const TimetableModule = (function() {
         const term = document.getElementById('ttTermSelect')?.value || "Term 1";
         const selectedStream = stream || document.getElementById('ttStreamSelect')?.value || "";
         
+        const gradeMatch = (grade || "").match(/\d+/);
+        const gradeNum = gradeMatch ? parseInt(gradeMatch[0]) : 0;
+        const isPrimary = gradeNum >= 1 && gradeNum <= 6;
+        const isJunior = gradeNum >= 7 && gradeNum <= 9;
+
         // Get frequencies for this grade
         const freqs = lessonFrequencies[grade] || {};
 
         // 1. GENERATE ASSIGNMENTS (Skip if just refreshing for a manual edit)
         let grid = generateNew ? [] : (currentTimetableData?.grid || []);
         if (generateNew) {
+            // 🆕 Initialize empty 2D grid and local frequency tracker
+            grid = Array.from({ length: settings.lessonsPerDay }, () => Array(5).fill(""));
+            const freqsCopy = { ...freqs };
+            const subjectsScheduledToday = [new Set(), new Set(), new Set(), new Set(), new Set()];
+
+            // 🆕 Strict Double Lesson Rule: Only ONE double block per subject per week
+            if (placementRules.doubleLessons.enabled) {
+                const subjectsWithDoubles = placementRules.doubleLessons.subjects;
+                
+                subjectsWithDoubles.forEach(subName => {
+                    if (freqsCopy[subName] >= 2) {
+                        let doublePlaced = false;
+                        
+                        // 🆕 Specialized placement for Performing Arts (Friday 7-8 or towards breaks)
+                        let dayOrder = [0, 1, 2, 3, 4].sort(() => Math.random() - 0.5);
+                        let validPairs = [ [0,1], [2,3], [4,5], [6,7] ];
+
+                        for (const d of dayOrder) {
+                            for (const [l1, l2] of validPairs) {
+                                if (l1 >= settings.lessonsPerDay || l2 >= settings.lessonsPerDay) continue;
+                                if (grid[l1][d] || grid[l2][d]) continue; // Ensure slots are empty
+                                
+                                const t = getTeacherForSubject(grade, stream, subName);
+                                if (!isTeacherBusy(t?.id, d, l1, grade, stream) && !isTeacherBusy(t?.id, d, l2, grade, stream)) {
+                                    grid[l1][d] = subName;
+                                    grid[l2][d] = subName;
+                                    subjectsScheduledToday[d].add(subName);
+                                    freqsCopy[subName] -= 2; // Ensure remaining lessons are single
+                                    doublePlaced = true;
+                                    break;
+                                }
+                            }
+                            if (doublePlaced) break;
+                        }
+                    }
+                });
+            }
+
             const subjectPool = [];
-            Object.entries(freqs).forEach(([sub, count]) => {
+            Object.entries(freqsCopy).forEach(([sub, count]) => {
                 for(let i=0; i<count; i++) subjectPool.push(sub);
             });
             
         // Shuffle pool
         let pool = [...subjectPool].sort(() => Math.random() - 0.5);
 
-        const subjectsScheduledToday = [new Set(), new Set(), new Set(), new Set(), new Set()];
-
         for (let lesson = 1; lesson <= settings.lessonsPerDay; lesson++) {
+            const lIdx = lesson - 1;
             const isMorning = lesson <= 4; 
             const isAfterLunch = lesson > 6;
             const isBeforeLunch = lesson <= 6; // Lessons 1-6 are before lunch (lunch is after lesson 6)
-            const rowData = [];
 
             for (let day = 0; day < 5; day++) {
+                if (grid[lIdx][day]) continue; // Skip slots already filled by pre-scheduled doubles
                 let subject = "";
                 const isFridayMorning = (day === 4 && lesson <= 4); // Friday is day index 4, morning lessons are 1-4
 
@@ -2415,7 +2837,7 @@ const TimetableModule = (function() {
                     if (ppiCandidateIndex !== -1) {
                         const ppiCandidate = pool[ppiCandidateIndex];
                         const cType = getSubjectType(ppiCandidate);
-                        const freq = freqs[ppiCandidate] || 0;
+                        const freq = freqsCopy[ppiCandidate] || 0;
 
                         // Apply existing constraints for P.P.I
                         if (!(freq <= 5 && subjectsScheduledToday[day].has(ppiCandidate))) {
@@ -2429,28 +2851,43 @@ const TimetableModule = (function() {
                     }
                 }
 
-                // 🆕 Prioritize PE after lunch (if enabled)
-                if (placementRules.pePreference.enabled && isAfterLunch && !subject) {
-                    const peIdx = pool.findIndex(p => p === "PE");
-                    if (peIdx !== -1) {
-                        const peCandidate = pool[peIdx];
-                        // Check consecutive day constraint if enabled
-                        const peYesterday = placementRules.pePreference.avoidConsecutiveDays && day > 0 && subjectsScheduledToday[day-1].has("PE");
-                        if (!subjectsScheduledToday[day].has(peCandidate) && !peYesterday) {
-                            const teacherInfo = getTeacherForSubject(grade, stream, peCandidate);
-                            if (!isTeacherBusy(teacherInfo?.id, day, lesson - 1, grade, stream)) {
-                                subject = peCandidate;
-                                subjectsScheduledToday[day].add(subject);
-                                pool.splice(peIdx, 1);
+                // 🆕 Specialized placement for Creative Arts subjects before breaks
+                if (!subject) {
+                    const isLongBreak = (lesson === 4);
+                    const isBeforeLunch = (lesson === 6);
+                    const isBeforeActivities = (lesson === settings.lessonsPerDay);
+
+                    if (isLongBreak || isBeforeLunch || isBeforeActivities) {
+                        let creativeIdx = -1;
+
+                        // Priority 1: Sports specifically before long break (Lesson 4)
+                        if (isLongBreak && placementRules.sportsPreference.enabled) {
+                            creativeIdx = pool.findIndex(p => p === "Sports C/A(s)");
+                        }
+
+                        // Priority 2: Visual or Performing Arts on Lesson 4, 6 or Final Lesson
+                        if (creativeIdx === -1 && placementRules.visualArtsPreference.enabled) {
+                            creativeIdx = pool.findIndex(p => p === "Visual Arts C/A(v)" || p === "Performing Arts C/A(p)");
+                        }
+
+                        if (creativeIdx !== -1) {
+                            const candidate = pool[creativeIdx];
+                            if (!subjectsScheduledToday[day].has(candidate)) {
+                                const teacherInfo = getTeacherForSubject(grade, stream, candidate);
+                                if (!isTeacherBusy(teacherInfo?.id, day, lesson - 1, grade, stream)) {
+                                    subject = candidate;
+                                    subjectsScheduledToday[day].add(subject);
+                                    pool.splice(creativeIdx, 1);
+                                }
                             }
                         }
                     }
                 }
 
-                // 🆕 Prioritize Core Subjects (Math, English, Kiswahili) before lunch if enabled
+                // 🆕 Prioritize Core Subjects (Math, English, Kiswahili) before lunch (or long break for Primary/Junior) if enabled
                 if (placementRules.coreSubjectsPreference.enabled && isBeforeLunch && !subject) {
                     const coreSubjects = placementRules.coreSubjectsPreference.subjects;
-                    const coreIdx = pool.findIndex(p => coreSubjects.some(c => p.includes(c)));
+                    const coreIdx = pool.findIndex(p => coreSubjects.some(c => p.toLowerCase().includes(c.toLowerCase())));
                     if (coreIdx !== -1) {
                         const coreCandidate = pool[coreIdx];
                         if (!subjectsScheduledToday[day].has(coreCandidate)) {
@@ -2468,35 +2905,33 @@ const TimetableModule = (function() {
                 if (!subject) {
                 for (let i = 0; i < pool.length; i++) {
                     const candidate = pool[i];
+
+                    // 🆕 Primary School Constraint: Prevent double lessons (no consecutive same subjects)
+                    if (isPrimary && lIdx > 0 && grid[lIdx - 1][day] === candidate) continue;
+
                     const cType = getSubjectType(candidate);
                     const freq = freqs[candidate] || 0;
 
-                    // 🆕 Apply rule-based constraints
-                    
-                    // PE constraint
-                    if (placementRules.pePreference.enabled && candidate === "PE") {
-                        if (!isAfterLunch) continue;
-                        if (placementRules.pePreference.avoidConsecutiveDays && day > 0 && subjectsScheduledToday[day-1].has("PE")) continue;
-                    }
-                    
-                    // PPI constraint
                     if (placementRules.ppiPreference.enabled && candidate === "PPI") {
                         if (placementRules.ppiPreference.fridayMorningOnly && !isFridayMorning) continue;
                     }
 
-                    // Creative subjects constraint
                     if (placementRules.creativePreference.enabled && cType === "ACTIVITY") {
                         if (placementRules.creativePreference.afternoonOnly && isMorning) continue;
                         if (subjectsScheduledToday[day].has(candidate)) continue;
                     }
                     
-                    // Core subjects constraint
-                    if (placementRules.coreSubjectsPreference.enabled && placementRules.coreSubjectsPreference.beforeLunchOnly) {
-                        const isCoreSubject = placementRules.coreSubjectsPreference.subjects.some(c => candidate.includes(c));
-                        if (isCoreSubject && isAfterLunch) continue;
-                    }
+                    // 🆕 STRICT Core subjects constraint (Never after Lesson 6) - case insensitive
+                    const isCoreSubject = placementRules.coreSubjectsPreference.subjects.some(c => candidate.toLowerCase().includes(c.toLowerCase()));
+                    if (placementRules.coreSubjectsPreference.enabled && isCoreSubject && lesson > 6) continue;
 
                     if (freq <= 5 && subjectsScheduledToday[day].has(candidate)) continue;
+
+                    // 🆕 Placement Preference Check
+                    const pref = (subjectPlacements[grade] || {})[candidate] || "any";
+                    if (pref === "before4" && lesson > 4) continue;
+                    if (pref === "before6" && lesson > 6) continue;
+                    if (pref === "after6" && lesson <= 6) continue;
 
                     const teacherInfo = getTeacherForSubject(grade, stream, candidate);
                     if (isTeacherBusy(teacherInfo?.id, day, lesson - 1, grade, stream)) continue;
@@ -2517,14 +2952,28 @@ const TimetableModule = (function() {
                     break;
                 }
                 }
+                
+                // 🆕 Final check for strict placement
+                if (subject) {
+                    grid[lIdx][day] = subject;
+                } else if (pool.length > 0) {
+                    // Try to find a non-core subject for fallback if after lesson 6
+                    const isAfterLunch = lesson > 6;
+                    const fallbackIdx = pool.findIndex(p => {
+                        if (!isAfterLunch) return true; // Any subject fine in morning
+                        const isCore = placementRules.coreSubjectsPreference.subjects.some(c => p.toLowerCase().includes(c.toLowerCase()));
+                        return !isCore;
+                    });
 
-                if (!subject && pool.length > 0) {
-                    subject = pool.shift();
-                    subjectsScheduledToday[day].add(subject);
+                    if (fallbackIdx !== -1) {
+                        const finalSub = pool.splice(fallbackIdx, 1)[0];
+                        grid[lIdx][day] = finalSub;
+                        subjectsScheduledToday[day].add(finalSub);
+                    }
+                    // If fallbackIdx is -1, it means it's after lunch and ONLY core subjects are left.
+                    // We leave the slot empty to respect the strict pedagogical rule.
                 }
-                rowData.push(subject);
             }
-            grid.push(rowData);
         }
         }
 
@@ -2564,6 +3013,7 @@ const TimetableModule = (function() {
                 <div class="no-print" style="display:flex; justify-content:flex-end; gap:10px; margin-bottom: 10px; flex-wrap: wrap;">
                     <button class="btn secondary-btn" id="downloadTimetablePDFBtn"><i class="fas fa-file-pdf"></i> Download PDF</button>
                     <button class="btn secondary-btn" id="reshuffleActivitiesBtn"><i class="fas fa-random"></i> Reshuffle Activities</button>
+                    <button class="btn secondary-btn" id="autoFixClashesBtn" style="background:#fff7ed; color:#c2410c; border-color:#fed7aa;"><i class="fas fa-magic"></i> Auto-Fix Clashes</button>
                     <button class="btn primary-btn" id="saveTimetableToPortalBtn" style="background:#166534;"><i class="fas fa-save"></i> Save to Portal</button>
                 </div>
                 <div class="tt-grid-container" style="overflow-x:auto;">
@@ -2622,7 +3072,7 @@ const TimetableModule = (function() {
                     const bgColor = getSubjectColor(subject);
                     const clashStyle = isClash ? "border: 2px solid #ef4444; background: #fff1f2; box-shadow: inset 0 0 5px rgba(239, 68, 68, 0.2);" : "";
 
-                    const isSpecialSubject = subject === "PE" || subject === "PPI";
+                    const isSpecialSubject = subject === "PPI";
 
                     html += `
                         <td class="tt-editable-slot" 
@@ -2641,6 +3091,10 @@ const TimetableModule = (function() {
         });
         html += `</tbody></table></div>`;
 
+        // 🆕 Embed placement rules into the settings snapshot for saving
+        const settingsToSave = JSON.parse(JSON.stringify(settings));
+        settingsToSave.subjectPlacements = subjectPlacements[grade] || {};
+
         currentTimetableData = {
             viewMode: 'class',
             grade,
@@ -2650,8 +3104,7 @@ const TimetableModule = (function() {
             academicYear: Number(academicYear),
             lessonFrequencies: freqs,
             extraActivities, // 🆕 Store persisted activities order
-            // 🆕 Use deep clone for settings to prevent state leakage
-            settings: JSON.parse(JSON.stringify(settings)),
+            settings: settingsToSave,
             grid
         };
 
@@ -2669,9 +3122,12 @@ const TimetableModule = (function() {
             "Mathematics": "#eff6ff", // Blue
             "English": "#f0fdf4",     // Green
             "Kiswahili": "#fff7ed",   // Orange
-            "PE": "#fef2f2",          // Red
             "Integrated Science": "#f5f3ff", // Purple
-            "Creative Arts and Sports": "#fff1f2", // Rose
+            "Creative Arts": "#fff1f2", // Rose
+            "Sports C/A(s)": "#fff1f2",
+            "Visual Arts C/A(v)": "#fff1f2",
+            "Performing Arts C/A(p)": "#fff1f2",
+            "Christian Religious Studies (CRE)": "#fffbeb",
             "Christian Religious Education": "#fffbeb", // Amber
             "Physics": "#ecfeff",     // Cyan
             "Chemistry": "#f0fdfa",   // Teal
@@ -2681,7 +3137,8 @@ const TimetableModule = (function() {
             "Business Studies": "#faf5ff",
             "Agriculture": "#f7fee7",  // Lime
             "Pre-Technical Studies": "#f8fafc", // Slate
-            "PPI": "#fffbeb"
+            "PPI": "#fffbeb",
+            "Social Studies": "#f0fdf4"
         };
         return colors[sub] || "#f9fafb";
     }

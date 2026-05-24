@@ -1,4 +1,5 @@
 // controllers/promotionController.js
+import mongoose from "mongoose";
 import StudentEnrollment from "../models/StudentEnrollment.js";
 import {User} from "../models/User.js";
 import Mark from "../models/mark.js";
@@ -119,6 +120,7 @@ export const promoteStudents = async (req, res) => {
       // -----------------------
       try {
         const studentUser = await User.findById(enrollment.studentId);
+        if (!studentUser) return; // Skip orphaned enrollments where the user no longer exists
         // Calculate balance for the year we are leaving
         const balanceData = await calculateBalance(studentUser, enrollment.grade, fromAcademicYear);
         
@@ -229,38 +231,58 @@ export const previewPromotion = async (req, res) => {
     const pageNum = parseInt(page) || 1;
     const limitNum = parseInt(limit) || 10;
     const skip = (pageNum - 1) * limitNum;
-
+    
+    const schoolId = new mongoose.Types.ObjectId(req.user.schoolId);
     const query = {
-      schoolId: req.user.schoolId,
+      schoolId: schoolId,
       academicYear: Number(academicYear),
       status: "active" // Only active students are eligible for promotion preview
     };
 
-    const total = await StudentEnrollment.countDocuments(query);
+    // 🚀 Using aggregation to perform an inner join between Enrollments and Users.
+    // This ensures that "Unknown Learner" rows are never generated because $unwind 
+    // automatically excludes enrollments that don't have a matching user record.
+    const pipeline = [
+      { $match: query },
+      {
+        $lookup: {
+          from: "users",
+          localField: "studentId",
+          foreignField: "_id",
+          as: "student"
+        }
+      },
+      { $unwind: "$student" }, 
+      {
+        $facet: {
+          metadata: [{ $count: "total" }],
+          data: [
+            { $sort: { grade: 1, "student.name": 1 } },
+            { $skip: skip },
+            { $limit: limitNum },
+            {
+              $project: {
+                studentId: "$student._id",
+                enrollmentId: "$_id",
+                name: "$student.name",
+                admission: "$student.admission",
+                currentGrade: "$grade",
+                status: "$status"
+              }
+            }
+          ]
+        }
+      }
+    ];
 
-    const enrollments = await StudentEnrollment.find(query)
-      .populate("studentId", "name admission")
-      .sort({ grade: 1, _id: 1 }) // Stable sort for pagination
-      .skip(skip)
-      .limit(limitNum)
-      .lean(); // Optimize read query
+    const result = await StudentEnrollment.aggregate(pipeline);
+    const total = result[0].metadata[0]?.total || 0;
+    const enrollments = result[0].data || [];
 
-    const preview = [];
-
-    for (const e of enrollments) {
-      if (!e.studentId) continue;
-
-      const isFinalGrade = e.grade === "Grade 9";
-
-      preview.push({
-        studentId: e.studentId._id,
-        name: e.studentId.name,
-        admission: e.studentId.admission,
-        currentGrade: e.grade,
-        nextGrade: isFinalGrade ? null : getNextGrade(e.grade),
-        status: e.status
-      });
-    }
+    const preview = enrollments.map(e => ({
+      ...e,
+      nextGrade: e.currentGrade === "Grade 9" ? null : getNextGrade(e.currentGrade)
+    }));
 
     res.json({ 
       preview,

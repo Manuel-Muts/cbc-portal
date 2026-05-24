@@ -139,7 +139,10 @@ export const getSchools = async (req, res) => {
     }
 
     const total = await School.countDocuments(query);
-    const schools = await School.find(query).sort({ createdAt: -1 }).skip(skip).limit(limit);
+    // 🚀 Performance Optimization: Exclude heavy base64 fields (logo) from list views.
+    // These are large strings that would significantly bloat the JSON response.
+    // Use getSchoolById if you need the full document with the logo.
+    const schools = await School.find(query).select('-logo -logoMimeType').sort({ createdAt: -1 }).skip(skip).limit(limit);
 
     const response = { schools, total, totalPages: Math.ceil(total / limit), currentPage: page };
     cache.set(cacheKey, response, 120); // 2 minutes cache
@@ -174,7 +177,11 @@ export const getAdmins = async (req, res) => {
     }
 
     const total = await User.countDocuments(query);
-    const admins = await User.find(query).populate('schoolId', 'name').sort({ createdAt: -1 }).skip(skip).limit(limit);
+    // 🚀 Performance Optimization: Select only necessary fields for the list view.
+    // This avoids fetching potentially large objects like 'allocations' and 
+    // sensitive or internal metadata not needed by the dashboard table.
+    const admins = await User.find(query).select('name email schoolId schoolName status createdAt').populate('schoolId', 'name').sort({ createdAt: -1 }).skip(skip).limit(limit);
+
     const response = { admins, total, totalPages: Math.ceil(total / limit), currentPage: page };
     
     cache.set(cacheKey, response, 120);
@@ -539,7 +546,29 @@ export const getLogs = async (req, res) => {
     res.status(500).json({ message: 'Failed to fetch logs' });
   }
 };
+// ---------------------------
+// MANUAL CLEANUP: LOGIN ATTEMPTS (Super-admin only)
+// ---------------------------
+export const cleanLoginAttempts = async (req, res) => {
+  try {
+    if (req.user.role !== 'super_admin') {
+      return res.status(403).json({ msg: 'Only super-admins can perform this action' });
+    }
 
+    const oneWeekAgo = new Date();
+    oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
+
+    const result = await LoginAttempt.deleteMany({ createdAt: { $lt: oneWeekAgo } });
+    
+    res.json({ 
+      message: `Successfully deleted ${result.deletedCount} old login attempt records.`, 
+      deletedCount: result.deletedCount 
+    });
+  } catch (err) {
+    console.error('Clean Login Attempts Error:', err);
+    res.status(500).json({ msg: 'Failed to clean login attempts' });
+  }
+};
 // ---------------------------
 // SETTINGS (simple key/value)
 // ---------------------------

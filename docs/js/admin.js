@@ -71,6 +71,7 @@
   let subjectAllocPage = 1;
   const SUBJECT_ALLOC_LIMIT = 5;
   let subjectAllocTotalPages = 1;
+  let showUnassignedOnly = false; // 🆕 Track sub-tab filter
   let isRefreshing = false;
 // ---------------------------
   // Term Lock Management DOM elements
@@ -488,12 +489,14 @@ function attachAdminSignatureLogic() {
 // PROMOTION PREVIEW RENDERER (UPDATED)
 // ---------------------------
 function renderPromotionPreview(data = []) {
+  if (!promotionPreviewBody) return;
+  
   promotionPreviewBody.innerHTML = "";
 
-  if (!data.length) {
+  if (!data || !data.length) {
     promotionPreviewBody.innerHTML =
       `<tr><td colspan="5" style="text-align:center">No students found</td></tr>`;
-    confirmPromotionBtn.disabled = true;
+    if (confirmPromotionBtn) confirmPromotionBtn.disabled = true;
     return;
   }
 
@@ -525,7 +528,7 @@ function renderPromotionPreview(data = []) {
   });
 
   // Enable confirm if at least one active student exists
-  confirmPromotionBtn.disabled = !data.some(s => s.status === "active");
+  if (confirmPromotionBtn) confirmPromotionBtn.disabled = !data.some(s => s.status === "active");
 }
 
 
@@ -558,8 +561,13 @@ previewPromotionBtn.addEventListener("click", () => {
 
     if (res) {
       promoPage = res.currentPage || 1;
-      promoTotalPages = res.totalPages || 1;
-      renderPromotionPreview(res.preview);
+      // Robustly handle total pages from root or pagination object
+      promoTotalPages = res.totalPages || res.pagination?.totalPages || res.pages || 1;
+
+      // Exhaustive check for the data array key to ensure learners appear in the table
+      const previewData = res.preview || res.results || res.students || res.users || res.learners || res.data || res.docs || (Array.isArray(res) ? res : []);
+      
+      renderPromotionPreview(previewData);
       renderPromotionPagination();
     }
   } finally {
@@ -713,14 +721,14 @@ confirmPromotionBtn.addEventListener("click", async () => {
       if (allocations.length === 0) {
         const tr = document.createElement("tr");
         tr.innerHTML = `
-          <td>${item.name}</td>
+          <td style="white-space: nowrap;"><strong>${item.name}</strong> <button class="btn secondary-btn btn-edit-profile" data-id="${item._id}" data-name="${item.name}" data-email="${item.email || ''}" data-contact="${item.contact || ''}" style="padding: 2px 8px; font-size: 0.7rem; margin-left: 8px;">👤 Edit</button></td>
           <td></td>
           <td></td>
           <td>
             <input type="checkbox" class="dean-toggle" data-id="${item._id}" ${item.isDean ? 'checked' : ''}>
           </td>
           <td>
-            <!-- No allocations to remove -->
+            <span style="color: #94a3b8; font-style: italic; font-size: 0.8rem;">No allocations</span>
           </td>
         `;
         frag.appendChild(tr);
@@ -729,14 +737,16 @@ confirmPromotionBtn.addEventListener("click", async () => {
           const gradeLabel = alloc.stream ? `Grade ${alloc.grade}${alloc.stream}` : `Grade ${alloc.grade}`;
           const tr = document.createElement("tr");
           tr.innerHTML = `
-            <td>${index === 0 ? item.name : ""}</td>
+            <td style="white-space: nowrap;">
+              ${index === 0 ? `<strong>${item.name}</strong> <button class="btn secondary-btn btn-edit-profile" data-id="${item._id}" data-name="${item.name}" data-email="${item.email || ''}" data-contact="${item.contact || ''}" style="padding: 2px 8px; font-size: 0.7rem; margin-left: 8px;">👤 Edit</button>` : ""}
+            </td>
             <td>${gradeLabel}</td>
             <td>${Array.isArray(alloc.subjects) && alloc.subjects.length > 0 ? alloc.subjects.join(", ") : "No subjects allocated"}</td>
             <td>
               ${index === 0 ? `<input type="checkbox" class="dean-toggle" data-id="${item._id}" ${item.isDean ? 'checked' : ''}>` : ""}
             </td>
-            <td>
-              <button class="danger" data-id="${item._id}" data-grade="${alloc.grade}" data-stream="${alloc.stream || ''}" data-action="remove-subjects">Remove</button>
+            <td style="white-space: nowrap;">
+              <button class="danger" data-id="${item._id}" data-grade="${alloc.grade}" data-stream="${alloc.stream || ''}" data-action="remove-subjects" title="Remove Allocation">Remove</button>
             </td>
           `;
           frag.appendChild(tr);
@@ -814,7 +824,7 @@ confirmPromotionBtn.addEventListener("click", async () => {
     if (subjectAllocTableBody.dataset.loading === "true") return;
     subjectAllocTableBody.dataset.loading = "true";
 
-    const CACHE_KEY = `subject_allocations_p${page}`;
+    const CACHE_KEY = `subject_allocations_p${page}_un${showUnassignedOnly}`;
     if (!force) {
       const cached = localStorage.getItem(CACHE_KEY);
       if (cached) {
@@ -833,7 +843,11 @@ confirmPromotionBtn.addEventListener("click", async () => {
     subjectAllocTableBody.innerHTML = `<tr><td colspan="5" style="text-align:center">${createSpinner().outerHTML} Loading allocations...</td></tr>`;
     
     try {
-      const response = await secureFetch(`${API_BASE}/users/subjects/allocations?page=${page}&limit=${limit}`);
+      let url = `${API_BASE}/users/subjects/allocations?page=${page}&limit=${limit}`;
+      if (showUnassignedOnly) {
+        url += `&unassigned=true`;
+      }
+      const response = await secureFetch(url);
       if (!response) { subjectAllocTableBody.innerHTML = ""; return; }
 
       const allocationData = Array.isArray(response) ? response : response.data || [];
@@ -842,11 +856,42 @@ confirmPromotionBtn.addEventListener("click", async () => {
       subjectAllocPage = pagination.page || page;
       subjectAllocTotalPages = pagination.totalPages || 1;
 
+      if (showUnassignedOnly && allocationData.length === 0) {
+        subjectAllocTableBody.innerHTML = `<tr><td colspan="5" style="text-align:center; padding: 30px; color: #64748b;">🎉 All teachers have been assigned subjects.</td></tr>`;
+        const badge = document.getElementById("unassignedCountBadge");
+        if (badge) {
+          badge.textContent = "0";
+          badge.style.display = "none";
+        }
+        return;
+      }
+
       localStorage.setItem(CACHE_KEY, JSON.stringify({ timestamp: Date.now(), data: response }));
       renderSubjectAllocations(allocationData);
+
+      // 🆕 Sync badge state after loading new data
+      const badge = document.getElementById("unassignedCountBadge");
+      if (badge) {
+        if (showUnassignedOnly) {
+          const count = pagination.total || 0;
+          badge.textContent = count;
+          badge.style.display = count > 0 ? "inline-block" : "none";
+          badge.style.background = count > 0 ? "#fee2e2" : "#e2e8f0";
+          badge.style.color = count > 0 ? "#b91c1c" : "#475569";
+        } else {
+          // Update count in background if we are currently looking at assigned teachers
+          updateUnassignedBadge();
+        }
+      }
     } finally {
       subjectAllocTableBody.dataset.loading = "false";
       updateSubjectAllocPaginationControls();
+
+      // 🆕 Update timestamp for administrative awareness
+      const updateEl = document.getElementById("subjectAllocLastUpdated");
+      if (updateEl) {
+        updateEl.textContent = `Last updated: ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+      }
     }
   }
 
@@ -925,7 +970,7 @@ confirmPromotionBtn.addEventListener("click", async () => {
     if (res) {
       showToast("Enrollment updated successfully", "success");
       modal.remove();
-      studentSearchBtn.click(); // refresh search results
+      if (studentSearchBtn) studentSearchBtn.click(); // refresh search results
     }
   };
 }
@@ -933,24 +978,27 @@ confirmPromotionBtn.addEventListener("click", async () => {
 // ---------------------------
 // EDIT STUDENT PROFILE MODAL
 // ---------------------------
-function openEditProfileModal(student) {
+function openEditProfileModal(userToEdit) {
   const modal = document.createElement("div");
   modal.style = "position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.4);display:flex;justify-content:center;align-items:center;z-index:10000;overflow:auto;";
-
+  
+  const isStudent = !!userToEdit.admission;
+  
   modal.innerHTML = `
     <div style="background:#fff;padding:20px;border-radius:8px;min-width:350px;margin:auto;max-width:420px;">
-      <h3>Edit Profile</h3>
+      <h3>Edit Profile (${isStudent ? 'Learner' : 'Staff'})</h3>
       <div style="margin:15px 0;">
         <label>Full Name:</label>
-        <input type="text" id="editProfileName" value="${student.name || ''}" style="width:100%;padding:8px;border:1px solid #ccc;border-radius:4px;" />
+        <input type="text" id="editProfileName" value="${userToEdit.name || ''}" style="width:100%;padding:8px;border:1px solid #ccc;border-radius:4px;" />
       </div>
       <div style="margin:15px 0;">
-        <label>Admission Number:</label>
-        <input type="text" id="editProfileAdmission" value="${student.admission || ''}" style="width:100%;padding:8px;border:1px solid #ccc;border-radius:4px;" />
+        <label>${isStudent ? 'Admission Number' : 'Email Address'}:</label>
+        <input type="text" id="editProfileIdentifier" value="${isStudent ? (userToEdit.admission || '') : (userToEdit.email || '')}" 
+               style="width:100%;padding:8px;border:1px solid #ccc;border-radius:4px; ${!isStudent ? 'background:#f1f5f9;' : ''}" ${!isStudent ? 'readonly' : ''} />
       </div>
       <div style="margin:15px 0;">
         <label>Contact:</label>
-        <input type="text" id="editProfileContact" value="${student.contact || ''}" style="width:100%;padding:8px;border:1px solid #ccc;border-radius:4px;" />
+        <input type="text" id="editProfileContact" value="${userToEdit.contact || ''}" style="width:100%;padding:8px;border:1px solid #ccc;border-radius:4px;" />
       </div>
       <div style="display:flex;gap:10px;margin-top:20px;">
         <button id="saveProfileBtn" style="flex:1;padding:10px;background:#2ecc71;color:#fff;border:none;border-radius:4px;cursor:pointer;">Save</button>
@@ -967,19 +1015,23 @@ function openEditProfileModal(student) {
   if (cancelProfileBtn) cancelProfileBtn.onclick = () => modal.remove();
 
   if (saveProfileBtn) saveProfileBtn.onclick = async () => {
-    const saveBtn = document.getElementById("saveProfileBtn");
-    const originalHTML = saveBtn.innerHTML;
-    saveBtn.disabled = true;
-    saveBtn.innerHTML = `${createSpinner(14).outerHTML} Saving...`;
+    const originalHTML = saveProfileBtn.innerHTML;
+    saveProfileBtn.disabled = true;
+    saveProfileBtn.innerHTML = `${createSpinner(14).outerHTML} Saving...`;
 
     const payload = {
       name: document.getElementById("editProfileName").value.trim(),
-      admission: document.getElementById("editProfileAdmission").value.trim(),
       contact: document.getElementById("editProfileContact").value.trim() || null
     };
 
+    if (isStudent) {
+      payload.admission = document.getElementById("editProfileIdentifier").value.trim();
+    } else {
+      payload.email = document.getElementById("editProfileIdentifier").value.trim();
+    }
+
     try {
-      const res = await secureFetch(`${API_BASE}/users/${student.id || student.studentId}`, {
+      const res = await secureFetch(`${API_BASE}/users/${userToEdit.id || userToEdit._id}`, {
         method: "PUT",
         body: JSON.stringify(payload)
       });
@@ -987,14 +1039,19 @@ function openEditProfileModal(student) {
       if (res) {
         showToast("Profile updated successfully", "success");
         modal.remove();
-        studentSearchBtn.click();
+        // Refresh whatever table the user is likely looking at
+        if (document.getElementById("studentSearchSection")?.style.display === "block" || document.getElementById("searchSection")?.style.display === "block") {
+          if (studentSearchBtn) studentSearchBtn.click();
+        } else {
+          loadSubjectAllocations();
+        }
       }
     } catch (err) {
       console.error("Profile update error:", err);
       showToast(err.message || "Failed to update profile", "error");
     } finally {
-      saveBtn.disabled = false;
-      saveBtn.innerHTML = originalHTML;
+      saveProfileBtn.disabled = false;
+      saveProfileBtn.innerHTML = originalHTML;
     }
   };
 }
@@ -1053,6 +1110,90 @@ async function openHistoryModal(studentId) {
 }
 
   // ---------------------------
+  // UPDATE UNASSIGNED BADGE (🆕)
+  // ---------------------------
+  async function updateUnassignedBadge() {
+    const badge = document.getElementById("unassignedCountBadge");
+    if (!badge) return;
+
+    try {
+      // Lightweight fetch to get current total count of unassigned teachers
+      const res = await secureFetch(`${API_BASE}/users/subjects/allocations?page=1&limit=1&unassigned=true`);
+      if (res && res.pagination) {
+        const count = res.pagination.total || 0;
+        badge.textContent = count;
+        badge.style.display = count > 0 ? "inline-block" : "none";
+        badge.style.background = count > 0 ? "#fee2e2" : "#e2e8f0";
+        badge.style.color = count > 0 ? "#b91c1c" : "#475569";
+      }
+    } catch (e) {
+      console.warn("Could not update unassigned badge:", e);
+    }
+  }
+
+  // ---------------------------
+  // SUBJECT ALLOC SUB-TABS (🆕)
+  // ---------------------------
+  function setupSubjectAllocSubTabs() {
+    const section = document.getElementById("subjectAllocSection");
+    if (!section || document.getElementById("subjectAllocSubTabs")) return;
+
+    const subTabs = document.createElement("div");
+    subTabs.id = "subjectAllocSubTabs";
+    subTabs.style.cssText = "display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; border-bottom: 2px solid #f1f5f9; padding-bottom: 5px;";
+    
+    subTabs.innerHTML = `
+      <div style="display:flex; gap:20px;">
+        <div class="sub-tab active" data-filter="all" style="cursor:pointer; font-weight:700; color:#2b6cb0; border-bottom: 2px solid #2b6cb0; padding-bottom: 8px; transition: all 0.2s;">Assigned Teachers</div>
+        <div class="sub-tab" data-filter="unassigned" style="cursor:pointer; color:#64748b; padding-bottom: 8px; transition: all 0.2s; display: flex; align-items: center; gap: 6px;">
+          Unassigned Only
+          <span id="unassignedCountBadge" style="background: #e2e8f0; color: #475569; font-size: 0.7rem; padding: 2px 6px; border-radius: 10px; font-weight: 700; display: none;">0</span>
+        </div>
+      </div>
+      <div id="subjectAllocLastUpdated" style="font-size: 0.7rem; color: #94a3b8; margin-bottom: 8px;">Last updated: Loading...</div>
+    `;
+
+    // Find placement spot: After the header row
+    const header = section.querySelector(".admin-section-header-row");
+    if (header) {
+      header.after(subTabs);
+    } else {
+      section.prepend(subTabs);
+    }
+
+    subTabs.querySelectorAll(".sub-tab").forEach(tab => {
+      tab.addEventListener("click", () => {
+        subTabs.querySelectorAll(".sub-tab").forEach(t => {
+          t.classList.remove("active");
+          t.style.color = "#64748b";
+          t.style.fontWeight = "normal";
+          t.style.borderBottom = "none";
+        });
+        tab.classList.add("active");
+        tab.style.color = "#2b6cb0";
+        tab.style.fontWeight = "700";
+        tab.style.borderBottom = "2px solid #2b6cb0";
+
+        showUnassignedOnly = tab.dataset.filter === "unassigned";
+
+        // 🆕 Toggle visibility of related controls
+        const form = document.getElementById("subjectAllocForm");
+        const searchInput = document.getElementById("subjectSearchInput");
+        const paginationControls = document.getElementById("subjectAllocPaginationControls");
+
+        if (form) form.style.display = showUnassignedOnly ? "none" : "block";
+        if (searchInput) searchInput.style.display = showUnassignedOnly ? "none" : "block";
+        if (paginationControls) paginationControls.style.display = showUnassignedOnly ? "none" : "flex"; // Assuming flex for pagination
+        subjectAllocPage = 1;
+        loadSubjectAllocations(1, SUBJECT_ALLOC_LIMIT, true);
+      });
+    });
+
+    // Initial badge update
+    updateUnassignedBadge();
+  }
+
+  // ---------------------------
   // NAVIGATION / TAB SWITCHING
   // ---------------------------
   function setupNavigation() {
@@ -1095,7 +1236,10 @@ async function openHistoryModal(studentId) {
           else sec.classList.add("hidden");
         });
 
-        if (targetId === "signatureUploadSection") {
+        // 🆕 Robust check for both potential naming conventions
+        if (targetId === "subjectAllocSection" || targetId === "subjectAllocations") {
+          setupSubjectAllocSubTabs();
+        } else if (targetId === "signatureUploadSection") {
           renderAdminSignature(); // Render/re-render signature UI when its tab is active
         } else if (targetId === "termLockManagementSection") {
           populateTermLockYearOptions();
@@ -1300,6 +1444,17 @@ const subjects = subjectsSelect ? Array.from(subjectsSelect.selectedOptions).map
 
   subjectAllocTableBody?.addEventListener("click", async (e) => {
   const btn = e.target.closest("button");
+  if (btn && btn.classList.contains("btn-edit-profile")) {
+    const userToEdit = {
+      id: btn.dataset.id,
+      name: btn.dataset.name,
+      email: btn.dataset.email,
+      contact: btn.dataset.contact
+    };
+    openEditProfileModal(userToEdit);
+    return;
+  }
+
   if (btn && btn.dataset.action === "remove-subjects") {
     const teacherId = btn.dataset.id;
     const grade = btn.dataset.grade; // 👈 capture grade from dataset

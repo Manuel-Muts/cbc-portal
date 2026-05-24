@@ -17,7 +17,8 @@ import {
   getLogs,
   getSettings,
   updateSettings,
-  toggleSchoolStatus
+  toggleSchoolStatus,
+  cleanLoginAttempts
 } from '../controllers/superAdminController.js';
 import { School } from "../models/school.js"; 
 
@@ -36,7 +37,7 @@ router.use(verifyToken);
 // SUPER ADMIN ONLY routes
 // ============================
 const superAdminOnly = (req, res, next) => {
-  if (!req.user || !req.user.isSuperAdmin) {
+  if (!req.user || req.user.role !== 'super_admin') {
     return res.status(403).json({ message: "Super admin access required" });
   }
   next();
@@ -66,6 +67,7 @@ router.get('/analytics', superAdminOnly, getAnalytics);
 router.get('/logs', superAdminOnly, getLogs);
 router.get('/settings', superAdminOnly, getSettings);
 router.put('/settings', superAdminOnly, updateSettings);
+router.delete('/clean-login-attempts', superAdminOnly, cleanLoginAttempts);
 
 // ============================
 // SCHOOL INFO ROUTE FOR ALL ROLES

@@ -24,12 +24,14 @@ const BACKUPS_DIR = path.join(path.resolve(), 'backups', 'payments');
 export const startCronJobs = () => {
   // 🆕 Cron Job: Clean up orphaned StudentEnrollment records weekly
   // Runs every Sunday at 3:00 AM (0 3 * * 0)
+  // This ensures that "Unknown Learner" ghost records are removed from the DB automatically.
   cron.schedule('0 3 * * 0', async () => {
-    console.log('🕒 Running scheduled cleanup of orphaned student enrollments...');
+    console.log('🕒 [Cron Job] Starting weekly cleanup of orphaned student enrollments...');
     try {
       // Simulate a request object with a super_admin user for system-wide cleanup
       const mockReq = {
         user: {
+          id: 'system',
           role: 'super_admin',
           // No schoolId needed for super_admin to clean globally
         }
@@ -37,11 +39,11 @@ export const startCronJobs = () => {
       // Simulate a response object for logging purposes
       const mockRes = {
         status: function(code) {
-          console.log(`[Orphaned Enrollment Cleanup] Status: ${code}`);
+          console.log(`🕒 [Cron Job] Cleanup Status: ${code}`);
           return this;
         },
         json: function(data) {
-          console.log(`[Orphaned Enrollment Cleanup] Result:`, data);
+          console.log(`🕒 [Cron Job] Cleanup Result:`, JSON.stringify(data));
         }
       };
       await cleanOrphanedEnrollments(mockReq, mockRes);

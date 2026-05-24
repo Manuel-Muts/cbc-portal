@@ -100,7 +100,11 @@ export const getAllTimetables = async (req, res) => {
     if (year) query.academicYear = Number(year);
     if (term) query.term = term;
 
-    const timetables = await Timetable.find(query).lean();
+    // 🚀 OPTIMIZATION: Only fetch fields needed for teacher clash detection and block view.
+    // Excludes heavy settings, frequencies, and hashes not used in aggregate views.
+    const timetables = await Timetable.find(query)
+      .select('grade stream grid academicYear term')
+      .lean();
     res.json(timetables);
   } catch (err) {
     console.error("Get All Timetables Error:", err);

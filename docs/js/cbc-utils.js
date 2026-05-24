@@ -144,7 +144,11 @@ window.cbcUtils = {
             "Christian Religious Studies": "CRE", // Added for robustness
             "Christian Religious Education": "CRE", // Added for robustness
             "Christian Religion": "CRE", // Added to catch common variations/typos
+            "Creative Arts": "C/A",
+            "Sports C/A(s)": "C/A(s)",
             "Creative Arts and Sports": "C/A",
+            "Visual Arts C/A(v)": "C/A(v)",
+            "Performing Arts C/A(p)": "C/A(p)",
             "Pre-Technical Studies": "PRE-TECH",
             "Christian Religious Studies (CRE)": "CRE",
             "Integrated Science": "I/SCI",
@@ -177,8 +181,7 @@ window.cbcUtils = {
             "Music and Dance": "M&D",
             "Theatre and Film": "T&F",
             "Sports and Recreation": "S&R",
-            "PPI": "PPI", // Ensure PPI is recognized
-            "PE": "PE"    // Ensure PE is recognized
+            "PPI": "PPI" // Ensure PPI is recognized
         };
 
         const normalizedSubject = (subject || "").trim().toLowerCase();

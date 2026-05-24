@@ -69,6 +69,17 @@ deanInjectedStyle.textContent = `
     margin: 0 !important;
     font-size: 0.75rem !important;
   }
+
+  /* 🆕 Standalone View for Timetable to reduce congestion */
+  body.standalone-view .sidebar, 
+  body.standalone-view .sidebar-nav,
+  body.standalone-view header,
+  body.standalone-view .tab-navigation, /* Hides the main tab navigation */
+  body.standalone-view .tab-btns, /* Hides the tab buttons */
+  body.standalone-view .filters-section, /* Hides the analysis filters */
+  body.standalone-view .analysis-options /* Hides the analysis action buttons */
+  { display: none !important; }
+  body.standalone-view main, body.standalone-view .main-content { margin-left: 0 !important; padding: 10px !important; width: 100% !important; }
 `;
 document.head.appendChild(deanInjectedStyle);
 
@@ -250,6 +261,14 @@ function setupTabs() {
     btn.addEventListener("click", () => {
       const target = btn.dataset.tab;
       if (!target) return;
+
+      // 🆕 Redirect Timetable to a new standalone window to avoid UI congestion
+      if (target === "timetableTab" && !document.body.classList.contains('standalone-view')) {
+        const url = new URL(window.location.href);
+        url.searchParams.set('view', 'timetable');
+        window.open(url.toString(), '_blank');
+        return; // Prevent switching in the current window
+      }
 
       tabBtns.forEach(b => b.classList.remove("active"));
       tabPanes.forEach(p => p.classList.remove("active"));
@@ -2065,6 +2084,23 @@ async function loadDeanProfile() {
 
     setupTabs();
     initFilters();
+
+    // 🆕 Check if we should auto-open Timetable in standalone mode
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('view') === 'timetable') {
+        document.body.classList.add('standalone-view');
+        
+        // Deactivate other tabs
+        document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
+        document.querySelectorAll(".tab-pane").forEach(p => p.classList.remove("active"));
+
+        const pane = document.getElementById('timetableTab');
+        if (pane) {
+            pane.classList.add('active');
+            if (analysisSection) analysisSection.style.display = "block";
+            if (window.TimetableModule) window.TimetableModule.init();
+        }
+    }
 
     // 🆕 Gracefully remove overlay once everything is ready
     setTimeout(() => {

@@ -8,7 +8,10 @@ window.SUBJECT_DATA.gradeSubjects = {
     "Environmental Activities",
     "Social Studies",
     "Christian Religious Studies (CRE)",
-    "Creative Arts and Sports"
+    "Creative Arts and Sports",
+    "Sports C/A(s)",
+    "Visual Arts C/A(v)",
+    "Performing Arts C/A(p)"
   ],
   "4-6": [
     "Mathematics",
@@ -19,6 +22,9 @@ window.SUBJECT_DATA.gradeSubjects = {
     "Social Studies",
     "Christian Religious Studies (CRE)",
     "Creative Arts and Sports",
+    "Sports C/A(s)",
+    "Visual Arts C/A(v)",
+    "Performing Arts C/A(p)",
     "Physical Health Education"
   ],
   "7-9": [
@@ -33,7 +39,10 @@ window.SUBJECT_DATA.gradeSubjects = {
     "Health Education",
     "Pre-Technical Studies",
     "Sports and Physical Education",
-    "Creative Arts and Sports"
+    "Creative Arts and Sports",
+    "Sports C/A(s)",
+    "Visual Arts C/A(v)",
+    "Performing Arts C/A(p)"
   ],
   "10-12": [
     "Mathematics",
@@ -159,13 +168,14 @@ window.SUBJECT_DATA.subjectCategories = {
     "General Science"
   ],
   activity: [
-    "PE",
     "Sports and Recreation",
     "Music and Dance"
   ],
   lowLoad: [
     "Creative Arts and Sports",
-    "Creative Arts",
+    "Sports C/A(s)",
+    "Visual Arts C/A(v)",
+    "Performing Arts C/A(p)",
     "Life Skills",
     "Fine Art",
     "Theatre and Film",
@@ -189,7 +199,15 @@ window.SUBJECT_DATA.getSubjectType = function(sub) {
 };
 
 window.SUBJECT_DATA.getDefaultFrequency = function(sub) {
-  if (sub === "PPI") return 1;
+ const name = (sub || "").trim();
+  if (name === "PPI") return 1;
+  // Components typically have 1-2 lessons per week
+  if (name === "Sports C/A(s)") return 2;
+  if (name === "Visual Arts C/A(v)") return 1;
+  if (name === "Performing Arts C/A(p)") return 2;
+  if (name.includes("C/A(")) return 1;
+  if (name === "Agriculture" || name === "Pre-Technical Studies") return 4;
+  if (name === "Christian Religious Studies (CRE)" || name === "Christian Religious Education" || name === "Social Studies") return 5;
   const type = window.SUBJECT_DATA.getSubjectType(sub);
   return (type === "TECHNICAL") ? 5 : 3;
 };

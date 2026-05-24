@@ -195,7 +195,16 @@ if (!allowedRoles.includes(role)) {
 
     return res.status(201).json({
       msg: `${role} registered successfully`,
-      user: newUser
+      user: {
+        _id: newUser._id,
+        name: newUser.name,
+        role: newUser.role,
+        email: newUser.email,
+        admission: newUser.admission,
+        grade: newUser.grade,
+        schoolId: newUser.schoolId,
+        createdAt: newUser.createdAt
+      }
     });
 
   } catch (err) {
@@ -357,8 +366,17 @@ export const loginUser = async (req, res) => {
       console.error('Failed to record login attempt:', err);
     }
 
+    // 🚀 Security Fix: Sanitize user object to exclude sensitive fields from response body
+    const sanitizedUser = user.toObject();
+    delete sanitizedUser.password;
+    delete sanitizedUser.classTeacherPassword;
+    delete sanitizedUser.resetCode;
+    delete sanitizedUser.resetCodeExpires;
+    delete sanitizedUser.resetAttempts;
+    delete sanitizedUser.resetVerified;
+
     // ✅ SEND RESPONSE ONCE
-    return res.json({ token, user });
+    return res.json({ token, user: sanitizedUser });
 
   } catch (err) {
     console.error("Login Error:", err);
@@ -441,7 +459,19 @@ export const getAllUsers = async (req, res) => {
     
     let query = {};
     let sort = { createdAt: -1, _id: -1 };
-    let projection = { password: 0 };
+    // 🚀 Performance Optimization: Exclude large arrays (allocations) and 
+    // sensitive metadata not required for user management table views.
+    let projection = { 
+      password: 0, 
+      classTeacherPassword: 0, 
+      allocations: 0, 
+      signatureUrl: 0, 
+      signaturePublicId: 0,
+      resetCode: 0,
+      resetCodeExpires: 0,
+      resetAttempts: 0,
+      resetVerified: 0
+    };
 
     // Admins see only users in their school if schoolId exists
     if (user.role === 'admin' && user.schoolId) {
@@ -592,15 +622,28 @@ export const assignSubjects = async (req, res) => {
 export const getSubjectAllocations = async (req, res) => {
   try {
     const page = Math.max(1, parseInt(req.query.page, 10) || 1);
-    const limit = Math.max(1, Math.min(100, parseInt(req.query.limit, 10) || 5));
+    // Allow higher limit for internal school-wide operations like timetable generation (up to 1000)
+    const limit = Math.max(1, Math.min(1000, parseInt(req.query.limit, 10) || 5));
     const skip = (page - 1) * limit;
-    const cacheKey = `sub_alloc_${req.user.schoolId || 'global'}_${page}_${limit}`;
-    const cached = cache.get(cacheKey);
+
+    // 🆕 Add filter for unassigned teachers
+    const unassignedOnly = req.query.unassigned === 'true';
 
     const query = { role: 'teacher' };
     if (req.user.schoolId) {
       query.schoolId = req.user.schoolId;
     }
+
+    if (unassignedOnly) {
+      query.$or = [
+        { allocations: { $size: 0 } },
+        { allocations: { $exists: false } },
+        { allocations: null }
+      ];
+    }
+
+    const cacheKey = `sub_alloc_${req.user.schoolId || 'global'}_${page}_${limit}_un${unassignedOnly}`;
+    const cached = cache.get(cacheKey);
 
     if (cached) {
       return res.json(cached);
@@ -608,7 +651,8 @@ export const getSubjectAllocations = async (req, res) => {
 
     const total = await User.countDocuments(query);
     const teachers = await User.find(query)
-      .select('name allocations schoolId isDean')
+      // 🆕 Include email and contact for the "Edit Profile" modal
+      .select('name email contact allocations schoolId isDean assignedClass assignedStream')
       .skip(skip)
       .limit(limit)
       .lean();
@@ -800,7 +844,7 @@ export const getClassTeacherAllocations = async (req, res) => {
 export const getUser = async (req, res) => {
   try {
     const user = await User.findById(req.user.id)
-      .select("-password -classTeacherPassword")
+      .select("-password -classTeacherPassword -resetCode -resetCodeExpires -resetAttempts -resetVerified")
       .lean();
 
     if (!user) {
@@ -1030,9 +1074,18 @@ export const changePassword = async (req, res) => {
         { expiresIn: "1d" }
       );
 
+      // Sanitize user for response
+      const sanitizedUser = user.toObject();
+      delete sanitizedUser.password;
+      delete sanitizedUser.classTeacherPassword;
+      delete sanitizedUser.resetCode;
+      delete sanitizedUser.resetCodeExpires;
+      delete sanitizedUser.resetAttempts;
+      delete sanitizedUser.resetVerified;
+
       return res.json({
         message: "Password updated successfully",
-        user,
+        user: sanitizedUser,
         token
       });
     }
@@ -1075,9 +1128,18 @@ export const changePassword = async (req, res) => {
       { expiresIn: "1d" }
     );
 
+      // Sanitize user for response
+      const sanitizedUser = user.toObject();
+      delete sanitizedUser.password;
+      delete sanitizedUser.classTeacherPassword;
+      delete sanitizedUser.resetCode;
+      delete sanitizedUser.resetCodeExpires;
+      delete sanitizedUser.resetAttempts;
+      delete sanitizedUser.resetVerified;
+
     res.json({
       message: "Password changed successfully",
-      user,
+        user: sanitizedUser,
       token
     });
 
@@ -1189,7 +1251,16 @@ export const updateUser = async (req, res) => {
       throw err;
     }
 
-    res.json({ message: "User updated", user: targetUser });
+    // Sanitize user for response
+    const sanitizedUser = targetUser.toObject();
+    delete sanitizedUser.password;
+    delete sanitizedUser.classTeacherPassword;
+    delete sanitizedUser.resetCode;
+    delete sanitizedUser.resetCodeExpires;
+    delete sanitizedUser.resetAttempts;
+    delete sanitizedUser.resetVerified;
+
+    res.json({ message: "User updated", user: sanitizedUser });
   } catch (err) {
     console.error("Update User Error:", err);
     res.status(500).json({ error: err.message });
@@ -1234,7 +1305,7 @@ export const updateSignature = async (req, res) => {
       userId,
       { signatureUrl, signaturePublicId },
       { new: true }
-    ).select("-password");
+    ).select("-password -classTeacherPassword -resetCode -resetCodeExpires -resetAttempts -resetVerified");
     
     // Invalidate caches that might hold teacher details
     cache.clearByPattern(`class_alloc_${req.user.schoolId}`);

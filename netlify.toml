@@ -61,6 +61,11 @@
   to = "/teacher-materials.html"
   status = 200
 
+  [[redirects]]
+  from = "/dean-dashboard"
+  to = "/dean-dashboard.html"
+  status = 200
+
 [[redirects]]
   from = "/analysis"
   to = "/analysis.html"
