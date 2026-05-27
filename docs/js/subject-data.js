@@ -154,11 +154,15 @@ window.SUBJECT_DATA.seniorSchoolPathways = {
 };
 
 window.SUBJECT_DATA.subjectCategories = {
-  technical: [
+  core: [
     "Mathematics",
     "English",
-    "Kiswahili",
+    "Kiswahili"
+  ],
+  technical: [
     "Integrated Science",
+    "Science and Technology",
+    "Pre-Technical Studies",
     "Physics",
     "Chemistry",
     "Biology",
@@ -192,24 +196,34 @@ window.SUBJECT_DATA.defaultActivityPeriods = [
 
 window.SUBJECT_DATA.getSubjectType = function(sub) {
   const name = (sub || "").trim();
+  if (window.SUBJECT_DATA?.subjectCategories?.core?.some(c => name.includes(c))) return "CORE";
   if (window.SUBJECT_DATA?.subjectCategories?.technical?.some(t => name.includes(t))) return "TECHNICAL";
   if (window.SUBJECT_DATA?.subjectCategories?.activity?.some(a => name.includes(a))) return "ACTIVITY";
   if (window.SUBJECT_DATA?.subjectCategories?.lowLoad?.some(l => name.includes(l))) return "CREATIVE";
   return "STANDARD";
 };
 
-window.SUBJECT_DATA.getDefaultFrequency = function(sub) {
+window.SUBJECT_DATA.getDefaultFrequency = function(sub, grade) {
  const name = (sub || "").trim();
-  if (name === "PPI") return 1;
+  if (name === "PPI") {
+    if (!grade || grade === "all") return 1; 
+    const match = String(grade).match(/\d+/);
+    const num = match ? parseInt(match[0]) : 0;
+    if (num >= 7) return 0; // Grades 7, 8, 9, 10, 11, 12 default to 0
+    return 1; // Primary (1-6)
+  }
   // Components typically have 1-2 lessons per week
   if (name === "Sports C/A(s)") return 2;
   if (name === "Visual Arts C/A(v)") return 1;
   if (name === "Performing Arts C/A(p)") return 2;
   if (name.includes("C/A(")) return 1;
   if (name === "Agriculture" || name === "Pre-Technical Studies") return 4;
-  if (name === "Christian Religious Studies (CRE)" || name === "Christian Religious Education" || name === "Social Studies") return 5;
+  if (name === "Christian Religious Studies (CRE)" || name === "Christian Religious Education" || name === "Social Studies") return 4;
+  if (name === "Kiswahili") return 4;
   const type = window.SUBJECT_DATA.getSubjectType(sub);
-  return (type === "TECHNICAL") ? 5 : 3;
+  if (type === "CORE") return 5;
+  if (type === "TECHNICAL") return 5;
+  return 3;
 };
 
 window.SUBJECT_DATA.getGradeSubjects = function() {

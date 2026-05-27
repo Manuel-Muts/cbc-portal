@@ -912,7 +912,7 @@ async function downloadRankingAsPDF() {
   const selectedStream = filterStreamEl?.value || "all";
   const streamInfo = selectedStream !== "all" ? ` | Stream: ${selectedStream}` : "";
 
-  let yPos = 12;
+  let yPos = 12; // Tighter starting margin for the header
 
   try {
   // Header - School Logo & Name
@@ -923,8 +923,8 @@ async function downloadRankingAsPDF() {
       const format = deanProfileData.logoFormat || getImageFormat(deanProfileData.schoolLogoBase64);
       const imgWidth = 25; 
       const imgHeight = (imgProps.height * imgWidth) / imgProps.width;
-      doc.addImage(deanProfileData.schoolLogoBase64, format, (pageWidth - imgWidth) / 2, yPos - 8, imgWidth, imgHeight, undefined, 'FAST');
-      yPos += imgHeight;
+      doc.addImage(deanProfileData.schoolLogoBase64, format, (pageWidth - imgWidth) / 2, 8, imgWidth, imgHeight, undefined, 'FAST');
+      yPos = 8 + imgHeight + 5; // Reduced gap from 10mm to 5mm between logo and school name
     } catch (e) {
       console.warn("Could not embed school logo in PDF:", e);
     }
@@ -932,16 +932,20 @@ async function downloadRankingAsPDF() {
 
   doc.setFontSize(18);
   doc.setFont("helvetica", "bold");
-  doc.text(schoolName, pageWidth / 2, yPos - 5, { align: "center" });
+  doc.text(schoolName, pageWidth / 2, yPos, { align: "center" });
+  yPos += 6; // Reduced spacing after school name
 
   // 2. Subheader - Year | Term | Assessment
   doc.setFontSize(12);
   doc.setFont("helvetica", "normal");
-  doc.text(`${year} | ${termLabel} | ${assessLabel}${streamInfo}`, pageWidth / 2, yPos - 1, { align: "center" });
+  doc.text(`${year} | ${termLabel} | ${assessLabel}${streamInfo}`, pageWidth / 2, yPos, { align: "center" });
+  yPos += 9; // Reduced spacing after subheader
 
   // 3. Title Line
   doc.setFontSize(14);
-  doc.text(`CLASS GRADING REPORT: ${grade}${selectedStream !== "all" ? ' - Stream ' + selectedStream : ''}`, 14, yPos + 5);
+  doc.setFont("helvetica", "bold");
+  doc.text(`CLASS GRADING REPORT: ${grade}${selectedStream !== "all" ? ' - Stream ' + selectedStream : ''}`, 14, yPos);
+  yPos += 7; // Reduced spacing before the table begins
 
   // OPTIMIZATION: Extract column mapping once to avoid repeated indexOf lookups
   const rawHeaders = Array.from(table.querySelectorAll("thead th")).map(th => th.textContent.trim());
@@ -1003,12 +1007,12 @@ async function downloadRankingAsPDF() {
   });
 
   doc.autoTable({ 
-    startY: yPos + 9, 
+    startY: yPos, // Use the updated yPos
     head: [headers], 
     body: rows, 
     foot: foot || [],
-    theme: 'grid',
-    styles: { fontSize: 8, lineWidth: 0.1, lineColor: [0, 0, 0] },
+    theme: 'grid', // Use 'grid' theme for borders
+    styles: { fontSize: 8, lineWidth: 0.2, lineColor: [0, 0, 0] }, // Darker lines
     headStyles: { fillColor: [52, 152, 219] },
     footStyles: { fillColor: [241, 245, 249], textColor: [0, 0, 0], fontStyle: 'bold' },
     showHead: 'everyPage', // Repeat table headers on every page
@@ -1038,51 +1042,53 @@ async function downloadRankingAsPDF() {
   });
 
   // 4. Summary Section with Multi-page Safety
-  // Threshold: If we have less than 75mm remaining (A4 landscape height ~210mm), move summary to new page
-  let summaryStartY = doc.lastAutoTable.finalY + 8;
-  if (summaryStartY > pageHeight - 75) {
+  let summaryStartY = doc.lastAutoTable.finalY + 10;
+  // A4 Landscape height is ~210mm. Ensure summary area (approx 50mm) has enough remaining space.
+  if (summaryStartY > pageHeight - 65) {
     doc.addPage();
-    summaryStartY = 25;
+    summaryStartY = 20;
   }
 
-  doc.setFontSize(11);
+  doc.setFontSize(12);
   doc.setFont("helvetica", "bold");
-  doc.text("REPORT SUMMARY", 14, summaryStartY); 
+  doc.text("REPORT SUMMARY", 14, summaryStartY);
+  summaryStartY += 6;
 
+  // 1. Level Distribution (Left Side)
   doc.setFontSize(9);
-  doc.text("Level Distribution", 14, summaryStartY + 5);
+  doc.text("Level Distribution", 14, summaryStartY);
 
-  // Level Distribution Table
   doc.autoTable({
-    startY: summaryStartY + 7,
+    startY: summaryStartY + 3,
     head: [['Level', 'Count']],
     body: Object.entries(levelCounts).map(([lvl, count]) => [lvl, count]),
     theme: 'grid',
-    styles: { fontSize: 9, cellPadding: 2, lineWidth: 0.2, lineColor: [0, 0, 0] },
-    headStyles: { fillColor: [52, 152, 219] },
-    tableWidth: 50,
+    styles: { fontSize: 7.5, cellPadding: 1.2, lineWidth: 0.1, lineColor: [80, 80, 80] },
+    headStyles: { fillColor: [52, 152, 219], halign: 'center' },
+    columnStyles: { 0: { halign: 'center', fontStyle: 'bold' }, 1: { halign: 'center' } },
+    tableWidth: 32,
     margin: { left: 14 }
   });
 
-  // Performance Key Label (Placed next to Distribution)
-  const keyX = 14 + 50 + 20; // margin + table1 width + gap
-  doc.text("Performance Key", keyX, summaryStartY + 5);
+  // 2. Performance Key (Right Side - Compact)
+  const keyX = 14 + 32 + 12; // Start after margin + distribution table width + gap
+  doc.setFontSize(9);
+  doc.text("Performance Key", keyX, summaryStartY);
 
-  // 5. Performance Key Table
   doc.autoTable({
-    startY: summaryStartY + 7,
+    startY: summaryStartY + 3,
     head: [['Level', 'Range', 'Pts']],
     body: [
-      // Original Performance Key data
       ['EE1', '90-100', '8'], ['EE2', '75-89', '7'],
       ['ME1', '58-74', '6'], ['ME2', '41-57', '5'],
       ['AE1', '31-40', '4'], ['AE2', '21-30', '3'],
       ['BE1', '11-20', '2'], ['BE2', '0-10', '1']
     ],
     theme: 'grid',
-    styles: { fontSize: 9, cellPadding: 2, lineWidth: 0.2, lineColor: [0, 0, 0] },
-    headStyles: { fillColor: [44, 62, 80] }, // Darker theme for the key
-    tableWidth: 70,
+    styles: { fontSize: 7.5, cellPadding: 1.2, lineWidth: 0.1, lineColor: [80, 80, 80] },
+    headStyles: { fillColor: [44, 62, 80], halign: 'center' },
+    columnStyles: { 0: { halign: 'center', fontStyle: 'bold' }, 1: { halign: 'center' }, 2: { halign: 'center' } },
+    tableWidth: 48,
     margin: { left: keyX }
   });
 
@@ -1249,7 +1255,7 @@ async function downloadMissingExamsAsPDF() {
     if (deanProfileData && deanProfileData.schoolLogoBase64) {
       const imgProps = deanProfileData.logoProps || doc.getImageProperties(deanProfileData.schoolLogoBase64);
       const format = deanProfileData.logoFormat || getImageFormat(deanProfileData.schoolLogoBase64);
-      const imgWidth = 25; 
+      const imgWidth = 22; 
       const imgHeight = (imgProps.height * imgWidth) / imgProps.width;
         doc.addImage(deanProfileData.schoolLogoBase64, format, (pageWidth - imgWidth) / 2, yPos - 8, imgWidth, imgHeight, undefined, 'FAST');
       yPos += imgHeight;
@@ -1275,7 +1281,7 @@ async function downloadMissingExamsAsPDF() {
         head: [["🚨 STREAM-LEVEL MISSING SUBJECTS (Data Integrity Warning)"]],
         body: discItems,
         theme: 'grid',
-        headStyles: { fillColor: [197, 48, 48] }, // #c53030
+        headStyles: { fillColor: [197, 48, 48] }, // Red theme for warnings
         styles: { fontSize: 8, fontStyle: 'bold' },
         margin: { bottom: 10 }
       });
@@ -1297,7 +1303,7 @@ async function downloadMissingExamsAsPDF() {
         body: rows, 
         theme: 'grid',
         headStyles: { fillColor: [231, 76, 60] }, // Red for "Missing"
-        styles: { fontSize: 9 },
+        styles: { fontSize: 9, lineWidth: 0.2, lineColor: [0, 0, 0] }, // Darker lines
         rowPageBreak: 'avoid', // 🆕 Prevents splitting a student's missing subjects list
         margin: { bottom: 35 } // 🆕 Space for signature
       });
@@ -1412,8 +1418,8 @@ async function downloadSubjectPerformanceAsPDF() {
     startY: yPos + 15, 
     head: [headers], 
     body: rows, 
-    theme: 'grid',
-    styles: { fontSize: 9, lineWidth: 0.1, lineColor: [0, 0, 0] },
+    theme: 'grid', // Use 'grid' theme for borders
+    styles: { fontSize: 9, lineWidth: 0.2, lineColor: [0, 0, 0] }, // Darker lines
     headStyles: { fillColor: [46, 204, 113] }, // Green theme for subject stats
     showHead: 'everyPage', 
     rowPageBreak: 'avoid', // 🆕 Prevents subject rows from splitting
@@ -2043,22 +2049,30 @@ async function loadDeanProfile() {
 
     // 🚀 Parallelize: Fetch school info and convert images concurrently
     const SCHOOL_CACHE_KEY = "dean_school_info_cache";
-    localStorage.removeItem(SCHOOL_CACHE_KEY);
-    
+    const cachedSchool = localStorage.getItem(SCHOOL_CACHE_KEY);
+    if (cachedSchool) {
+      try {
+        const { timestamp, data } = JSON.parse(cachedSchool);
+        if (Date.now() - timestamp < CACHE_TTL) {
+          schoolInfo = data;
+        }
+      } catch (e) { localStorage.removeItem(SCHOOL_CACHE_KEY); }
+    }
+
     try {
       // Start fetching school info and signature conversion in parallel
       const [schoolResponse] = await Promise.all([
-        fetchWithAuth(`${API_BASE}/users/my-school?includeLogo=true`),
-        deanProfileData.signatureUrl ? getImageBase64(deanProfileData.signatureUrl).then(base64 => {
+        schoolInfo ? Promise.resolve(schoolInfo) : fetchWithAuth(`${API_BASE}/users/my-school?includeLogo=true&fields=name,logo,logoMimeType,schoolType,headteacherSignatureUrl`),
+        (deanProfileData.signatureUrl && !deanProfileData.signatureBase64) ? getImageBase64(deanProfileData.signatureUrl).then(base64 => {
           deanProfileData.signatureBase64 = base64;
           deanProfileData.sigFormat = getImageFormat(base64);
           return base64;
         }).catch(e => console.warn("Signature conversion failed:", e)) : Promise.resolve(null)
       ]);
 
-      schoolInfo = schoolResponse;
+      if (!schoolInfo) schoolInfo = schoolResponse;
       if (schoolInfo) {
-        localStorage.setItem(SCHOOL_CACHE_KEY, JSON.stringify({
+        if (!cachedSchool) localStorage.setItem(SCHOOL_CACHE_KEY, JSON.stringify({
           timestamp: Date.now(),
           data: schoolInfo
         }));
@@ -2075,6 +2089,39 @@ async function loadDeanProfile() {
           // Convert logo to base64 and extract format upfront (skip jsPDF instantiation)
           deanProfileData.schoolLogoBase64 = await getImageBase64(logoSrc);
           deanProfileData.logoFormat = getImageFormat(deanProfileData.schoolLogoBase64);
+        }
+
+        // 🆕 Fetch and convert Headteacher/Principal signature if available in school profile
+        if (schoolInfo.headteacherSignatureUrl) {
+          try {
+            deanProfileData.headSignatureBase64 = await getImageBase64(schoolInfo.headteacherSignatureUrl);
+            deanProfileData.headSigFormat = getImageFormat(deanProfileData.headSignatureBase64);
+          } catch(e) { console.warn("Headteacher signature pre-load failed:", e); }
+        }
+
+        // 🆕 PRE-CALCULATE IMAGE PROPERTIES ONCE TO OPTIMIZE PDF GENERATION SPEED
+        // This prevents expensive binary re-parsing inside report generation loops.
+        const jsPDF = window.jspdf?.jsPDF || window.jsPDF;
+        if (jsPDF && (!deanProfileData.logoProps || !deanProfileData.sigProps)) {
+          const tempDoc = new jsPDF();
+          if (deanProfileData.schoolLogoBase64) {
+            try { 
+                deanProfileData.logoProps = tempDoc.getImageProperties(deanProfileData.schoolLogoBase64); 
+                deanProfileData.logoFormat = deanProfileData.logoFormat || getImageFormat(deanProfileData.schoolLogoBase64);
+            } catch (e) {}
+          }
+          if (deanProfileData.signatureBase64) {
+            try { 
+                deanProfileData.sigProps = tempDoc.getImageProperties(deanProfileData.signatureBase64); 
+                deanProfileData.sigFormat = deanProfileData.sigFormat || getImageFormat(deanProfileData.signatureBase64);
+            } catch (e) {}
+          }
+          if (deanProfileData.headSignatureBase64) {
+            try { 
+                deanProfileData.headSigProps = tempDoc.getImageProperties(deanProfileData.headSignatureBase64); 
+                deanProfileData.headSigFormat = deanProfileData.headSigFormat || getImageFormat(deanProfileData.headSignatureBase64);
+            } catch (e) {}
+          }
         }
       }
     } catch (e) {
@@ -2132,38 +2179,91 @@ async function generateBulkReportCards() {
     const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
     const pageWidth = doc.internal.pageSize.getWidth();
     const pageHeight = doc.internal.pageSize.getHeight();
+
+    const teacherSigCache = new Map(); // Store {base64, format} by streamKey
     
     const schoolName = deanProfileData?.schoolName || "SCHOOL NAME";
     const termVal = filterTermEl.value;
     const year = filterYearEl.value;
     const assessLabel = filterAssessmentEl.options[filterAssessmentEl.selectedIndex]?.text || "Report";
     const selectedStream = filterStreamEl?.value || "all";
+    const gradeLabel = filterGradeEl.value;
+
+    // 🆕 Pre-map static Performance Key to avoid repeated calculations in the loop
+    const perfKeyBody = cbcUtils.PERFORMANCE_KEY.map(item => [item.subdivision, item.range, item.points]);
 
     for (let i = 0; i < lastProcessedStudents.length; i++) {
         const s = lastProcessedStudents[i];
-        if (i > 0) doc.addPage();
 
-        // 1. Report Header
-        let headerY = 12;
-        if (deanProfileData?.schoolLogoBase64) {
+        // 🆕 Resolve Class Teacher Signature for this student (cached by stream)
+        const streamKey = s.stream || "Unassigned";
+        if (!teacherSigCache.has(streamKey)) {
             try {
-                const logoSize = 20;
-                const logoFormat = deanProfileData.logoFormat || getImageFormat(deanProfileData.schoolLogoBase64);
-                doc.addImage(deanProfileData.schoolLogoBase64, logoFormat, (pageWidth / 2) - (logoSize / 2), headerY, logoSize, logoSize);
-                headerY += logoSize + 4;
-            } catch (e) {
-                console.warn('Dean report logo insert failed:', e);
-            }
-        } else {
-            headerY += 2;
+                const ct = await fetchWithAuth(`${API_BASE}/users/class-teacher?grade=${encodeURIComponent(gradeLabel)}&stream=${encodeURIComponent(streamKey)}`);
+                if (ct && ct.signatureUrl) {
+                    const b64 = await getImageBase64(ct.signatureUrl);
+                    teacherSigCache.set(streamKey, { base64: b64, format: getImageFormat(b64) });
+                } else {
+                    teacherSigCache.set(streamKey, null);
+                }
+            } catch(e) { teacherSigCache.set(streamKey, null); }
         }
 
-        doc.setFont("helvetica", "bold").setFontSize(15).text(schoolName, pageWidth / 2, headerY, { align: "center" });
-        headerY += 7;
+        if (i > 0) doc.addPage();
+
+        // 🆕 Reset color state to Black (0) at the start of every report 
+        // to prevent footer grey from leaking into the next page.
+        doc.setTextColor(0, 0, 0);
+
+        // 1. Report Header
+        let headerY = 8; // Minimised top margin
+        const schoolNameText = schoolName;
+        const schoolNameFontSize = 15;
+        doc.setFont("helvetica", "bold").setFontSize(schoolNameFontSize);
+
+        if (deanProfileData?.schoolLogoBase64) {
+            try {
+                const imgProps = deanProfileData.logoProps || { width: 22, height: 22 };
+                const logoFormat = deanProfileData.logoFormat || 'PNG';
+                const imgWidth = 18; // Optimized sizing
+                const imgHeight = (imgProps.height * imgWidth) / imgProps.width;
+
+                const words = schoolNameText.split(' ');
+                if (words.length >= 3) {
+                    const mid = Math.ceil(words.length / 2);
+                    const part1 = words.slice(0, mid).join(' ');
+                    const part2 = words.slice(mid).join(' ');
+                    
+                    const w1 = doc.getTextWidth(part1);
+                    const w2 = doc.getTextWidth(part2);
+                    const gap = 4; // Spacing around logo
+                    const totalW = w1 + imgWidth + (gap * 2) + w2;
+                    const startX = (pageWidth - totalW) / 2;
+                    const textBaselineY = headerY + (imgHeight / 2) + 1.5; // Vertically center text with logo
+
+                    doc.text(part1, startX, textBaselineY);
+                    doc.addImage(deanProfileData.schoolLogoBase64, logoFormat, startX + w1 + gap, headerY, imgWidth, imgHeight, undefined, 'FAST');
+                    doc.text(part2, startX + w1 + gap + imgWidth + gap, textBaselineY);
+                    headerY += imgHeight + 3;
+                } else {
+                    doc.addImage(deanProfileData.schoolLogoBase64, logoFormat, (pageWidth - imgWidth) / 2, headerY, imgWidth, imgHeight, undefined, 'FAST');
+                    headerY += imgHeight + 3;
+                    doc.text(schoolNameText, pageWidth / 2, headerY, { align: "center" });
+                    headerY += 6;
+                }
+            } catch (e) {
+                doc.text(schoolNameText, pageWidth / 2, headerY, { align: "center" });
+                headerY += 6;
+            }
+        } else {
+            doc.text(schoolNameText, pageWidth / 2, headerY, { align: "center" });
+            headerY += 6;
+        }
+
         doc.setFont("helvetica", "normal").setFontSize(10).text("LEARNER'S PROGRESS REPORT", pageWidth / 2, headerY, { align: "center" });
-        headerY += 6;
+        headerY += 5;
         doc.setFontSize(9).text(`${assessLabel} - Term ${termVal}, ${year}`, pageWidth / 2, headerY, { align: "center" });
-        headerY += 8;
+        headerY += 6;
 
         // 2. Student Info Box
         const studentStream = s.stream || "N/A";
@@ -2191,7 +2291,7 @@ async function generateBulkReportCards() {
             body: rows,
             theme: 'grid',
             headStyles: { fillColor: [29, 78, 216], textColor: 255 },
-            styles: { fontSize: 7.5, cellPadding: 2 },
+            styles: { fontSize: 7.5, cellPadding: 2, lineWidth: 0.2, lineColor: [0, 0, 0] },
             bodyStyles: { valign: 'middle' },
             alternateRowStyles: { fillColor: [247, 248, 250] },
             margin: { left: 15, right: 15 },
@@ -2226,10 +2326,10 @@ async function generateBulkReportCards() {
         doc.autoTable({
             startY: keyStartY + 3,
             head: [["Level", "Range", "Points"]],
-            body: cbcUtils.PERFORMANCE_KEY.map(item => [item.subdivision, item.range, item.points]),
+            body: perfKeyBody,
             theme: 'grid',
             headStyles: { fillColor: [29, 78, 216], textColor: 255 },
-            styles: { fontSize: 7, cellPadding: 2 },
+            styles: { fontSize: 7, cellPadding: 2, lineWidth: 0.2, lineColor: [0, 0, 0] },
             margin: { left: metaX },
             tableWidth: 75
         });
@@ -2237,16 +2337,26 @@ async function generateBulkReportCards() {
         const signatureY = Math.max(doc.lastAutoTable.finalY + 16, pageHeight - 45);
         doc.setFont("helvetica", "normal");
         doc.line(20, signatureY, 80, signatureY);
-        doc.text("Class Teacher's Signature", 20, signatureY + 5);
-        doc.line(pageWidth - 80, signatureY, pageWidth - 20, signatureY);
-        doc.text("Headteacher's Signature", pageWidth - 80, signatureY + 5);
+        doc.text("Class Teacher's Signature", 20, signatureY + 5); // Class Teacher signature is always present
 
-        // Embed Dean's actual signature if we have it
-        if (deanProfileData?.signatureBase64) {
-            try {
-                const sigFormat = deanProfileData.sigFormat || getImageFormat(deanProfileData.signatureBase64);
-                doc.addImage(deanProfileData.signatureBase64, sigFormat, pageWidth - 65, signatureY - 12, 40, 10);
-            } catch(e){}
+        const isSeniorGrade = cbcUtils.isSeniorGrade(gradeLabel);
+        const headteacherLabel = isSeniorGrade ? "Principal's Signature" : "Headteacher's Signature";
+        doc.line(pageWidth - 80, signatureY, pageWidth - 20, signatureY);
+        doc.text(headteacherLabel, pageWidth - 80, signatureY + 5);
+
+        // 🆕 Embed Signatures
+        // 1. Class Teacher (Left)
+        const classTeacherSig = teacherSigCache.get(streamKey);
+        if (classTeacherSig) {
+            doc.addImage(classTeacherSig.base64, classTeacherSig.format, 28, signatureY - 10, 25, 8, undefined, 'FAST');
+        }
+
+        // 2. Headteacher (Right) - Prioritize official school HT signature, fallback to current Dean's signature
+        const headSigB64 = deanProfileData.headSignatureBase64 || deanProfileData.signatureBase64;
+        const headSigFmt = deanProfileData.headSignatureBase64 ? deanProfileData.headSigFormat : deanProfileData.sigFormat;
+
+        if (headSigB64) {
+            doc.addImage(headSigB64, headSigFmt, pageWidth - 60, signatureY - 10, 25, 8, undefined, 'FAST');
         }
 
         // Footer branding on every report page

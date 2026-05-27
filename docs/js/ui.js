@@ -158,3 +158,15 @@ const ASSESSMENT_MAPPING = {
 window.showToast = showToast;
 window.showConfirm = showConfirm;
 window.ASSESSMENT_MAPPING = ASSESSMENT_MAPPING;
+
+// 🆕 SERVICE WORKER REGISTRATION
+// Pre-caches external libraries to ensure they are available offline and speed up PDF generation.
+if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+        navigator.serviceWorker.register('sw.js').then(registration => {
+            console.log('🚀 Service Worker registered successfully');
+        }).catch(err => {
+            console.error('❌ Service Worker registration failed:', err);
+        });
+    });
+}
