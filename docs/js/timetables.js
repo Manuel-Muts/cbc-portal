@@ -2326,10 +2326,10 @@ const TimetableModule = (function() {
                 // 🆕 Use the 'title' variable already correctly constructed at the top of the function
                 // This ensures stream and pathway are included in the header.
                 drawDocHeader(title);
-                const isSenior = window.cbcUtils.isSeniorGrade(currentTimetableData.grade);
-                const duration = isSenior ? 40 : 35;
-                const lessonCount = isSenior ? 9 : 8;
                 const tSettings = currentTimetableData.settings || settings;
+                const isSenior = window.cbcUtils.isSeniorGrade(currentTimetableData.grade);
+                const duration = tSettings.lessonDuration;
+                const lessonCount = tSettings.lessonsPerDay;
                 
                 const colDefs = [];
                 let curTime = tSettings.startTime || "08:20";
