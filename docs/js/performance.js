@@ -4,7 +4,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   const user = await authService.getUserProfile(["student", "learner"]);
   if (!user) return;
 
-  const token = authService.getToken();
+  const token = window.authService?.getToken();
   authService.initLogout();
 
   const welcomeNameEl = document.getElementById("welcomeName");

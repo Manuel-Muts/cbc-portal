@@ -48,13 +48,13 @@ export const generateRawPassword = (role, admissionNumber) => {
     case 'student':
       return admissionNumber.trim();
     case 'teacher':
-      return 'T-' + Math.random().toString(36).slice(-8).toUpperCase();
+      return 'T' + Math.random().toString(36).slice(-6).toUpperCase();
     case 'classTeacher':
-      return 'CT-' + Math.random().toString(36).slice(-8).toUpperCase();
+      return 'CT' + Math.random().toString(36).slice(-6).toUpperCase();
     case 'admin':
-      return 'ADMIN-' + Math.random().toString(36).slice(-8).toUpperCase();
+      return 'ADM' + Math.random().toString(36).slice(-6).toUpperCase();
     case 'accounts':
-      return 'ACCT-' + Math.random().toString(36).slice(-8).toUpperCase();
+      return 'ACC' + Math.random().toString(36).slice(-5).toUpperCase();
     case 'super_admin':
       return 'SUPER-' + Math.random().toString(36).slice(-8).toUpperCase();
     default:
@@ -69,16 +69,19 @@ export const generateRawPassword = (role, admissionNumber) => {
 export const sendCredentialsEmail = async ({ name, email, rawPassword }) => {
   await sendEmail({
     to: email,
-    subject: 'Your CBC Portal Login Credentials',
-    text: `Hello ${name},\n\nYour login credentials:\nEmail: ${email}\nPassword: ${rawPassword}\n\nPlease log in and change your password immediately.`,
+    subject: 'Your Login Credentials',
+    text: `Hello ${name}, your login credentials: Email: ${email}, Password: ${rawPassword}. Please log in and change your password immediately.`,
     html: `
       <p>Hello <strong>${name}</strong>,</p>
       <p>Your login credentials:</p>
-      <ul>
-        <li><strong>Email:</strong> ${email}</li>
+      <ul style="margin-bottom: 8px;">
+        <li><strong>Email:</strong> ${email}</li><br>
         <li><strong>Password:</strong> ${rawPassword}</li>
       </ul>
       <p>Please log in and change your password immediately.</p>
+      <p>
+        <a href="https://competencehub.netlify.app/login" target="_blank">CLICK HERE TO LOGIN</a>
+      </p>
     `,
   });
 

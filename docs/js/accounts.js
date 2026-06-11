@@ -168,17 +168,29 @@
   // ---------------------------
   // SCHOOL TYPE & GRADE HELPERS
   // ---------------------------
-  const SCHOOL_TYPES = {
-    full: { label: "Full School (Grades 1-12)", gradeOptions: ["1","2","3","4","5","6","7","8","9","10","11","12"] },
-    primary_junior: { label: "Primary + Junior (Grades 1-9)", gradeOptions: ["1","2","3","4","5","6","7","8","9"] },
-    senior: { label: "Senior School (Grades 10-12)", gradeOptions: ["10","11","12"] }
-  };
+    const SCHOOL_TYPES = {
+        full: {
+            label: "Full School (PP1-12)",
+            gradeOptions: ["PP1", "PP2", "1","2","3","4","5","6","7","8","9","10","11","12"]
+        },
+        primary_junior: {
+            label: "Primary + Junior ( PP1-9)",
+            gradeOptions: ["PP1", "PP2", "1","2","3","4","5","6","7","8","9"]
+        },
+        senior: {
+            label: "Senior School (Grades 10-12)",
+            gradeOptions: ["10","11","12"]
+        }
+    };
 
   function getSchoolTypeKey() {
-    // Retrieve the full school info object from the cache
-    const schoolInfoEntry = schoolInfoCache.get('school-all'); // Assuming 'school-all' is the key used by getSchoolInfo() for the full object
+    const schoolInfoEntry = schoolInfoCache.get('school-all');
     const schoolInfo = schoolInfoEntry ? schoolInfoEntry.data : null;
-    return (schoolInfo && schoolInfo.schoolType && SCHOOL_TYPES[schoolInfo.schoolType]) ? schoolInfo.schoolType : 'full';
+    if (!schoolInfo || !schoolInfo.schoolType) return 'full';
+    const rawType = String(schoolInfo.schoolType).toLowerCase().replace(/[^a-z]/g, '_');
+    if (rawType.includes('primary') || rawType.includes('junior')) return 'primary_junior';
+    if (rawType.includes('senior')) return 'senior';
+    return 'full';
   }
 
   // ---------------------------
@@ -1247,26 +1259,12 @@
       selector.innerHTML = isFilter ? '<option value="">All Grades</option>' : '<option value="">-- Select Grade --</option>';
       grades.forEach(g => {
         const option = document.createElement("option");
-        option.value = `Grade ${g}`;
-        option.textContent = `Grade ${g}`;
+        // Correctly handle PP grades: "PP1" remains "PP1", "1" becomes "Grade 1"
+        const displayValue = String(g).toUpperCase().startsWith("PP") ? g : `Grade ${g}`;
+        option.value = displayValue;
+        option.textContent = displayValue;
         selector.appendChild(option);
       });
-
-      // NEW: Set a default selected grade based on school type
-      if (selector.id === "overviewClassFilter" || selector.id === "outstandingGradeFilter" || selector.id === "postedFeesClassFilter") {
-        let defaultGradeValue = '';
-        if (schoolType === 'senior' && grades.includes('10')) {
-          defaultGradeValue = 'Grade 10';
-        } else if (schoolType === 'primary_junior' && grades.includes('1')) {
-          defaultGradeValue = 'Grade 1';
-        } else if (grades.length > 0) {
-          defaultGradeValue = `Grade ${grades[0]}`; // Default to the first available grade
-        }
-
-        if (defaultGradeValue) {
-          selector.value = defaultGradeValue;
-        }
-      }
     });
   }
 

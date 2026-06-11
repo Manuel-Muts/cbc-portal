@@ -1,172 +1,5 @@
 document.addEventListener("DOMContentLoaded", () => {
-  // ---------------------------
-  // STYLES FOR COMPACTNESS
-  // ---------------------------
-  const compactStyle = document.createElement("style");
-  compactStyle.textContent = `
-    .marks-table th, .marks-table td, #marksEntryTable th, #marksEntryTable td { 
-      padding: 5px 8px !important; 
-      font-size: 0.82rem !important; 
-      line-height: 1.2 !important;
-      vertical-align: middle !important;
-      border: 1px solid #e2e8f0 !important;
-    }
-    .marks-table th, #marksEntryTable th {
-      background-color: #f8fafc !important;
-      font-weight: 600 !important;
-      color: #475569 !important;
-      text-transform: uppercase !important;
-      font-size: 0.72rem !important;
-    }
-    .marks-accordion-summary {
-      padding: 8px 12px !important;
-    }
-    .marks-entry-input {
-      height: 28px !important;
-      padding: 2px 6px !important;
-      font-size: 0.8rem !important;
-    }
-    .marks-input-grid {
-      gap: 4px !important;
-    }
-
-    /* Fixed Toast Container for visibility on mobile when scrolling */
-    #toastContainer {
-      position: fixed;
-      top: 20px;
-      right: 15px;
-      z-index: 99999;
-      display: flex;
-      flex-direction: column;
-      gap: 10px;
-      pointer-events: none;
-      align-items: flex-end;
-    }
-    #toastContainer .toast {
-      pointer-events: auto;
-      position: relative !important; /* Override fixed pos from teachers.css */
-      top: auto !important;
-      left: auto !important;
-      right: auto !important;
-      transform: none !important;
-      padding: 12px 18px;
-      border-radius: 8px;
-      color: white !important;
-      font-weight: 600;
-      font-size: 0.9rem;
-      box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
-      min-width: 200px;
-      max-width: 350px;
-      box-sizing: border-box;
-      animation: toastFadeIn 0.3s ease-out, toastFadeOut 0.5s ease-in 3.2s forwards;
-      white-space: pre-wrap; /* Allow newlines to render */
-      word-wrap: break-word;
-      overflow-wrap: break-word;
-      display: block;
-    }
-    .toast-success { background: #38a169 !important; }
-    .toast-error { background: #e53e3e !important; }
-    .toast-warning { background: #d69e2e !important; }
-    .toast-info { background: #3182ce !important; }
-
-    @keyframes toastFadeIn {
-      from { opacity: 0; transform: translateX(20px); }
-      to { opacity: 1; transform: translateX(0); }
-    }
-    @keyframes toastFadeOut {
-      from { opacity: 1; }
-      to { opacity: 0; transform: translateY(-10px); }
-    }
   
-    /* Specific styling for the lock message when it's placed next to the heading */
-    .marks-controls .lock-message-wrapper #termLockMessage {
-      margin-bottom: 0 !important; /* Remove bottom margin when in the header row */
-    }
-    .marks-controls .lock-message-wrapper h3 {
-      margin-bottom: 0 !important; /* Remove bottom margin from heading for flex alignment */
-    }
-
-    #termLockMessage {
-      display: none;
-      background: #fffaf0 !important;
-      border: 1px solid #feebc8 !important;
-      color: #7b341e !important;
-      padding: 12px 16px !important;
-      border-radius: 10px !important;
-      margin-bottom: 20px !important;
-      align-items: center !important;
-      gap: 14px !important;
-      font-weight: 500 !important;
-      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05) !important;
-      border-left: 6px solid #f6ad55 !important;
-    }
-
-    .locked-state-overlay {
-      position: relative;
-      opacity: 0.75;
-      pointer-events: none;
-      filter: grayscale(0.1);
-      transition: all 0.3s ease;
-    }
-    /* Ensure the marks entry table itself has a min-width for horizontal scrolling on small screens */
-    .marks-entry-table {
-      min-width: 700px; /* Adjust as needed for content */
-    }
-
-    #schoolName {
-      display: block;
-      width: 100%;
-      text-align: center;
-      margin-bottom: 6px;
-      font-size: 1.1rem !important;
-      font-weight: 800 !important;
-      color: #2d3748;
-    }
-    #teacherName {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      flex-wrap: wrap;
-      gap: 10px;
-      width: 100%;
-    }
-      
-    @media (min-width: 768px) {
-      #schoolName { width: auto; text-align: left; margin-bottom: 0; font-size: 1.25rem !important; }
-      #teacherName { width: auto; justify-content: flex-end; }
-    }
-
-    @media (max-width: 767px) {
-      #toastContainer {
-        top: auto !important;
-        bottom: 40px !important;
-        left: 50%;
-        right: auto;
-        transform: translateX(-50%);
-        width: 95%;
-        max-width: 450px;
-        align-items: stretch;
-      }
-      #toastContainer .toast {
-        width: 100%;
-        min-width: auto;
-        max-width: 100%;
-        text-align: center;
-      }
-      .confirm-toast {
-        width: 92% !important;
-        min-width: auto !important;
-        max-width: 400px !important;
-        z-index: 100001 !important; /* Ensure it stays above standard toasts */
-      }
-      @keyframes toastFadeIn {
-        from { opacity: 0; transform: translateY(20px); }
-        to { opacity: 1; transform: translateY(0); }
-      }
-    }
-  `;
-  document.head.appendChild(compactStyle);
-
   // ---------------------------
   // CONFIG + GLOBALS
   // ---------------------------
@@ -175,6 +8,20 @@ document.addEventListener("DOMContentLoaded", () => {
   console.log("🔧 Teachers.js loading...");
   console.log("📦 Window.config available:", !!window.config);
   
+  // --- Clean URL Enforcement ---
+  // If the URL ends with .html, redirect to the clean URL
+  const currentPath = window.location.pathname;
+  if (currentPath.endsWith('.html')) {
+      const cleanPath = currentPath.replace(/\.html$/, '');
+      const dashboardMappings = {
+          '/teacher-dashboard': '/teacher',
+      };
+      
+      const finalPath = dashboardMappings[cleanPath] || cleanPath;
+      window.location.replace(finalPath + window.location.search + window.location.hash);
+      return;
+  }
+
   const API_BASE = config.api.baseURL;
 
   let allMarksEntered = new Map(); // Stores marks for all students in the current context across pages
@@ -191,6 +38,35 @@ document.addEventListener("DOMContentLoaded", () => {
   const subSearchMap = new Map(); // Track search terms for each group
   let activeSearchInfo = { key: null, cursor: 0 }; // Persist focus during re-renders
   const openAccordions = new Set();
+
+  // ---------------------------
+  // AUTH FETCH HELPER (Prevent Bearer null & handle 401)
+  // ---------------------------
+  async function fetchWithAuth(url, options = {}) {
+    const token = window.authService?.getToken();
+    if (!token) return authService.redirectToLogin();
+
+    const headers = {
+      "Authorization": `Bearer ${token}`,
+      ...options.headers
+    };
+
+    if (options.body && !(options.body instanceof FormData) && !headers["Content-Type"]) {
+      headers["Content-Type"] = "application/json";
+    }
+
+    const res = await fetch(url, { ...options, headers });
+    if (!res.ok) {
+      if (res.status === 401) return authService.redirectToLogin();
+      
+      const errorData = await res.json().catch(() => ({}));
+      if (res.status === 403) {
+        throw new Error(errorData.message || "Access denied. You do not have permission to perform this action.");
+      }
+      throw new Error(errorData.message || `Request failed (Status: ${res.status})`);
+    }
+    return res;
+  }
 
   // ---------------------------
   // DOM ELEMENTS
@@ -258,10 +134,7 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     try {
-      const token = authService.getToken();
-      const res = await fetch(`${API_BASE}/settings/term-lock?year=${year}&term=${term}`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      const res = await fetchWithAuth(`${API_BASE}/settings/term-lock?year=${year}&term=${term}`);
 
       if (!res.ok) throw new Error("Failed to fetch term lock status");
       const data = await res.json();
@@ -296,8 +169,8 @@ document.addEventListener("DOMContentLoaded", () => {
         termLockMessageEl.innerHTML = ` 
           <div style="font-size: 1.3rem; background: #feebc8; width: 42px; height: 42px; display: flex; align-items: center; justify-content: center; border-radius: 50%; flex-shrink: 0;">🔒</div> 
           <div style="flex-grow: 1;"> 
-            <div style="font-size: 1rem; font-weight: 700; color: #7b341e;">Viewing Finalized Term</div> 
-            <div style="font-size: 0.82rem; line-height: 1.4; color: #975a16; margin-top: 1px;"> 
+            <div style="font-size: 0.9rem; font-weight: 700; color: #7b341e;">Viewing Finalized Term</div> 
+            <div style="font-size: 0.72rem; line-height: 1.4; color: #975a16; margin-top: 1px;"> 
               This period is officially finalized. Marks are in <strong>read-only mode</strong> to ensure record integrity. New entries or changes cannot be saved. 
             </div> 
           </div>
@@ -355,6 +228,7 @@ document.addEventListener("DOMContentLoaded", () => {
   let selectedSubject = null; // 🆕 Store selected subject
   let loadedStudents = [];
   let currentStudentPage = 1;
+  let studentsPaginationLoadingButton = null;
   const STUDENTS_PER_PAGE = 15;
 
   // ---------------------------
@@ -367,7 +241,6 @@ document.addEventListener("DOMContentLoaded", () => {
     console.log("✅ Teacher authenticated:", teacher.name);
     window.currentTeacher = teacher;
     updateTeacherNameUI();
-    authService.initLogout();
 
     if (!teacher.schoolId) {
         console.error("Teacher profile missing schoolId:", teacher);
@@ -379,13 +252,13 @@ document.addEventListener("DOMContentLoaded", () => {
     const teacherNameEl = document.getElementById("teacherName");
     if (teacherNameEl && teacher) {
       teacherNameEl.innerHTML = `
-        <span style="font-weight: 600; color: #4a5568;">${(teacher.name || "TEACHER").toUpperCase()}</span>
+        <span style="font-weight: 600; color: #ffffff;">${(teacher.name || "TEACHER").toUpperCase()}</span>
         ${teacher.isDean ? `
-          <a href="dean-dashboard.html" class="btn secondary-btn" style="font-size:0.7rem; padding:4px 10px; text-decoration:none; border-radius:6px; font-weight:600; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
+          <a href="/dean" class="btn secondary-btn" style="font-size:0.7rem; padding:4px 8px; text-decoration:none; border-radius:6px; font-weight:600; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
             🎓 DEAN PANEL
           </a>
         ` : ''}
-        <button id="headerRefreshBtn" title="Refresh Dashboard" style="background:none; border:none; cursor:pointer; font-size:1.1rem; color:inherit; transition: transform 0.5s ease; display: flex; align-items: center; padding: 0;">
+        <button id="headerRefreshBtn" title="Refresh Dashboard" style="background:none; border:none; cursor:pointer; font-size:1.1rem; color:#ffffff; transition: transform 0.5s ease; display: flex; align-items: center; padding: 0;">
           🔄
         </button>
       `;
@@ -418,13 +291,13 @@ document.addEventListener("DOMContentLoaded", () => {
         <p class="helper-text">DIGITAL SIGNATURE</p>
         <div id="signaturePreview" class="sig-preview-box">
           ${user.signatureUrl ? 
-            `<img src="${user.signatureUrl}" style="max-height: 45px;">` : 
-            `<span style="font-size: 0.75rem; color: #a0aec0; font-style: italic;">No signature set</span>`
+            `<img src="${user.signatureUrl}" style="max-height: 225px;">` : 
+            `<span style="font-size: 0.59rem; color: #a0aec0; font-style: italic;">No signature set</span>`
           }
         </div>
         
         <input type="file" id="signatureUploadInput" accept="image/*" style="display:none">
-        <button type="button" id="triggerSignatureUpload" class="btn secondary-btn" style="padding: 5px 12px; font-size: 0.85rem;">
+        <button type="button" id="triggerSignatureUpload" class="btn secondary-btn" style="padding: 3px 10px; font-size: 0.55rem;">
           ${user.signatureUrl ? 'Change Signature' : 'Upload Signature'}
         </button>
       </div>
@@ -452,10 +325,8 @@ document.addEventListener("DOMContentLoaded", () => {
         formData.append("file", file);
 
         try {
-            // Upload file to Cloudinary
-            const res = await fetch(`${API_BASE}/materials/upload-raw`, {
+            const res = await fetchWithAuth(`${API_BASE}/materials/upload-raw`, {
                 method: 'POST',
-                headers: { 'Authorization': `Bearer ${token}` },
                 body: formData
             });
 
@@ -463,9 +334,8 @@ document.addEventListener("DOMContentLoaded", () => {
             if (!res.ok) throw new Error(data.message || "Upload failed");
 
             // Save the Cloudinary URL to the user profile
-            await fetch(`${API_BASE}/users/profile/signature`, {
+            await fetchWithAuth(`${API_BASE}/users/profile/signature`, {
                 method: 'PUT',
-                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
                 body: JSON.stringify({ signatureUrl: data.url, signaturePublicId: data.public_id })
             });
 
@@ -503,14 +373,10 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     try {
-      const res = await fetch(`${API_BASE}/my-school`, {
-        headers: {
-          Authorization: `Bearer ${token}`
-        }
-      });
+      const res = await fetchWithAuth(`${API_BASE}/my-school?fields=name,status`);
       if (!res.ok) throw new Error("Failed to fetch school");
       const school = await res.json();
-      
+
       localStorage.setItem(CACHE_KEY, JSON.stringify({
         timestamp: Date.now(),
         data: school
@@ -529,6 +395,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const schoolNameEl = document.getElementById("schoolName");
     if (schoolNameEl) {
       schoolNameEl.textContent = (school.name || "").toUpperCase();
+      schoolNameEl.style.color = "#ffffff"; // Ensure high visibility contrast
     }
   }
 
@@ -556,13 +423,7 @@ document.addEventListener("DOMContentLoaded", () => {
     try {
       console.log("🔍 Starting to load teacher allocations...");
       console.log("📡 API Base URL:", API_BASE);
-      const token = authService.getToken();
-      
-      const res = await fetch(`${API_BASE}/users/subjects/my-allocations`, {
-        headers: {
-          Authorization: `Bearer ${token}`
-        }
-      });
+      const res = await fetchWithAuth(`${API_BASE}/users/subjects/my-allocations`);
       
       console.log("📨 API Response Status:", res.status);
       
@@ -783,12 +644,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
       console.log("📝 Academic Year:", new Date().getFullYear());
       
-      const token = authService.getToken();
-      const res = await fetch(`${API_BASE}/enrollments/class/${classLabel}?page=${page}&limit=${STUDENTS_PER_PAGE}`, {
-        headers: {
-          Authorization: `Bearer ${token}`
-        }
-      });
+      const res = await fetchWithAuth(`${API_BASE}/enrollments/class/${classLabel}?page=${page}&limit=${STUDENTS_PER_PAGE}`);
       
       console.log("📨 API Response Status:", res.status);
       
@@ -835,7 +691,7 @@ document.addEventListener("DOMContentLoaded", () => {
     if (!paginationEl) {
       paginationEl = document.createElement("div");
       paginationEl.id = "studentsPagination";
-      paginationEl.style.cssText = "display: flex; flex-direction: column; align-items: center; gap: 10px; margin-top: 20px; padding: 15px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);";
+      paginationEl.className = "students-pagination";
       marksEntryTable.parentElement.appendChild(paginationEl);
     }
     const totalPages = window.lastStudentsFetchTotalPages || 1;
@@ -851,23 +707,31 @@ document.addEventListener("DOMContentLoaded", () => {
     const start = totalCount > 0 ? (currentStudentPage - 1) * STUDENTS_PER_PAGE + 1 : 0;
     const end = Math.min(start + currentBatchSize - 1, totalCount); // Corrected: Calculate end of current batch, capped by totalCount
 
+    const prevLabel = studentsPaginationLoadingButton === 'prev' ? '<span class="spinner"></span>Prev' : 'Prev';
+    const nextLabel = studentsPaginationLoadingButton === 'next' ? '<span class="spinner"></span>Next' : 'Next';
+    const isLoading = !!studentsPaginationLoadingButton;
+
     paginationEl.innerHTML = `
-      <div style="font-weight: 700; color: #2d3748; font-size: 1rem; letter-spacing: 0.025em;">
+      <div class="pagination-info">
         Showing ${start}-${end} of ${totalCount}
       </div>
-      <div style="display: flex; gap: 12px;">
-        <button type="button" id="prevStudentsBtn" class="btn secondary-btn" ${currentStudentPage === 1 ? "disabled" : ""} style="padding: 6px 20px; font-weight: 800; border: 2px solid #cbd5e0; min-width: 80px;">Prev</button>
-        <button type="button" id="nextStudentsBtn" class="btn secondary-btn" ${currentStudentPage >= totalPages ? "disabled" : ""} style="padding: 6px 20px; font-weight: 800; border: 2px solid #cbd5e0; min-width: 80px;">Next</button>
+      <div class="pagination-actions">
+        <button type="button" id="prevStudentsBtn" class="btn secondary-btn" ${currentStudentPage === 1 || isLoading ? "disabled" : ""}>${prevLabel}</button>
+        <button type="button" id="nextStudentsBtn" class="btn secondary-btn" ${currentStudentPage >= totalPages || isLoading ? "disabled" : ""}>${nextLabel}</button>
       </div>
     `;
 
     document.getElementById("prevStudentsBtn")?.addEventListener("click", () => {
       if (currentStudentPage > 1) {
+        studentsPaginationLoadingButton = 'prev';
+        updateStudentsPaginationControls(currentBatch);
         loadStudentsWithPage(currentStudentPage - 1);
       }
     });
 
     document.getElementById("nextStudentsBtn")?.addEventListener("click", () => {
+      studentsPaginationLoadingButton = 'next';
+      updateStudentsPaginationControls(currentBatch);
       loadStudentsWithPage(currentStudentPage + 1);
     });
   }
@@ -880,17 +744,7 @@ document.addEventListener("DOMContentLoaded", () => {
   // NEW: DISPLAY STUDENTS IN MARKS TABLE
   // ---------------------------
   function displayStudentsInMarksTable(students) {
-    marksEntryTableBody.innerHTML = "";
-    marksEntryTable.classList.add("marks-entry-table-mobile");
-    
-    if (!students || students.length === 0) {
-      const row = marksEntryTableBody.insertRow();
-      row.innerHTML = '<td colspan="5" style="text-align: center; padding: 20px; color: #999;">No students found in this class</td>';
-      return;
-    }
-
-    // Determine if senior school based on first student's grade
-    const isSeniorSchool = students.length > 0 ? cbcUtils.isSeniorGrade(students[0].grade) : false;
+    const isSeniorSchool = students.length > 0 ? window.cbcUtils.isSeniorGrade(students[0].grade) : false;
 
    // 🆕 Update table title to show selected subject
     const marksControlsSection = document.querySelector('.marks-controls');
@@ -908,11 +762,11 @@ document.addEventListener("DOMContentLoaded", () => {
     // Update table header for marks column
     if (isSeniorSchool) {
       marksColumnHeader.innerHTML = `
-        <div style="display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 5px;">
-          <div>CA (30%)</div>
-          <div>PW (20%)</div>
-          <div>Exam (50%)</div>
-          <div>Final</div>
+        <div class="senior-header-grid">
+          <div class="header-item">CA<span class="perc"> (30%)</span></div>
+          <div class="header-item">PW<span class="perc"> (20%)</span></div>
+          <div class="header-item">Exam<span class="perc"> (50%)</span></div>
+          <div class="header-item">Final</div>
         </div>
       `;
     } else {
@@ -983,7 +837,7 @@ document.addEventListener("DOMContentLoaded", () => {
         const finalInput = row.querySelector(".final-input");
         
         const updateFinal = () => {
-          const score = cbcUtils.calculateFinalScore(caInput.value, pwInput.value, examInput.value);
+          const score = window.cbcUtils.calculateFinalScore(caInput.value, pwInput.value, examInput.value);
           finalInput.value = (caInput.value !== "" || pwInput.value !== "" || examInput.value !== "") ? score : "";
         };
 
@@ -1057,7 +911,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const assessment = marksAssessmentSelect.value;
     const year = marksYearInput.value;
 
-    const isSeniorSchool = cbcUtils.isSeniorGrade(grade);
+    const isSeniorSchool = window.cbcUtils.isSeniorGrade(grade);
     const markEntryKey = getMarkEntryKey(studentId);
 
     let markData = allMarksEntered.get(markEntryKey) || {
@@ -1086,7 +940,7 @@ document.addEventListener("DOMContentLoaded", () => {
       const ca = row.querySelector(".ca-input")?.value;
       const pw = row.querySelector(".pw-input")?.value;
       const exam = row.querySelector(".exam-input")?.value;
-      const finalScore = cbcUtils.calculateFinalScore(ca, pw, exam);
+      const finalScore = window.cbcUtils.calculateFinalScore(ca, pw, exam);
       row.querySelector(".final-input").value = finalScore !== null ? finalScore : "";
       markData.finalScore = finalScore;
     } else {
@@ -1180,7 +1034,7 @@ document.addEventListener("DOMContentLoaded", () => {
       if (!markData.term) errors.push(`Student ${markData.studentName}: Term not selected`);
       if (!markData.assessment) errors.push(`Student ${markData.studentName}: Assessment not selected`);
 
-      const isSeniorSchool = cbcUtils.isSeniorGrade(markData.grade);
+      const isSeniorSchool = window.cbcUtils.isSeniorGrade(markData.grade);
 
       const isEmpty = (val) => val === undefined || val === null || String(val).trim() === "" || String(val).toLowerCase() === "null";
 
@@ -1363,9 +1217,10 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   async function loadStudentsWithPage(page) {
+    let students = [];
     try {
       const response = await loadStudentsForSubject(selectedAllocationData.classLabel, page);
-      const students = response.students || response;
+      students = response.students || response;
       const totalPages = response.totalPages || 1;
       window.lastStudentsFetchTotalPages = totalPages; // Store globally for pagination controls
       window.lastStudentsFetchTotalCount = response.total || students.length;
@@ -1380,6 +1235,9 @@ document.addEventListener("DOMContentLoaded", () => {
       }
     } catch (err) {
       showToast("❌ Failed to load Learners: " + err.message, "error");
+    } finally {
+      studentsPaginationLoadingButton = null;
+      updateStudentsPaginationControls(students);
     }
   }
 
@@ -1412,7 +1270,7 @@ document.addEventListener("DOMContentLoaded", () => {
       let hasCriticalErrors = false;
 
       for (const [key, markData] of allMarksEntered.entries()) {
-        const isSeniorSchool = cbcUtils.isSeniorGrade(markData.grade);
+        const isSeniorSchool = window.cbcUtils.isSeniorGrade(markData.grade);
         const markGradeStr = (markData.grade || "").toString();
         const gradeNum = parseInt(markGradeStr.match(/\d+/)?.[0] || markGradeStr, 10);
 
@@ -1469,7 +1327,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
       let absentCount = 0;
       allMarksEntered.forEach(m => {
-        const isSenior = cbcUtils.isSeniorGrade(m.grade);
+        const isSenior = window.cbcUtils.isSeniorGrade(m.grade);
         if (isSenior) {
           if (m.continuousAssessment === "X" || m.projectWork === "X" || m.endTermExam === "X") absentCount++;
         } else if (m.score === "X") {
@@ -1496,7 +1354,7 @@ document.addEventListener("DOMContentLoaded", () => {
       submitAllMarksBtn.disabled = true;
       const originalBtnHTML = submitAllMarksBtn.innerHTML;
 
-      if (!await cbcUtils.showConfirmToast(confirmationMessage)) {
+      if (!await window.cbcUtils.showConfirmToast(confirmationMessage)) {
         submitAllMarksBtn.disabled = false;
         return;
       }
@@ -1506,16 +1364,10 @@ document.addEventListener("DOMContentLoaded", () => {
     try {
       let successCount = 0;
       let failureCount = 0;
-      const token = authService.getToken();
-
       // Send all marks in a single bulk request
-      const res = await fetch(`${API_BASE}/marks/bulk-add-update`, { // New endpoint
-        method: "POST", // Use POST for bulk operation
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`
-        },
-        body: JSON.stringify(marksToSubmit) // Send the entire array
+      const res = await fetchWithAuth(`${API_BASE}/marks/bulk-add-update`, {
+        method: "POST",
+        body: JSON.stringify(marksToSubmit)
       });
 
       if (!res.ok) {
@@ -1577,7 +1429,7 @@ document.addEventListener("DOMContentLoaded", () => {
       }
     } catch (err) {
       console.error("Submit marks error:", err);
-      showToast("Error submitting marks", "error");
+      showToast(err.message || "Error submitting marks", "error");
     } finally {
       submitAllMarksBtn.disabled = false;
       submitAllMarksBtn.innerHTML = originalBtnHTML;
@@ -1625,12 +1477,7 @@ document.addEventListener("DOMContentLoaded", () => {
     try {
       // 🚀 Fetch with a high limit (1000) to ensure multiple class groups are captured for the accordions
       console.log("Fetching marks from:", `${API_BASE}/marks/teacher?limit=1000`);
-      const token = authService.getToken();
-      const res = await fetch(`${API_BASE}/marks/teacher?limit=1000`, {
-        headers: {
-          Authorization: `Bearer ${token}`
-        }
-      });
+      const res = await fetchWithAuth(`${API_BASE}/marks/teacher?limit=1000`);
       console.log("Response status:", res.status);
       
       if (res.status === 403) {
@@ -1702,7 +1549,7 @@ document.addEventListener("DOMContentLoaded", () => {
       const year = (m.year !== undefined && m.year !== null) ? String(m.year) : 'unknown-year';
       const assessment = (m.assessment !== undefined && m.assessment !== null) ? String(m.assessment) : 'unknown-assessment';
 
-      const isSenior = cbcUtils.isSeniorGrade(grade);
+      const isSenior = window.cbcUtils.isSeniorGrade(grade);
       const subjectKey = isSenior 
         ? (m.course ? String(m.course) : 'no-course') 
         : (m.subject ? String(m.subject) : 'no-subject');
@@ -1710,9 +1557,10 @@ document.addEventListener("DOMContentLoaded", () => {
       console.log(`DEBUG: Processing mark for student ${m.studentName || m.admissionNo}. Components: Grade=${grade}, Term=${term}, Year=${year}, Assessment=${assessment}, SubjectKey=${subjectKey}`);
       
       // Normalize grade (e.g., "5" vs "Grade 5") to ensure consistent grouping
-      const gradeNorm = cbcUtils.normalizeGrade(grade);
-      // Form key by Subject, Assessment, Grade, Term, Year as requested
-      const key = `${subjectKey}_${m.assessment}_${gradeNorm}_${m.term}_${m.year}`;
+      const gradeNorm = window.cbcUtils.normalizeGrade(grade);
+      const streamVal = m.stream || '';
+      // Form key by Subject, Assessment, Grade, Stream, Term, Year
+      const key = `${subjectKey}_${m.assessment}_${gradeNorm}_${streamVal}_${m.term}_${m.year}`;
 
       if (!grouped[key]) grouped[key] = [];
       grouped[key].push(m);
@@ -1746,188 +1594,54 @@ document.addEventListener("DOMContentLoaded", () => {
     keysForCurrentPage.forEach(key => {
       try {
         const fullGroupMarksRaw = grouped[key];
-        const searchTerm = subSearchMap.get(key) || "";
-        
-        // Filter group marks based on local search term
-        const fullGroupMarks = searchTerm 
-          ? fullGroupMarksRaw.filter(m => 
-              (m.studentName || "").toLowerCase().includes(searchTerm) || 
-              (m.admissionNo || m.admission || "").toString().toLowerCase().includes(searchTerm)
-            )
-          : fullGroupMarksRaw;
-
-        const totalStudents = fullGroupMarks.length;
-        const totalSubPages = Math.ceil(totalStudents / STUDENTS_PER_TABLE_PAGE);
-        const currentSubPage = subTablePageMap.get(key) || 1;
-        
-        const startIndex = (currentSubPage - 1) * STUDENTS_PER_TABLE_PAGE;
-        const pagedGroupMarks = fullGroupMarks.slice(startIndex, startIndex + STUDENTS_PER_TABLE_PAGE);
-        
-        const headerInfo = fullGroupMarksRaw[0]; // Use raw data for header metadata
+        const headerInfo = fullGroupMarksRaw[0];
         const details = document.createElement('details');
         details.open = openAccordions.has(key); // Persist open state
         details.className = 'marks-accordion';
-        details.ontoggle = () => { // Use native details behavior, just track state
-            if (details.open) {
-              openAccordions.add(key);
-              contentWrapper.style.display = 'block'; // Ensure content shows when opened
-            } else {
-              openAccordions.delete(key);
-              contentWrapper.style.display = 'none';
-            }
-        };
+
         const mapping = window.ASSESSMENT_MAPPING || {};
         const assessmentLabel = mapping[headerInfo.assessment] || `Assessment ${headerInfo.assessment}`;
-
-        // Determine if senior school to show appropriate table headers
         const gradeMatch = (headerInfo.grade || "").toString().match(/\d+/);
         const gradeNum = gradeMatch ? parseInt(gradeMatch[0]) : 0;
-        const groupIsSenior = gradeNum >= 10 && gradeNum <= 12;
-
+        const groupIsSenior = window.cbcUtils.isSeniorGrade(headerInfo.grade);
         const subjectDisplay = groupIsSenior ? `${headerInfo.pathway || 'N/A'} - ${headerInfo.course || 'N/A'}` : (headerInfo.subject || '').replace(/-/g, ' ');
-        const summaryText = `Grade: ${sanitize(headerInfo.grade)} • ${sanitize(subjectDisplay)} • Term: ${sanitize(headerInfo.term)} • Year: ${sanitize(headerInfo.year)} • ${assessmentLabel} — ${totalStudents} record${totalStudents > 1 ? 's' : ''}`;
+        
+        // 🆕 Include Stream in the display title (e.g. Grade 7 B)
+        const streamLabel = headerInfo.stream ? ` ${headerInfo.stream}` : '';
+        const gradeWithStream = `${window.cbcUtils.normalizeGrade(headerInfo.grade)}${streamLabel}`;
+        const summaryText = `Grade: ${sanitize(gradeWithStream)} • ${sanitize(subjectDisplay)} • Term: ${sanitize(headerInfo.term)} • Year: ${sanitize(headerInfo.year)} • ${assessmentLabel} — ${fullGroupMarksRaw.length} record${fullGroupMarksRaw.length > 1 ? 's' : ''}`;
 
         const summary = document.createElement('summary');
         summary.className = 'marks-accordion-summary';
         summary.innerHTML = `<strong>${summaryText}</strong>`;
 
-        // 🏗️ Wrap accordion content in a div to prevent nesting/rendering glitches
         const contentWrapper = document.createElement('div');
         contentWrapper.className = 'marks-accordion-content';
-        contentWrapper.style.display = details.open ? 'block' : 'none'; // Initial state
-        
-       // const pdfBtn = document.createElement('button');
-       // pdfBtn.className = 'pdf-btn';
-       // pdfBtn.textContent = '📄 PDF';
-        //pdfBtn.dataset.key = key;
-        
-        // Search Input for this specific table
-        const searchInput = document.createElement('input');
-        searchInput.type = 'text';
-        searchInput.placeholder = '🔍 Search name or adm...';
-        searchInput.value = searchTerm;
-        searchInput.style.cssText = "padding: 3px 12px; font-size: 0.75rem; border: 1px solid #cbd5e0; border-radius: 8px; margin-left: 15px; width: 210px; outline: none; background: #fff;";
-        
-        // Prevent accordion toggle when clicking search input
-        searchInput.addEventListener('click', e => e.stopPropagation());
-        
-        searchInput.addEventListener('input', e => {
-          const val = e.target.value.toLowerCase();
-          activeSearchInfo = { key, cursor: e.target.selectionStart };
-          subSearchMap.set(key, val);
-          subTablePageMap.set(key, 1); // Reset to first page on search
-          displayPaginatedMarksGroups(submittedMarksCurrentPage);
-        });
 
-        // 🆕 Delete Entire Table Button
-        const deleteGroupBtn = document.createElement('button');
-        deleteGroupBtn.className = 'btn danger-btn';
-        deleteGroupBtn.innerHTML = '🗑️ Delete Table';
-        deleteGroupBtn.style.cssText = "padding: 3px 10px; font-size: 0.72rem; border-radius: 8px; margin-left: 10px; font-weight: 700; height: 28px; vertical-align: middle;";
-        deleteGroupBtn.dataset.action = "delete-group";
-        deleteGroupBtn.dataset.key = key;
-
-        // Restore focus and cursor position after re-render
-        if (activeSearchInfo.key === key) {
-          setTimeout(() => {
-            searchInput.focus();
-            searchInput.setSelectionRange(activeSearchInfo.cursor, activeSearchInfo.cursor);
-          }, 0);
-        }
-
-        const table = document.createElement('table');
-        table.classList.add('marks-table');
-        
-        // Different headers for senior vs junior school
-        let thead = `
-          <thead>
-              <tr>
-                  <th>Admission</th>
-                  <th>Name</th>
-                  <th>Subject/Course</th>
-        `;
-        
-              if (groupIsSenior) {
-              thead += `<th>Continuous Assessment (30%)</th>
-            <th>Project Work (20%)</th>
-            <th>End-Term Exam (50%)</th>
-            <th>Final Score</th>`;
-             } else {
-             thead += `<th>Score (%)</th>`;
-             }
-        
-        thead += `<th>Actions</th>
-              </tr>
-          </thead>`;
-        let tbody = `<tbody>
-              ${pagedGroupMarks.map(m => {
-          const subjectDisplay = groupIsSenior ? `${m.pathway || 'N/A'} - ${m.course || 'N/A'}` : (m.subject || '').replace(/-/g, ' ');
-          
-          
-          let scoreCell = '';
-           if (groupIsSenior) {
-          const ca = m.continuousAssessment ?? '-';
-          const pw = m.projectWork ?? '-';
-           const et = m.endTermExam ?? '-';
-           const finalScore = m.finalScore ?? '-';
-          scoreCell = `<td data-label="Continuous Assessment">${sanitize(ca)}</td>
-               <td data-label="Project Work">${sanitize(pw)}</td>
-               <td data-label="End-Term Exam">${sanitize(et)}</td>
-               <td data-label="Final Score"><strong>${sanitize(finalScore)}</strong></td>`;
+        details.ontoggle = () => {
+          if (details.open) {
+            openAccordions.add(key);
+            if (!contentWrapper.dataset.rendered) {
+              renderMarksAccordionContent(key, contentWrapper, fullGroupMarksRaw, groupIsSenior, summaryText);
+              contentWrapper.dataset.rendered = "true";
+            }
+            contentWrapper.style.display = 'block';
           } else {
-          scoreCell = `<td data-label="Score">${sanitize(m.score ?? '-')}</td>`;
-         }
-          
-          return `<tr data-id="${m._id || ''}">
-                      <td data-label="Admission">${sanitize(m.admissionNo ?? m.admission ?? '')}</td>
-                      <td data-label="Name">${sanitize(m.studentName)}</td>
-                      <td data-label="Subject/Course">${sanitize(subjectDisplay)}</td>
-                      ${scoreCell}
-                      <td data-label="Actions">
-                          <button class="btn-edit" data-action="edit">✏️</button>
-                          <button class="btn-delete" data-action="delete">🗑️</button>
-                      </td>
-                  </tr>`;
-        }).join('')}
-          </tbody>
-        `;
-        
-        table.innerHTML = `<caption class="sr-only">${summaryText}</caption>${thead}${tbody}`;
+            openAccordions.delete(key);
+            contentWrapper.style.display = 'none';
+          }
+        };
 
         details.appendChild(summary);
-        // contentWrapper.appendChild(pdfBtn);
-        contentWrapper.appendChild(searchInput);
-        contentWrapper.appendChild(deleteGroupBtn);
-        contentWrapper.appendChild(table);
+        details.appendChild(contentWrapper);
 
-        // Sub-pagination controls for the individual table
-        if (totalSubPages > 1) {
-          const subPagination = document.createElement('div');
-          subPagination.className = 'sub-pagination-controls';
-          subPagination.style.cssText = "display: flex; justify-content: flex-end; align-items: center; gap: 10px; margin-top: 10px; padding: 5px 10px; border-top: 1px solid #edf2f7;";
-          subPagination.innerHTML = `
-            <span style="font-size: 0.75rem; color: #718096;">Showing ${startIndex + 1}-${Math.min(startIndex + STUDENTS_PER_TABLE_PAGE, totalStudents)} of ${totalStudents}</span>
-            <div style="display:flex; gap:5px;">
-              <button class="btn sub-prev-btn" ${currentSubPage === 1 ? 'disabled' : ''} style="padding: 2px 8px; font-size: 0.7rem;">Prev</button>
-              <button class="btn sub-next-btn" ${currentSubPage === totalSubPages ? 'disabled' : ''} style="padding: 2px 8px; font-size: 0.7rem;">Next</button>
-            </div>
-          `;
-          
-          subPagination.querySelector('.sub-prev-btn').onclick = (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            subTablePageMap.set(key, currentSubPage - 1);
-            displayPaginatedMarksGroups(submittedMarksCurrentPage);
-          };
-          subPagination.querySelector('.sub-next-btn').onclick = (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            subTablePageMap.set(key, currentSubPage + 1);
-            displayPaginatedMarksGroups(submittedMarksCurrentPage);
-          };
-         contentWrapper.appendChild(subPagination);
+        // If it's already marked as open (e.g. from previous state or search), render immediately
+        if (details.open) {
+          renderMarksAccordionContent(key, contentWrapper, fullGroupMarksRaw, groupIsSenior, summaryText);
+          contentWrapper.dataset.rendered = "true";
+          contentWrapper.style.display = 'block';
         }
-      details.appendChild(contentWrapper);
+
         submittedMarksContainer.appendChild(details);
       } catch (err) {
         console.error("Error rendering marks group:", err, key);
@@ -1936,6 +1650,102 @@ document.addEventListener("DOMContentLoaded", () => {
     renderSubmittedMarksPaginationControls();
   }
 
+  // 🆕 Lazy Load Helper for Accordion Content
+  function renderMarksAccordionContent(key, contentWrapper, fullGroupMarksRaw, groupIsSenior, summaryText) {
+    const searchTerm = subSearchMap.get(key) || "";
+    const fullGroupMarks = searchTerm 
+      ? fullGroupMarksRaw.filter(m => 
+          (m.studentName || "").toLowerCase().includes(searchTerm) || 
+          (m.admissionNo || m.admission || "").toString().toLowerCase().includes(searchTerm)
+        )
+      : fullGroupMarksRaw;
+
+    const totalStudents = fullGroupMarks.length;
+    const totalSubPages = Math.ceil(totalStudents / STUDENTS_PER_TABLE_PAGE);
+    const currentSubPage = subTablePageMap.get(key) || 1;
+    const startIndex = (currentSubPage - 1) * STUDENTS_PER_TABLE_PAGE;
+    const pagedGroupMarks = fullGroupMarks.slice(startIndex, startIndex + STUDENTS_PER_TABLE_PAGE);
+
+    contentWrapper.innerHTML = '';
+
+    const searchInput = document.createElement('input');
+    searchInput.type = 'text';
+    searchInput.placeholder = '🔍 Search name or adm...';
+    searchInput.value = searchTerm;
+    searchInput.style.cssText = "padding: 3px 12px; font-size: 0.75rem; border: 1px solid #cbd5e0; border-radius: 8px; margin-left: 15px; width: 210px; outline: none; background: #fff;";
+    searchInput.addEventListener('click', e => e.stopPropagation());
+    searchInput.addEventListener('input', e => {
+      const val = e.target.value.toLowerCase();
+      activeSearchInfo = { key, cursor: e.target.selectionStart };
+      subSearchMap.set(key, val);
+      subTablePageMap.set(key, 1);
+      displayPaginatedMarksGroups(submittedMarksCurrentPage);
+    });
+
+    const deleteGroupBtn = document.createElement('button');
+    deleteGroupBtn.className = 'btn danger-btn';
+    deleteGroupBtn.innerHTML = '🗑️ Delete Table';
+    deleteGroupBtn.style.cssText = "padding: 3px 10px; font-size: 0.72rem; border-radius: 8px; margin-left: 10px; font-weight: 700; height: 28px; vertical-align: middle;";
+    deleteGroupBtn.dataset.action = "delete-group";
+    deleteGroupBtn.dataset.key = key;
+
+    if (activeSearchInfo.key === key) {
+      setTimeout(() => {
+        searchInput.focus();
+        searchInput.setSelectionRange(activeSearchInfo.cursor, activeSearchInfo.cursor);
+      }, 0);
+    }
+
+    contentWrapper.appendChild(searchInput);
+    contentWrapper.appendChild(deleteGroupBtn);
+
+    const tableContainer = document.createElement('div');
+    tableContainer.className = 'marks-table-container';
+
+    let thead = `<thead><tr><th>Admission</th><th>Name</th>`;
+    if (groupIsSenior) {
+      thead += `<th>Continuous Assessment (30%)</th><th>Project Work (20%)</th><th>End-Term Exam (50%)</th><th>Final Score</th>`;
+    } else {
+      thead += `<th>Score (%)</th>`;
+    }
+    thead += `<th>Actions</th></tr></thead>`;
+
+    let tbody = `<tbody>${pagedGroupMarks.map(m => {
+      let scoreCell = groupIsSenior 
+        ? `<td data-label="Continuous Assessment">${sanitize(m.continuousAssessment ?? '-')}</td><td data-label="Project Work">${sanitize(m.projectWork ?? '-')}</td><td data-label="End-Term Exam">${sanitize(m.endTermExam ?? '-')}</td><td data-label="Final Score"><strong>${sanitize(m.finalScore ?? '-')}</strong></td>`
+        : `<td data-label="Score">${sanitize(m.score ?? '-')}</td>`;
+      return `<tr data-id="${m._id || ''}"><td data-label="Admission">${sanitize(m.admissionNo ?? m.admission ?? '')}</td><td data-label="Name">${sanitize(m.studentName)}</td>${scoreCell}<td data-label="Actions"><button class="btn-edit" data-action="edit">✏️</button><button class="btn-delete" data-action="delete">🗑️</button></td></tr>`;
+    }).join('')}</tbody>`;
+
+    // Create combined table with header and body
+    const combinedTable = document.createElement('table');
+    combinedTable.classList.add('marks-table', 'marks-table-combined');
+    combinedTable.innerHTML = `<caption class="sr-only">${summaryText}</caption>${thead}${tbody}`;
+
+    // Create scrollable wrapper for the entire table
+    const scrollWrapper = document.createElement('div');
+    scrollWrapper.className = 'marks-table-scroll-wrapper';
+    scrollWrapper.appendChild(combinedTable);
+
+    tableContainer.appendChild(scrollWrapper);
+    contentWrapper.appendChild(tableContainer);
+
+    if (totalSubPages > 1) {
+      const subPagination = document.createElement('div');
+      subPagination.className = 'sub-pagination-controls';
+      subPagination.style.cssText = "display: flex; justify-content: flex-end; align-items: center; gap: 10px; margin-top: 10px; padding: 5px 10px; border-top: 1px solid #edf2f7;";
+      subPagination.innerHTML = `<span style="font-size: 0.75rem; color: #718096;">Showing ${startIndex + 1}-${Math.min(startIndex + STUDENTS_PER_TABLE_PAGE, totalStudents)} of ${totalStudents}</span><div style="display:flex; gap:5px;"><button class="btn sub-prev-btn" ${currentSubPage === 1 ? 'disabled' : ''} style="padding: 2px 8px; font-size: 0.7rem;">Prev</button><button class="btn sub-next-btn" ${currentSubPage === totalSubPages ? 'disabled' : ''} style="padding: 2px 8px; font-size: 0.7rem;">Next</button></div>`;
+      subPagination.querySelector('.sub-prev-btn').onclick = (e) => {
+        e.preventDefault(); e.stopPropagation();
+        subTablePageMap.set(key, currentSubPage - 1); displayPaginatedMarksGroups(submittedMarksCurrentPage);
+      };
+      subPagination.querySelector('.sub-next-btn').onclick = (e) => {
+        e.preventDefault(); e.stopPropagation();
+        subTablePageMap.set(key, currentSubPage + 1); displayPaginatedMarksGroups(submittedMarksCurrentPage);
+      };
+      contentWrapper.appendChild(subPagination);
+    }
+  }
   // New function for submitted marks pagination controls
   function renderSubmittedMarksPaginationControls() {
     let paginationEl = document.getElementById("submittedMarksPagination");
@@ -1979,10 +1789,11 @@ document.addEventListener("DOMContentLoaded", () => {
       const key = btn.dataset.key;
       // Identify all marks belonging to this specific table group
       const marksToDelete = submittedMarks.filter(m => {
-        const gradeNorm = cbcUtils.normalizeGrade(m.grade);
-        const isSenior = cbcUtils.isSeniorGrade(m.grade);
+        const gradeNorm = window.cbcUtils.normalizeGrade(m.grade);
+        const isSenior = window.cbcUtils.isSeniorGrade(m.grade);
         const subjectKey = isSenior ? (m.course || 'no-course') : (m.subject || 'no-subject');
-        return `${subjectKey}_${m.assessment}_${gradeNorm}_${m.term}_${m.year}` === key;
+        const streamVal = m.stream || '';
+        return `${subjectKey}_${m.assessment}_${gradeNorm}_${streamVal}_${m.term}_${m.year}` === key;
       });
 
       if (!marksToDelete.length) return;
@@ -1993,10 +1804,7 @@ document.addEventListener("DOMContentLoaded", () => {
       // Check Term Lock for the group before processing (using the first mark as reference)
       const sample = marksToDelete[0];
       try {
-        const token = authService.getToken();
-        const lockRes = await fetch(`${API_BASE}/settings/term-lock?year=${sample.year}&term=${sample.term}`, {
-          headers: { Authorization: `Bearer ${token}` }
-        });
+        const lockRes = await fetchWithAuth(`${API_BASE}/settings/term-lock?year=${sample.year}&term=${sample.term}`);
         const lockData = await lockRes.json();
         if (lockData.isLocked && teacher.role !== 'super_admin') {
           return showToast("Cannot delete: This academic term is officially locked.", "error");
@@ -2008,21 +1816,16 @@ document.addEventListener("DOMContentLoaded", () => {
       btn.innerHTML = '<span class="spinner"></span> Deleting...';
 
       try {
-        const token = authService.getToken();
-        // Process individual deletes in parallel
-        const results = await Promise.all(marksToDelete.map(m => 
-          fetch(`${API_BASE}/marks/${m._id}`, {
-            method: "DELETE",
-            headers: { Authorization: `Bearer ${token}` }
-          })
-        ));
+        // Optimized: Single Bulk Delete Request
+        const markIds = marksToDelete.map(m => m._id);
+        const res = await fetchWithAuth(`${API_BASE}/marks/bulk-delete`, { 
+          method: "POST", 
+          body: JSON.stringify({ markIds }) 
+        });
 
-        const successCount = results.filter(r => r.ok).length;
-        if (successCount === marksToDelete.length) {
-          showToast(`Successfully deleted all ${successCount} records.`, "success");
-        } else {
-          showToast(`Deleted ${successCount} marks, but ${marksToDelete.length - successCount} failed.`, "warning");
-        }
+        const result = await res.json();
+        localStorage.removeItem("teacher_marks_cache");
+        showToast(result.message || `Successfully deleted ${markIds.length} records.`, "success");
         await loadSubmittedMarks(true); // Force refresh UI
       } catch (err) {
         console.error("Bulk delete error:", err);
@@ -2041,8 +1844,12 @@ document.addEventListener("DOMContentLoaded", () => {
 
       // Robust Grade extraction (from mark object)
       const markGradeStr = (mark.grade || "").toString();
-      const markGradeMatch = markGradeStr.match(/\d+/);
-      const markGradeNum = markGradeMatch ? parseInt(markGradeMatch[0], 10) : 0;
+      const markGradeNum = window.cbcUtils.getGradeNum(markGradeStr);
+
+      // Helper to normalize strings for comparison (lowercase, space-padded, hyphen-free)
+      const normalize = s => (s || '').toLowerCase().replace(/-/g, ' ').replace(/\s+/g, ' ').trim();
+      const markSub = normalize(mark.subject);
+      const markCourse = normalize(mark.course);
 
       showToast("Loading learner for editing...", "info");
 
@@ -2051,17 +1858,10 @@ document.addEventListener("DOMContentLoaded", () => {
       // 1. Find the correct allocation in the dropdown by normalizing subject/course names and grade
       const allocationOption = Array.from(subjectAllocationSelect.options).find(opt => {
         const classLabelForOption = opt.dataset.classLabel || '';
-        const subjectForOption = opt.dataset.subject || '';
+        const optSub = normalize(opt.dataset.subject);
         const gradeNumberInLabel = parseInt(classLabelForOption.match(/\d+/)?.[0], 10);
         
         if (gradeNumberInLabel !== markGradeNum) return false;
-
-        // Normalize helper: lowercase, replace hyphens with spaces, trim
-        const normalize = s => (s || '').toLowerCase().replace(/-/g, ' ').replace(/\s+/g, ' ').trim();
-        
-        const optSub = normalize(subjectForOption);
-        const markSub = normalize(mark.subject);
-        const markCourse = normalize(mark.course);
 
         if (isSeniorSchool) {
           return optSub === markCourse || optSub === markSub;
@@ -2144,13 +1944,7 @@ document.addEventListener("DOMContentLoaded", () => {
     if (btn.dataset.action === "delete") {
       if (!await showConfirm("Are you sure you want to permanently delete this mark? This action cannot be undone.")) return;
       try {
-        const token = authService.getToken();
-        const res = await fetch(`${API_BASE}/marks/${id}`, {
-          method: "DELETE",
-          headers: {
-            Authorization: `Bearer ${token}`
-          }
-        });
+        const res = await fetchWithAuth(`${API_BASE}/marks/${id}`, { method: "DELETE" });
         if (res.status === 403) return showToast("Unauthorized", "error");
         if (!res.ok) throw new Error("Delete failed");
         showToast("Deleted successfully", "success");
@@ -2230,6 +2024,16 @@ document.addEventListener("DOMContentLoaded", () => {
     console.log("🚀 Dashboard initialization started");
     console.log("📝 Step 1: Loading teacher profile...");
     await loadTeacherProfile();
+
+    // Add Logout listener with confirmation
+    if (logoutBtn) {
+      logoutBtn.addEventListener("click", async () => {
+        const confirmed = await window.cbcUtils.showConfirmToast("Are you sure you want to log out of the Teacher's Panel?");
+        if (confirmed) {
+          authService.logout();
+        }
+      });
+    }
     console.log("✅ Step 1 complete");
 
     // Initialize Tabs
@@ -2240,7 +2044,6 @@ document.addEventListener("DOMContentLoaded", () => {
     // 🆕 Move termLockMessageEl to the desired position
     const marksControls = document.querySelector('.marks-controls');
     const step1Heading = marksControls?.querySelector('h3'); // Assuming "Step 1" is an h3
-    const termLockMessageEl = document.getElementById("termLockMessage");
 
     if (marksControls && step1Heading && termLockMessageEl) {
         // Create a wrapper for the heading and the lock message

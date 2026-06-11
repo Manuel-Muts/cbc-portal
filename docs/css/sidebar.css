@@ -1,0 +1,96 @@
+/* Central Sidebar Styles */
+
+.sidebar {
+    width: 260px;
+    background: #2b6cb0 !important;
+    color: white !important;
+    padding: 20px 0;
+    flex-shrink: 0;
+    position: sticky;
+    top: 0;
+    height: 100vh;
+    z-index: 1100;
+    box-shadow: 4px 0 10px rgba(0,0,0,0.1);
+    display: flex;
+    flex-direction: column;
+}
+
+.sidebar-brand .logo {
+    font-size: 1.4rem;
+    font-weight: 800;
+    margin-bottom: 20px;
+    text-align: center;
+    border-bottom: 1px solid rgba(255,255,255,0.1);
+    padding: 0 20px 15px 20px;
+    letter-spacing: 1px;
+    color: white;
+}
+
+.sidebar-brand img {
+    max-height: 50px;
+    margin-bottom: 8px;
+    display: block;
+    margin-left: auto;
+    margin-right: auto;
+    border-radius: 4px;
+}
+
+/* Menu Items */
+.menu {
+    padding: 0 20px;
+    margin: 0;
+    list-style: none;
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 4px;
+    flex-grow: 1;
+}
+
+.menu li {
+    transition: all 0.2s ease;
+    margin: 4px 0;
+    border-radius: 8px;
+    cursor: pointer;
+    color: rgba(255,255,255,0.8);
+    font-weight: 500;
+    display: flex;
+    align-items: center;
+    padding: 12px 15px;
+}
+
+.menu li a {
+    color: inherit;
+    text-decoration: none;
+    display: flex;
+    align-items: center;
+    width: 100%;
+    gap: 12px;
+}
+
+.menu li i {
+    width: 20px;
+    text-align: center;
+    font-size: 1.1rem;
+}
+
+.menu li:hover {
+    background: rgba(255, 255, 255, 0.1) !important;
+    color: white !important;
+}
+
+.menu li.active {
+    background: #1a4d8c !important;
+    color: white !important;
+    font-weight: 700;
+    box-shadow: inset 4px 0 0 #fff;
+}
+
+/* Bottom Actions */
+.sidebar-actions {
+    padding: 20px;
+    margin-top: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+

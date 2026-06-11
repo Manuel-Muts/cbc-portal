@@ -46,16 +46,25 @@ class CacheManager {
     this.cache.delete(key);
   }
 
+  /** Alias for delete to support legacy simpleCache calls */
+  del(key) {
+    this.delete(key);
+  }
+
   /**
    * Clear all cache related to a pattern
    */
   clearPattern(pattern) {
-    const regex = new RegExp(pattern);
     for (const key of this.cache.keys()) {
-      if (regex.test(key)) {
+      if (key.includes(pattern)) {
         this.cache.delete(key);
       }
     }
+  }
+
+  /** Alias for clearPattern to support legacy simpleCache calls */
+  clearByPattern(pattern) {
+    this.clearPattern(pattern);
   }
 
   /**

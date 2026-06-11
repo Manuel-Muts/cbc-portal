@@ -70,9 +70,9 @@ export const requestReset = async (req, res) => {
     // Send email via Brevo API
     // -------------------------
     const payload = {
-      sender: { name: "CBC Portal", email: process.env.EMAIL_USER },
+      sender: { name: "COMPETENCEHUB", email: process.env.EMAIL_USER },
       to: [{ email: user.email, name: user.firstname || user.name }],
-      subject: "Portal Password Reset",
+      subject: "Password Reset",
       htmlContent: `
         <h3>Hello ${user.firstname || user.name}</h3>
         <p>Your password reset code is:</p>

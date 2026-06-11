@@ -1,119 +1,326 @@
 /* Note: Reset, Body, and Header styles are inherited from style.css to prevent redundancy */
 
 /* ==============================
-   HEADER STYLING
+   DASHBOARD COMPACTNESS & NOTIFICATIONS
 ============================== */
-header {
-  background: #76ace3 !important; /* Professional blue to override the global white background */
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1) !important;
+#toastContainer {
+  position: fixed;
+  top: 20px;
+  right: 15px;
+  z-index: 99999;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  pointer-events: none;
+  align-items: flex-end;
+}
+#toastContainer .toast {
+  pointer-events: auto;
+  position: relative !important;
+  top: auto !important;
+  left: auto !important;
+  right: auto !important;
+  transform: none !important;
+  padding: 12px 18px;
+  border-radius: 8px;
+  color: white !important;
+  font-weight: 600;
+  font-size: 0.9rem;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2); /* Keep desktop size */
+  min-width: 200px;
+  max-width: 350px;
+  box-sizing: border-box;
+  animation: toastFadeIn 0.3s ease-out, toastFadeOut 0.5s ease-in 3.2s forwards;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  display: block;
+}
+.toast-success { background: #38a169 !important; }
+.toast-error { background: #e53e3e !important; }
+.toast-warning { background: #d69e2e !important; }
+.toast-info { background: #3182ce !important; }
+
+@keyframes toastFadeIn {
+  from { opacity: 0; transform: translateX(20px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+@keyframes toastFadeOut {
+  from { opacity: 1; }
+  to { opacity: 0; transform: translateY(-10px); }
 }
 
-/* Adjust logo color to be readable on the new background */
-header .logo {
-  color: #ffffff !important;
+.allocations-section {
+  max-width: 1000px;
+  margin: 30px auto 0;
+  padding: 0 20px;
 }
 
-/* Update navigation links and welcome message to be visible on the new blue header */
-header nav ul li a,
-header .role-link,
-header #teacherName span {
-  color: #ffffff !important;
-  font-weight: 500;
-  transition: all 0.3s ease;
-  display: inline-block;
+.allocations-grid, #allocationsContainer {
+  display: flex;
+  gap: 12px;
+  align-items: stretch;
+  margin-bottom: 15px;
 }
 
-/* Ensure the welcome message container uses flexbox on desktop for proper alignment */
-header #teacherName {
-  display: flex !important;
+.allocation-card, .signature-card {
+  flex: 1;
+  padding: 8px 12px !important;
+  margin: 0 !important;
+  background: #fff;
+  border-radius: 10px;
+  border: 1px solid #e2e8f0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-height: 85px;
+  border-top: 4px solid #2b6cb0;
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+.allocation-card:hover, .signature-card:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 8px 20px rgba(0,0,0,0.1);
+}
+
+.signature-card .helper-text { margin-bottom: 2px !important; font-size: 0.6rem !important; }
+.sig-preview-box { min-height: 35px !important; margin-bottom: 4px !important; background: #f8fafc; border-radius: 6px; }
+.signature-card img { max-height: 35px !important; width: auto !important; }
+
+/* Term Lock Message */
+#termLockMessage {
+  display: none;
+  background: #fffaf0 !important;
+  border: 1px solid #feebc8 !important;
+  color: #7b341e !important;
+  padding: 12px 16px !important;
+  border-radius: 10px !important;
+  margin-bottom: 10px !important;
   align-items: center !important;
-  gap: 15px !important; /* Space between name, dean button, and refresh button */
-  white-space: nowrap !important;
+  gap: 12px !important;
+  font-weight: 500 !important;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05) !important;
+  border-left: 6px solid #f6ad55 !important;
 }
 
-header .contact-link {
-  color: #ffffff !important;
-  border-color: #ffffff !important;
+.lock-message-wrapper {
+  margin-bottom: 8px !important; /* Tighten space between header and filters */
 }
 
-header .contact-link:hover {
-  background: #ffffff !important;
-  color: #2b6cb0 !important;
-  transform: scale(1.1);
+.tabs-nav {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: center;
+  margin: 20px auto;
+  max-width: 1200px;
+  padding: 0 20px;
 }
 
-/* Style the refresh button and Dean Panel link in the header */
-header #teacherName #headerRefreshBtn {
-  color: #ffffff !important;
-  opacity: 0.8;
-  transition: opacity 0.3s ease, transform 0.5s ease;
+.tab-btn {
+  border: 1px solid #cbd5e0;
+  background: #f8fafc;
+  color: #1f2937;
+  padding: 12px 18px;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: all 0.25s ease;
+  font-weight: 600;
+  min-width: 160px;
 }
 
-header #teacherName #headerRefreshBtn:hover {
-  opacity: 1;
+.tab-btn:hover {
+  background: #629ae2;
 }
 
-header #teacherName .secondary-btn {
-  background: rgba(255, 255, 255, 0.15) !important;
-  color: #ffffff !important;
-  border: 1px solid rgba(255, 255, 255, 0.3) !important;
-  backdrop-filter: blur(4px);
+.tab-btn.active {
+  background: #2b6cb0;
+  color: white;
+  border-color: transparent;
 }
 
-header #teacherName .secondary-btn:hover {
-  background: rgba(255, 255, 255, 0.25) !important;
+/* Gray out elements when term is locked */
+.locked-state-overlay {
+  position: relative;
+  opacity: 0.75;
+  pointer-events: none;
+  filter: grayscale(0.1);
+  transition: all 0.3s ease;
 }
 
-header .menu-toggle {
-  color: #ffffff !important;
+.marks-controls .lock-message-wrapper #termLockMessage { margin-bottom: 0 !important; }
+.marks-controls .lock-message-wrapper h3 { margin-bottom: 0 !important; }
+
+.marks-controls {
+  background: linear-gradient(135deg, #f5f7fa 0%, #e8ecf1 100%);
+  border-left: 5px solid #2b6cb0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 15px;
+  align-items: flex-end;
+  padding: 15px;
+  margin-bottom: 20px;
+  border-radius: 14px;
 }
 
-/* ==============================
-   MOBILE RESPONSIVENESS (768px)
-============================== */
-@media (max-width: 768px) {
-  header nav ul {
-    background: #2b6cb0 !important;
-    border-top: 1px solid rgba(255, 255, 255, 0.1);
-  }
-
-  header nav ul li a {
-    padding: 15px 25px !important; /* Increased padding for better touch targets */
-    display: block;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.05); /* Subtle separation between items */
-  }
-
-  /* Align Welcome message, Dean Panel button, and Refresh button horizontally */
-  header #teacherName {
-    display: flex !important;
-    align-items: center !important;
-    gap: 10px !important;
-    font-size: 0.8rem !important;
-    white-space: nowrap !important;
-  }
-
-  header #teacherName .secondary-btn {
-    padding: 4px 8px !important;
-    font-size: 0.65rem !important;
-  }
+.marks-controls h3 {
+  color: #2b6cb0;
+  margin-bottom: 6px;
+  font-size: 1.1rem;
 }
+
+.marks-controls select,
+.marks-controls input {
+  padding: 10px 12px;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  font-size: 0.95rem;
+  background: white;
+  max-width: 100%;
+}
+
+.inline-alert {
+  margin-top: 16px;
+  padding: 12px 14px;
+  background: #fff5f5;
+  border: 1px solid #fed7d7;
+  color: #c53030;
+  font-weight: 600;
+  border-radius: 10px;
+}
+
+.actions-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 15px;
+}
+
+.btn-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.primary-btn {
+  background: #2b6cb0;
+  color: white;
+}
+
+.warning-btn {
+  background: #f59e0b;
+  color: white;
+}
+
+.accent-btn {
+  background: #2563eb;
+  color: white;
+}
+
+.submit-btn {
+  padding: 12px 24px;
+}
+
+.draft-status {
+  margin-top: 12px;
+  padding: 12px 14px;
+  background: #f8fafc;
+  border-radius: 10px;
+  color: #475569;
+  font-size: 0.95rem;
+}
+
+.material-card {
+  text-align: center;
+  padding: 28px;
+  border: 1px dashed #cbd5e0;
+  border-radius: 14px;
+  background: #ffffff;
+  box-shadow: 0 2px 15px rgba(15, 23, 42, 0.05);
+}
+
+.material-card h3 {
+  margin-top: 0;
+  margin-bottom: 18px;
+  font-size: 1.15rem;
+  color: #1f2937;
+}
+
+.big-btn {
+  font-size: 1rem;
+  padding: 14px 26px;
+}
+
+.collapsible-card {
+  background: #ffffff;
+  border-radius: 14px;
+  border: 1px solid #e2e8f0;
+  padding: 0;
+  overflow: hidden;
+}
+
+.collapsible-header {
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 18px 20px;
+  background: #f8fafc;
+}
+
+.collapsible-header h2 {
+  margin: 0;
+  font-size: 1rem;
+  color: #1f2937;
+}
+
+.summary-note {
+  font-size: 0.88rem;
+  color: #64748b;
+  font-weight: 500;
+}
+
+.collapsible-body {
+  margin-top: 0;
+  border-top: 1px solid #edf2f7;
+  padding: 18px 20px;
+}
+
 
 @media (max-width: 600px) {
-  header {
-    flex-direction: row !important; /* Keep logo and menu on one line */
-    justify-content: space-between !important;
-    padding: 0 15px !important;
-  }
-
   header h1 {
-    font-size: 1.1rem !important;
+    font-size: 0.8rem !important; /* Slightly smaller for very small screens */
   }
 
   /* Ensure logout button scales on mobile */
   header #logoutBtn {
-    padding: 6px 10px !important;
-    font-size: 0.75rem !important;
-    margin-left: auto; /* Push to the right relative to the logo */
+    padding: 4px 9px !important;
+    font-size: 0.5rem !important; /* Slightly larger */
+    margin-left: 0 !important;
+    width: auto !important;
+    font-weight: 600 !important;
+  }
+
+  .marks-controls .form-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .marks-controls,
+  .material-card,
+  .allocations-section {
+    padding-left: 15px;
+    padding-right: 15px;
+  }
+
+  .material-card {
+    padding: 22px;
+  }
+
+  .tabs-nav {
+    gap: 6px;
   }
 }
 
@@ -192,13 +399,66 @@ form {
   transition: all 0.3s ease;
 }
 
-/* Marks Table Overrides for Compactness (Moved from JS) */
-.marks-table th, .marks-table td, #marksEntryTable th, #marksEntryTable td { padding: 4px 8px !important; font-size: 0.82rem !important; text-align: center; border: 1px solid #edf2f7; }
-.marks-table td:first-child, .marks-table th:first-child, #marksEntryTable td:first-child, #marksEntryTable th:first-child { text-align: left !important; }
-#marksEntryTable input { padding: 3px 6px !important; font-size: 0.8rem !important; border-radius: 4px; border: 1px solid #cbd5e0; }
-.marks-accordion-summary { padding: 6px 10px !important; font-size: 0.85rem !important; cursor: pointer; background: #f8fafc; border-radius: 6px; }
-.pdf-btn { padding: 2px 6px !important; font-size: 0.72rem !important; margin: 4px 0 !important; border-radius: 4px !important; background: #2563eb; color: white; border: none; cursor: pointer; }
-.btn-edit, .btn-delete { font-size: 0.9rem !important; padding: 2px !important; background: none; border: none; cursor: pointer; transition: opacity 0.2s; }
+/* Marks Table — Consolidated compact styles */
+/* Consolidated to reduce duplication across .marks-table and #marksEntryTable / .marks-entry-table */ /* Keep desktop sizes */
+.marks-table th,
+.marks-table td,
+.marks-entry-table th,
+.marks-entry-table td,
+#marksEntryTable th,
+#marksEntryTable td {
+  padding: 4px 8px; /* Keep desktop padding */
+  font-size: 0.82rem; /* Keep desktop font size */
+  text-align: center;
+  border: 1px solid #edf2f7;
+}
+/* Keep desktop alignment */
+.marks-table th:first-child,
+.marks-table td:first-child,
+.marks-entry-table th:first-child,
+.marks-entry-table td:first-child,
+#marksEntryTable th:first-child,
+#marksEntryTable td:first-child {
+  text-align: left;
+}
+
+/* Inputs inside entry table */ /* Keep desktop sizes */
+#marksEntryTable input,
+.marks-entry-table input {
+  padding: 3px 4px; /* Keep desktop padding */
+  font-size: 0.8rem;
+  border-radius: 4px;
+  border: 1px solid #cbd5e0;
+}
+
+.marks-accordion-summary {
+  padding: 6px 10px;
+  font-size: 0.85rem; /* Keep desktop size */
+  cursor: pointer;
+  background: #f8fafc;
+  border-radius: 6px;
+}
+
+.pdf-btn {
+  padding: 2px 6px;
+  font-size: 0.72rem; /* Keep desktop size */
+  margin: 4px 0;
+  border-radius: 4px;
+  background: #2563eb;
+  color: white;
+  border: none;
+  cursor: pointer;
+}
+
+.btn-edit,
+.btn-delete {
+  font-size: 0.75rem; /* Keep desktop size */
+  padding: 2px 4px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  transition: opacity 0.2s;
+}
 
 /* Materials Table Overrides for Compactness (Moved from JS) */
 #materialsList tr td { padding: 5px 10px !important; font-size: 0.82rem !important; vertical-align: middle; border-bottom: 1px solid #edf2f7; }
@@ -209,48 +469,96 @@ form {
   background: #1a4d8c;
 }
 
+
+
 /* ==============================
-   RESPONSIVE DESIGN
+   MARKS TABLE WRAPPER
 ============================== */
+.marks-table-wrapper {
+  background: #fff;
+  width: 100%;
+  margin: 20px 0;
+  padding: 15px;
+  border-radius: 10px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+  border-top: 4px solid #2b6cb0;
+  transition: box-shadow 0.3s ease;
+}
+
+.marks-table-wrapper:hover {
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+}
+
+/* Container for header + scrollable body */
+.marks-table-container {
+  background: #fff;
+  width: 100%;
+  margin: 20px 0;
+  padding: 15px;
+  border-radius: 10px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+  border-top: 4px solid #2b6cb0;
+  transition: box-shadow 0.3s ease;
+}
+
+.marks-table-container:hover {
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+}
+
+/* Header table (non-scrolling) */
+.marks-table-header {
+  width: 100%;
+  min-width: 600px;
+  margin: 0;
+  padding: 0;
+  border-collapse: collapse;
+  display: table;
+}
+
+/* Scrollable wrapper for body only */
+.marks-table-scroll-wrapper {
+  overflow-x: auto;
+  overflow-y: auto;
+  width: 100%;
+  max-height: 70vh;
+  margin-top: -1px;
+}
+
+/* Body table (inside scrollable wrapper) */
+.marks-table-body {
+  width: 100%;
+  min-width: 600px;
+  margin: 0;
+  padding: 0;
+  border-collapse: collapse;
+  display: table;
+}
 
 /* ==============================
    MARKS TABLE
 ============================== */
 .marks-table {
-  background: #fff;
-  max-width: 900px;
-  margin: 40px auto;
-  padding: 25px;
-  border-radius: 10px;
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
-  overflow-x: auto;
-  border-top: 4px solid #2b6cb0;
-  transition: box-shadow 0.3s ease;
+  width: 100%;
+  background: inherit;
+  border-radius: 0;
+  box-shadow: none;
+  border-top: none;
 }
-
-.marks-table:hover {
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
-}
-
-.marks-table h2 {
-  color: #2b6cb0;
-  text-align: center;
-  margin-bottom: 15px;
-}
-
 
 .marks-table th,
 .marks-table td {
-  padding: 10px;
+  padding: 4px 6px;
   border-bottom: 1px solid #ddd;
   text-align: center;
-  font-size: 0.95rem;
+  font-size: 0.85rem;
 }
 
 .marks-table th {
   background-color: #2b6cb0;
   color: white;
   font-weight: 600;
+  padding: 8px 6px;
+  font-size: 0.80rem;
 }
 
 .marks-table tr:hover {
@@ -636,32 +944,27 @@ form {
   font-size: 12px;
   margin-left: 10px;
 }
-/* ==============================
-   SCHOOL NAME - PROFESSIONAL GLOW
-============================== */
 #schoolName {
-  display: block;
-  text-align: center;
-  font-size: 2rem;
-  font-weight: 700;
-  color: #2b6cb0; /* matching header blue */
-  text-shadow: 0 0 4px rgba(43, 108, 176, 0.6); /* subtle glow */
-  margin: 20px auto 30px auto; /* space above & below */
+ font-size: 0.75rem !important; /* Reduced font size */
+  font-weight: 600 !important; /* Less bold */
+  color: #ffffff !important;
+  margin: 0 !important;
+  position: absolute !important;
+  left: 50% !important;
+  transform: translateX(-50%) !important;
+  text-align: center !important;
+  text-shadow: none !important;
+  white-space: nowrap !important;
+  pointer-events: none;
+  background: transparent !important; /* Remove white background */
+  border: none !important; /* Remove border */
+  padding: 0 !important; /* Remove padding */
 }
 
-/* Responsive adjustments */
-@media (max-width: 768px) {
-  #schoolName {
-    font-size: 1.8rem;
-    margin-bottom: 25px;
-  }
-}
-
-@media (max-width: 480px) {
-  #schoolName {
-    font-size: 1.6rem;
-    margin-bottom: 20px;
-  }
+#teacherName {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 /* SPINNER FOR BUTTONS */
@@ -680,46 +983,6 @@ form {
   animation: spin 0.8s linear infinite;
   margin-right: 6px;
   vertical-align: middle;
-}
-
-/* ==============================
-   MARKS ENTRY TABLE STYLING
-============================== */
-.marks-controls {
-  background: linear-gradient(135deg, #f5f7fa 0%, #e8ecf1 100%);
-  border-left: 5px solid #2b6cb0;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 15px;
-  align-items: flex-end;
-  padding: 15px;
-  
-}
-
-.marks-controls h3 {
-  color: #2b6cb0;
-  margin-bottom: 15px;
-  font-size: 1.1rem;
-}
-
-.marks-controls .form-group {
-  margin: 0;
-}
-
-.marks-controls select,
-.marks-controls input {
-  padding: 10px 12px;
-  border: 1px solid #ddd;
-  border-radius: 6px;
-  font-size: 0.95rem;
-  background: white;
-  max-width: 100%;
-}
-
-.marks-controls select:focus,
-.marks-controls input:focus {
-  border-color: #2b6cb0;
-  box-shadow: 0 0 0 3px rgba(43, 108, 176, 0.1);
 }
 
 .marks-section h2 {
@@ -788,6 +1051,22 @@ form {
   text-align: center;
   border-bottom: 1px solid #e8e8e8;
   font-size: 0.95rem;
+}
+
+/* Default column widths for Marks Entry Table (desktop) */
+.marks-entry-table th:nth-child(1),
+.marks-entry-table td:nth-child(1) {
+  min-width: 80px;
+}
+
+.marks-entry-table th:nth-child(2),
+.marks-entry-table td:nth-child(2) {
+  text-align: left;
+}
+
+.marks-entry-table th:nth-child(3),
+.marks-entry-table td:nth-child(3) {
+  min-width: 150px;
 }
 
 .marks-entry-table tbody tr:hover {
@@ -911,6 +1190,8 @@ form {
   padding: 20px;
   border-radius: 8px;
   margin-bottom: 20px;
+  width: 100%;
+  margin: 0 0 20px;
   overflow-x: auto;
   overflow-y: auto;
   max-height: 80vh;
@@ -964,34 +1245,84 @@ form {
   .marks-controls {
     /* Switch to a vertical layout on smaller screens */
     flex-direction: column;
-    align-items: stretch; /* Make all items full-width */
+    align-items: flex-start; /* Make all items full-width */
     gap: 15px;
   }
 }
 
 @media (max-width: 768px) {
   .marks-section {
-    max-width: 95% !important;
-    padding: 20px 15px !important;
+    max-width: 98% !important;
+    padding: 15px 5px !important;
   }
   
   .marks-entry-table {
-    font-size: 0.8rem;
+    font-size: 0.65rem;
   }
   
   .marks-entry-table th,
   .marks-entry-table td {
-    padding: 8px 4px;
+    padding: 4px 2px !important;
+    line-height: 1.1 !important;
   }
   
   .marks-entry-table select,
   .marks-entry-table input {
-    font-size: 0.85rem;
-    padding: 6px 4px;
+    font-size: 0.75rem;
+    padding: 2px 1px;
+    height: 26px !important;
   }
   
   .marks-controls .form-group label {
-    font-size: 0.9rem;
+    font-size: 0.5rem;
+  }
+}
+
+@media (max-width: 640px) {
+  .marks-entry-table {
+    font-size: 0.7rem; /* Slightly larger for readability */
+    table-layout: fixed;
+  }
+
+  .marks-entry-table th,
+  .marks-entry-table td {
+    padding: 4px 3px !important; /* Adjust padding */
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    line-height: 1.1 !important; /* Adjust line height */
+  }
+/* Keep min-width */
+  .marks-entry-table th:nth-child(1),
+  .marks-entry-table td:nth-child(1) {
+    min-width: 60px;
+  }
+
+  .marks-entry-table th:nth-child(2),
+  .marks-entry-table td:nth-child(2) {
+    text-align: left;
+  }
+
+  .marks-entry-table th:nth-child(3),
+  .marks-entry-table td:nth-child(3) {
+    min-width: 120px;
+  }
+
+  .marks-entry-table select, /* Adjust input font size */
+  .marks-entry-table input {
+    font-size: 0.75rem !important;
+    padding: 2px 1px !important;
+    height: 24px !important;
+    min-width: 0;
+  }
+
+  #marksTableContainer {
+    padding: 15px;
+  }
+
+  #marksTableContainer > div:last-child {
+    flex-direction: column;
+    align-items: stretch;
   }
 }
 
@@ -1039,19 +1370,6 @@ form {
 @keyframes slideDown {
     from { transform: translate(-50%, -100%); opacity: 0; }
     to { transform: translate(-50%, 0); opacity: 1; }
-}
-
-/* Allocation & Signature Containers */
-.allocation-card, .signature-card {
-    flex: 1; min-width: 250px; padding: 15px; border: 1px solid #e2e8f0;
-    border-radius: 10px; background: #fff; box-shadow: 0 2px 4px rgba(0,0,0,0.05);
-    border-top: 4px solid #2b6cb0;
-    transition: transform 0.3s ease, box-shadow 0.3s ease;
-}
-
-.allocation-card:hover, .signature-card:hover {
-    transform: translateY(-5px);
-    box-shadow: 0 8px 20px rgba(0,0,0,0.1);
 }
 
 /* ==============================
@@ -1109,4 +1427,477 @@ form {
   border-radius: 5px;
   cursor: pointer;
   font-weight: 500;
+}
+
+/* ==============================
+   TEACHER DASHBOARD OVERRIDES
+============================== */
+header.teacher-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: nowrap;
+  gap: 16px;
+  padding: 0 5%;
+  height: 48px; /* Thinner header */
+  background: #2b6cb0;
+  border-bottom: 1px solid #1a4d8c;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+header.teacher-header .logo {
+  color: #ffffff !important;
+}
+
+header.teacher-header .header-left,
+header.teacher-header .header-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+header.teacher-header .header-left {
+  flex: 1;
+  flex-wrap: nowrap;
+  overflow: hidden;
+}
+
+header.teacher-header h1 {
+  margin: 0 !important;
+  font-size: 0.78rem !important; /* Reduced welcome message size */
+  line-height: 1;
+  color: rgba(255, 255, 255, 0.7) !important; /* Muted label color */
+  font-weight: 500 !important;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  font-family: 'Segoe UI', system-ui, sans-serif; /* Unique style for welcome text */
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+header.teacher-header #teacherName span {
+  font-size: 0.82rem !important; /* Name is slightly larger for visibility */
+  font-weight: 700 !important;
+  color: #ffffff !important;
+  letter-spacing: 0;
+}
+
+header.teacher-header .school-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: #ebf8ff;
+  color: #2b6cb0;
+  padding: 6px 14px;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  border: 1px solid #bee3f8;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+header.teacher-header .dean-btn {
+  background: #8e44ad;
+  border: 1px solid transparent;
+  color: #fff;
+}
+
+header.teacher-header .secondary-btn {
+  background: #f8fafc;
+  border: 1px solid #cbd5e0;
+  color: #1f2937;
+}
+
+header.teacher-header .dean-btn:hover,
+header.teacher-header .secondary-btn:hover {
+  opacity: 0.95;
+}
+
+.allocations-section {
+  max-width: 1200px;
+  margin: 26px auto 0;
+  padding: 0 20px;
+}
+
+.allocations-grid {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  align-items: stretch;
+}
+
+.tabs-nav {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin: 22px auto 0;
+  padding: 0 20px;
+  max-width: 1200px;
+}
+
+.tab-btn {
+  padding: 12px 18px;
+  border: 1px solid #cbd5e0;
+  border-radius: 999px;
+  background: #f8fafc;
+  color: #1f2937;
+  font-weight: 600;
+  min-width: 160px;
+  transition: all 0.25s ease;
+}
+
+.tab-btn:hover {
+  background: #eff6ff;
+}
+
+.tab-btn.active {
+  background: #2b6cb0;
+  color: #fff;
+  border-color: transparent;
+}
+
+.marks-controls {
+  margin-bottom: 20px;
+  padding: 14px 20px;
+  background: #f8fbff;
+  border: 1px solid #e2e8f0;
+  border-radius: 16px;
+}
+
+.marks-controls .section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 14px;
+  margin-bottom: 10px;
+}
+
+.marks-controls .section-header h3 {
+  margin: 0;
+  font-size: 1rem;
+  color: #1f2937;
+}
+
+.marks-controls .form-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.marks-controls .form-group {
+  display: flex;
+  flex-direction: column;
+}
+
+.marks-controls .form-group label {
+  margin-bottom: 8px;
+  color: #475569;
+  font-size: 0.92rem;
+}
+
+.marks-controls .form-group input,
+.marks-controls .form-group select {
+  width: 100%;
+  padding: 12px 14px;
+  border: 1px solid #cbd5e0;
+  border-radius: 12px;
+  font-size: 0.95rem;
+  background: white;
+}
+
+.inline-alert {
+  display: inline-flex;
+  width: 100%;
+  margin-top: 16px;
+  padding: 12px 14px;
+  background: #fff5f5;
+  border: 1px solid #fed7d7;
+  color: #c53030;
+  border-radius: 12px;
+  font-weight: 600;
+}
+
+.actions-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: 18px;
+}
+
+.btn-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.primary-btn {
+  background: #2b6cb0;
+  color: white;
+}
+
+.warning-btn {
+  background: #f59e0b;
+  color: white;
+}
+
+.accent-btn {
+  background: #2563eb;
+  color: white;
+}
+
+.submit-btn {
+  padding: 12px 24px;
+}
+
+.draft-status {
+  margin-top: 12px;
+  padding: 12px 14px;
+  background: #f8fafc;
+  border-radius: 12px;
+  color: #475569;
+  font-size: 0.95rem;
+}
+
+.material-card {
+  text-align: center;
+  padding: 28px;
+  border: 1px dashed #cbd5e0;
+  border-radius: 16px;
+  background: white;
+  box-shadow: 0 3px 16px rgba(15, 23, 42, 0.06);
+}
+
+.material-card h3 {
+  margin: 0 0 18px 0;
+  font-size: 1.15rem;
+}
+
+.big-btn {
+  font-size: 1rem;
+  padding: 14px 24px;
+}
+
+.collapsible-card {
+  background: #ffffff;
+  border-radius: 16px;
+  border: 1px solid #e2e8f0;
+  overflow: hidden;
+}
+
+.collapsible-header {
+  cursor: pointer;
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: center;
+  padding: 18px 20px;
+  background: #f8fafc;
+}
+
+.collapsible-header h2 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.summary-note {
+  color: #64748b;
+  font-size: 0.88rem;
+}
+
+.collapsible-body {
+  border-top: 1px solid #edf2f7;
+  padding: 18px 20px;
+}
+
+/* ==============================
+   REFINED MOBILE RESPONSIVENESS
+============================== */
+@media (max-width: 768px) {
+  /* Thin Horizontal Header */
+  header.teacher-header {
+    height: 42px !important;
+    padding: 0 8px !important;
+    flex-direction: row !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+    gap: 3px !important;
+    text-align: left;
+  }
+
+  header.teacher-header .header-left {
+    width: auto !important;
+    justify-content: flex-start !important;
+    flex: 0 0 auto !important; /* Make it shrink to content size */
+    overflow: hidden;
+    min-width: 0;
+  }
+
+  header.teacher-header h1 {
+    font-size: 0.65rem !important; /* Minimal font for header items */
+    gap: 4px !important;
+    margin: 0 !important;
+    white-space: normal !important; /* Allow text to wrap */
+    display: block !important; /* Allow children to stack */
+    line-height: 0.9 !important; /* Adjust line height for stacked text */
+  }
+  
+  header.teacher-header #teacherName span {
+    font-size: 0.5rem !important; /* Slightly larger for readability on its own line */
+    display: block !important; /* Force to new line */
+    margin-top: 2px !important; /* Small space between "WELCOME," and name */
+  }
+
+  header.teacher-header .header-right {
+    width: auto !important;
+    justify-content: flex-end !important;
+    flex: 0 0 auto !important;
+    gap: 3px !important;
+  }
+
+  header.teacher-header .btn {
+    padding: 3px 3px !important;
+    font-size: 0.52rem !important;
+    border-radius: 4px !important;
+  }
+
+  #schoolName {
+    position: static !important; /* Make it a flex item */
+    flex-grow: 1 !important; /* Allow it to take available space */
+    order: 2 !important; /* Place it between header-left and header-right */
+   
+    white-space: normal !important; /* Allow wrapping */
+    left: auto !important; /* Remove absolute positioning */
+    transform: none !important; /* Remove absolute positioning */
+    font-size: 0.55rem !important;
+    line-height: 0.9; /* Better line spacing for wrapping */
+     display: block !important;
+  }
+
+  /* Allocations Section */
+  .allocations-section { margin-top: 8px; padding: 1px 8px !important; }
+  .allocations-grid { grid-template-columns: 1fr !important; gap: 6px !important; }
+  .allocation-card, .signature-card { min-height: auto !important; padding: 2px 12px !important; border-radius: 8px !important; }
+
+  /* Navigation Tabs - Pill Style */
+  .tabs-nav {
+    margin: 10px 8px 8px !important;
+    padding: 3px !important;
+    gap: 3px !important;
+    background: #f1f5f9;
+    border-radius: 10px;
+    border-bottom: none !important;
+  }
+
+  .tab-btn {
+    flex: 1 1 calc(50% - 3px) !important;
+    padding: 6px 2px !important;
+    font-size: 0.68rem !important;
+    min-width: 0 !important;
+    border-radius: 8px !important;
+  }
+  
+  .tab-btn[data-tab="studyMaterials"] { flex-basis: 100% !important; }
+
+  /* Marks Section */
+  .marks-section { margin: 8px !important; padding: 10px 6px !important; border-radius: 8px !important; }
+  .marks-controls { padding: 10px !important; border-radius: 8px !important; }
+  .marks-controls .form-grid { grid-template-columns: 1fr 1fr !important; gap: 8px !important; }
+  
+  #loadStudentsBtn { width: 100% !important; padding: 10px !important; font-size: 0.82rem !important; }
+
+  /* Action Buttons (Submit/Draft) */
+  .actions-row { flex-direction: column !important; align-items: stretch !important; gap: 8px !important; margin-top: 12px !important; }
+  .btn-group { display: grid !important; grid-template-columns: 1fr 1fr !important; gap: 4px !important; }
+  .btn-group .btn, .submit-btn { width: 100% !important; padding: 10px !important; font-size: 0.8rem !important; }
+
+  /* Form Field Optimization */
+  .form-group label { font-size: 0.72rem !important; margin-bottom: 3px !important; }
+  .form-group select, .form-group input { padding: 8px !important; font-size: 0.8rem !important; border-radius: 6px !important; }
+}
+
+@media (max-width: 480px) {
+  .marks-controls .form-grid {
+    grid-template-columns: 1fr !important; /* Full stack for very small devices */
+  }
+  
+  .tab-btn {
+    flex-basis: 100% !important;
+  }
+}
+
+.students-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 20px;
+  margin-left: auto;
+  margin-right: 0;
+  padding: 14px 18px;
+  background: #ffffff;
+  border: 1px solid #d1d5db;
+  border-radius: 16px;
+  box-shadow: 0 6px 18px rgba(15, 23, 42, 0.06);
+  max-width: 560px;
+  width: auto;
+}
+
+.students-pagination .pagination-info {
+  font-weight: 700;
+  color: #1f2937;
+  font-size: 0.96rem;
+  letter-spacing: 0.02em;
+  line-height: 1.4;
+} /* Keep desktop size */
+
+.students-pagination .pagination-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+
+.students-pagination .pagination-actions .btn {
+  min-width: 90px; /* Keep desktop size */
+  padding: 10px 18px;
+  font-weight: 700;
+  border: 1px solid #cbd5e0;
+  box-shadow: inset 0 0 0 rgba(0,0,0,0);
+}
+
+@media (max-width: 780px) {
+  .students-pagination {
+    width: fit-content;
+    max-width: 100%;
+    flex-direction: column;
+    align-items: flex-end;
+    margin-left: auto;
+    margin-right: 0;
+    padding: 12px 15px;
+    gap: 8px;
+  }
+
+  .students-pagination .pagination-info {
+    width: auto;
+    text-align: right;
+  }
+
+  .students-pagination .pagination-actions {
+    width: 100%;
+    justify-content: flex-end;
+  }
+  .students-pagination .pagination-info {
+    font-size: 0.85rem; /* Smaller for mobile */
+  }
+  .students-pagination .pagination-actions .btn { font-size: 0.85rem; } /* Smaller for mobile */
 }

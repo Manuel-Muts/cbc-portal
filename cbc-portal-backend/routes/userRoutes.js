@@ -19,7 +19,11 @@ import {
   getClassTeacher,
   changePassword,
   toggleDeanStatus,
-  updateSignature
+  updateSignature,
+  bulkDeleteStudentsByClass,
+  getClassTeachersByGradesAndStreams, // 🆕 Import the new function
+  updateGradingConfig, // 🆕 Import the new function
+  bulkRegisterUsers // 🆕 Import the new function
 } from "../controllers/userController.js";
 
 import verifyToken from "../middleware/verifyToken.js";
@@ -37,6 +41,16 @@ const requireAdmin = (req, res, next) => {
     return res.status(403).json({ msg: "Only admins can perform this action" });
   }
   next();
+};
+
+/**
+ * 🆕 Middleware to authorize Admin or Dean
+ */
+const isAdminOrDean = (req, res, next) => {
+  if (['admin', 'super_admin'].includes(req.user.role) || req.user.isDean === true) {
+    return next();
+  }
+  res.status(403).json({ message: "Access denied: Requires Admin or Dean privileges." });
 };
 
 // ---------------------------
@@ -61,16 +75,20 @@ router.get("/student/:admission", getStudentByAdmission);
 
 // after router initialization
 router.get('/my-school', getMySchool);
+router.put('/my-school/grading-config', isAdminOrDean, updateGradingConfig); // 🆕 Add the PUT route
 
 // ---------------------------
 // USER MANAGEMENT
 // ---------------------------
 router.post("/register", requireAdmin, registerUser);
+router.post("/bulk-register", requireAdmin, bulkRegisterUsers); // 🆕 New route for bulk registration
 router.post("/resend-credentials", requireAdmin, resendCredentials);
-router.get("/", requireAdmin, getAllUsers);
+router.get("/", getAllUsers); // Removed requireAdmin middleware
 router.put("/:id", requireAdmin, updateUser);
+router.delete("/bulk-delete-students", requireAdmin, bulkDeleteStudentsByClass); // 🆕 New route for bulk deletion
 router.delete("/:id", requireAdmin, deleteUser);
 router.post("/toggle-dean", requireAdmin, toggleDeanStatus);
+
 
 // ---------------------------
 // CLASS TEACHER MANAGEMENT
@@ -79,7 +97,7 @@ router.post("/classes/assign-teacher", requireAdmin, assignClassTeacher);
 router.post("/classes/remove", requireAdmin, removeClassTeacher);
 router.get("/allocations", getClassTeacherAllocations);
 router.get("/class-teacher", getClassTeacher);
-
+router.post('/class-teachers/batch', getClassTeachersByGradesAndStreams);
 // ---------------------------
 // ACCOUNTS ROUTES
 // ---------------------------

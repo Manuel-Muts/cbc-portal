@@ -2,6 +2,7 @@
 import mongoose from "mongoose"; 
 import FeeStructure from "../models/FeeStructure.js";
 import { User } from "../models/User.js";
+import { Student, Teacher } from "../models/RoleModels.js";
 import { School } from "../models/school.js";
 import StudentEnrollment from "../models/StudentEnrollment.js";
 import { calculateBalance } from "../services/balanceService.js";
@@ -9,7 +10,7 @@ import PDFDocument from 'pdfkit';
 import axios from "axios"; // Import axios
 import Payment from "../models/Payment.js";
 import { PassThrough } from 'stream';
-import cache from "../utils/simpleCache.js";
+import cache from "../utils/cacheManager.js";
 
 const getImageBase64FromUrl = async (url) => {
   try {
@@ -186,32 +187,52 @@ export const generateStudentFeesPDF = async (req, res) => {
 
     const activeStudentIds = activeEnrollments.map(e => e.studentId);
 
-    // Get student details for active students only
-    let students = await User.find({
+    // 1. Fetch Student details for active students only
+    let students = await Student.find({
       _id: { $in: activeStudentIds },
-      role: "student",
       schoolId: req.user.schoolId
     }).select("name admission schoolId").lean();
 
-    // Get balance data for each student
+    // 2. Batch Fetch all data needed for balance calculations to avoid N+1
+    const studentIds = students.map(s => s._id);
+    const [allPayments, allFeeStructures] = await Promise.all([
+      Payment.find({
+        studentId: { $in: studentIds },
+        academicYear: currentAcademicYear,
+        isReversed: { $ne: true }
+      }).lean(),
+      FeeStructure.find({
+        schoolId: req.user.schoolId,
+        academicYear: currentAcademicYear
+      }).lean()
+    ]);
+
+    // 3. Process balance data in-memory
     const studentData = [];
     for (const student of students) {
-      try {
-        let enrollment = await StudentEnrollment.findOne({
-          studentId: student._id,
-          academicYear: currentAcademicYear,
-          status: "active"
-        }).select("grade");
+        const sId = String(student._id);
+        const enrollment = activeEnrollments.find(e => String(e.studentId) === sId);
+        
+        if (!enrollment) continue;
 
-        const balanceData = enrollment ? await calculateBalance(student, enrollment.grade, currentAcademicYear) : {
-          totalFee: 0,
-          totalPaid: 0,
-          balance: 0,
-          termBalances: {
-            term1: { fee: 0, paid: 0, balance: 0 },
-            term2: { fee: 0, paid: 0, balance: 0 },
-            term3: { fee: 0, paid: 0, balance: 0 }
-          }
+        const fee = allFeeStructures.find(f => f.grade === enrollment.grade) || { term1Fee: 0, term2Fee: 0, term3Fee: 0, totalFee: 0 };
+        const sPayments = allPayments.filter(p => String(p.studentId) === sId);
+
+        const termPaid = { "Term 1": 0, "Term 2": 0, "Term 3": 0 };
+        sPayments.forEach(p => { if (termPaid[p.term] !== undefined) termPaid[p.term] += p.amount; });
+        
+        const totalPaid = sPayments.reduce((sum, p) => sum + p.amount, 0);
+        const totalFee = fee.totalFee || 0;
+
+        const balanceData = {
+            totalFee,
+            totalPaid,
+            balance: totalFee - totalPaid,
+            termBalances: {
+              term1: { fee: fee.term1Fee || 0, paid: termPaid["Term 1"], balance: (fee.term1Fee || 0) - termPaid["Term 1"] },
+              term2: { fee: fee.term2Fee || 0, paid: termPaid["Term 2"], balance: (fee.term2Fee || 0) - termPaid["Term 2"] },
+              term3: { fee: fee.term3Fee || 0, paid: termPaid["Term 3"], balance: (fee.term3Fee || 0) - termPaid["Term 3"] }
+            }
         };
 
         studentData.push({
@@ -224,24 +245,6 @@ export const generateStudentFeesPDF = async (req, res) => {
           balance: balanceData.balance,
           termBalances: balanceData.termBalances
         });
-      } catch (err) {
-        console.error(`Error calculating balance for student ${student.name}:`, err);
-        // Skip this student but continue with others
-        studentData.push({
-          studentId: student._id,
-          admission: student.admission,
-          className: "Error",
-          studentName: student.name,
-          expected: 0,
-          paid: 0,
-          balance: 0,
-          termBalances: {
-            term1: { fee: 0, paid: 0, balance: 0 },
-            term2: { fee: 0, paid: 0, balance: 0 },
-            term3: { fee: 0, paid: 0, balance: 0 }
-          }
-        });
-      }
     }
 
     // Create PDF document
@@ -288,7 +291,7 @@ export const generateStudentFeesPDF = async (req, res) => {
     let classTeacherName = null;
     if (classFilter) {
       const { grade: parsedGrade, stream: parsedStream } = parseClassLabel(classFilter);
-      const classTeacher = await User.findOne({
+      const classTeacher = await Teacher.findOne({
         schoolId: req.user.schoolId,
         assignedClass: parsedGrade,
         assignedStream: parsedStream,
@@ -485,7 +488,6 @@ export const getOutstandingFees = async (req, res) => {
     // 2. Fetch Student details for active students only
     const userQuery = {
       _id: { $in: activeStudentIds },
-      role: "student",
       schoolId: req.user.schoolId
     };
     if (name) {
@@ -494,7 +496,7 @@ export const getOutstandingFees = async (req, res) => {
         { admission: { $regex: name, $options: "i" } }
       ];
     }
-    const students = await User.find(userQuery).select("name admission _id").lean();
+    const students = await Student.find(userQuery).select("name admission _id").lean();
 
     if (students.length === 0) {
        const response = { students: [], total: 0, totalPages: 0, currentPage: page };
@@ -631,9 +633,8 @@ export const generateOutstandingFeesPDF = async (req, res) => {
     const activeStudentIds = activeEnrollments.map(e => e.studentId);
 
     // Get student details for active students only
-    let students = await User.find({
+    let students = await Student.find({
       _id: { $in: activeStudentIds },
-      role: "student",
       schoolId: req.user.schoolId
     }).select("name admission schoolId").lean();
 
@@ -780,7 +781,7 @@ export const generateOutstandingFeesPDF = async (req, res) => {
     let classTeacherName = null;
     if (classFilter) {
       const { grade: parsedGrade, stream: parsedStream } = parseClassLabel(classFilter);
-      const classTeacher = await User.findOne({
+      const classTeacher = await Teacher.findOne({
         schoolId: req.user.schoolId,
         assignedClass: parsedGrade,
         assignedStream: parsedStream,
@@ -1001,7 +1002,7 @@ export const generateOutstandingFeesPDFFromData = async (req, res) => {
     let classTeacherName = null;
     if (outstandingStudents.length > 0 && outstandingStudents[0].className) {
       const { grade: parsedGrade, stream: parsedStream } = parseClassLabel(outstandingStudents[0].className);
-      const classTeacher = await User.findOne({
+      const classTeacher = await Teacher.findOne({
         schoolId: req.user.schoolId,
         assignedClass: parsedGrade,
         assignedStream: parsedStream,

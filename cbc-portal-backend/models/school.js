@@ -8,6 +8,7 @@ const schoolSchema = new mongoose.Schema({
   logo: { type: String, default: "" }, // Base64 encoded image or data URL
   logoMimeType: { type: String, default: "image/png" }, // MIME type of logo
   address: { type: String, default: "" },
+  smsCredits: { type: Number, default: 0 },
   // Add this field:
   headteacherSignatureUrl: {
     type: String,
@@ -19,6 +20,20 @@ const schoolSchema = new mongoose.Schema({
     type: String,
     enum: ["full", "primary_junior", "senior"],
     default: "full"
+  },
+  gradingConfig: {
+    primary: [{
+      min: { type: Number },
+      max: { type: Number },
+      label: { type: String },
+      points: { type: Number }
+    }],
+    secondary: [{
+      min: { type: Number },
+      max: { type: Number },
+      label: { type: String },
+      points: { type: Number }
+    }]
   },
   version: { type: Number, default: 1 },       // <-- version increments on suspension
   paybill: { type: String, default: "" },      // M-Pesa paybill number (for C2B manual payments)

@@ -320,47 +320,41 @@ export const getStudentsByClass = async (req, res) => {
       return res.status(403).json({ message: "Unauthorized" });
     }
 
-    // Parse classLabel: "Grade 5W" or "Grade 5"
-    const classRegex = /Grade\s+(\d+)([A-Z])?/i;
+    // 🚀 FIX: Update regex to support numeric streams (e.g. Grade 2 2) and handle mandatory spacing
+    const classRegex = /^(?:Grade\s+)?(PP\d|\d+)(?:\s+)?([A-Z0-9]+)?$/i;
     const match = classLabel.match(classRegex);
     
     if (!match) {
       return res.status(400).json({ message: "Invalid class label format" });
     }
 
-    const gradeNum = match[1];
-    const stream = match[2] || null;
+    const extractedGrade = match[1]; // This will be "PP1", "PP2", "1", "5", etc.
+    const extractedStream = match[2] || null; // This will be "W", "A", or null
+
+    // Normalize the grade for the query to match database storage ("PP1" or "Grade X")
+    let queryGrade;
+    if (extractedGrade.toUpperCase().startsWith("PP")) {
+      queryGrade = extractedGrade.toUpperCase(); // Keep "PP1", "PP2" as is
+    } else {
+      queryGrade = `Grade ${extractedGrade}`; // Prepend "Grade " for numeric grades
+    }
     
     // Build query for aggregation (requires ObjectId)
     const schoolId = new mongoose.Types.ObjectId(req.user.schoolId);
-
     const query = {
       schoolId: schoolId,
-      grade: `Grade ${gradeNum}`,
+      grade: queryGrade, // Use the normalized grade
       status: "active",
       academicYear: new Date().getFullYear()
     };
     
-    if (stream) {
-      query.stream = stream;
+    if (extractedStream) { // Use the extracted stream
+      query.stream = extractedStream;
     }
 
-    // 🆕 Calculate total count using an aggregation pipeline to accurately reflect valid enrollments
-    const countPipeline = [
-      { $match: query },
-      {
-        $lookup: {
-            from: "users",
-            localField: "studentId",
-            foreignField: "_id",
-            as: "studentDetails"
-        }
-      },
-      { $unwind: "$studentDetails" },
-      { $count: "total" }
-    ];
-    const countResult = await StudentEnrollment.aggregate(countPipeline);
-    const total = countResult.length > 0 ? countResult[0].total : 0;
+    // 🚀 Performance Optimization: Use countDocuments directly on the roster index.
+    // This avoids an expensive join and leverages the compound index prefix.
+    const total = await StudentEnrollment.countDocuments(query);
 
     // Fetch the students with pagination
     const dataPipeline = [

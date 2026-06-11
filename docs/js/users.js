@@ -3,87 +3,8 @@
   const API_BASE = config.api.baseURL;
 
   // Inject CSS to reduce row height in the users table
-  const compactUsersStyle = document.createElement("style");
-  compactUsersStyle.textContent = `
-    #usersTable {
-      font-size: 0.82rem !important;
-    }
-    #usersTable td {
-      padding: 2px 8px !important;
-      vertical-align: middle !important;
-    }
-    .action-cell {
-      display: flex;
-      gap: 6px;
-      white-space: nowrap;
-      align-items: center;
-    }
-    #usersTable th {
-      padding: 5px 8px !important;
-      position: sticky;
-      top: 0;
-      background: #f8f9fa;
-      z-index: 10;
-    }
-    .user-type-tabs {
-      display: flex;
-      list-style: none;
-      padding: 0 5px;
-      margin: 2px 0 8px 0;
-      border-bottom: 1px solid #dee2e6;
-    }
-    .user-type-tabs li {
-      padding: 6px 16px;
-      cursor: pointer;
-      border-bottom: 3px solid transparent;
-      color: #6c757d;
-      font-weight: 600;
-      transition: all 0.2s;
-    }
-    .user-type-tabs li.active {
-      border-bottom-color: #2563eb;
-      color: #2563eb;
-    }
-
-    .tab-section { padding-top: 0 !important; margin-top: 0 !important; align-self: flex-start !important; } /* Keep as is */
-    .card { padding: 8px 12px !important; margin-top: 0 !important; }
-    .card h2, .card h3 { margin-top: 0 !important; margin-bottom: 8px !important; }
-    
-    .admin-section-header-row {
-      margin-bottom: 8px !important;
-    }
-
-    /* Modern Toast & Confirm Styles */
-    #toastContainer { position: fixed; right: 20px; bottom: 20px; z-index: 99999; display: flex; flex-direction: column; gap: 10px; }
-    .toast { 
-      padding: 12px 18px; border-radius: 8px; color: white !important; font-weight: 600; font-size: 0.9rem;
-      box-shadow: 0 4px 15px rgba(0,0,0,0.2); min-width: 250px;
-      transform: translateX(0); transition: all 0.35s ease;
-    }
-    .toast-success { background: #38a169 !important; border-left: 5px solid #22543d; }
-    .toast-error { background: #e53e3e !important; border-left: 5px solid #742a2a; }
-    .toast-info { background: #3182ce !important; border-left: 5px solid #2a4365; }
-    .toast.hiding { opacity: 0; transform: translateX(50px); }
-
-    .confirm-overlay {
-      position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
-      background: rgba(0, 0, 0, 0.4); backdrop-filter: blur(4px);
-      display: flex; justify-content: center; align-items: center;
-      z-index: 11000; opacity: 0; visibility: hidden; transition: all 0.3s ease;
-    }
-    .confirm-overlay.visible { opacity: 1; visibility: visible; }
-    .confirm-box {
-      background: white; padding: 30px; border-radius: 16px; width: 90%; max-width: 400px;
-      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25); transform: scale(0.9);
-      transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1); text-align: center;
-    }
-    .confirm-overlay.visible .confirm-box { transform: scale(1); }
-    .confirm-box h4 { margin: 0 0 10px; font-size: 1.3rem; font-weight: 800; color: #1a202c; }
-    .confirm-box p { margin: 0 0 25px; color: #4a5568; line-height: 1.6; }
-    .confirm-buttons { display: flex; justify-content: center; gap: 15px; }
-    .confirm-buttons .btn { padding: 10px 24px; font-size: 0.95rem; font-weight: 700; border-radius: 10px; border: none; cursor: pointer; }
-  `;
-  document.head.appendChild(compactUsersStyle);
+  // The compactUsersStyle is now defined in ui.js for global consistency.
+  // This file will only contain specific overrides if necessary.
 
   // DOM Elements
   const registerForm = document.getElementById("registerForm");
@@ -121,6 +42,7 @@
   const csvStreamFilter = document.getElementById("csvStreamFilter");
   const downloadFilteredStudentsCsvBtn = document.getElementById("downloadFilteredStudentsCsvBtn");
   let userProfile = null;
+  let importCancelled = false;
   let usersTotalRecords = 0;
   let usersTotalPages = 1;
   const usersCache = {}; // In-memory fallback
@@ -131,33 +53,41 @@
   // ---------------------------
   // SCHOOL TYPE & GRADE HELPERS
   // ---------------------------
-  const SCHOOL_TYPES = {
-    full: {
-      label: "Full School (Grades 1-12)",
-      gradeOptions: ["1","2","3","4","5","6","7","8","9","10","11","12"]
-    },
-    primary_junior: {
-      label: "Primary + Junior (Grades 1-9)",
-      gradeOptions: ["1","2","3","4","5","6","7","8","9"]
-    },
-    senior: {
-      label: "Senior School (Grades 10-12)",
-      gradeOptions: ["10","11","12"]
-    }
-  };
+    const SCHOOL_TYPES = {
+        full: {
+            label: "Full School (Grades PP1-12)",
+            gradeOptions: ["PP1", "PP2", "1","2","3","4","5","6","7","8","9","10","11","12"]
+        },
+        primary_junior: {
+            label: "Primary + Junior (Grades PP1-9)",
+            gradeOptions: ["PP1", "PP2", "1","2","3","4","5","6","7","8","9"]
+        },
+        senior: {
+            label: "Senior School (Grades 10-12)",
+            gradeOptions: ["10","11","12"]
+        }
+    };
 
   let schoolInfo = null;
+
+    function getSchoolTypeKey() {
+        if (!schoolInfo || !schoolInfo.schoolType) return 'full';
+        const rawType = String(schoolInfo.schoolType).toLowerCase().replace(/[^a-z]/g, '_');
+        if (rawType.includes('primary') || rawType.includes('junior')) return 'primary_junior';
+        if (rawType.includes('senior')) return 'senior';
+        return 'full';
+    }
 
   function populateRegistrationGrades() {
     const select = document.getElementById("studentGrade");
     if (!select) return;
-    const type = (schoolInfo && schoolInfo.schoolType && SCHOOL_TYPES[schoolInfo.schoolType]) ? schoolInfo.schoolType : 'full';
+    const type = getSchoolTypeKey();
     const grades = SCHOOL_TYPES[type].gradeOptions;
     select.innerHTML = '<option value="">-- Select Grade --</option>';
     grades.forEach(g => {
       const opt = document.createElement("option");
-      opt.value = g;
-      opt.textContent = `Grade ${g}`;
+      opt.value = g; // Value can be "PP1" or "1"
+      opt.textContent = String(g).toUpperCase().startsWith("PP") ? g : `Grade ${g}`; // Display "PP1" or "Grade 1"
       select.appendChild(opt);
     });
   }
@@ -196,15 +126,26 @@
       const res = await fetch(url, options);
       if (!res.ok) {
         const text = await res.text();
-        throw new Error(text || `Request failed: ${res.status}`);
+        // 🆕 Throw an error object with status for specific handling by caller
+        const error = new Error(text || `Request failed: ${res.status}`);
+        error.status = res.status;
+        throw error;
       }
       const contentType = res.headers.get("content-type") || "";
       return contentType.includes("application/json") ? res.json() : res.text();
     } catch (err) {
       console.error("Fetch error:", err);
-      showToast(err.message, "error");
+      // 🆕 Only show toast if it's not a rate limit error, or if the caller doesn't handle it
+      if (err.status !== 429) {
+        showToast(err.message, "error");
+      }
       return null;
     }
+  }
+
+  // 🆕 Helper to introduce a delay
+  function sleep(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
   }
 
   /**
@@ -229,19 +170,34 @@
   // ---------------------------
   if (userRoleSelect) {
     userRoleSelect.addEventListener("change", () => {
-      if (userRoleSelect.value === "student") {
-        // Show student-specific registration fields
-        studentFields.style.display = "flex";
-        if (emailGroup) emailGroup.style.display = "none";
-        // Show student-specific filters and print button
-        if (studentFiltersContainer) studentFiltersContainer.style.display = "flex";
-      } else {
-        // Hide student-specific registration fields
-        studentFields.style.display = "none";
-        if (emailGroup) emailGroup.style.display = "block";
-        // Hide student-specific filters and print button
-        if (studentFiltersContainer) studentFiltersContainer.style.display = "none";
+      const role = userRoleSelect.value;
+      const isStudent = role === "student";
+      const isTeacher = role === "teacher" || role === "classteacher";
+
+      // Show registration group for students (Full) or teachers (Contact only)
+      studentFields.style.display = (isStudent || isTeacher) ? "flex" : "none";
+      if (emailGroup) emailGroup.style.display = isStudent ? "none" : "block";
+
+      // Manage visibility of individual fields inside the studentFields group
+      const admField = document.getElementById("userAdmission")?.parentElement;
+      const gradeField = document.getElementById("studentGrade")?.parentElement;
+      const streamField = document.getElementById("studentStream")?.parentElement;
+      const contactField = document.getElementById("studentContact")?.parentElement;
+
+      if (admField) admField.style.display = isStudent ? "block" : "none";
+      if (gradeField) gradeField.style.display = isStudent ? "block" : "none";
+      if (streamField) streamField.style.display = isStudent ? "block" : "none";
+      if (contactField) contactField.style.display = (isStudent || isTeacher) ? "block" : "none";
+
+      // 🆕 Update contact field label based on role
+      const contactLabel = contactField?.querySelector('label');
+      if (contactLabel) {
+        contactLabel.textContent = isStudent ? "Parent Contact (optional)" : "Teacher Contact (optional)";
       }
+
+      // Show student-specific filters and print button in the management table
+      if (studentFiltersContainer) studentFiltersContainer.style.display = isStudent ? "flex" : "none";
+
       // Always reload users when role changes to apply new filters
       loadUsers(1, true);
     });
@@ -304,17 +260,22 @@
         if (!rawGrade && u.allocations && u.allocations.length > 0) rawGrade = u.allocations[0].grade || u.allocations[0].gradeLevel || "";
         if (!rawGrade && u.studentId && typeof u.studentId === 'object') rawGrade = u.studentId.grade;
 
-        let gradeDisplay = "N/A";
+        // 🚀 FIX: Fallback to rawGrade if cbcUtils is not yet loaded, preventing "N/A" when data exists.
+        let gradeDisplay = (window.cbcUtils ? window.cbcUtils.normalizeGrade(rawGrade) : rawGrade) || "N/A";
 
-        if (rawGrade) {
-          const gStr = String(rawGrade).trim();
-          gradeDisplay = gStr.toLowerCase().startsWith("grade") ? gStr : `Grade ${gStr}`;
-          
-          // Append stream if it exists and isn't already part of the grade string (and is not null)
-          let stream = (u.stream || u.assignedStream || u.classStream || u.currentStream || "").trim();
-          if (!stream && u.enrollmentId && typeof u.enrollmentId === 'object') stream = u.enrollmentId.stream || "";
-          
-          if (stream && !gradeDisplay.toLowerCase().includes(String(stream).toLowerCase())) gradeDisplay += ` ${stream}`;
+        // Extract stream, prioritizing enrollmentId for students
+        let stream = "";
+        if (u.role === "student" && u.enrollmentId && typeof u.enrollmentId === 'object') {
+            stream = u.enrollmentId.stream || "";
+        } else {
+            // Fallback: check direct fields on user object (supports legacy/unlinked records)
+            stream = (u.stream || u.assignedStream || u.classStream || u.currentStream || u.studentStream || "").trim();
+        }
+        stream = stream.trim(); // Ensure it's trimmed
+
+        // 🚀 FIX: Use end-of-string space check instead of .includes() to prevent hiding numeric streams that match grade numbers
+        if (stream && gradeDisplay !== "N/A" && !gradeDisplay.toLowerCase().endsWith(" " + stream.toLowerCase())) {
+            gradeDisplay += ` ${stream}`;
         }
 
         tr.innerHTML = `
@@ -542,11 +503,12 @@ if (usersNextPageBtn) {
       }
 
       const body = { role, name };
+      if (contact) body.contact = contact; // 🆕 Ensure contact is sent for all roles
+
       if (role === "student") {
         body.admission = admission;
         body.grade = grade;
         if (stream) body.stream = stream;
-        if (contact) body.contact = contact;
       } else {
         body.email = email;
       }
@@ -671,111 +633,86 @@ if (usersNextPageBtn) {
             return;
           }
 
-          // Robust column mapping helper
-          const getVal = (row, ...keys) => {
-            const rowKeys = Object.keys(row);
-            for (const key of keys) {
-              const match = rowKeys.find(rk => rk.trim().toLowerCase() === key.toLowerCase());
-              if (match !== undefined) {
-                const val = row[match];
-                return (val !== undefined && val !== null) ? String(val).trim() : undefined;
-              }
-            }
-            return undefined;
-          };
-
-          if (!confirm(`Found ${jsonData.length} records. Proceed with import? Columns expected: Name, Admission, Grade, Stream`)) return;
-
-          importUsersBtn.disabled = true;
-          importUsersBtn.textContent = "Importing...";
-          
-          if (importProgressContainer) {
-            importProgressContainer.style.display = "block";
-            importProgressBar.style.width = "0%";
-          }
-
-          let successCount = 0;
-          let failCount = 0;
-          const failedRecords = [];
-
-          for (const row of jsonData) {
-            // Use robust mapping to find columns even if headers have spaces or different cases
-            const name = getVal(row, "Name", "Names", "Student Name", "Full Name");
-            const admission = getVal(row, "Admission", "Admission No", "Adm", "Admission Number");
-            const grade = getVal(row, "Grade", "Class", "Level");
-            const stream = getVal(row, "Stream", "Class Stream", "Section");
-
-            if (!name || admission === undefined || grade === undefined) {
-              failCount++;
-              failedRecords.push({
-                name: name || "N/A",
-                admission: admission || "N/A", 
-                reason: "Missing required fields (Name, Admission, or Grade)"
-              });
-              continue;
-            }
-
-            const body = {
-              role: "student",
-              name: String(name),
-              admission: String(admission),
-              grade: String(grade),
-              stream: stream ? String(stream) : null
-            };
-
-            try {
-              const res = await secureFetch(`${API_BASE}/users/register`, {
-                method: "POST",
-                body: JSON.stringify(body)
-              });
-
-              if (res) {
-                successCount++;
-              } else {
-                failCount++;
-                failedRecords.push({ name, admission, reason: "Registration failed" });
-              }
-            } catch (err) {
-              failCount++;
-              failedRecords.push({ name, admission, reason: "Network error: " + err.message });
-            }
-
-            const processed = successCount + failCount;
-            const percentage = Math.round((processed / jsonData.length) * 100);
-            
-            importUsersBtn.textContent = `Importing ${processed}/${jsonData.length}...`;
-            if (importProgressBar) importProgressBar.style.width = `${percentage}%`;
-            if (importProgressText) importProgressText.textContent = `Processed ${processed} of ${jsonData.length} records (${percentage}%)`;
-          }
-
-          if (failedRecords.length > 0) {
-            let csvContent = "Name,Admission,Failure Reason\n";
-            failedRecords.forEach(rec => {
-              csvContent += `"${rec.name}","${rec.admission}","${rec.reason}"\n`;
-            });
-            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-            const link = document.createElement("a");
-            link.href = URL.createObjectURL(blob);
-            link.download = "import_errors_log.csv";
-            link.click();
-            showToast(`Import completed with ${failCount} errors. Log downloaded.`, "warning");
-          } else {
-            showToast(`Import complete. ${successCount} registered successfully.`, "success");
-          }
-          
-          importUsersBtn.disabled = false;
-          importUsersBtn.textContent = "📂 Import Students";
-          
-          if (importProgressContainer) setTimeout(() => { importProgressContainer.style.display = "none"; }, 5000);
-
-          clearUsersCache();
-          loadUsers(1, true);
-
+           // Robust column mapping helper
+           const getVal = (row, ...keys) => {
+             const rowKeys = Object.keys(row);
+             for (const key of keys) {
+               const match = rowKeys.find(rk => rk.trim().toLowerCase() === key.toLowerCase());
+               if (match !== undefined) {
+                 const val = row[match];
+                 return (val !== undefined && val !== null) ? String(val).trim() : undefined;
+               }
+             }
+             return undefined;
+           };
+ 
+           const studentsToRegister = [];
+           const localFailed = [];
+ 
+           for (const row of jsonData) {
+             const name = getVal(row, "Name", "Names", "Student Name", "Full Name");
+             const admission = getVal(row, "Admission","admission","ADMISSION", "Admission No","admission no","ADMISSION NO", "Adm","ADM","adm", "Admission Number","admission number","ADMISSION NUMBER");
+             const grade = getVal(row, "Grade","grade","GRADE", "Class","class","CLASS", "Level");
+             const stream = getVal(row, "Stream","stream","STREAM", "Class Stream", "Section");
+             const contact = getVal(row, "Contact","contact", "Phone","phone", "Parent Contact", "Contact Number", "Telephone", "Mobile");
+ 
+             if (!name || admission === undefined || grade === undefined) {
+               localFailed.push({ name: name || "N/A", admission: admission || "N/A", reason: "Missing required fields" });
+               continue;
+             }
+ 
+             studentsToRegister.push({ name, admission, grade, stream: stream || null, contact: contact || null });
+           }
+ 
+           if (studentsToRegister.length === 0) {
+             showToast("No valid student records found in the file.", "error");
+             return;
+           }
+ 
+           if (!confirm(`Found ${studentsToRegister.length} valid records. Proceed with bulk import?`)) return;
+ 
+           importUsersBtn.disabled = true;
+           importUsersBtn.textContent = "Importing...";
+           if (importProgressContainer) {
+             importProgressContainer.style.display = "block";
+             importProgressBar.style.width = "50%";
+             importProgressText.textContent = "Uploading to server...";
+           }
+ 
+           const res = await secureFetch(`${API_BASE}/users/bulk-register`, {
+             method: "POST",
+             body: JSON.stringify(studentsToRegister)
+           });
+ 
+           if (res) {
+             if (importProgressBar) importProgressBar.style.width = "100%";
+             if (importProgressText) importProgressText.textContent = "Import Complete!";
+             
+             const totalFails = (res.failureCount || 0) + localFailed.length;
+             const allErrors = [...localFailed, ...(res.errors || [])];
+ 
+             if (totalFails > 0) {
+               let csvContent = "Name,Admission,Failure Reason\n";
+               allErrors.forEach(rec => { csvContent += `"${rec.name}","${rec.admission}","${rec.message || rec.reason}"\n`; });
+               const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+               const link = document.createElement("a");
+               link.href = URL.createObjectURL(blob);
+               link.download = "import_errors_log.csv";
+               link.click();
+               showToast(`Import completed with ${totalFails} errors. Log downloaded.`, "warning");
+             } else {
+               showToast(`Import complete. ${res.successCount} registered successfully.`, "success");
+             }
+             clearUsersCache();
+             loadUsers(1, true);
+           }
         } catch (err) {
           console.error("Import error:", err);
-          showToast("Failed to process file", "error");
+          showToast(err.message || "Failed to process file", "error");
+        } finally {
           importUsersBtn.disabled = false;
           importUsersBtn.textContent = "📂 Import Students";
+          setTimeout(() => { if (importProgressContainer) importProgressContainer.style.display = "none"; }, 3000);
         }
       };
       reader.readAsArrayBuffer(file);
@@ -787,8 +724,8 @@ if (usersNextPageBtn) {
   // ---------------------------
   if (downloadTemplateBtn) {
     downloadTemplateBtn.addEventListener("click", () => {
-      const headers = ["Name", "Admission", "Grade", "Stream"];
-      const sampleRow = ["John Doe", "ADM001", "Grade 1", "Blue"];
+      const headers = ["Name", "Admission", "Grade", "Stream", "Contact"];
+      const sampleRow = ["John Doe", "ADM001", "PP1", "Blue", "0712345678"];
       const csvContent = "data:text/csv;charset=utf-8," 
         + headers.join(",") + "\n" 
         + sampleRow.join(",");
@@ -843,7 +780,12 @@ if (usersNextPageBtn) {
           let gradeDisplay = "N/A";
           if (u.grade) {
             const gStr = String(u.grade).trim();
-            gradeDisplay = gStr.toLowerCase().startsWith("grade") ? gStr : `Grade ${gStr}`;
+            // FIX: If it's a PP grade, display it as is, otherwise prepend "Grade"
+            if (gStr.toUpperCase().startsWith("PP")) {
+              gradeDisplay = gStr;
+            } else {
+              gradeDisplay = gStr.toLowerCase().startsWith("grade") ? gStr : `Grade ${gStr}`;
+            }
           }
           return [
             u.name,
@@ -884,13 +826,13 @@ if (usersNextPageBtn) {
   // 🆕 Populate student grade filter based on school type
   function populateStudentGradeFilter() {
     if (!studentGradeFilter) return;
-    const type = (schoolInfo && schoolInfo.schoolType && SCHOOL_TYPES[schoolInfo.schoolType]) ? schoolInfo.schoolType : 'full';
+    const type = getSchoolTypeKey();
     const grades = SCHOOL_TYPES[type].gradeOptions;
     studentGradeFilter.innerHTML = '<option value="all">All Grades</option>';
     grades.forEach(g => {
       const opt = document.createElement("option");
-      opt.value = `Grade ${g}`;
-      opt.textContent = `Grade ${g}`;
+      opt.value = String(g).toUpperCase().startsWith("PP") ? g : `Grade ${g}`; // Value can be "PP1" or "Grade 1"
+      opt.textContent = String(g).toUpperCase().startsWith("PP") ? g : `Grade ${g}`; // Display "PP1" or "Grade 1"
       studentGradeFilter.appendChild(opt);
     });
     studentGradeFilter.addEventListener("change", () => {
@@ -971,17 +913,16 @@ if (usersNextPageBtn) {
 
           if (rawGradeValue) {
             const gradeString = String(rawGradeValue).trim();
-            const gradeNumberMatch = gradeString.match(/\d+/); // Extract numeric part
-            const gradeNumber = gradeNumberMatch ? gradeNumberMatch[0] : null;
-
-            if (gradeNumber) {
-              if (streamValue) {
-                finalGradeOutput = `${gradeNumber}${streamValue}`; // e.g., "7B"
-              } else {
-                finalGradeOutput = `Grade ${gradeNumber}`; // e.g., "Grade 7"
-              }
+            if (gradeString.toUpperCase().startsWith("PP")) {
+              finalGradeOutput = streamValue ? `${gradeString.toUpperCase()} ${streamValue}` : gradeString.toUpperCase();
             } else {
-              finalGradeOutput = gradeString; // Fallback if no number found
+              const gradeNumberMatch = gradeString.match(/\d+/); // Extract numeric part
+              const gradeNumber = gradeNumberMatch ? gradeNumberMatch[0] : null;
+              if (gradeNumber) {
+                finalGradeOutput = streamValue ? `${gradeNumber}${streamValue}` : `Grade ${gradeNumber}`;
+              } else {
+                finalGradeOutput = gradeString; // Fallback if no number found
+              }
             }
           }
           const row = [
@@ -1019,13 +960,14 @@ if (usersNextPageBtn) {
   // Populate grade filter for the new CSV download section
   function populateCsvGradeFilter() {
     if (!csvGradeFilter) return;
-    const type = (schoolInfo && schoolInfo.schoolType && SCHOOL_TYPES[schoolInfo.schoolType]) ? schoolInfo.schoolType : 'full';
+    const type = getSchoolTypeKey();
     const grades = SCHOOL_TYPES[type].gradeOptions;
     csvGradeFilter.innerHTML = '<option value="all">All Grades</option>';
     grades.forEach(g => {
       const opt = document.createElement("option");
-      opt.value = `Grade ${g}`;
-      opt.textContent = `Grade ${g}`;
+      const isPP = String(g).toUpperCase().startsWith("PP");
+      opt.value = isPP ? g : `Grade ${g}`;
+      opt.textContent = isPP ? g : `Grade ${g}`;
       csvGradeFilter.appendChild(opt);
     });
   }
@@ -1102,17 +1044,16 @@ if (usersNextPageBtn) {
 
           if (rawGradeValue) {
             const gradeString = String(rawGradeValue).trim();
-            const gradeNumberMatch = gradeString.match(/\d+/); // Extract numeric part
-            const gradeNumber = gradeNumberMatch ? gradeNumberMatch[0] : null;
-
-            if (gradeNumber) {
-              if (streamValue) {
-                finalGradeOutput = `${gradeNumber}${streamValue}`; // e.g., "7B"
-              } else {
-                finalGradeOutput = `Grade ${gradeNumber}`; // e.g., "Grade 7"
-              }
+            if (gradeString.toUpperCase().startsWith("PP")) {
+              finalGradeOutput = streamValue ? `${gradeString.toUpperCase()} ${streamValue}` : gradeString.toUpperCase();
             } else {
-              finalGradeOutput = gradeString; // Fallback if no number found
+              const gradeNumberMatch = gradeString.match(/\d+/); // Extract numeric part
+              const gradeNumber = gradeNumberMatch ? gradeNumberMatch[0] : null;
+              if (gradeNumber) {
+                finalGradeOutput = streamValue ? `${gradeNumber}${streamValue}` : `Grade ${gradeNumber}`;
+              } else {
+                finalGradeOutput = gradeString; // Fallback if no number found
+              }
             }
           }
           const row = [

@@ -1,0 +1,21 @@
+# Dashboard Rewrites (Keep URL clean in browser)
+/teacher             /teacher-dashboard.html   200
+/student             /student-dashboard.html   200
+/dean                /dean-dashboard.html      200
+/materials           /teacher-materials.html   200
+/study-materials     /studentstudymaterial.html 200
+
+# Standard Clean URLs
+/login               /login.html               200
+/reset               /reset.html               200
+/admin               /admin.html               200
+/super-admin         /super-admin.html         200
+/accounts            /accounts.html            200
+/users               /users.html               200
+/performance         /performance.html         200
+/analysis            /analysis.html            200
+/about               /about.html               200
+/contact             /contact.html             200
+/report              /report.html              200
+/student-accounts    /student-accounts.html    200
+/home                /index.html               200

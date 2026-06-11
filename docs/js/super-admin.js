@@ -39,7 +39,7 @@ function setCache(key, data) {
   // JWT FETCH HELPER
   // ---------------------------
   async function authFetch(url, options = {}) {
-    const token = localStorage.getItem("token");
+    const token = window.authService?.getToken();
     if (!token) {
       window.location.href = "/login";
       return null;
@@ -250,6 +250,10 @@ setCache(cacheKey, metrics);
         initAdminsPage(forceRefresh);
         break;
 
+      case "announcements":
+        initAnnouncementsPage(forceRefresh);
+        break;
+
       case "analytics":
         contentArea.innerHTML = `
           <div class="card">
@@ -395,6 +399,195 @@ setCache(cacheKey, metrics);
   }
 
   // ---------------------------
+  // ANNOUNCEMENTS LOGIC
+  // ---------------------------
+  async function initAnnouncementsPage(forceRefresh = false) {
+    contentArea.innerHTML = `
+      <div class="card">
+
+        <div class="card-header" style="display:flex; justify-content:space-between; align-items:center;">
+          <div>
+            <h2 style="margin-bottom:0;">Announcements Broadcast</h2>
+            <div id="smsProviderBalance" style="font-size:0.8rem; color:#64748b; margin-top:5px; font-weight:600;">
+              <i class="fas fa-wallet"></i> Gateway Balance: <span id="atBalanceVal">Loading...</span>
+            </div>
+          </div>
+          <button id="addAnnBtn" class="primary-btn">+ New Announcement</button>
+        </div>
+        <table class="table">
+          <thead>
+            <tr>
+              <th>Title</th>
+              <th>Target School</th>
+              <th>Target Role</th>
+              <th>Target Page</th>
+              <th>Status</th>
+              <th>Created</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="announcementsTable">
+            <tr><td colspan="7" style="text-align:center">Loading announcements...</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div id="annModal" class="modal hidden">
+        <div class="modal-content">
+          <h3>Post New Announcement</h3>
+          <label>Title</label>
+          <input type="text" id="annTitle" placeholder="e.g., System Update">
+          <label>Message</label>
+          <textarea id="annMessage" rows="4" style="width:100%; border-radius:8px; padding:10px; border:1px solid #ccc;"></textarea>
+          
+          <div style="display:grid; grid-template-columns: 1fr 1fr 1fr; gap:15px; margin-top:10px;">
+            <div>
+              <label>Target School</label>
+              <select id="annSchool">
+                <option value="">Global (All Schools)</option>
+              </select>
+            </div>
+            <div>
+              <label>Target Role</label>
+              <select id="annRole">
+                <option value="all">Everyone</option>
+                <option value="admin">Admins Only</option>
+                <option value="teacher">Teachers Only</option>
+                <option value="dean">Deans Only</option>
+                <option value="accounts">Accounts Only</option>
+                <option value="student">Learners Only</option>
+              </select>
+            </div>
+            <div>
+              <label>Target Page</label>
+              <select id="annPage">
+                <option value="all">All Pages</option>
+                <option value="teacher-dashboard.html">Teacher Dashboard</option>
+                <option value="dean-dashboard.html">Dean Dashboard</option>
+                <option value="accounts-dashboard.html">Accounts Dashboard</option>
+                <option value="analysis.html">Class Teacher Dashboard</option>
+                <option value="student-dashboard.html">Student Dashboard</option>
+                <option value="admin.html">Admin Panel</option>
+              </select>
+            </div>
+          </div>
+
+          <div style="margin-top:20px;">
+            <button id="saveAnnBtn" class="primary-btn">Broadcast Now</button>
+            <button class="close-btn" id="cancelAnnBtn">Cancel</button>
+          </div>
+        </div>
+      </div>
+    `;
+
+    const tableBody = document.getElementById("announcementsTable");
+    const modal = document.getElementById("annModal");
+    const schoolSelect = document.getElementById("annSchool");
+
+    // 🆕 Fetch Africa's Talking Balance
+    async function loadSmsProviderBalance() {
+      const balEl = document.getElementById("atBalanceVal");
+      if (!balEl) return;
+      try {
+        const res = await authFetch("/sms-provider-balance");
+        if (res && res.ok) {
+          const data = await res.json();
+          const color = data.isSandbox ? "#f59e0b" : "#10b981";
+          const label = data.isSandbox ? "SANDBOX" : "LIVE";
+          
+          // Format as currency (e.g. KES -43.00)
+          const formattedBalance = data.balance.toLocaleString('en-KE', { style: 'currency', currency: 'KES' });
+
+          balEl.innerHTML = `<strong>${formattedBalance}</strong> 
+            <span style="background:${color}; color:white; padding:1px 6px; border-radius:4px; font-size:0.6rem; margin-left:6px; font-weight:700;">${label}</span>`;
+        } else {
+          const errorData = res ? await res.json().catch(() => ({})) : {};
+          balEl.textContent = errorData.msg || "Unavailable";
+        }
+      } catch (e) {
+        balEl.textContent = "Error";
+      }
+    }
+
+    document.getElementById("addAnnBtn").onclick = async () => {
+      modal.classList.remove("hidden");
+      // Populate school options when opening modal
+      await populateAnnSchools();
+    };
+    document.getElementById("cancelAnnBtn").onclick = () => modal.classList.add("hidden");
+
+    async function populateAnnSchools() {
+      if (!schoolSelect) return;
+      schoolSelect.innerHTML = '<option value="">Global (All Schools)</option>';
+      
+      // Fetch schools list for targeting
+      const res = await authFetch(`/schools?limit=1000`);
+      if (res && res.ok) {
+        const data = await res.json();
+        const schools = data.schools || [];
+        schools.forEach(s => {
+          const opt = document.createElement("option");
+          opt.value = s._id;
+          opt.textContent = s.name;
+          schoolSelect.appendChild(opt);
+        });
+      }
+    }
+
+    document.getElementById("saveAnnBtn").onclick = async () => {
+      const payload = {
+        title: document.getElementById("annTitle").value.trim(),
+        message: document.getElementById("annMessage").value.trim(),
+        targetRole: document.getElementById("annRole").value,
+        targetPage: document.getElementById("annPage").value,
+        schoolId: document.getElementById("annSchool").value || null
+      };
+
+      if (!payload.title || !payload.message) return alert("Please fill all fields");
+
+      const res = await authFetch("/announcements", { method: "POST", body: JSON.stringify(payload) });
+      if (res && res.ok) {
+        modal.classList.add("hidden");
+        loadAnnouncements();
+      }
+    };
+
+    async function loadAnnouncements() {
+      // Note: Assumes a route GET /api/announcements/all is mapped to getAllAnnouncements
+      const res = await authFetch("/announcements/all"); 
+      if (!res) return;
+      const announcements = await res.json();
+
+      tableBody.innerHTML = announcements.length ? "" : '<tr><td colspan="7" style="text-align:center">No announcements found</td></tr>';
+      
+      announcements.forEach(ann => {
+        const row = document.createElement("tr");
+        row.innerHTML = `
+          <td><strong>${ann.title}</strong></td>
+          <td><span style="font-weight:600; color:#475569;">${ann.schoolId?.name || '🌎 Global (All Schools)'}</span></td>
+          <td><span class="status-badge" style="background:#eef2ff; color:#3730a3; padding:2px 8px; border-radius:4px; font-size:0.7rem;">${ann.targetRole}</span></td>
+          <td><code>${ann.targetPage}</code></td>
+          <td>${ann.isActive ? '✅ Active' : '⚪ Expired'}</td>
+          <td>${new Date(ann.createdAt).toLocaleDateString()}</td>
+          <td><button class="deleteAnnBtn danger-btn" data-id="${ann._id}" style="padding:4px 8px; font-size:0.7rem;">Remove</button></td>
+        `;
+        tableBody.appendChild(row);
+      });
+
+      document.querySelectorAll(".deleteAnnBtn").forEach(btn => {
+        btn.onclick = async () => {
+          if (!confirm("Delete this announcement? It will disappear for all targeted users.")) return;
+          await authFetch(`/announcements/${btn.dataset.id}`, { method: "DELETE" });
+          loadAnnouncements();
+        };
+      });
+    }
+
+    loadAnnouncements();
+    loadSmsProviderBalance();
+  }
+
+  // ---------------------------
   // SCHOOLS LOGIC (updated)
   // ---------------------------
   async function initSchoolsPage(forceRefresh = false) {
@@ -404,7 +597,7 @@ setCache(cacheKey, metrics);
           <h2>Schools Management</h2>
           <button id="addSchoolBtn" class="primary-btn">+ Add School</button>
         </div>
-        <input type="text" id="searchSchools" placeholder="Search schools..." class="search-input">
+        <input type="text" id="searchSchools" placeholder="Search schools..." class="search-input compact">
         <table class="table">
           <thead>
             <tr>
@@ -414,11 +607,12 @@ setCache(cacheKey, metrics);
               <th>Address</th>
               <th>Type</th>
               <th>Status</th>
+              <th>Credits</th>
               <th>Actions</th>
             </tr>
           </thead>
           <tbody id="schoolsTable">
-            <tr><td colspan="7" style="text-align:center">Loading...</td></tr>
+            <tr><td colspan="8" style="text-align:center">Loading...</td></tr>
           </tbody>
         </table>
         <p id="noSchoolsFound" style="display:none; text-align:center; margin-top:10px; color:#888;">No results found</p>
@@ -512,6 +706,8 @@ setCache(cacheKey, metrics);
 
       if (!name || !adminEmail || !address) return alert("Fill all fields");
 
+      window.spinner.show(saveBtn, "Creating...");
+      try {
       const formData = new FormData();
       formData.append("name", name);
       formData.append("adminEmail", adminEmail);
@@ -522,19 +718,22 @@ setCache(cacheKey, metrics);
       if (logoFile) formData.append("logo", logoFile);
 
       const res = await authFetch(`/schools`, {
-  method: "POST",
-  body: formData
-});
+        method: "POST",
+        body: formData
+      });
 
-if (res && res.ok) {
-  alert("School created successfully");
-  modal.classList.add("hidden");
-  localStorage.removeItem("admin_schools_options_cache"); // Clear options cache for dropdowns
-  loadSchools(1);
-} else {
-  const err = await res.json().catch(() => ({ msg: "Failed" }));
-  alert(err.msg || "Failed to create school");
-}
+      if (res && res.ok) {
+        alert("School created successfully");
+        modal.classList.add("hidden");
+        localStorage.removeItem("admin_schools_options_cache"); // Clear options cache for dropdowns
+        loadSchools(1);
+      } else {
+        const err = await res.json().catch(() => ({ msg: "Failed" }));
+        alert(err.msg || "Failed to create school");
+      }
+      } finally {
+        window.spinner.hide(saveBtn);
+      }
     });
 
     // ---------------------------
@@ -553,7 +752,7 @@ if (res && res.ok) {
       if (!force && cached) {
         data = cached;
       } else {
-        tableBody.innerHTML = '<tr><td colspan="7" style="text-align:center">Loading...</td></tr>';
+        tableBody.innerHTML = '<tr><td colspan="8" style="text-align:center">Loading...</td></tr>';
         const res = await authFetch(`/schools?page=${page}&limit=10&search=${encodeURIComponent(search)}`);
         if (!res) return;
         data = await res.json();
@@ -588,20 +787,22 @@ if (nextSchoolsBtn) {
         schools.forEach((s, i) => {
           const currentStatus = s.status || 'Active';
           const btnText = currentStatus === 'Active' ? 'Suspend' : 'Activate';
-          const statusClass = currentStatus === 'Suspended' ? 'suspended-status' : '';
+          const statusClass = currentStatus === 'Suspended' ? 'suspended-status' : 'active-status';
 
           tableBody.innerHTML += `
             <tr>
               <td>${i + 1}</td>
-              <td>${s.name}</td>
+              <td><strong>${s.name}</strong></td>
               <td>${s.adminEmail}</td>
               <td>${s.address || ''}</td>
               <td>${s.schoolType === 'primary_junior' ? 'Primary + Junior' : s.schoolType === 'senior' ? 'Senior' : 'Full'}</td>
-              <td class="${statusClass}">${currentStatus}</td>
-              <td>
-                <button class="toggleStatusBtn" data-id="${s._id}" data-status="${currentStatus}">${btnText}</button>
-                <button class="editSchoolBtn" data-id="${s._id}">Edit</button>
-                <button class="deleteSchoolBtn" data-id="${s._id}">Delete</button>
+              <td><span class="${statusClass}">${currentStatus}</span></td>
+              <td style="font-weight:700; color:#1e293b;">${s.smsCredits || 0}</td>
+              <td class="action-cell">
+                <button class="toggleStatusBtn" style="background:#64748b; color:white;" data-id="${s._id}" data-status="${currentStatus}">${btnText}</button>
+                <button class="topUpSmsBtn" data-id="${s._id}" style="background: #10b981; color: white;">Top Up</button>
+                <button class="editSchoolBtn" style="background:#3b82f6; color:white;" data-id="${s._id}">Edit</button>
+                <button class="deleteSchoolBtn" style="background:#ef4444; color:white;" data-id="${s._id}">Delete</button>
               </td>
             </tr>`;
         });
@@ -631,11 +832,14 @@ if (nextSchoolsBtn) {
           // Show paybill modal if needed
           showPaybillModalIfNeeded(school);
 
-            document.getElementById("updateSchoolBtn").onclick = async () => {
+          const updateBtn = document.getElementById("updateSchoolBtn");
+          updateBtn.onclick = async () => {
             const name = document.getElementById("editSchoolName").value.trim();
             const adminEmail = document.getElementById("editSchoolAdmin").value.trim();
             const address = document.getElementById("editSchoolAddress").value.trim();
             const logoFile = document.getElementById("editSchoolLogo").files[0];
+
+            window.spinner.show(updateBtn, "Updating...");
 
             if (!name || !adminEmail || !address ) return alert("Fill all fields");
 
@@ -648,13 +852,17 @@ if (nextSchoolsBtn) {
             formData.append("allowSignatureUpload", document.getElementById("editSchoolAllowSignatureUpload").checked);
             if (logoFile) formData.append("logo", logoFile);
 
-            await authFetch(`/schools/${id}`, {
-              method: "PUT",
-              body: formData
-            });
+            try {
+              await authFetch(`/schools/${id}`, {
+                method: "PUT",
+                body: formData
+              });
 
-            document.getElementById("editSchoolModal").classList.add("hidden");
-            loadSchools(currentSchoolPage);
+              document.getElementById("editSchoolModal").classList.add("hidden");
+              loadSchools(currentSchoolPage);
+            } finally {
+              window.spinner.hide(updateBtn);
+            }
           };
         });
       });
@@ -681,13 +889,40 @@ if (nextSchoolsBtn) {
 
           const row = btn.closest("tr");
           const statusCell = row.querySelector("td:nth-child(6)");
-          statusCell.textContent = data.school.status;
-          statusCell.className = data.school.status === "Suspended" ? "suspended-status" : "";
+          const isSuspended = data.school.status === "Suspended";
+          statusCell.innerHTML = `<span class="${isSuspended ? "suspended-status" : "active-status"}">${data.school.status}</span>`;
           btn.textContent = data.school.status === "Active" ? "Suspend" : "Activate";
           btn.dataset.status = data.school.status;
           alert(data.msg);
 
           loadSchools(currentSchoolPage); // Refresh to update cache
+        });
+      });
+
+      // Top Up SMS Credits
+      document.querySelectorAll(".topUpSmsBtn").forEach(btn => {
+        btn.addEventListener("click", async () => {
+          const id = btn.dataset.id;
+          const schoolName = btn.closest("tr").querySelector("td:nth-child(2)").textContent;
+          const amount = prompt(`Enter amount of SMS credits to add to ${schoolName} (use negative numbers to deduct):`, "1000");
+          
+          if (amount === null) return; // User cancelled
+          const numAmount = Number(amount);
+          if (isNaN(numAmount) || numAmount === 0) return alert("Please enter a valid non-zero number.");
+
+          const res = await authFetch(`/schools/${id}/top-up-sms`, {
+            method: "POST",
+            body: JSON.stringify({ amount: numAmount })
+          });
+
+          if (res && res.ok) {
+            const data = await res.json();
+            alert(data.msg);
+            loadSchools(currentSchoolPage, true); // Force refresh cache and UI
+          } else {
+            const err = await res.json().catch(() => ({ msg: "Action failed" }));
+            alert(err.msg || "Failed to update credits");
+          }
         });
       });
     }
@@ -759,7 +994,7 @@ if (nextSchoolsBtn) {
           <label>Assign School</label>
           <select id="newAdminSchool"></select>
           <button id="saveAdminBtn" class="primary-btn">Save</button>
-          <button class="close-btn" onclick="closeAddAdminModal()">Cancel</button>
+          <button id="cancelAddAdminBtn" class="close-btn">Cancel</button>
         </div>
       </div>
       <div id="editAdminModal" class="modal hidden">
@@ -772,7 +1007,7 @@ if (nextSchoolsBtn) {
           <label>School</label>
           <select id="editAdminSchool"></select>
           <button id="updateAdminBtn" class="primary-btn">Update</button>
-          <button class="close-btn" onclick="closeEditAdminModal()">Cancel</button>
+          <button id="cancelEditAdminBtn" class="close-btn">Cancel</button>
         </div>
       </div>
     `;
@@ -875,15 +1110,24 @@ if (nextSchoolsBtn) {
           document.getElementById("editAdminName").value = admin.name;
           document.getElementById("editAdminEmail").value = admin.email;
           document.getElementById("editAdminSchool").value = admin.schoolId;
-          document.getElementById("editAdminModal").classList.remove("hidden");
+          const editModal = document.getElementById("editAdminModal");
+          editModal.classList.remove("hidden");
+          editModal.classList.add("visible");
 
-          document.getElementById("updateAdminBtn").onclick = async () => {
-            const name = document.getElementById("editAdminName").value.trim();
-            const email = document.getElementById("editAdminEmail").value.trim();
-            const schoolId = document.getElementById("editAdminSchool").value;
-            await authFetch(`/admins/${id}`, { method: "PUT", body: JSON.stringify({ name, email, schoolId }) });
-            document.getElementById("editAdminModal").classList.add("hidden");
-            loadAdmins(currentAdminPage, true); // Force refresh after update
+          const updateBtn = document.getElementById("updateAdminBtn");
+          updateBtn.onclick = async () => {
+            window.spinner.show(updateBtn, "Updating...");
+            try {
+              const name = document.getElementById("editAdminName").value.trim();
+              const email = document.getElementById("editAdminEmail").value.trim();
+              const schoolId = document.getElementById("editAdminSchool").value;
+              await authFetch(`/admins/${id}`, { method: "PUT", body: JSON.stringify({ name, email, schoolId }) });
+              editModal.classList.add("hidden");
+              editModal.classList.remove("visible");
+              loadAdmins(currentAdminPage, true); // Force refresh after update
+            } finally {
+              window.spinner.hide(updateBtn);
+            }
           };
         });
       });
@@ -917,9 +1161,24 @@ if (nextSchoolsBtn) {
       }
     });
 
-    addBtn.addEventListener("click", () => modal.classList.remove("hidden"));
-    window.closeAddAdminModal = () => modal.classList.add("hidden");
-    window.closeEditAdminModal = () => document.getElementById("editAdminModal").classList.add("hidden");
+    addBtn.addEventListener("click", () => {
+      modal.classList.remove("hidden");
+      modal.classList.add("visible");
+    });
+
+    // 🆕 Use event listeners instead of onclick for better reliability
+    document.getElementById("cancelAddAdminBtn")?.addEventListener("click", () => {
+      modal.classList.add("hidden");
+      modal.classList.remove("visible");
+    });
+
+    document.getElementById("cancelEditAdminBtn")?.addEventListener("click", () => {
+      const editModal = document.getElementById("editAdminModal");
+      if (editModal) {
+        editModal.classList.add("hidden");
+        editModal.classList.remove("visible");
+      }
+    });
 
     saveBtn.addEventListener("click", async () => {
       const name = document.getElementById("newAdminName").value.trim();
@@ -928,14 +1187,20 @@ if (nextSchoolsBtn) {
       if (!name || !email || !schoolId) return alert("Fill all fields");
       const password = generatePassword();
       
+      window.spinner.show(saveBtn, "Registering...");
+      try {
       const res = await authFetch(`/admins`, { method: "POST", body: JSON.stringify({ name, email, schoolId, password }) });
       if (res && res.ok) {
         alert("Admin registered successfully! Login details sent to email.");
         modal.classList.add("hidden");
+        modal.classList.remove("visible");
         loadAdmins(1, true); // Force refresh after adding new admin
       } else {
         const errData = res ? await res.json().catch(() => ({ msg: "Registration failed" })) : { msg: "Connection error" };
         alert(`Failed to register admin: ${errData.msg || errData.message}`);
+      }
+      } finally {
+        window.spinner.hide(saveBtn);
       }
     });
 
@@ -1105,8 +1370,7 @@ if (nextSchoolsBtn) {
     }
 
     try {
-      submitBtn.disabled = true;
-      submitBtn.textContent = "Saving...";
+      window.spinner.show(submitBtn, "Saving...");
 
       const token = localStorage.getItem("token");
       const response = await fetch(`${API_BASE}/update-paybill`, {
@@ -1144,8 +1408,7 @@ if (nextSchoolsBtn) {
       feedback.textContent = `Error: ${err.message}`;
       feedback.style.display = "block";
     } finally {
-      submitBtn.disabled = false;
-      submitBtn.textContent = "Save Configuration";
+      window.spinner.hide(submitBtn);
     }
   });
 

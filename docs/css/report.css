@@ -10,14 +10,15 @@ body {
 
 .report-container {
   width: 90%;
-  max-width: 800px; /* A bit more space */
+  max-width: 800px;
   margin: 20px auto;
   background: #fff;
-  padding: 25px 35px; /* More horizontal padding */
+  padding: 10px 20px !important;
   border-radius: 8px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
   border: 1px solid #e0e0e0;
   box-sizing: border-box;
+  min-height: 265mm; /* Reduced to fit within single A4 page printable area */
 }
 
 /* Report Header */
@@ -29,24 +30,26 @@ body {
 }
 
 .school-logo {
-  width: 80px; /* Slightly smaller */
-  height: 80px;
+  width: 105px; /* Slightly smaller */
+  height: 90px;
   object-fit: contain;
   margin-bottom: 10px;
 }
 
+/* Professional Bulk-Style Header */
+.report-header-wrap { text-align: center; margin-bottom: 15px; }
+.school-title-row { display: flex; align-items: center; justify-content: center; gap: 15px; margin-bottom: 5px; }
+.school-title-row h2 { font-size: 22px !important; font-weight: 800 !important; margin: 0 !important; color: #1a237e; letter-spacing: -0.5px; }
+.school-title-row img { height: 75px; width: auto; object-fit: contain; }
+.report-main-title { font-size: 14px; font-weight: 700; text-transform: uppercase; margin: 5px 0 2px 0; letter-spacing: 1px; color: #333; }
+.report-sub-title { font-size: 12px; color: #666; font-weight: 600; margin: 0; }
+
 #schoolName {
-  font-size: 22px; /* Slightly smaller */
-  font-weight: 700;
-  color: #1a237e; /* A deeper blue */
-  margin: 0;
-  letter-spacing: 0.5px;
+  margin: 0 !important;
 }
 
 #schoolAddress {
-  font-size: 13px;
-  color: #555;
-  margin-top: 4px;
+  display: none !important;
 }
 
 /* Section Headers (h2) */
@@ -62,43 +65,49 @@ h2 {
 
 /* Student Info Section */
 .student-info {
-  background: #f8f9fa;
-  padding: 15px;
-  border-radius: 6px;
-  margin-bottom: 25px;
-  font-size: 13px;
-  line-height: 1.6;
-  border: 1px solid #e9ecef;
+  margin-bottom: 8px !important; 
+  display: grid; 
+  grid-template-columns: 1fr 1fr; 
+  gap: 2px 20px; 
+  border: 1px solid #cbd5e0;
+  padding: 6px 12px !important;
+  border-radius: 4px;
+  background: #f8fafc;
 }
 
 .student-info p {
-  margin: 4px 0;
+  margin: 0 !important; 
+  font-size: 12.5px !important; 
+  line-height: 1.4 !important;
 }
 
 .student-info strong {
-  width: 110px; /* Consistent width */
-  display: inline-block;
-  color: #343a40;
-  font-weight: 600;
+  width: 95px !important; 
+  display: inline-block; 
+  color: #475569 !important;
 }
 
 /* Layout for Marks Table and Performance Key */
 .report-layout-container {
-  display: flex;
-  gap: 20px;
-  align-items: flex-start;
-  margin-top: 25px;
-  page-break-inside: avoid !important;
+  display: flex !important;
+  gap: 15px !important;
+  align-items: flex-start !important;
+  margin-bottom: 10px !important;
+  page-break-inside: avoid;
 }
 
 /* Performance Key (Side Panel) */
 #performanceKeySide {
-  flex: 0 0 170px; /* A bit more width */
+  flex: 0 0 140px !important;
+  font-size: 10px !important;
   border: 1px solid #e0e0e0;
   border-radius: 6px;
   padding: 10px;
   background: #f8f9fa;
 }
+
+#performanceKeySide table { width: 100%; border-collapse: collapse; }
+#performanceKeySide th, #performanceKeySide td { border: 1px solid #ccc; padding: 2px; text-align: center; }
 
 #performanceKeySide h4 {
   margin: 0 0 10px 0;
@@ -130,23 +139,26 @@ h2 {
 
 /* Marks Table Section */
 .marks-section {
-  flex: 1;
+  flex: 1 !important;
   margin-bottom: 0; /* Reset margin as it's in a flex container */
 }
 
 .marks-section table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 12px;
+  font-size: 12px !important;
   border: 1px solid #dee2e6;
+  text-align: center !important;
 }
 
 .marks-section th,
 .marks-section td {
-  padding: 10px 8px; /* More vertical padding */
+  padding: 4px 8px !important;
   text-align: left;
   border: 1px solid #dee2e6;
 }
+
+.marks-section td:first-child, .marks-section th:first-child { text-align: left !important; }
 
 .marks-section th {
   background-color: #e9ecef;
@@ -195,23 +207,79 @@ h2 {
   border-left: 3px solid #e0e0e0;
 }
 
+.remarks-container {
+  display: flex !important;
+  gap: 15px !important;
+  margin: 15px 0 !important;
+  align-items: stretch !important;
+}
+
+.remark-item {
+  flex: 1 !important;
+  min-width: 0; /* Prevents overflow in flexbox */
+  font-size: 12px !important;
+  padding: 8px !important;
+  background: #f9f9f9 !important;
+  border-radius: 6px !important;
+  border-left: 3px solid #1a237e !important;
+}
+
+.remark-item strong {
+  display: block !important;
+  margin-bottom: 3px !important;
+  color: #1a237e !important;
+  font-size: 11px !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.5px !important;
+}
+
+.remark-item p {
+  margin: 0 !important;
+  line-height: 1.4 !important;
+  border-left: none !important;
+  padding-left: 0 !important;
+}
+
 /* Signatures Section */
 .signatures {
   display: flex;
-  justify-content: space-between;
-  margin-top: 50px; /* More space above */
+  margin-top: 15px !important;
   padding-top: 20px;
   border-top: 1px solid #eee;
-  gap: 40px;
+  gap: 10px !important;
 }
 
 .signature-line {
-  flex: 1;
-  text-align: center;
-  border-top: 1px solid #555;
-  padding-top: 8px;
-  font-size: 13px;
-  color: #444;
+  flex: 1 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  justify-content: flex-end !important;
+  min-height: 50px !important;
+  text-align: center !important;
+  border-top: none !important;
+}
+
+.signature-line img {
+  max-height: 40px !important;
+  max-width: 150px !important;
+  display: block !important;
+  margin: 0 auto 2px auto !important;
+  opacity: 1 !important;
+  visibility: visible !important;
+  object-fit: contain;
+}
+
+.signature-line span {
+  display: block !important;
+  margin: 0 !important;
+  line-height: 0.8 !important;
+}
+
+.signature-line p {
+  margin: 2px 0 0 0 !important;
+  font-size: 12px !important;
+  font-weight: 500 !important;
 }
 
 /* Controls & Buttons */
@@ -251,11 +319,13 @@ button,
   }
   .report-container {
     width: 100%;
-    max-width: 190mm;
+    max-width: none; /* Allow content to fill available width within PDF margins */
     margin: 0 auto;
     box-shadow: none;
     border: none;
-    padding: 10mm;
+    padding: 5mm;
+    min-height: 0 !important;
+    height: auto !important;
     page-break-inside: avoid;
   }
   .report-controls { display: none !important; }

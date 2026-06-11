@@ -2,25 +2,35 @@
 import mongoose from "mongoose";
 import StudentEnrollment from "../models/StudentEnrollment.js";
 import {User} from "../models/User.js";
-import Mark from "../models/mark.js";
+import { Student } from "../models/RoleModels.js";
 import Payment from "../models/Payment.js";
-import { calculateBalance } from "../services/balanceService.js";
+import FeeStructure from "../models/FeeStructure.js";
 
-
+const escapeRegex = (text) => {
+  return text.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, "\\$&");
+};
 
 // ---------------------------
 // GRADE NORMALIZER
 // ---------------------------
 const normalizeGrade = (grade) => {
   if (!grade) return null;
-  const str = String(grade).trim();
-  const match = str.match(/\d+/); // Extract only the numeric part
-  if (match) {
-    return `Grade ${match[0]}`;
+   let str = String(grade).trim();
+
+  // 🆕 Robust PP check: handles "PP1", "pp1", "Grade PP1", "Grade pp1"
+  let checkStr = str.toUpperCase();
+  if (checkStr.startsWith("GRADE ")) {
+    checkStr = checkStr.replace(/^GRADE\s+/i, "").trim();
   }
-  // If no numeric part, but it's already "Grade X", return as is.
-  // Otherwise, if it's just a string, return it as is (e.g., "PP1", "PP2")
-  return str.toLowerCase().startsWith("grade") ? str : str;
+  if (checkStr.startsWith("PP")) {
+    return checkStr;
+  }
+  
+
+  // For other grades, extract the numeric part and prepend "Grade "
+  const match = str.match(/\d+/);
+  if (match) return `Grade ${match[0]}`;
+  return str; // Fallback for other non-numeric, non-PP strings
 };
 
 
@@ -70,147 +80,213 @@ export const promoteStudents = async (req, res) => {
       return res.status(400).json({ message: "Invalid academic year progression" });
     }
 
-    const results = [];
-    const warnings = [];
+    const session = await mongoose.startSession();
 
-    // Optimize: Process students in parallel instead of sequentially
-    await Promise.all(decisions.map(async (d) => {
-      const enrollment = await StudentEnrollment.findOne({
-        studentId: d.studentId,
-        schoolId: req.user.schoolId,
-        academicYear: fromAcademicYear,
-        status: "active"
-      });
+    try {
+      await session.withTransaction(async () => {
+        const results = [];
+        const warnings = [];
+        const errorsDuringProcessing = []; // To collect errors for individual students
 
-      if (!enrollment) return;
+        // 🚀 NEW: Pre-fetch all necessary context to solve N+1
+        const studentIds = decisions.map(d => d.studentId);
+        const [allStudents, currentEnrollments, allPayments, allFeeStructures] = await Promise.all([
+          Student.find({ _id: { $in: studentIds } }).session(session).lean(),
+          StudentEnrollment.find({
+            studentId: { $in: studentIds },
+            schoolId: req.user.schoolId,
+            academicYear: fromAcademicYear,
+            status: "active"
+          }).session(session).lean(),
+          Payment.find({
+            studentId: { $in: studentIds },
+            academicYear: fromAcademicYear,
+            isReversed: { $ne: true }
+          }).session(session).lean(),
+          FeeStructure.find({
+            schoolId: req.user.schoolId,
+            academicYear: fromAcademicYear
+          }).session(session).lean()
+        ]);
 
-      // 🚫 Skip if already completed or transferred
-      if (["completed", "transferred"].includes(enrollment.status)) {
-        return;
-      }
+        const enrollmentMap = new Map(currentEnrollments.map(e => [String(e.studentId), e]));
+        const userMap = new Map(allStudents.map(u => [String(u._id), u]));
 
-      // -----------------------
-      // TRANSFER
-      // -----------------------
-      if (d.action === "transfer") {
-        await enrollment.updateOne({ status: "transferred" });
-        return;
-      }
+        // Step 2: Process with in-memory data sequentially
+        for (const d of decisions) {
+          try { // Wrap individual student processing in a try-catch
+            const enrollment = enrollmentMap.get(String(d.studentId));
 
-      const currentGrade = enrollment.grade;
-      const normalizedGrade = normalizeGrade(currentGrade);
-      const isGrade9 = normalizedGrade === "Grade 9";
+            if (!enrollment) {
+              throw new Error("Active enrollment record not found for this year.");
+            }
+
+            // 🚫 Handle students already completed or transferred gracefully with a warning
+            if (["completed", "transferred"].includes(enrollment.status)) {
+              const student = userMap.get(String(d.studentId));
+              warnings.push({
+                studentId: d.studentId,
+                name: student?.name || "Unknown Learner",
+                admission: student?.admission || "N/A",
+                message: `Learner is already marked as ${enrollment.status}. Skipping.`
+              });
+              continue; // Skip to the next student in the batch
+            }
+            // TRANSFER
+            // -----------------------
+            if (d.action === "transfer") {
+              await StudentEnrollment.updateOne({ _id: enrollment._id }, { status: "transferred" }, { session });
+              results.push({ studentId: d.studentId, action: "transferred" });
+            continue;
+            }
+
+            const currentGrade = enrollment.grade;
+            const normalizedGrade = normalizeGrade(currentGrade); // e.g., "Grade 9" or "Grade 12"
+            const isTerminalGrade = normalizedGrade === "Grade 9" || normalizedGrade === "Grade 12"; // 🆕 Include Grade 12
 
 
-      // -----------------------
-      // GRADE 9 + PROMOTE = COMPLETE
-      // -----------------------
-      if (isGrade9 && d.action === "promote") {
-        await enrollment.updateOne({ status: "completed" });
-        return;
-      }
+            // -----------------------
+            // TERMINAL GRADE (9 or 12) + PROMOTE = COMPLETE
+            // -----------------------
+            if (isTerminalGrade && d.action === "promote") { // 🆕 Use isTerminalGrade
+              await StudentEnrollment.updateOne({ _id: enrollment._id }, { status: "completed" }, { session });
+              results.push({ studentId: d.studentId, action: `completed (${normalizedGrade})` }); // 🆕 More specific action
+            continue;
+            }
 
-      // -----------------------
-      // CLOSE OLD ENROLLMENT
-      // -----------------------
-      await enrollment.updateOne({ status: "completed" });
+            // -----------------------
+            // CLOSE OLD ENROLLMENT
+            // -----------------------
+            await StudentEnrollment.updateOne({ _id: enrollment._id }, { status: "completed" }, { session });
 
-      // -----------------------
-      // AUTOMATIC CARRY FORWARD (POSITIVE BALANCE)
-      // -----------------------
-      try {
-        const studentUser = await User.findById(enrollment.studentId);
-        if (!studentUser) return; // Skip orphaned enrollments where the user no longer exists
-        // Calculate balance for the year we are leaving
-        const balanceData = await calculateBalance(studentUser, enrollment.grade, fromAcademicYear);
-        
-        if (balanceData) {
-          const bal = balanceData.balance;
-          // Unique reference to avoid duplicates: BF-YYYY-STUDENTID
-          const baseRef = `BF-${fromAcademicYear}-${enrollment.studentId}`;
+            // -----------------------
+            // AUTOMATIC CARRY FORWARD (POSITIVE BALANCE)
+            // -----------------------
+            try {
+              const studentUser = userMap.get(String(enrollment.studentId));
+              if (!studentUser) {
+                warnings.push({ studentId: d.studentId, message: "Student user record not found, cannot carry forward balance." });
+                // Continue processing promotion, but log this warning
+              } else {
+                  // Optimized In-Memory Balance Calculation
+                  const fee = allFeeStructures.find(f => f.grade === enrollment.grade);
+                  const sPayments = allPayments.filter(p => String(p.studentId) === String(studentUser._id));
+                  const paid = sPayments.reduce((sum, p) => sum + p.amount, 0);
+                  const totalFee = fee ? fee.totalFee : 0;
+                  const bal = totalFee - paid;
 
-          // CASE 1: Credit/Surplus (Balance < 0)
-          // Example: Fee 10k, Paid 15k, Balance = -5k.
-          // Action: Credit new year with +5000.
-          if (bal < 0) {
-            await Payment.create({
+                  if (bal !== 0) {
+                      // Unique reference to avoid duplicates: BF-YYYY-STUDENTID
+                      const baseRef = `BF-${fromAcademicYear}-${enrollment.studentId}`;
+
+                      // CASE 1: Credit/Surplus (Balance < 0)
+                      if (bal < 0) {
+                          await Payment.create([{
+                              studentId: enrollment.studentId,
+                              schoolId: enrollment.schoolId,
+                              amount: Math.abs(bal),
+                              method: "fund_transfer",
+                              reference: `${baseRef}-CR`, // CR for Credit
+                              term: "Term 1",
+                              academicYear: toAcademicYear,
+                              recordedBy: req.user.id,
+                              recordedByRole: "system"
+                          }], { session });
+                      }
+                      // CASE 2: Debt/Arrears (Balance > 0)
+                      else if (bal > 0) {
+                          await Payment.create([{
+                              studentId: enrollment.studentId,
+                              schoolId: enrollment.schoolId,
+                              amount: -Math.abs(bal), // Negative amount implies debt brought forward
+                              method: "fund_transfer",
+                              reference: `${baseRef}-DR`, // DR for Debit
+                              term: "Term 1",
+                              academicYear: toAcademicYear,
+                              recordedBy: req.user.id,
+                              recordedByRole: "system"
+                          }], { session });
+                      }
+                  }
+              }
+            } catch (err) {
+              console.error(`Failed to carry forward balance for student ${enrollment.studentId}:`, err);
+              warnings.push({ studentId: d.studentId, message: `Balance carry-forward failed: ${err.message}` });
+              // Do NOT re-throw here, as we want to continue with promotion if possible, but log the warning.
+            }
+
+            // -----------------------
+            // REPEAT OR PROMOTE
+            // -----------------------
+            const nextGrade =
+              d.action === "repeat"
+                ? normalizedGrade
+                : getNextGrade(normalizedGrade);
+
+            if (!nextGrade) {
+            throw new Error(`No next grade found in the school progression map for '${enrollment.grade}'.`);
+            }
+
+            // -----------------------
+            // CREATE NEW ENROLLMENT
+            // -----------------------
+            const newEnrollment = await StudentEnrollment.create([{
               studentId: enrollment.studentId,
               schoolId: enrollment.schoolId,
-              amount: Math.abs(bal),
-              method: "fund_transfer",
-              reference: `${baseRef}-CR`, // CR for Credit
-              term: "Term 1",
               academicYear: toAcademicYear,
-              recordedBy: req.user.id,
-              recordedByRole: "system" // Or 'accounts' if 'system' not in enum
-            });
-          }
-          // CASE 2: Debt/Arrears (Balance > 0)
-          // Example: Fee 10k, Paid 5k, Balance = +5k.
-          // Action: Debit new year with -5000 (Negative payment increases balance).
-          else if (bal > 0) {
-            await Payment.create({
-              studentId: enrollment.studentId,
-              schoolId: enrollment.schoolId,
-              amount: -Math.abs(bal), // Negative amount implies debt brought forward
-              method: "fund_transfer",
-              reference: `${baseRef}-DR`, // DR for Debit
+              grade: nextGrade,
+              stream: enrollment.stream, // Carry forward stream
               term: "Term 1",
-              academicYear: toAcademicYear,
-              recordedBy: req.user.id,
-              recordedByRole: "accounts" // keeping role valid
+              promotedFrom: fromAcademicYear,
+              status: "active"
+            }], { session });
+
+            await Student.findByIdAndUpdate(enrollment.studentId, {
+              grade: nextGrade
+            }, { session });
+
+            results.push(newEnrollment[0]); // create returns an array
+          } catch (studentProcessingError) {
+            // If any step for a single student fails, record it and continue to the next student
+            const student = userMap.get(String(d.studentId));
+            errorsDuringProcessing.push({
+              studentId: d.studentId,
+              name: student?.name || "Unknown Learner",
+              admission: student?.admission || "N/A",
+              message: studentProcessingError.message
             });
+            console.error(`Error processing student ${d.studentId}:`, studentProcessingError);
           }
+        } // End of for...of loop
+
+        // If there were any errors during individual student processing, throw to trigger rollback by withTransaction
+        if (errorsDuringProcessing.length > 0) {
+          const batchError = new Error("Promotion batch aborted due to specific learner errors.");
+          batchError.individualErrors = errorsDuringProcessing;
+          throw batchError;
         }
-      } catch (err) {
-        console.error(`Failed to carry forward balance for student ${enrollment.studentId}:`, err);
-        // We assume we continue promoting even if balance transfer fails, or log a warning
-      }
 
-      // -----------------------
-      // REPEAT OR PROMOTE
-      // -----------------------
-         const nextGrade =
-         d.action === "repeat"
-          ? normalizedGrade
-          : getNextGrade(normalizedGrade);
-
-      if (!nextGrade) {
-        warnings.push({
-          studentId: enrollment.studentId,
-          message: "No next grade found"
+        // The session will automatically commit if no error is thrown
+        res.json({
+          message: "Promotion processed successfully",
+          affected: results.length,
+          warnings,
+          errors: errorsDuringProcessing 
         });
-        return;
+      });
+    } catch (err) {
+      if (err.individualErrors) {
+        return res.status(400).json({ 
+          message: "The batch promotion was cancelled. No changes were saved.", 
+          errors: err.individualErrors 
+        });
       }
-
-      // -----------------------
-      // CREATE NEW ENROLLMENT
-      // -----------------------
-      const newEnrollment = await StudentEnrollment.create({
-        studentId: enrollment.studentId,
-        schoolId: enrollment.schoolId,
-        academicYear: toAcademicYear,
-        grade: nextGrade,
-        term: "Term 1",
-        promotedFrom: fromAcademicYear,
-        status: "active"
-      });
-
-      await User.findByIdAndUpdate(enrollment.studentId, {
-        grade: nextGrade
-      });
-
-      results.push(newEnrollment);
-    }));
-
-    res.json({
-      message: "Promotion processed successfully",
-      affected: results.length,
-      warnings
-    });
-
+      res.status(500).json({ message: `Server error during promotion: ${err.message}` });
+    } finally {
+      session.endSession();
+    }
   } catch (err) {
-    console.error("Promotion error:", err);
+    console.error("Promotion error (outer catch):", err);
     res.status(500).json({ message: "Server error during promotion" });
   }
 };
@@ -223,7 +299,7 @@ export const previewPromotion = async (req, res) => {
       return res.status(403).json({ message: "Unauthorized" });
     }
 
-    const { academicYear, page, limit } = req.query;
+    const { academicYear, page, limit, search } = req.query;
     if (!academicYear) {
       return res.status(400).json({ message: "Academic year required" });
     }
@@ -253,6 +329,15 @@ export const previewPromotion = async (req, res) => {
         }
       },
       { $unwind: "$student" }, 
+      // 🆕 Add search filter if provided
+      ...(search ? [{
+        $match: {
+          $or: [
+            { "student.name": { $regex: escapeRegex(search), $options: "i" } },
+            { "student.admission": { $regex: escapeRegex(search), $options: "i" } }
+          ]
+        }
+      }] : []),
       {
         $facet: {
           metadata: [{ $count: "total" }],
@@ -276,8 +361,8 @@ export const previewPromotion = async (req, res) => {
     ];
 
     const result = await StudentEnrollment.aggregate(pipeline);
-    const total = result[0].metadata[0]?.total || 0;
-    const enrollments = result[0].data || [];
+    const total = result[0]?.metadata[0]?.total || 0;
+    const enrollments = result[0]?.data || [];
 
     const preview = enrollments.map(e => ({
       ...e,

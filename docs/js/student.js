@@ -10,17 +10,20 @@ document.addEventListener("DOMContentLoaded", async () => {
   const user = await authService.getUserProfile(["student", "learner"]);
   if (!user) return;
 
-  const token = authService.getToken();
+  const token = window.authService?.getToken();
   window.currentUser = user;
   console.log("✅ Student authenticated:", user.name);
   authService.initLogout();
 
   const menuToggleBtn = document.querySelector(".menu-toggle");
   const sidebarEl = document.querySelector(".sidebar");
-  const sidebarBackdrop = document.createElement("div");
-  sidebarBackdrop.className = "sidebar-backdrop";
-  document.body.appendChild(sidebarBackdrop);
-
+   // Check for existing backdrop to avoid redundancy
+  let sidebarBackdrop = document.querySelector(".sidebar-backdrop");
+  if (!sidebarBackdrop) {
+    sidebarBackdrop = document.createElement("div");
+    sidebarBackdrop.className = "sidebar-backdrop";
+    document.body.appendChild(sidebarBackdrop);
+  }
   const closeSidebar = () => {
     sidebarEl?.classList.remove("show");
     sidebarBackdrop.classList.remove("active");
@@ -153,7 +156,7 @@ if (dashboardHeader) {
 try {
   let school = getCached("schoolProfile_full");
   if (!school) {
-    const schoolRes = await fetch(`${API_BASE}/users/my-school?includeLogo=false`, { // Fetch name only, exclude logo and details
+    const schoolRes = await fetch(`${API_BASE}/users/my-school?fields=name,gradingConfig,additionalInfo`, { // Fetch only necessary fields like grading and info
       headers: { Authorization: `Bearer ${token}` },
     });
 
@@ -164,7 +167,12 @@ try {
   }
 
   if (schoolNameEl) schoolNameEl.textContent = school ? school.name.toUpperCase() : "School Name N/A";
-  if (school) console.log("✅ School info fetched (Cache/API):", school);
+  if (school) {
+    console.log("✅ School info fetched (Cache/API):", school);
+    if (school.gradingConfig) {
+      window.cbcUtils.customGradingConfig = school.gradingConfig;
+    }
+  }
 
 } catch (err) {
   if (schoolNameEl) schoolNameEl.textContent = "School Name N/A";
@@ -337,11 +345,11 @@ const loadFeeData = async (selectedYear) => {
                           <span style="display:block; font-size: 0.7rem; color: #64748b; text-transform: uppercase; font-weight: 700; margin-bottom: 3px; letter-spacing: 0.05em;">Total Fee</span>
                           <strong style="font-size: 1.1rem; color: #0f172a;">KES ${feesData.totalFee.toLocaleString()}</strong>
                         </div>
-                        <div style="text-align:center; flex: 1; min-width: 120px; border-left: 1px solid #e2e8e0;">
+                        <div style="text-align:center; flex: 1; min-width: 120px; border-left: 1px solid #e2e8f0;">
                           <span style="display:block; font-size: 0.7rem; color: #64748b; text-transform: uppercase; font-weight: 700; margin-bottom: 3px; letter-spacing: 0.05em;">Total Paid</span>
                           <strong style="font-size: 1.1rem; color: #16a34a;">KES ${totalPaid.toLocaleString()}</strong>
                         </div>
-                        <div style="text-align:center; flex: 1; min-width: 120px; border-left: 1px solid #e2e8e0;">
+                        <div style="text-align:center; flex: 1; min-width: 120px; border-left: 1px solid #e2e8f0;">
                           <span style="display:block; font-size: 0.7rem; color: #64748b; text-transform: uppercase; font-weight: 700; margin-bottom: 3px; letter-spacing: 0.05em;">Outstanding Balance</span>
                           <strong style="font-size: 1.1rem; color: #dc2626;">KES ${(feesData.totalFee - totalPaid).toLocaleString()}</strong>
                         </div>
@@ -659,13 +667,13 @@ const displayStudentTables = async () => {
           pathwayEl.style.fontSize = "0.95rem";
           welcomeNameEl.parentNode.insertBefore(pathwayEl, welcomeNameEl.nextSibling);
         }
-
-        const dashboardGrade = Number(user.grade || latest.grade || 0);
-        if (dashboardGrade >= 10 && dashboardGrade <= 12) {
+        
+        const dashboardGrade = user.grade || latest.grade; // Keep as string for cbcUtils
+        if (window.cbcUtils.isSeniorGrade(dashboardGrade)) {
           // Pick the first submitted mark that contains a pathway
           const pathwayMark = studentMarks.find(m => m.pathway && String(m.pathway).trim());
           if (pathwayMark && pathwayMark.pathway) {
-            pathwayEl.textContent = String(pathwayMark.pathway).toUpperCase();
+            pathwayEl.textContent = `PATHWAY: ${String(pathwayMark.pathway).toUpperCase()}`;
             pathwayEl.style.display = "inline-block";
             console.log('Pathway found for grade', dashboardGrade, ':', pathwayMark.pathway);
           } else {
@@ -693,7 +701,8 @@ const displayStudentTables = async () => {
     Object.entries(grouped).forEach(([key, list]) => {
       const [grade, term, year, assess] = key.split("_");
       const gradeNum = parseInt(grade.match(/\d+/)?.[0] || grade);
-      const isSenior = gradeNum >= 10 && gradeNum <= 12;
+    const isSenior = window.cbcUtils.isSeniorGrade(grade);
+
 
       // Sort subjects/courses alphabetically for a clean, consistent list
       list.sort((a, b) => {
@@ -751,10 +760,10 @@ const displayStudentTables = async () => {
       let tbody = "<tbody>";
       list.forEach(m => {
         if (isSenior) {
-          const final = cbcUtils.calculateFinalScore(m.continuousAssessment, m.projectWork, m.endTermExam);
+          const final = window.cbcUtils.calculateFinalScore(m.continuousAssessment, m.projectWork, m.endTermExam);
           const isAbsentFinal = final === null || String(final).toUpperCase() === "X";
           const finalDisplay = isAbsentFinal ? '<span style="color:#ef4444; font-weight:700;">ABS</span>' : (final + "%");
-          const finalLevel = isAbsentFinal ? "-" : cbcUtils.getSubdivision(final);
+          const finalLevel = isAbsentFinal ? "-" : window.cbcUtils.getSubdivision(final, m.grade || user.grade);
 
           tbody += `
             <tr>
@@ -768,7 +777,7 @@ const displayStudentTables = async () => {
         } else {
           const scorePresent = m.score !== undefined && m.score !== null && String(m.score).trim() !== "";
           const scoreDisplay = scorePresent ? (Number(m.score) + "%") : "-";
-          const levelDisplay = scorePresent ? cbcUtils.getSubdivision(Number(m.score)) : "-";
+          const levelDisplay = scorePresent ? window.cbcUtils.getSubdivision(Number(m.score), m.grade || user.grade) : "-";
           tbody += `
             <tr>
               <td>${(m.subject || "Unknown").replace(/-/g, " ")}</td>
@@ -817,7 +826,7 @@ const displayStudentTables = async () => {
             if (m.continuousAssessment !== null) { caSum += Number(m.continuousAssessment); caCount++; }
             if (m.projectWork !== null) { pwSum += Number(m.projectWork); pwCount++; }
             if (m.endTermExam !== null) { etSum += Number(m.endTermExam); etCount++; }
-            const fs = cbcUtils.calculateFinalScore(m.continuousAssessment, m.projectWork, m.endTermExam);
+            const fs = window.cbcUtils.calculateFinalScore(m.continuousAssessment, m.projectWork, m.endTermExam);
             const isFsAbsent = fs === null || String(fs).toUpperCase() === "X";
             if (!isFsAbsent) {
               fsSum += Number(fs);

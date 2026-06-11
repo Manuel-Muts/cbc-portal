@@ -6,47 +6,8 @@
   <title>Learner</title>
   <link rel="stylesheet" href="css/style.css" />
   <link rel="stylesheet" href="css/student.css" />
+  <link rel="stylesheet" href="css/announcements.css">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
-  <style>
-    /* Mobile Responsive Optimizations for Dashboard */
-    @media screen and (max-width: 768px) {
-      /* Stack Filter Bar elements vertically */
-      .filter-bar {
-        display: flex;
-        flex-direction: column;
-        gap: 10px;
-        align-items: stretch;
-      }
-      
-      .filter-bar label, 
-      .filter-bar select, 
-      .filter-bar button {
-        width: 100%;
-        margin: 0 !important;
-      }
-
-      /* Dashboard Header adjustments */
-      .dashboard-header {
-        flex-direction: column;
-        align-items: flex-start;
-        gap: 15px;
-      }
-
-      .dashboard-header .toolbar {
-        width: 100%;
-        display: flex;
-        justify-content: space-between;
-        gap: 8px;
-      }
-
-      .dashboard-header .toolbar button {
-        flex: 1;
-        font-size: 13px;
-        padding: 8px 5px;
-        margin: 0 !important;
-      }
-    }
-  </style>
 </head>
 <body> 
   <link rel="icon" type="image/png" href="/images/favicon.png"/>
@@ -54,7 +15,7 @@
   <aside class="sidebar">
     <div class="sidebar-brand">
       <div class="logo">
-        <h2 id="schoolName">SCHOOL NAME</h2>
+        <h4 id="schoolName">SCHOOL NAME</h4>
       </div>
     </div>
     <button class="sidebar-close" aria-label="Close sidebar">&times;</button>
@@ -62,13 +23,12 @@
     <ul class="menu">
       <li class="active"><a href="#"><i class="fas fa-home"></i> Dashboard</a></li>
       <li><a href="/performance"><i class="fas fa-chart-line"></i> My Performance</a></li>
-      <li><a href="/study-materials"><i class="fas fa-book-open"></i> Study Materials/Assignments</a></li>
+      <li><a href="/study-materials"><i class="fas fa-book-open"></i> Study Materials & Assignments</a></li>
+      <li><a href="#" id="viewFeeBtn"><i class="fas fa-file-invoice-dollar"></i> Fee Structure</a></li>
     </ul>
 
     <div class="sidebar-actions">
-      <button id="viewFeeBtn" class="btn sidebar-fee-btn">
-         Fee Structure
-      </button>
+     
       <button id="refreshBtn" class="btn sidebar-refresh-btn">
         Refresh 
       </button>
@@ -164,6 +124,7 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
   <script src="js/config.js"></script>
   <script src="js/auth-service.js"></script>
+  <script src="js/announcements.js"></script>
   <script src="js/cbc-utils.js"></script>
   <script src="js/ui.js"></script>
   <script src="js/student.js"></script>

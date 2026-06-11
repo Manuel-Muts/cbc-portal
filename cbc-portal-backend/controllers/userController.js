@@ -11,9 +11,39 @@ import {
   generateRawPassword,
   sendCredentialsEmail
 } from '../utils/authHelpers.js';
-import cache from "../utils/simpleCache.js";
+import cache from "../utils/cacheManager.js";
+import { Student, Teacher } from '../models/RoleModels.js';
 import StudentEnrollment  from '../models/StudentEnrollment.js'; // ✅ ADD THIS
+import Mark from '../models/mark.js'; // 🆕 Import Mark model
+import Payment from '../models/Payment.js'; // 🆕 Import Payment model
+import {Material} from '../models/Material.js'; // 🆕 Import Material model
 
+
+// 🆕 Helper to auto-format phone numbers (extracted from registerUser)
+const formatContact = (contact) => {
+  if (!contact) return null;
+  let formattedContact = String(contact).trim().replace(/\s+/g, '');
+  if (formattedContact.startsWith('0')) formattedContact = '+254' + formattedContact.substring(1);
+  else if (/^[71]/.test(formattedContact) && formattedContact.length === 9) formattedContact = '+254' + formattedContact;
+  else if (formattedContact.startsWith('254') && formattedContact.length === 12) formattedContact = '+' + formattedContact;
+  return formattedContact;
+};
+
+// 🆕 Helper to normalize grade strings consistently across the module
+const normalizeGrade = (grade) => {
+  if (!grade) return null;
+  let str = String(grade).trim();
+
+  let checkStr = str.toUpperCase();
+  if (checkStr.startsWith("GRADE ")) {
+    checkStr = checkStr.replace(/^GRADE\s+/i, "").trim();
+  }
+  if (checkStr.startsWith("PP")) return checkStr;
+
+  const match = str.match(/\d+/);
+  if (match) return `Grade ${match[0]}`;
+  return str;
+};
 
 // ---------------------------
 // REGISTER USER (Admin Only)
@@ -39,6 +69,7 @@ export const registerUser = async (req, res) => {
     }
 
     const { name, email, role, admission, schoolId, grade, academicYear, stream, contact } = req.body;
+    const formattedContact = formatContact(contact);
 
     if (!name || !role)
       return res.status(400).json({ msg: "Name and role are required" });
@@ -100,7 +131,7 @@ if (!allowedRoles.includes(role)) {
         return res.status(404).json({ msg: "School not found" });
       }
       if (targetSchool.registrationOpen === false && admin.role !== 'super_admin') {
-        return res.status(403).json({ msg: "You have been restricted to register new learners, please contact MutsTech ltd." });
+        return res.status(403).json({ msg: "You have been restricted to register new learners, please contact MutsTech." });
       }
     }
 
@@ -123,31 +154,77 @@ if (!allowedRoles.includes(role)) {
     const rawPassword = generateRawPassword(role, admission);
     const hashedPassword = await bcrypt.hash(rawPassword, 10);
 
-    // Normalize grade to "Grade X" format helper
-    const normalizeGrade = (g) => { // Removed 's' as it's not used for grade normalization
-      if (!g) return null;
-      let str = String(g).trim();
-      const match = str.match(/\d+/); // Extract only the numeric part
-      if (match) {
-        return `Grade ${match[0]}`;
-      }
-      // If no numeric part, but it's already "Grade X", return as is.
-      // Otherwise, if it's just a string, return it as is (e.g., "PP1", "PP2")
-      return str.toLowerCase().startsWith("grade") ? str : str;
-    };
+    // 🆕 Support for "Upsert" (Update or Insert) for student imports.
+    // If student exists by admission in this school, we update details instead of failing.
+    if (role === "student") {
+      const existingStudent = await Student.findOne({ admission, schoolId: schoolIdToAssign });
+      if (existingStudent) {
+        if (formattedContact) existingStudent.contact = formattedContact;
+        if (name) existingStudent.name = name;
+        if (grade) existingStudent.grade = normalizeGrade(grade);
 
-    const newUser = new User({
+        // 🆕 Sync Enrollment record for the current academic year to ensure class list consistency
+        const currentYear = academicYear || new Date().getFullYear();
+        let enrollment = await StudentEnrollment.findOne({
+            studentId: existingStudent._id,
+            academicYear: currentYear
+        });
+
+        if (enrollment) {
+            if (grade) enrollment.grade = normalizeGrade(grade);
+            if (stream) enrollment.stream = stream;
+            enrollment.status = "active"; 
+            await enrollment.save();
+        } else {
+            enrollment = new StudentEnrollment({
+                studentId: existingStudent._id,
+                schoolId: schoolIdToAssign,
+                grade: normalizeGrade(grade),
+                stream: stream || null,
+                academicYear: currentYear,
+                status: "active"
+            });
+            await enrollment.save();
+        }
+        
+        // Ensure user record points to the active enrollment
+        existingStudent.enrollmentId = enrollment._id;
+
+        await existingStudent.save();
+        if (schoolIdToAssign) cache.clearByPattern(String(schoolIdToAssign));
+
+        return res.status(200).json({
+          msg: "Student record matched and updated successfully",
+          user: existingStudent
+        });
+      }
+    }
+
+    // 🆕 Instantiate the correct model based on the role
+    const commonFields = {
       name,
       role,
       email: role !== "student" ? email : undefined,
       password: hashedPassword,
-      ...(role === "student" && { admission }),
-      grade: role === "student" ? normalizeGrade(grade) : null, // Store grade on user directly
-      contact: contact || null,
+      contact: formattedContact,
       passwordMustChange: ["teacher", "classteacher", "accounts"].includes(role),
       schoolId: schoolIdToAssign,
       createdBy: admin._id
-    });
+    };
+
+    let newUser;
+    if (role === "student") {
+      newUser = new Student({
+        ...commonFields,
+        admission,
+        grade: normalizeGrade(grade)
+      });
+    } else if (role === "teacher" || role === "classteacher") {
+      newUser = new Teacher(commonFields);
+    } else {
+      // Fallback for roles like 'admin' or 'accounts' not yet in discriminators
+      newUser = new User(commonFields);
+    }
 
     await newUser.save();
 
@@ -305,7 +382,7 @@ export const loginUser = async (req, res) => {
       school = await School.findById(user.schoolId);
       if (!school || school.status === "Suspended") {
         await LoginAttempt.create({ userId: user._id, identifier: user.email || user.admission || null, roleAttempted: role, schoolId: user.schoolId, success: false, ip: req.ip, userAgent: req.headers['user-agent'] });
-        return res.status(403).json({ message: "Your school is suspended. Contact MUTS_TECH LTD." });
+        return res.status(403).json({ message: "Your school is suspended. Contact MUTS_TECH." });
       }
     }
 
@@ -315,20 +392,22 @@ export const loginUser = async (req, res) => {
     const roles = [user.role];
     if (user.isClassTeacher && user.role !== "classteacher") roles.push("classteacher");
      
-    // Resolve classGrade for students dynamically from enrollment if missing on user object
+    // Resolve classGrade/Stream for students dynamically from enrollment if missing on user object
     let studentGrade = user.grade ? String(user.grade) : null;
-    
-    if ((user.role === "student" || user.role === "learner") && !studentGrade) {
+    let studentStream = null;
+
+    if ((user.role === "student" || user.role === "learner")) {
       const currentYear = new Date().getFullYear();
       // Try to find active enrollment
       const enrollment = await StudentEnrollment.findOne({
         studentId: user._id,
         status: "active",
         academicYear: currentYear
-      }).select("grade");
+      }).select("grade stream");
 
       if (enrollment) {
-        studentGrade = enrollment.grade;
+        if (!studentGrade) studentGrade = enrollment.grade;
+        studentStream = enrollment.stream;
       }
     }
 
@@ -344,12 +423,14 @@ export const loginUser = async (req, res) => {
         roles,
         schoolId: user.schoolId ? String(user.schoolId) : null,
         classGrade:
-          user.role === "student"
+          (user.role === "student" || user.role === "learner")
             ? studentGrade
-            : user.role === "classteacher"
+            : (role === "classteacher" || user.isClassTeacher)
             ? (user.assignedClass ? String(user.assignedClass) : null)
             : null,
-        classStream: user.role === "classteacher" ? classStream : null, // 🆕 Include stream in JWT
+        classStream: (user.role === "student" || user.role === "learner") 
+          ? studentStream 
+          : (role === "classteacher" || user.isClassTeacher ? classStream : null),
         schoolStatus: school ? school.status : null,
         schoolVersion: school ? school.version : null,
         isClassTeacher: user.isClassTeacher,
@@ -435,8 +516,8 @@ export const getAllUsers = async (req, res) => {
   try {
     const user = req.user;
 
-    if (!['admin', 'super_admin'].includes(user.role)) {
-      return res.status(403).json({ message: 'Only admins can view users' });
+    if (!['admin', 'super_admin', 'teacher', 'classteacher', 'accounts'].includes(user.role)) {
+      return res.status(403).json({ message: 'Unauthorized access to user directory' });
     }
 
     // 1. Determine Pagination immediately (Moved up to fix ReferenceErrors and cache consistency)
@@ -473,8 +554,8 @@ export const getAllUsers = async (req, res) => {
       resetVerified: 0
     };
 
-    // Admins see only users in their school if schoolId exists
-    if (user.role === 'admin' && user.schoolId) {
+    // Staff see only users in their school
+    if (user.role !== 'super_admin' && user.schoolId) {
       query.schoolId = user.schoolId;
     }
 
@@ -495,13 +576,6 @@ export const getAllUsers = async (req, res) => {
 
     // 🆕 Filter by grade and stream for students
     const { grade, stream } = req.query;
-    const normalizeQueryGrade = (g) => {
-      if (!g) return null;
-      let value = String(g).trim();
-      const numeric = value.match(/\d+/);
-      if (numeric) return `Grade ${numeric[0]}`;
-      return value;
-    };
     const normalizeQueryStream = (s) => {
       if (!s) return null;
       let value = String(s).trim();
@@ -509,7 +583,7 @@ export const getAllUsers = async (req, res) => {
       return value.toUpperCase();
     };
 
-    const normalizedGrade = normalizeQueryGrade(grade);
+    const normalizedGrade = normalizeGrade(grade);
     const normalizedStream = normalizeQueryStream(stream);
 
     if (query.role === 'student' && (normalizedGrade || normalizedStream)) {
@@ -704,7 +778,9 @@ export const getMyAllocations = async (req, res) => {
     const allocations = (teacher.allocations || []).map(a => ({
       grade: a.grade,
       stream: a.stream || null, // Could be "W", "E", "A", etc. or null
-      classLabel: a.stream ? `Grade ${a.grade}${a.stream}` : `Grade ${a.grade}`,
+      classLabel: String(a.grade).toUpperCase().startsWith("PP") 
+        ? (a.stream ? `${a.grade} ${a.stream}` : `${a.grade}`)
+        : (a.stream ? `Grade ${a.grade} ${a.stream}` : `Grade ${a.grade}`),
       subjects: Array.isArray(a.subjects) ? a.subjects : []
     }));
 
@@ -712,9 +788,11 @@ export const getMyAllocations = async (req, res) => {
     const classTeacherInfo = teacher.assignedClass ? {
       grade: teacher.assignedClass,
       stream: teacher.assignedStream || null,
-      classLabel: teacher.assignedStream 
-        ? `Grade ${teacher.assignedClass}${teacher.assignedStream}` 
-        : `Grade ${teacher.assignedClass}`
+      classLabel: String(teacher.assignedClass).toUpperCase().startsWith("PP")
+        ? (teacher.assignedStream ? `${teacher.assignedClass} ${teacher.assignedStream}` : `${teacher.assignedClass}`)
+        : (teacher.assignedStream 
+          ? `Grade ${teacher.assignedClass} ${teacher.assignedStream}` 
+          : `Grade ${teacher.assignedClass}`)
     } : null;
 
     res.json({
@@ -766,9 +844,11 @@ export const assignClassTeacher = async (req, res) => {
 
     // Email the class teacher credentials (if email exists)
     if (teacher.email) {
-      const classLabel = assignedStream 
-        ? `Grade ${assignedClass}${assignedStream}` 
-        : `Grade ${assignedClass}`;
+      const classLabel = String(assignedClass).toUpperCase().startsWith("PP")
+        ? (assignedStream ? `${assignedClass} ${assignedStream}` : `${assignedClass}`)
+        : (assignedStream 
+          ? `Grade ${assignedClass} ${assignedStream}` 
+          : `Grade ${assignedClass}`);
       
       await sendEmail({
         to: teacher.email,
@@ -809,7 +889,11 @@ export const assignClassTeacher = async (req, res) => {
 
 export const getClassTeacherAllocations = async (req, res) => {
   try {
-    const cacheKey = `class_alloc_${req.user.schoolId || 'global'}`;
+    const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+    const limit = Math.max(1, parseInt(req.query.limit, 10) || 10);
+    const skip = (page - 1) * limit;
+
+    const cacheKey = `class_alloc_${req.user.schoolId || 'global'}_p${page}_l${limit}`;
     const cached = cache.get(cacheKey);
     if (cached) {
       return res.json(cached);
@@ -818,22 +902,38 @@ export const getClassTeacherAllocations = async (req, res) => {
     const query = { assignedClass: { $ne: null }, role: 'teacher' };
     if (req.user.role === 'admin') query.schoolId = req.user.schoolId;
 
-    const classTeachers = await User.find(query).select('name email admission assignedClass assignedStream isClassTeacher isDean signatureUrl');
+    const total = await User.countDocuments(query);
+    const classTeachers = await User.find(query)
+      .select('name email admission assignedClass assignedStream isClassTeacher isDean signatureUrl')
+      .skip(skip)
+      .limit(limit);
 
     const allocations = classTeachers.map(t => ({
       teacherId: t._id.toString(),
-      teacherName: t.name, // Required for admin UI
-      teacherAdmission: t.admission, // Required for admin UI
+      teacherName: t.name,
+      teacherAdmission: t.admission,
       assignedClass: t.assignedClass || '',
       assignedStream: t.assignedStream || null,
-      classLabel: t.assignedStream ? `Grade ${t.assignedClass}${t.assignedStream}` : `Grade ${t.assignedClass}`,
+      classLabel: String(t.assignedClass).toUpperCase().startsWith("PP")
+        ? (t.assignedStream ? `${t.assignedClass} ${t.assignedStream}` : `${t.assignedClass}`)
+        : (t.assignedStream ? `Grade ${t.assignedClass} ${t.assignedStream}` : `Grade ${t.assignedClass}`),
       isClassTeacher: !!t.isClassTeacher,
       isDean: !!t.isDean,
       signatureUrl: t.signatureUrl || ""
     }));
 
-    cache.set(cacheKey, allocations, 120);
-    res.json(allocations);
+    const response = {
+      data: allocations,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit)
+      }
+    };
+
+    cache.set(cacheKey, response, 120);
+    res.json(response);
   } catch (err) {
     console.error("GetClassTeacherAllocations Error:", err);
     res.status(500).json({ error: err.message });
@@ -845,6 +945,7 @@ export const getUser = async (req, res) => {
   try {
     const user = await User.findById(req.user.id)
       .select("-password -classTeacherPassword -resetCode -resetCodeExpires -resetAttempts -resetVerified")
+      .populate("schoolId", "status") // 🆕 Populate school to retrieve its status
       .lean();
 
     if (!user) {
@@ -853,6 +954,8 @@ export const getUser = async (req, res) => {
 
     return res.status(200).json({
       ...user,
+      schoolStatus: user.schoolId?.status || "Active", // 🆕 Explicitly provide school status
+      schoolId: user.schoolId?._id || user.schoolId,   // 🆕 Restore schoolId as a standard ID string
       isDean: !!user.isDean,
       // normalize for frontend safety
       classGrade: user.assignedClass || user.classGrade || null
@@ -900,7 +1003,8 @@ export const removeSubjectAllocation = async (req, res) => {
 
     await teacher.save();
     cache.clearByPattern(String(teacher.schoolId)); // Invalidate cache
-    const gradeLabel = stream ? `Grade ${grade}${stream}` : `Grade ${grade}`;
+    const isPP = String(grade).toUpperCase().startsWith("PP");
+    const gradeLabel = isPP ? (stream ? `${grade}${stream}` : grade) : (stream ? `Grade ${grade}${stream}` : `Grade ${grade}`);
     res.json({ 
       message: `Allocation for ${gradeLabel} removed successfully`, 
       removed: originalLength - newLength > 0,
@@ -974,7 +1078,7 @@ export const getStudentByAdmission = async (req, res) => {
     const { admission } = req.params;
     if (!admission) return res.status(400).json({ message: "Admission required" });
 
-    const query = { admission, role: "student" };
+    const query = { admission };
 
     // ---------------------------
     // School scoping
@@ -983,9 +1087,9 @@ export const getStudentByAdmission = async (req, res) => {
       // Only fetch students in the same school
       query.schoolId = req.user.schoolId;
     }
-    // super_admin can fetch any student → no schoolId restriction
 
-    const student = await User.findOne(query).select("name admission schoolId _id");
+    // 🆕 Use Student model to ensure we only ever find learners
+    const student = await Student.findOne(query).select("name admission schoolId _id");
     if (!student) return res.status(404).json({ message: "Student not found" });
 
     // 🔧 FIXED: Fetch LATEST ACTIVE enrollment (handles promotion correctly)
@@ -1217,16 +1321,36 @@ export const updateUser = async (req, res) => {
     }
 
     // Assign allowed fields
-    const allowed = ["name", "email", "role", "contact"];
+    let allowed = ["name", "email", "role", "contact"];
 
-    // Allow admission to be updated for students
-    if (targetUser.role === "student") {
-      allowed.push("admission");
+    // 🆕 Determine the role we are dealing with (current or newly assigned)
+    const effectiveRole = req.body.role || targetUser.role;
+
+    // 🆕 Expand allowed fields based on the discriminator role
+    if (effectiveRole === "student") {
+      allowed.push("admission", "grade");
+    } else if (["teacher", "classteacher"].includes(effectiveRole)) {
+      // Allow staff-specific management fields
+      allowed.push("isDean", "assignedClass", "assignedStream", "isClassTeacher");
     }
 
     allowed.forEach(key => {
       if (req.body[key] !== undefined) {
-        targetUser[key] = req.body[key];
+        let value = req.body[key];
+        // 🆕 Auto-format contact on update
+        if (key === 'contact' && value) {
+          let str = String(value).trim().replace(/\s+/g, '');
+          if (str.startsWith('0')) value = '+254' + str.substring(1);
+          else if (/^[71]/.test(str) && str.length === 9) value = '+254' + str;
+          else if (str.startsWith('254') && str.length === 12) value = '+' + str;
+        }
+
+        // 🆕 Normalize grade if it's a student field being updated
+        if (key === 'grade' && effectiveRole === "student") {
+          value = normalizeGrade(value);
+        }
+
+        targetUser[key] = value;
       }
     });
 
@@ -1362,5 +1486,300 @@ export const getClassTeacher = async (req, res) => {
   } catch (err) {
     console.error("GetClassTeacher Error:", err);
     res.status(500).json({ message: "Server error" });
+  }
+};
+
+/**
+ * 🆕 GET CLASS TEACHERS FOR MULTIPLE GRADES/STREAMS (Batch for Reports)
+ * Accepts an array of { grade, stream } objects in the request body.
+ */
+export const getClassTeachersByGradesAndStreams = async (req, res) => {
+  try {
+    const { gradeStreamPairs } = req.body; // Expects [{ grade: "Grade 1", stream: "A" }, { grade: "Grade 2", stream: null }]
+
+    if (!Array.isArray(gradeStreamPairs) || gradeStreamPairs.length === 0) {
+      return res.status(400).json({ message: "An array of grade/stream pairs is required." });
+    }
+
+    const schoolId = req.user.schoolId;
+    if (!schoolId) {
+      return res.status(400).json({ message: "School ID is missing." });
+    }
+
+    // 🆕 Deduplicate pairs to prevent redundant query conditions
+    const uniquePairs = Array.from(new Set(gradeStreamPairs.map(p => JSON.stringify(p)))).map(p => JSON.parse(p));
+
+    const queryConditions = uniquePairs.map(pair => {
+      let grade = pair.grade;
+      let stream = (pair.stream === "null" || pair.stream === "undefined" || !pair.stream) ? null : pair.stream.trim();
+
+      // Normalize grade to handle formats like "Grade 2W" or "2W"
+      const gradeParts = grade.match(/^(?:Grade\s+)?(\d+)([A-Z])?$/i);
+      let numericGrade = grade;
+      if (gradeParts) {
+        numericGrade = gradeParts[1];
+        if (!stream && gradeParts[2]) stream = gradeParts[2].toUpperCase();
+      }
+
+      return {
+        schoolId: schoolId,
+        assignedClass: { $in: [grade, numericGrade, `Grade ${numericGrade}`] },
+        assignedStream: stream,
+        isClassTeacher: true
+      };
+    });
+
+    const teachers = await User.find({ $or: queryConditions }).select("name signatureUrl assignedClass assignedStream").lean();
+
+    res.json(teachers);
+  } catch (err) {
+    console.error("getClassTeachersByGradesAndStreams error:", err);
+    res.status(500).json({ message: "Server error fetching class teachers." });
+  }
+};
+
+// ---------------------------
+// BULK DELETE STUDENTS BY CLASS (Admin Only)
+// ---------------------------
+export const bulkDeleteStudentsByClass = async (req, res) => {
+  try {
+    const actingUser = req.user;
+
+    if (!['admin', 'super_admin'].includes(actingUser.role)) {
+      return res.status(403).json({ message: 'Only admins can perform this action' });
+    }
+
+    const { grade, stream, academicYear } = req.body;
+
+    if (!grade || !academicYear) {
+      return res.status(400).json({ message: 'Grade and academicYear are required' });
+    }
+
+    const schoolId = actingUser.schoolId;
+    if (!schoolId) {
+      return res.status(400).json({ message: 'School ID is missing for the acting user.' });
+    }
+
+    // 1. Find all enrollments for the specified class and year
+    const enrollmentQuery = {
+      schoolId: schoolId,
+      grade: grade,
+      academicYear: Number(academicYear),
+      status: "active" // Only delete active students in this class
+    };
+    if (stream) {
+      enrollmentQuery.stream = stream;
+    }
+
+    // 🚀 Update: Populate studentId to get admission numbers for Mark deletion
+    const enrollmentsToDelete = await StudentEnrollment.find(enrollmentQuery).populate('studentId', 'admission').lean();
+    const studentIdsToDelete = [...new Set(enrollmentsToDelete.map(e => e.studentId?._id?.toString()).filter(Boolean))];
+    const admissionsToDelete = [...new Set(enrollmentsToDelete.map(e => e.studentId?.admission).filter(Boolean))];
+
+    if (studentIdsToDelete.length === 0) {
+      return res.status(404).json({ message: 'No active students found in this class for the specified academic year.' });
+    }
+
+    // 2. Perform bulk deletion across all related collections
+    const deleteResults = await Promise.all([
+      User.deleteMany({ _id: { $in: studentIdsToDelete }, role: 'student', schoolId: schoolId }),
+      StudentEnrollment.deleteMany({ studentId: { $in: studentIdsToDelete }, schoolId: schoolId }),
+
+      // 🆕 Enhanced: Use both studentId and admissionNo for robust cascading deletion
+      Mark.deleteMany({ 
+        $or: [
+          { studentId: { $in: studentIdsToDelete } },
+          { admissionNo: { $in: admissionsToDelete } }
+        ], 
+        schoolId: schoolId 
+      }), 
+      Payment.deleteMany({ studentId: { $in: studentIdsToDelete }, schoolId: schoolId }), 
+      LoginAttempt.deleteMany({ userId: { $in: studentIdsToDelete } }), // Login attempts are linked by userId
+      
+      // 3. Update Materials: Remove deleted student IDs from 'readBy' array
+      Material.updateMany(
+        { readBy: { $in: studentIdsToDelete } },
+        { $pull: { readBy: { $in: studentIdsToDelete } } }
+      )
+    ]);
+
+    const deletedUsersCount = deleteResults[0].deletedCount;
+    const deletedEnrollmentsCount = deleteResults[1].deletedCount;
+    const deletedMarksCount = deleteResults[2].deletedCount;
+    const deletedPaymentsCount = deleteResults[3].deletedCount;
+    const deletedLoginAttemptsCount = deleteResults[4].deletedCount;
+
+    // 4. Clear relevant caches for the school
+    cache.clearByPattern(String(schoolId));
+
+    res.status(200).json({
+      message: `Successfully deleted ${deletedUsersCount} students and their associated data.`,
+      details: {
+        students: deletedUsersCount,
+        enrollments: deletedEnrollmentsCount,
+        marks: deletedMarksCount,
+        payments: deletedPaymentsCount,
+        loginAttempts: deletedLoginAttemptsCount
+      }
+    });
+  } catch (err) {
+    console.error("bulkDeleteStudentsByClass Error:", err);
+    res.status(500).json({ message: err.message });
+  }
+};
+
+// ---------------------------
+// UPDATE GRADING CONFIG (Admin / Dean)
+// ---------------------------
+export const updateGradingConfig = async (req, res) => {
+  try {
+    const { gradingConfig } = req.body;
+    const schoolId = req.user.schoolId;
+
+    if (!schoolId) {
+      return res.status(400).json({ message: "School ID is missing from your profile." });
+    }
+
+    const school = await School.findByIdAndUpdate(
+      schoolId,
+      { gradingConfig },
+      { new: true, runValidators: true }
+    );
+
+    if (!school) {
+      return res.status(404).json({ message: "School not found." });
+    }
+
+    // Invalidate school-related caches to reflect changes immediately
+    // Use a pattern that catches school profile caches
+    cache.clearByPattern(String(schoolId));
+
+    res.status(200).json({
+      message: "School grading configuration updated successfully.",
+      gradingConfig: school.gradingConfig
+    });
+  } catch (err) {
+    console.error("updateGradingConfig Error:", err);
+    res.status(500).json({ message: err.message });
+  }
+};
+
+// ---------------------------
+// BULK REGISTER USERS (Admin Only) - Optimized for CSV Import
+// ---------------------------
+export const bulkRegisterUsers = async (req, res) => {
+  try {
+    const admin = req.user;
+    if (!['admin', 'super_admin'].includes(admin.role)) {
+      return res.status(403).json({ msg: "Only admins can register users" });
+    }
+
+    const studentsToProcess = req.body;
+    if (!Array.isArray(studentsToProcess) || studentsToProcess.length === 0) {
+      return res.status(400).json({ msg: "Request body must be an array of student data" });
+    }
+
+    const schoolIdToAssign = admin.schoolId; // Admins can only register for their own school
+    if (!schoolIdToAssign) {
+      return res.status(400).json({ msg: "Admin does not have a schoolId assigned. Cannot create users for this school." });
+    }
+
+    const results = { successCount: 0, failureCount: 0, errors: [] };
+    const currentYear = new Date().getFullYear();
+
+    // Pre-fetch all existing students by admission number in one go
+    const admissions = studentsToProcess.map(s => s.admission).filter(Boolean);
+    const existingStudents = await Student.find({ admission: { $in: admissions }, schoolId: schoolIdToAssign }).lean();
+    const existingStudentMap = new Map(existingStudents.map(s => [s.admission, s]));
+
+    // Pre-fetch all existing enrollments for these students for the current year
+    const existingEnrollments = await StudentEnrollment.find({ studentId: { $in: existingStudents.map(s => s._id) }, academicYear: currentYear }).lean();
+    const existingEnrollmentMap = new Map(existingEnrollments.map(e => [String(e.studentId), e]));
+
+    for (const studentData of studentsToProcess) {
+      try {
+        const { name, admission, grade, stream, contact } = studentData;
+
+        if (!name || !admission || !grade) {
+          throw new Error("Missing required fields (Name, Admission, or Grade)");
+        }
+
+        const normalizedGrade = normalizeGrade(grade); // Reuse existing helper
+        const formattedContact = formatContact(contact); // Reuse existing helper
+
+        let student = existingStudentMap.get(admission);
+
+        if (student) {
+          // Update or create enrollment
+          let enrollment = existingEnrollmentMap.get(String(student._id));
+          if (enrollment) {
+            await StudentEnrollment.findByIdAndUpdate(enrollment._id, { grade: normalizedGrade, stream, status: "active" });
+          } else {
+            enrollment = await StudentEnrollment.create({
+              studentId: student._id,
+              schoolId: schoolIdToAssign,
+              grade: normalizedGrade,
+              stream,
+              academicYear: currentYear,
+              status: "active"
+            });
+          }
+
+          // 🚀 FIX: Sync User record and ensure it links to the enrollment ID for table display
+          // Suggestion: Collect these into an array and use bulkWrite at the end
+
+          results.successCount++;
+        } else {
+          // Create new student
+          const rawPassword = generateRawPassword("student", admission);
+          const hashedPassword = await bcrypt.hash(rawPassword, 10);
+
+          const newStudent = await Student.create({
+            name,
+            role: "student",
+            admission,
+            grade: normalizedGrade,
+            contact: formattedContact,
+            password: hashedPassword,
+            schoolId: schoolIdToAssign,
+            createdBy: admin._id
+          });
+
+          const enrollment = await StudentEnrollment.create({
+            studentId: newStudent._id,
+            schoolId: schoolIdToAssign,
+            grade: normalizedGrade,
+            stream,
+            academicYear: currentYear,
+            status: "active"
+          });
+
+          // 🚀 FIX: Attach enrollment reference to the new learner document
+          newStudent.enrollmentId = enrollment._id;
+          await newStudent.save();
+
+          results.successCount++;
+        }
+      } catch (error) {
+        results.failureCount++;
+        results.errors.push({
+          admission: studentData.admission || "N/A",
+          name: studentData.name || "N/A",
+          message: error.message
+        });
+      }
+    }
+
+    cache.clearByPattern(String(schoolIdToAssign)); // Invalidate cache for the school
+    res.status(200).json({
+      message: "Bulk import completed",
+      successCount: results.successCount,
+      failureCount: results.failureCount,
+      errors: results.errors.length > 0 ? results.errors : undefined
+    });
+
+  } catch (err) {
+    console.error("Bulk Register Users Error:", err);
+    res.status(500).json({ msg: err.message });
   }
 };

@@ -3,7 +3,16 @@ import mongoose from "mongoose";
 
 const allocationSchema = new mongoose.Schema({
   grade: { type: String, required: true },
-  stream: { type: String, default: null }, // e.g., "W", "E", "A" for Grade 5W, Grade 5E, Grade 5A
+  stream: { 
+    type: String, 
+    default: null,
+    trim: true,
+    uppercase: true,
+    validate: {
+      validator: v => !v || /^[A-Z]+$/.test(v),
+      message: "Stream must contain letters only."
+    }
+  },
   subjects: { type: [String], default: [] }
 });
 
@@ -25,7 +34,12 @@ const userSchema = new mongoose.Schema({
   },
 
   // Each non-super admin user can belong to a school.
-  schoolId: { type: mongoose.Schema.Types.ObjectId, ref: "School", default: null },
+  schoolId: { 
+    type: mongoose.Schema.Types.ObjectId, 
+    ref: "School", 
+    default: null,
+    required: function() { return this.role !== "super_admin"; } // 🔒 Enforce school assignment
+  },
   schoolName: { type: String, default: null },
 
  email: {
@@ -43,7 +57,6 @@ const userSchema = new mongoose.Schema({
   admission: {
     type: String,
     required: function () { return this.role === "student"; },
-    unique: true,
     sparse: true
   },
 
@@ -65,7 +78,16 @@ const userSchema = new mongoose.Schema({
   // ------------------------------------
   allocations: { type: [allocationSchema], default: [] },
   assignedClass: { type: String, default: null },
-  assignedStream: { type: String, default: null }, // e.g., "W", "E", "A" for class stream
+  assignedStream: { 
+    type: String, 
+    default: null,
+    trim: true,
+    uppercase: true,
+    validate: {
+      validator: v => !v || /^[A-Z]+$/.test(v),
+      message: "Stream must contain letters only."
+    }
+  },
   isClassTeacher: { type: Boolean, default: false },
   isDean: { type: Boolean, default: false },
 
@@ -88,7 +110,10 @@ const userSchema = new mongoose.Schema({
   // ------------------------------------
   // TIMESTAMPS
   // ------------------------------------
-  createdAt: { type: Date, default: Date.now }
+  createdAt: { type: Date, default: Date.now },
+}, {
+  discriminatorKey: 'role', // 🚀 This tells Mongoose to use your existing 'role' field
+  timestamps: true
 });
 
 // ------------------------------------
@@ -112,6 +137,11 @@ userSchema.index({ createdAt: -1 });
 userSchema.index({ schoolId: 1 });
 userSchema.index({ grade: 1 }); // Optimize grade-based lookups
 userSchema.index({ schoolId: 1, role: 1 }); // Optimize filtering users by role within a school
+
+// 🚀 Supporting bulk lookups in MarkController (find all students in a class by admission list)
+userSchema.index({ schoolId: 1, role: 1, name: 1 }); // Optimize for searching users by name within a role and school
+userSchema.index({ schoolId: 1, admission: 1 }, { unique: true, sparse: true }); // 🛡️ Unique within school
+
 userSchema.index({ name: "text", admission: "text", email: "text" }); // Enable fast text search
 
 export const User = mongoose.model("User", userSchema);

@@ -4,6 +4,16 @@ import Timetable from '../models/Timetable.js';
 const normalizeGrade = (g) => {
   if (!g) return null;
   const str = String(g).trim();
+
+  // 🆕 Robust PP check: handles "PP1", "pp1", "Grade PP1", "Grade pp1"
+  let checkStr = str.toUpperCase();
+  if (checkStr.startsWith("GRADE ")) {
+    checkStr = checkStr.replace(/^GRADE\s+/i, "").trim();
+  }
+  if (checkStr.startsWith("PP")) {
+    return checkStr;
+  }
+
   const match = str.match(/\d+/); // Extract only the numeric part
   if (match) {
     return `Grade ${match[0]}`;

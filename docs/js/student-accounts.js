@@ -146,12 +146,12 @@
 
   const SCHOOL_TYPES = {
     full: {
-      label: "Full School (Grades 1-12)",
-      gradeOptions: ["1","2","3","4","5","6","7","8","9","10","11","12"]
+      label: "Full School (Grades PP1-12)",
+      gradeOptions: ["PP1", "PP2", "1","2","3","4","5","6","7","8","9","10","11","12"]
     },
     primary_junior: {
-      label: "Primary + Junior (Grades 1-9)",
-      gradeOptions: ["1","2","3","4","5","6","7","8","9"]
+      label: "Primary + Junior (Grades PP1-9)",
+      gradeOptions: ["PP1", "PP2", "1","2","3","4","5","6","7","8","9"]
     },
     senior: {
       label: "Senior School (Grades 10-12)",
@@ -161,8 +161,12 @@
 
   function getSchoolTypeKey() {
     // schoolInfoCache is a Map, so retrieve the 'my-school-all' entry
-    const schoolInfo = schoolInfoCache.get('my-school-all')?.data;
-    return (schoolInfo && schoolInfo.schoolType && SCHOOL_TYPES[schoolInfo.schoolType]) ? schoolInfo.schoolType : 'full';
+    const schoolInfo = schoolInfoCache.get('my-school-all')?.data; // Retrieve cached school info
+    if (!schoolInfo || !schoolInfo.schoolType) return 'full';
+    const rawType = String(schoolInfo.schoolType).toLowerCase().replace(/[^a-z]/g, '_');
+    if (rawType.includes('primary') || rawType.includes('junior')) return 'primary_junior';
+    if (rawType.includes('senior')) return 'senior';
+    return 'full';
   }
 
   // New function to populate grade filters (Adapted from accounts.js)
@@ -173,9 +177,9 @@
       classFilter.innerHTML = '<option value="">All Grades</option>'; // Add an "All" option
       grades.forEach(g => {
         const option = document.createElement("option");
-        const gradeLabel = `Grade ${g}`;
-        option.value = gradeLabel;
-        option.textContent = gradeLabel;
+        const displayValue = String(g).toUpperCase().startsWith("PP") ? g : `Grade ${g}`;
+        option.value = displayValue;
+        option.textContent = displayValue;
         classFilter.appendChild(option);
       });
     }

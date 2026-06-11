@@ -132,4 +132,3 @@ const API_BASE = config.api.baseURL;
 - **Backend Config:** `cbc-portal-backend/config.js`
 - **Frontend Config:** `docs/js/config.js`
 - **Environment Template:** Create `.env` file in root using variables from guide
-

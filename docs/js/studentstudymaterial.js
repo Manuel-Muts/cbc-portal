@@ -1,4 +1,4 @@
-document.addEventListener("DOMContentLoaded", () => {
+document.addEventListener("DOMContentLoaded", async () => {
   // ---------------------------
   // STYLES FOR COMPACTNESS
   // ---------------------------
@@ -19,7 +19,9 @@ document.addEventListener("DOMContentLoaded", () => {
   // API_BASE is now loaded from config.js
   // To change the API endpoint, update config.js
   const API_BASE = config.api.baseURL;
-  const token = localStorage.getItem("token");
+  const user = await window.authService?.getUserProfile(["student", "learner"]);
+  if (!user) return;
+  const token = window.authService?.getToken();
 
   if (!token) {
     window.location.href = "/login";

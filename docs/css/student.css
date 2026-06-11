@@ -20,7 +20,7 @@ a {
 
 /* ==== SIDEBAR ==== */
 .sidebar {
-  width: 260px;
+  width: 210px;
   background: #2b6cb0;
   position: fixed;
   height: 100vh;
@@ -48,12 +48,13 @@ a {
   border-radius: 6px;
   transition: background 0.2s;
 }
-.menu { padding: 0 20px; margin: 0; list-style: none; display: flex !important; flex-direction: column !important; gap: 8px; }
+.menu { padding: 0 15px; margin: 0; list-style: none; display: flex !important; flex-direction: column !important; gap: 4px; }
 .menu li { transition: all 0.2s ease; margin: 0; border-radius: 8px; overflow: hidden; }
-.menu li a { padding: 14px 18px; cursor: pointer; color: rgba(255,255,255,0.8); font-weight: 500; display: flex; align-items: center; gap: 12px; text-decoration: none; transition: all 0.2s; font-size: 0.95rem; }
+.menu li a { padding: 10px 14px; cursor: pointer; color: rgba(255,255,255,0.8); font-weight: 500; display: flex; align-items: center; gap: 10px; text-decoration: none; transition: all 0.2s; font-size: 0.88rem; }
 .menu li:hover { background: rgba(255, 255, 255, 0.1); color: white; }
 .menu li.active { background: #1a4d8c; color: white; font-weight: 700; box-shadow: inset 4px 0 0 #fff; }
 .menu li.active a { color: white !important; }
+ .menu li a i { width: 20px; text-align: center; font-size: 1.1rem; opacity: 0.9; }
 
 .sidebar li.active a,
 .sidebar li a:hover {
@@ -75,7 +76,7 @@ a {
 .main-content { flex-grow: 1; background: #f8fafc; min-width: 0; }
 
 .dashboard-main {
-  margin-left: 260px;
+  margin-left: 200px;
   flex-grow: 1;
   background: #f8fafc;
   min-height: 100vh;
@@ -167,7 +168,7 @@ a {
     position: fixed;
     top: 0;
     left: 0;
-    width: 260px;
+    width: 200px;
     height: 100vh;
     z-index: 2000;
     background: #2b6cb0;
@@ -304,6 +305,11 @@ h3 {
   margin-bottom: 1.5rem;
 }
 
+#schoolName {
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: #edeff2;
+}
 /* ==== DETAILS GRID ==== */
 .details-grid {
   display: grid;
@@ -501,9 +507,9 @@ tr:hover { background: #f9fafb; }
 
 .sidebar-actions .btn {
   width: 100%;
-  padding: 10px 15px;
+  padding: 8px 12px;
   border-radius: 8px;
-  font-size: 0.9rem;
+  font-size: 0.82rem;
   font-weight: 600;
   display: flex;
   align-items: center;
@@ -584,10 +590,7 @@ tr:hover { background: #f9fafb; }
   box-shadow: 0 2px #666;
 }
 
-#schoolNameDashboard {
-  color: #2980b9;
-  text-align: center;
-}
+
 
 /* ==========================
    TABS NAVIGATION

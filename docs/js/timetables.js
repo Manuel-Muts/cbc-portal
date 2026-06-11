@@ -6,8 +6,12 @@ const TimetableModule = (function() {
     const CLASSES_PER_PAGE = 30; // Number of classes to display per page/section in block view (mon-fri fit)
 
     let schoolAllocations = []; // To store all teacher assignments for clash detection
-    let allSavedTimetables = []; // To store schedules for other grades
+    let allSavedTimetables =[]; // To store schedules for other grades
     let currentTimetableData = null; // 🆕 To store the generated snapshot for saving
+    let teacherListPage = 1; // 🆕 Pagination state for teacher dropdown
+    let teacherListTotalPages = 1;
+    let teacherSearchTerm = "";
+    const TEACHER_LIMIT = 10;
     let selectedSwapSlot = null; // 🆕 Tracks { day, lesson, element } for manual swapping
     let sharedActivityOrder = null; // 🆕 Shared activities order across grades
     let activeEditSlot = null; // 🆕 Tracks { dayIdx, lessonIdx } during manual edits
@@ -142,12 +146,12 @@ const TimetableModule = (function() {
     let schoolInfo = null;
     const SCHOOL_TYPES = {
         full: {
-            label: "Full School (Grades 1-12)",
-            gradeOptions: ["1","2","3","4","5","6","7","8","9","10","11","12"]
+            label: "Full School (Grades PP1-12)",
+            gradeOptions: ["PP1", "PP2", "1","2","3","4","5","6","7","8","9","10","11","12"]
         },
         primary_junior: {
-            label: "Primary + Junior (Grades 1-9)",
-            gradeOptions: ["1","2","3","4","5","6","7","8","9"]
+            label: "Primary + Junior (Grades PP1-9)",
+            gradeOptions: ["PP1", "PP2", "1","2","3","4","5","6","7","8","9"]
         },
         senior: {
             label: "Senior School (Grades 10-12)",
@@ -156,18 +160,22 @@ const TimetableModule = (function() {
     };
 
     function getSchoolTypeKey() {
-        return (schoolInfo && schoolInfo.schoolType && SCHOOL_TYPES[schoolInfo.schoolType]) ? schoolInfo.schoolType : 'full';
+        if (!schoolInfo || !schoolInfo.schoolType) return 'full';
+        const rawType = String(schoolInfo.schoolType).toLowerCase().replace(/[^a-z]/g, '_');
+        if (rawType.includes('primary') || rawType.includes('junior')) return 'primary_junior';
+        if (rawType.includes('senior')) return 'senior';
+        return 'full';
     }
 
     function getGradeOptionsForSchool() {
         const schoolType = getSchoolTypeKey();
-        return SCHOOL_TYPES[schoolType].gradeOptions.map(g => `Grade ${g}`);
+        return SCHOOL_TYPES[schoolType].gradeOptions.map(g => g.startsWith('PP') ? g : `Grade ${g}`);
     }
 
     function isGradeSupportedBySchoolType(grade) {
         const schoolType = getSchoolTypeKey();
         if (schoolType === 'primary_junior') {
-            return !window.cbcUtils.isSeniorGrade(grade);
+            return !window.cbcUtils?.isSeniorGrade(grade);
         }
         return true;
     }
@@ -181,7 +189,8 @@ const TimetableModule = (function() {
         const gradeMatch = (grade || "").match(/\d+/);
         const gradeNum = gradeMatch ? parseInt(gradeMatch[0]) : 0;
         
-        const isPrimary = gradeNum >= 1 && gradeNum <= 6;
+        const isPP = grade && grade.toUpperCase().includes('PP');
+        const isPrimary = (gradeNum >= 1 && gradeNum <= 6) || isPP;
         const isJunior = gradeNum >= 7 && gradeNum <= 9;
         const isSenior = gradeNum >= 10 && gradeNum <= 12;
 
@@ -257,8 +266,11 @@ const TimetableModule = (function() {
             container.innerHTML = ''; // Clear any previous content
         }
         
+        // 🆕 Create UI structure immediately so DOM elements exist for populateDropdowns calls
+        setupUIStructure();
+
         fetchSchoolInfoAndCache().then(async () => {
-            setupUIStructure(); // 🆕 Prepend overlay inside this call
+            // setupUIStructure(); // Moved out of promise to ensure immediate availability
             populateDropdowns(); 
             
             // Dashboard is built but covered by the #ttInitOverlay
@@ -271,6 +283,8 @@ const TimetableModule = (function() {
                 updateScheduleSettingsForGrade(gradeSelect.value);
             }
             updateTeacherOptions();
+            initTeacherDropdownPagination();
+            loadTeacherDropdownData(1);
             attachEventListeners();
             
             // 🆕 Remove the global overlay gracefully once fully ready
@@ -280,6 +294,7 @@ const TimetableModule = (function() {
             isInitialized = true;
         }).catch(err => {
             console.error("Error during timetable initialization:", err);
+            if (overlay) overlay.remove(); // Ensure overlay is removed even on error
         });
     }
 
@@ -345,7 +360,11 @@ const TimetableModule = (function() {
                     background: #cbd5e1;
                     border-radius: 10px;
                 }
+
+                    border-radius: 10px;
+
             `;
+            
             document.head.appendChild(styleEl);
         }
 
@@ -355,43 +374,43 @@ const TimetableModule = (function() {
         container.style.position = 'relative'; // Required for absolute overlay
 
         container.innerHTML = `
-            <div class="timetable-dashboard" style="display: grid; grid-template-columns: 280px 1fr; gap: 20px;">
-                <aside class="tt-sidebar" style="background: #f8fafc; padding: 20px; border-radius: 12px; border: 1px solid #e2e8f0; position: sticky; top: 20px; max-height: calc(100vh - 120px); overflow-y: auto;">
-                    <h4 style="margin-top:0; color: #1e293b;"><i class="fas fa-cogs"></i> Timetable Controls</h4>
-                    <div id="ttLastSync" style="font-size: 0.65rem; color: #94a3b8; margin-top: -10px; margin-bottom: 15px; font-weight: 500;">Last synced: Loading...</div>
+            <div class="timetable-dashboard">
+                <aside class="tt-sidebar">
+                    <h4><i class="fas fa-cogs"></i> Timetable Controls</h4>
+                    <div id="ttLastSync">Last synced: Loading...</div>
                     
-                    <div class="filter-group" style="margin-bottom: 15px;">
-                        <label style="display:block; font-size: 0.8rem; font-weight:700; margin-bottom: 5px;">VIEW MODE</label>
-                        <select id="ttViewMode" class="form-control" style="width:100%; padding:8px; border-radius:6px; border:1px solid #cbd5e0;">
+                    <div class="filter-group">
+                        <label>VIEW MODE</label>
+                        <select id="ttViewMode" class="form-control">
                             <option value="class">Class Timetable</option>
                             <option value="teacher">Individual Teacher</option>
                             <option value="block">School Block Timetable</option>
                         </select>
                     </div>
 
-                    <div class="filter-group" style="margin-bottom: 15px;">
-                        <label style="display:block; font-size: 0.8rem; font-weight:700; margin-bottom: 5px;">SELECT TERM</label>
-                        <select id="ttTermSelect" class="form-control" style="width:100%; padding:8px; border-radius:6px; border:1px solid #cbd5e0;">
+                    <div class="filter-group">
+                        <label>SELECT TERM</label>
+                        <select id="ttTermSelect" class="form-control">
                             <option value="Term 1">Term 1</option>
                             <option value="Term 2">Term 2</option>
                             <option value="Term 3">Term 3</option>
                         </select>
                     </div>
 
-                    <div id="ttClassFiltersGroup">
-                        <div class="filter-group" style="margin-bottom: 15px;">
-                            <label style="display:block; font-size: 0.8rem; font-weight:700; margin-bottom: 5px;">SELECT GRADE</label>
-                            <select id="ttGradeSelect" class="form-control" style="width:100%; padding:8px; border-radius:6px; border:1px solid #cbd5e0;"></select>
+                    <div id="ttClassFiltersGroup" class="tt-filter-group-section">
+                        <div class="filter-group">
+                            <label>SELECT GRADE</label>
+                            <select id="ttGradeSelect" class="form-control"></select>
                         </div>
 
-                        <div class="filter-group" id="ttStreamGroup" style="margin-bottom: 15px; display: none;">
-                            <label style="display:block; font-size: 0.8rem; font-weight:700; margin-bottom: 5px;">SELECT STREAM</label>
-                            <select id="ttStreamSelect" class="form-control" style="width:100%; padding:8px; border-radius:6px; border:1px solid #cbd5e0;"></select>
+                        <div class="filter-group" id="ttStreamGroup" style="display: none;">
+                            <label>SELECT STREAM</label>
+                            <select id="ttStreamSelect" class="form-control"></select>
                         </div>
 
-                        <div id="ttPathwayGroup" class="filter-group" style="margin-bottom: 20px; display: none;">
-                            <label style="display:block; font-size: 0.8rem; font-weight:700; margin-bottom: 5px;">SELECT PATHWAY</label>
-                            <select id="ttPathwaySelect" class="form-control" style="width:100%; padding:8px; border-radius:6px; border:1px solid #cbd5e0;">
+                        <div id="ttPathwayGroup" class="filter-group" style="display: none;">
+                            <label>SELECT PATHWAY</label>
+                            <select id="ttPathwaySelect" class="form-control">
                                 <option value="STEM">STEM</option>
                                 <option value="Social Sciences">Social Sciences</option>
                                 <option value="Arts & Sports Science">Arts & Sports Science</option>
@@ -399,52 +418,56 @@ const TimetableModule = (function() {
                         </div>
                     </div>
 
-                    <div id="ttTeacherFiltersGroup" style="display:none;">
-                        <div class="filter-group" style="margin-bottom: 15px;">
-                            <label style="display:block; font-size: 0.8rem; font-weight:700; margin-bottom: 5px;">SELECT TEACHER</label>
-                            <select id="ttTeacherSelect" class="form-control" style="width:100%; padding:8px; border-radius:6px; border:1px solid #cbd5e0;"></select>
+                    <div id="ttTeacherFiltersGroup" style="display:none;" class="tt-filter-group-section">
+                        <div class="filter-group">
+                            <label>SELECT TEACHER</label>
+                            <select id="ttTeacherSelect" class="form-control"></select>
                         </div>
                     </div>
 
-                    <div id="ttBlockInfoGroup" style="display:none; margin-bottom: 20px; padding: 12px 14px; background: #eef2ff; border: 1px solid #c7d2fe; border-radius: 10px; color: #3730a3; font-size: 0.85rem; line-height: 1.5;">
+                    <div id="ttBlockInfoGroup" style="display:none;">
                         <strong>School block timetable:</strong> displays saved class schedules across the school in a class-style PDF layout, with each class showing lesson-by-lesson subject and teacher details.
                     </div>
 
-                    <div class="filter-group" style="margin-bottom: 20px;">
-                        <label style="display:block; font-size: 0.8rem; font-weight:700; margin-bottom: 5px;">ACADEMIC YEAR</label>
-                        <select id="ttYearSelect" class="form-control" style="width:100%; padding:8px; border-radius:6px; border:1px solid #cbd5e0;"></select>
+                    <div class="filter-group">
+                        <label>ACADEMIC YEAR</label>
+                        <select id="ttYearSelect" class="form-control"></select>
                     </div>
 
-                    <div style="display:flex; flex-direction:column; gap:10px;">
-                        <button id="configureFrequenciesBtn" class="btn secondary-btn tt-class-only" style="width:100%; text-align:left;">
+                    <div class="tt-sidebar-actions">
+                        <button id="configureFrequenciesBtn" class="btn secondary-btn tt-class-only">
                             <i class="fas fa-list-ol"></i> Lesson Frequencies
                         </button>
-                        <button id="configureSettingsBtn" class="btn secondary-btn" style="width:100%; text-align:left;">
+                        <button id="configureSettingsBtn" class="btn secondary-btn">
                             <i class="fas fa-clock"></i> Day Schedule
                         </button>
-                        <button id="ttRefreshBtn" class="btn secondary-btn" style="width:100%; text-align:left;">
+                        <button id="ttRefreshBtn" class="btn secondary-btn">
                             <i class="fas fa-sync-alt"></i> Refresh Filters
                         </button>
-                        <button id="configurePlacementRulesBtn" class="btn secondary-btn tt-class-only" style="width:100%; text-align:left;">
+                        <button id="configurePlacementRulesBtn" class="btn secondary-btn tt-class-only">
                             <i class="fas fa-sliders-h"></i> Placement Rules
                         </button>
-                        <button id="runHealthCheckBtn" class="btn secondary-btn tt-class-only" style="width:100%; text-align:left;">
+                        <button id="runHealthCheckBtn" class="btn secondary-btn tt-class-only">
                             <i class="fas fa-heartbeat"></i> Timetable Health Check
                         </button>
-                        <hr style="border:0; border-top:1px solid #e2e8f0; margin: 10px 0;">
-                        <button id="generateTimetableBtn" class="btn primary-btn" style="width:100%; background:#334155; color:white; font-weight:700;">
+                        <!-- <button id="downloadPdfTimetableBtn" class="btn secondary-btn" style="width:100%; text-align:left;">
+                            <i class="fas fa-file-pdf"></i> Download PDF Timetable
+                        </button> -->
+
+                        <hr>
+                        <button id="generateTimetableBtn" class="btn primary-btn">
                             <i class="fas fa-magic"></i> <span id="ttBtnText">Generate Timetable</span>
                         </button>
-                        <button id="backToAnalyticsBtn" class="btn secondary-btn" style="width:100%; text-align:left; display:none;">
+                        <button id="backToAnalyticsBtn" class="btn secondary-btn" style="display:none;">
                             <i class="fas fa-arrow-left"></i> Back to Analytics
                         </button>
                     </div>
                 </aside>
 
                 <main class="tt-content">
-                    <div id="ttWorkspace" class="dashboard-card" style="min-height: 500px; background:white; padding:20px; border-radius:12px; border: 1px solid #e2e8f0;">
-                        <div id="ttPlaceholder" style="text-align:center; padding:100px 20px; color: #94a3b8;">
-                            <i class="far fa-calendar-alt" style="font-size: 4rem; margin-bottom: 20px; display:block; opacity:0.5;"></i>
+                    <div id="ttWorkspace" class="dashboard-card">
+                        <div id="ttPlaceholder">
+                            <i class="far fa-calendar-alt"></i>
                             <h3>Ready to schedule?</h3>
                             <p>Select a grade and configure lesson counts to generate an optimized timetable.</p>
                         </div>
@@ -453,51 +476,51 @@ const TimetableModule = (function() {
                 </main>
             </div>
 
-            <!-- Modal for Frequencies -->
-            <div id="frequencyModal" class="modal hidden" style="position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:10000; display:none; align-items:center; justify-content:center;">
-                <div class="modal-content" style="background:white; padding:25px; border-radius:12px; width:90%; max-width:500px; box-shadow:0 20px 25px -5px rgba(0,0,0,0.1);">
-                    <h3 id="freqModalTitle">Subject Frequencies</h3>
-                    <p style="font-size:0.85rem; color:#64748b; margin-bottom:20px;">Define how many lessons per week each subject should have.</p>
-                    <div id="subjectFreqInputs" style="max-height: 400px; overflow-y:auto; margin-bottom:20px;"></div>
-                    <div style="text-align:right;">
+            <!-- Modal for Frequencies (Initially hidden by 'hidden' class) -->
+            <div id="frequencyModal" class="modal hidden" style="position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:10000; align-items:center; justify-content:center;">
+                <div class="modal-content">
+                    <h3 id="freqModalTitle"><i class="fas fa-list-ol"></i> Subject Frequencies</h3>
+                    <p>Define how many lessons per week each subject should have.</p>
+                    <div id="subjectFreqInputs"></div>
+                    <div class="modal-footer">
                         <button id="cancelFrequencyBtn" class="btn secondary-btn">Cancel</button>
                         <button id="saveFrequenciesBtn" class="btn primary-btn" style="background:#2b6cb0; color:white;">Save Frequencies</button>
                     </div>
                 </div>
             </div>
 
-            <!-- Modal for Day Schedule -->
-            <div id="dayScheduleModal" class="modal hidden" style="position:fixed; inset:0; background:rgba(0,0,0,0.4); z-index:10000; display:none; align-items:center; justify-content:center; backdrop-filter: blur(4px);">
-                <div class="modal-content" style="background:white; padding:25px; border-radius:12px; width:90%; max-width:550px; box-shadow:0 20px 25px -5px rgba(0,0,0,0.1);">
+            <!-- Modal for Day Schedule (Initially hidden by 'hidden' class) -->
+            <div id="dayScheduleModal" class="modal hidden">
+                <div class="modal-content">
                     <h3>🕒 Day Schedule Configuration</h3>
-                    <p style="font-size:0.85rem; color:#64748b; margin-bottom:20px;">Configure school hours, lesson lengths, and intervals for standard CBE structure.</p>
+                    <p>Configure school hours, lesson lengths, and intervals for standard CBE structure.</p>
                     
-                    <div style="display:grid; grid-template-columns: 1fr 1fr; gap:15px; margin-bottom:20px;">
-                        <div><label style="display:block; font-size:0.75rem; font-weight:700;">START TIME (HH:MM)</label><input type="time" id="setStartTime" class="form-control" style="width:100%;"></div>
-                        <div><label style="display:block; font-size:0.75rem; font-weight:700;">LESSON DURATION (MINS)</label><input type="number" id="setDuration" class="form-control" style="width:100%;" min="20" max="90"></div>
-                        <div><label style="display:block; font-size:0.75rem; font-weight:700;">LESSONS PER DAY</label><input type="number" id="setLessonsCount" class="form-control" style="width:100%;" min="1" max="12"></div>
-                        <div><label style="display:block; font-size:0.75rem; font-weight:700;">SCHOOL DAY END (HH:MM)</label><input type="time" id="setSchoolDayEnd" class="form-control" style="width:100%;"></div>
+                    <div class="tt-form-grid">
+                        <div><label>START TIME (HH:MM)</label><input type="time" id="setStartTime" class="form-control"></div>
+                        <div><label>LESSON DURATION (MINS)</label><input type="number" id="setDuration" class="form-control" min="20" max="90"></div>
+                        <div><label>LESSONS PER DAY</label><input type="number" id="setLessonsCount" class="form-control" min="1" max="12"></div>
+                        <div><label>SCHOOL DAY END (HH:MM)</label><input type="time" id="setSchoolDayEnd" class="form-control"></div>
                     </div>
 
-                    <h4 style="border-top:1px solid #e2e8f0; padding-top:15px;">Breaks & Intervals</h4>
-                    <div id="breaksContainer" style="max-height: 180px; overflow-y:auto; margin-bottom:20px;"></div>
+                    <h4>Breaks & Intervals</h4>
+                    <div id="breaksContainer"></div>
 
-                    <div style="text-align:right;">
+                    <div class="modal-footer">
                         <button id="cancelScheduleBtn" class="btn secondary-btn">Cancel</button>
                         <button id="saveScheduleBtn" class="btn primary-btn" style="background:#2b6cb0; color:white;">Apply Schedule</button>
                     </div>
                 </div>
             </div>
 
-            <!-- Modal for Manual Slot Edit -->
-            <div id="editSlotModal" class="modal hidden" style="position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:10001; display:none; align-items:center; justify-content:center; backdrop-filter: blur(2px);">
-                <div class="modal-content" style="background:white; padding:25px; border-radius:12px; width:90%; max-width:400px; box-shadow:0 25px 50px -12px rgba(0,0,0,0.25);">
-                    <h3 style="margin-top:0;"><i class="fas fa-edit"></i> Adjust Lesson Slot</h3>
-                    <p id="editSlotDetails" style="font-size:0.85rem; color:#64748b; margin-bottom:20px; padding:10px; background:#f8fafc; border-radius:8px; border-left:4px solid #334155;"></p>
+            <!-- Modal for Manual Slot Edit (Initially hidden by 'hidden' class) -->
+            <div id="editSlotModal" class="modal hidden">
+                <div class="modal-content">
+                    <h3><i class="fas fa-edit"></i> Adjust Lesson Slot</h3>
+                    <p id="editSlotDetails"></p>
                     
-                    <div class="filter-group" style="margin-bottom: 25px;">
-                        <label style="display:block; font-size: 0.75rem; font-weight:800; color:#475569; margin-bottom: 8px; text-transform:uppercase;">CHANGE SUBJECT TO:</label>
-                        <select id="editSlotSubjectSelect" class="form-control" style="width:100%; padding:10px; border-radius:8px; border:2px solid #e2e8f0; font-weight:600; color:#1e293b;"></select>
+                    <div class="filter-group">
+                        <label>CHANGE SUBJECT TO:</label>
+                        <select id="editSlotSubjectSelect" class="form-control"></select>
                     </div>
 
                     <div style="display:grid; grid-template-columns: 1fr 1fr; gap:12px;">
@@ -509,109 +532,109 @@ const TimetableModule = (function() {
                 </div>
             </div>
 
-            <!-- Modal for Placement Rules Configuration -->
-            <div id="placementRulesModal" class="modal hidden" style="position:fixed; inset:0; background:rgba(0,0,0,0.4); z-index:10000; display:none; align-items:center; justify-content:center; backdrop-filter: blur(4px);">
-                <div class="modal-content" style="background:white; padding:25px; border-radius:12px; width:90%; max-width:600px; box-shadow:0 20px 25px -5px rgba(0,0,0,0.1);">
+            <!-- Modal for Placement Rules Configuration (Initially hidden by 'hidden' class) -->
+            <div id="placementRulesModal" class="modal hidden">
+                <div class="modal-content">
                     <h3>⚙️ Placement Rules & Scheduling Preferences</h3>
-                    <p style="font-size:0.85rem; color:#64748b; margin-bottom:20px;">Configure how subjects are placed in the timetable to reflect your teaching preferences.</p>
+                    <p>Configure how subjects are placed in the timetable to reflect your teaching preferences.</p>
                     
-                    <div style="max-height: 400px; overflow-y:auto; margin-bottom:20px;">
+                    <div class="tt-modal-scroll-content">
                         <!-- Core Subjects -->
-                        <div style="padding:15px; background:#f8fafc; border-radius:8px; margin-bottom:15px; border-left:4px solid #2563eb;">
-                            <label style="display:flex; align-items:center; gap:10px; cursor:pointer; margin-bottom:8px;">
-                                <input type="checkbox" id="coreSubs_enabled" style="width:18px; height:18px; cursor:pointer;">
-                                <span style="font-weight:700; color:#1e293b;">Core Subjects (Math, English, Kiswahili)</span>
+                        <div class="tt-rule-card tt-rule-core">
+                            <label>
+                                <input type="checkbox" id="coreSubs_enabled">
+                                <span>Core Subjects (Math, English, Kiswahili)</span>
                             </label>
-                            <div style="margin-left:28px; color:#64748b; font-size:0.85rem;">
-                                <label style="display:flex; align-items:center; gap:8px; margin-bottom:8px;">
-                                    <input type="checkbox" id="coreSubs_beforeLunch" style="width:16px; height:16px; cursor:pointer;">
+                            <div>
+                                <label>
+                                    <input type="checkbox" id="coreSubs_beforeLunch">
                                     <span>Schedule before lesson 4 only</span>
                                 </label>
                             </div>
                         </div>
 
                         <!-- Technical Subjects -->
-                        <div style="padding:15px; background:#f8fafc; border-radius:8px; margin-bottom:15px; border-left:4px solid #dc2626;">
-                            <label style="display:flex; align-items:center; gap:10px; cursor:pointer; margin-bottom:8px;">
-                                <input type="checkbox" id="technical_enabled" style="width:18px; height:18px; cursor:pointer;">
-                                <span style="font-weight:700; color:#1e293b;">Technical Subjects</span>
+                        <div class="tt-rule-card tt-rule-technical">
+                            <label>
+                                <input type="checkbox" id="technical_enabled">
+                                <span>Technical Subjects</span>
                             </label>
-                            <div style="margin-left:28px; color:#64748b; font-size:0.85rem;">
-                                <label style="display:flex; align-items:center; gap:8px; margin-bottom:8px;">
-                                    <input type="checkbox" id="technical_preferMorning" style="width:16px; height:16px; cursor:pointer;">
+                            <div>
+                                <label>
+                                    <input type="checkbox" id="technical_preferMorning">
                                     <span>Prioritize Morning (1-4) for Core & Technical; avoid Mid-day (5-6) (pushes overflow to afternoon)</span>
                                 </label>
                             </div>
                         </div>
 
                         <!-- PPI -->
-                        <div style="padding:15px; background:#f8fafc; border-radius:8px; margin-bottom:15px; border-left:4px solid #7c3aed;">
-                            <label style="display:flex; align-items:center; gap:10px; cursor:pointer; margin-bottom:8px;">
-                                <input type="checkbox" id="ppi_enabled" style="width:18px; height:18px; cursor:pointer;">
-                                <span style="font-weight:700; color:#1e293b;">PPI</span>
+                        <div class="tt-rule-card tt-rule-ppi">
+                            <label>
+                                <input type="checkbox" id="ppi_enabled">
+                                <span>PPI</span>
                             </label>
-                            <div style="margin-left:28px; color:#64748b; font-size:0.85rem;">
-                                <label style="display:flex; align-items:center; gap:8px;">
-                                    <input type="checkbox" id="ppi_friday" style="width:16px; height:16px; cursor:pointer;">
+                            <div>
+                                <label>
+                                    <input type="checkbox" id="ppi_friday">
                                     <span>Schedule on Friday mornings only</span>
                                 </label>
                             </div>
                         </div>
 
                         <!-- Creative Subjects -->
-                        <div style="padding:15px; background:#f8fafc; border-radius:8px; margin-bottom:15px; border-left:4px solid #ea580c;">
-                            <label style="display:flex; align-items:center; gap:10px; cursor:pointer; margin-bottom:8px;">
-                                <input type="checkbox" id="creative_enabled" style="width:18px; height:18px; cursor:pointer;">
-                                <span style="font-weight:700; color:#1e293b;">Creative Subjects</span>
+                        <div class="tt-rule-card tt-rule-creative">
+                            <label>
+                                <input type="checkbox" id="creative_enabled">
+                                <span>Creative Subjects</span>
                             </label>
-                            <div style="margin-left:28px; color:#64748b; font-size:0.85rem;">
-                                <label style="display:flex; align-items:center; gap:8px;">
-                                    <input type="checkbox" id="creative_afternoon" style="width:16px; height:16px; cursor:pointer;">
+                            <div>
+                                <label>
+                                    <input type="checkbox" id="creative_afternoon">
                                     <span>Schedule in afternoon only</span>
                                 </label>
                             </div>
                         </div>
 
                         <!-- Sports & Arts -->
-                        <div style="padding:15px; background:#f8fafc; border-radius:8px; margin-bottom:15px; border-left:4px solid #10b981;">
-                            <label style="display:flex; align-items:center; gap:10px; cursor:pointer; margin-bottom:8px;">
-                                <input type="checkbox" id="sports_enabled" style="width:18px; height:18px; cursor:pointer;">
-                                <span style="font-weight:700; color:#1e293b;">Physical Education / Sports</span>
+                        <div class="tt-rule-card tt-rule-sports">
+                            <label>
+                                <input type="checkbox" id="sports_enabled">
+                                <span>Physical Education / Sports</span>
                             </label>
-                            <div style="margin-left:28px; color:#64748b; font-size:0.85rem;">
-                                <label style="display:flex; align-items:center; gap:8px;">
-                                    <input type="checkbox" id="sports_breaks" style="width:16px; height:16px; cursor:pointer;">
+                            <div>
+                                <label>
+                                    <input type="checkbox" id="sports_breaks">
                                     <span>Prioritize placement towards long breaks (Lesson 3-4)</span>
                                 </label>
                             </div>
                         </div>
 
-                        <div style="padding:15px; background:#f8fafc; border-radius:8px; margin-bottom:15px; border-left:4px solid #3b82f6;">
-                            <label style="display:flex; align-items:center; gap:10px; cursor:pointer; margin-bottom:8px;">
-                                <input type="checkbox" id="visualArts_enabled" style="width:18px; height:18px; cursor:pointer;">
-                                <span style="font-weight:700; color:#1e293b;">Visual Arts</span>
+                        <div class="tt-rule-card tt-rule-visual-arts">
+                            <label>
+                                <input type="checkbox" id="visualArts_enabled">
+                                <span>Visual Arts</span>
                             </label>
-                            <div style="margin-left:28px; color:#64748b; font-size:0.85rem;">
-                                <label style="display:flex; align-items:center; gap:8px;">
-                                    <input type="checkbox" id="visualArts_breaks" style="width:16px; height:16px; cursor:pointer;">
+                            <div>
+                                <label>
+                                    <input type="checkbox" id="visualArts_breaks">
                                     <span>Prioritize placement towards long break (4) or lunch (6)</span>
                                 </label>
                             </div>
                         </div>
 
                         <!-- Strict Mode -->
-                        <div style="padding:15px; background:#fff1f2; border-radius:8px; margin-bottom:15px; border-left:4px solid #be123c;">
-                            <label style="display:flex; align-items:center; gap:10px; cursor:pointer; margin-bottom:8px;">
-                                <input type="checkbox" id="strictFreq_enabled" style="width:18px; height:18px; cursor:pointer;">
-                                <span style="font-weight:700; color:#9f1239;">Strict Frequency Enforcement</span>
+                        <div class="tt-rule-card tt-rule-strict-mode">
+                            <label>
+                                <input type="checkbox" id="strictFreq_enabled">
+                                <span>Strict Frequency Enforcement</span>
                             </label>
-                            <div style="margin-left:28px; color:#9f1239; font-size:0.85rem; line-height:1.4;">
+                            <div>
                                 If enabled, the system will automatically prompt for a full reshuffle if subject frequencies cannot be met by simply filling empty slots.
                             </div>
                         </div>
                     </div>
 
-                    <div style="text-align:right; border-top:1px solid #e2e8f0; padding-top:15px;">
+                    <div class="modal-footer">
                         <button id="resetPlacementRulesBtn" class="btn secondary-btn" style="margin-right:10px;">Reset to Defaults</button>
                         <button id="cancelPlacementRulesBtn" class="btn secondary-btn">Cancel</button>
                         <button id="savePlacementRulesBtn" class="btn primary-btn" style="background:#2b6cb0; color:white;">Save Rules</button>
@@ -698,54 +721,173 @@ const TimetableModule = (function() {
     }
 
     /**
-     * 🆕 Populates the teacher dropdown based on school allocations
+     * 🆕 Fetches paginated teacher list for the dropdown
+     */
+    async function loadTeacherDropdownData(page = 1, force = false) {
+        const API_BASE = window.config.api.baseURL;
+        const token = authService.getToken();
+        
+        const CACHE_KEY = "timetable_teachers_dropdown_cache";
+        const CACHE_DURATION = 15 * 60 * 1000; // 15 minutes
+        const queryKey = `p${page}`;
+
+        if (!force) {
+            try {
+                const store = JSON.parse(localStorage.getItem(CACHE_KEY) || "{}");
+                const cached = store[queryKey];
+                if (cached && (Date.now() - cached.timestamp < CACHE_DURATION)) {
+                    console.log(`✅ Using cached teacher list for ${queryKey}`);
+                    teacherListPage = cached.data.page || page;
+                    teacherListTotalPages = cached.data.pages || 1;
+                    updateTeacherDropdownUI(cached.data.users || []);
+                    return;
+                }
+            } catch (e) { }
+        } else {
+            localStorage.removeItem(CACHE_KEY);
+        }
+
+        try {
+            const res = await fetch(`${API_BASE}/users?role=teacher&page=${page}&limit=${TEACHER_LIMIT}&search=${encodeURIComponent(teacherSearchTerm)}`, {
+                headers: { "Authorization": `Bearer ${token}` }
+            });
+            
+            if (!res.ok) {
+                const errorData = await res.json().catch(() => ({ message: "Unknown error" }));
+                throw new Error(errorData.message || `Failed to load teachers: ${res.status}`);
+            }
+            const data = await res.json();
+
+            teacherListPage = data.page || page;
+            teacherListTotalPages = data.pages || 1;
+
+            // Update Cache (page-specific storage)
+            try {
+                const store = JSON.parse(localStorage.getItem(CACHE_KEY) || "{}");
+                store[queryKey] = { timestamp: Date.now(), data: data };
+                localStorage.setItem(CACHE_KEY, JSON.stringify(store));
+            } catch (e) { }
+
+            updateTeacherDropdownUI(data.users || []);
+        } catch (err) {
+            window.cbcUtils.showToast(err.message || "Failed to load teacher list.", "error");
+            console.error("Load teachers error:", err);
+        }
+    }
+
+    /**
+     * 🆕 Renders the teacher options into the select element
+     */
+    function updateTeacherDropdownUI(users) {
+        const select = document.getElementById('ttTeacherSelect');
+        if (!select) return;
+
+        const group = document.getElementById('ttTeacherFiltersGroup');
+        const spinner = group?.querySelector('.tt-teacher-spinner');
+        if (spinner) spinner.style.display = 'none';
+
+        select.innerHTML = '<option value="">-- Select Teacher --</option>';
+        users.forEach(u => {
+            const opt = document.createElement('option');
+            opt.value = u._id;
+            opt.textContent = u.name;
+            select.appendChild(opt);
+        });
+
+        // Update pagination info
+        const info = document.querySelector("#ttTeacherFiltersGroup .page-info");
+        const prev = document.querySelector("#ttTeacherFiltersGroup .prev-btn");
+        const next = document.querySelector("#ttTeacherFiltersGroup .next-btn");
+
+        if (info) info.textContent = `Page ${teacherListPage} of ${teacherListTotalPages}`;
+        if (prev) prev.disabled = teacherListPage <= 1;
+        if (next) next.disabled = teacherListPage >= teacherListTotalPages;
+    }
+
+    /**
+     * 🆕 Injects search and pagination controls for the teacher dropdown
+     */
+    function initTeacherDropdownPagination() {
+        const group = document.getElementById('ttTeacherFiltersGroup');
+        const select = document.getElementById('ttTeacherSelect');
+        if (!group || !select) return;
+
+        // Add spinner for visual feedback during pagination/search
+        const spinner = document.createElement("div");
+        spinner.className = "tt-teacher-spinner";
+        spinner.style.cssText = "display:none; text-align:center; margin-bottom:8px;";
+        spinner.innerHTML = '<div class="spinner-border spinner-border-sm text-primary" role="status"></div>';
+
+        // Add search input
+        const searchInput = document.createElement("input");
+        searchInput.type = "text";
+        searchInput.placeholder = "🔍 Search teachers...";
+        searchInput.className = "form-control";
+        searchInput.style.cssText = "margin-bottom: 8px; padding: 6px; font-size: 0.8rem; border-radius: 6px;";
+        
+        let debounceTimer;
+        searchInput.addEventListener("input", (e) => {
+            if (spinner) spinner.style.display = 'block';
+            clearTimeout(debounceTimer);
+            debounceTimer = setTimeout(() => {
+                teacherSearchTerm = e.target.value.trim();
+                loadTeacherDropdownData(1, true);
+            }, 400);
+        });
+
+        // Add pagination controls
+        const controls = document.createElement("div");
+        controls.style.cssText = "display: flex; justify-content: space-between; align-items: center; margin-top: 5px;";
+        controls.innerHTML = `
+            <button type="button" class="btn secondary-btn prev-btn" style="padding: 2px 8px; font-size: 0.65rem;">&laquo; Prev</button>
+            <span class="page-info" style="font-size: 0.65rem; color: #64748b; font-weight: 700;">Page 1</span>
+            <button type="button" class="btn secondary-btn next-btn" style="padding: 2px 8px; font-size: 0.65rem;">Next &raquo;</button>
+        `;
+
+        select.parentNode.insertBefore(spinner, select);
+        select.parentNode.insertBefore(searchInput, select);
+        select.parentNode.appendChild(controls);
+
+        controls.querySelector(".prev-btn").onclick = () => {
+            if (spinner) spinner.style.display = 'block';
+            if (teacherListPage > 1) loadTeacherDropdownData(teacherListPage - 1);
+        };
+        controls.querySelector(".next-btn").onclick = () => {
+            if (spinner) spinner.style.display = 'block';
+            if (teacherListPage < teacherListTotalPages) loadTeacherDropdownData(teacherListPage + 1);
+        };
+    }
+
+    /**
+     * Legacy wrapper to maintain compatibility with existing switch logic
      */
     function updateTeacherOptions() {
-        const teacherSelect = document.getElementById('ttTeacherSelect');
-        if (!teacherSelect) return;
-
-        const currentSelection = teacherSelect.value;
-
-        teacherSelect.innerHTML = '<option value="">-- Select Teacher --</option>';
-        
-        // 🆕 Filter unique teachers from allocations to ensure the list is clean and scoped
-        const uniqueTeachers = [];
-        const seenIds = new Set();
-        
-        schoolAllocations.forEach(t => {
-            if (t._id && !seenIds.has(t._id)) {
-                uniqueTeachers.push(t);
-                seenIds.add(t._id);
-            }
-        });
-
-        uniqueTeachers.sort((a, b) => a.name.localeCompare(b.name)).forEach(t => {
-            const opt = document.createElement('option');
-            opt.value = t._id;
-            opt.textContent = t.name;
-            teacherSelect.appendChild(opt);
-        });
-
-        if (currentSelection && Array.from(teacherSelect.options).some(o => o.value === currentSelection)) {
-            teacherSelect.value = currentSelection;
-        }
+        // When view mode switches, reset search and load page 1
+        teacherSearchTerm = "";
+        const searchInput = document.querySelector("#ttTeacherFiltersGroup input");
+        if (searchInput) searchInput.value = "";
+        loadTeacherDropdownData(1, true);
     }
 
     async function fetchSchoolInfoAndCache() {
         try {
             const API_BASE = window.config.api.baseURL;
-            const token = localStorage.getItem("token");
+            const token = authService.getToken();
             const headers = { "Authorization": `Bearer ${token}` };
 
             // Attempt to load basic info from cache first for quick dropdown population
-            const cachedBasicInfoStr = localStorage.getItem(SCHOOL_INFO_CACHE_KEY);
-            if (cachedBasicInfoStr) {
+            let shouldFetchFromServer = true;
+            const cachedInfoStr = localStorage.getItem(SCHOOL_INFO_CACHE_KEY);
+            if (cachedInfoStr) {
                 try {
-                    const { timestamp, data: cachedBasicData } = JSON.parse(cachedBasicInfoStr);
-                    if (Date.now() - timestamp < CACHE_TTL) {
-                        // Set schoolInfo with basic data (no logo) for immediate dropdown use
-                        schoolInfo = { ...cachedBasicData, logo: null, logoMimeType: null };
-                        populateDropdowns();
+                    const { timestamp, data: cachedData } = JSON.parse(cachedInfoStr);
+                    // Ensure cached data has schoolType and is not expired
+                    if (cachedData && cachedData.schoolType && (Date.now() - timestamp < CACHE_TTL)) {
+                        schoolInfo = { ...cachedData, logo: null, logoMimeType: null }; // Set schoolInfo from cache
+                        populateDropdowns(); // Populate with cached data
+                        shouldFetchFromServer = false; // No need to fetch from server
+                    } else {
+                        localStorage.removeItem(SCHOOL_INFO_CACHE_KEY); // Stale or incomplete cache
                     }
                 } catch (e) {
                     console.warn("Error parsing basic school info cache, clearing it.", e);
@@ -753,28 +895,35 @@ const TimetableModule = (function() {
                 }
             }
 
-            // Fetch school name and type (excluding logo as requested)
-            const schoolRes = await fetch(`${API_BASE}/users/my-school?includeLogo=false`, { headers });
-            if (schoolRes.ok) {
-                const fullSchoolData = await schoolRes.json();
-                schoolInfo = fullSchoolData; // Store full data in module-level variable
+            if (shouldFetchFromServer) {
+                // Fetch school name and type (excluding logo as requested)
+                const schoolRes = await fetch(`${API_BASE}/users/my-school?includeLogo=false`, { headers });
+                if (schoolRes.ok) {
+                    const fullSchoolData = await schoolRes.json();
+                    schoolInfo = fullSchoolData; // Store full data in module-level variable
 
-                // Create a lightweight version for localStorage caching (without the potentially large logo)
-                const basicSchoolInfoToCache = { name: fullSchoolData.name, schoolType: fullSchoolData.schoolType };
-                localStorage.setItem(SCHOOL_INFO_CACHE_KEY, JSON.stringify({ timestamp: Date.now(), data: basicSchoolInfoToCache }));
-                
-                // 🆕 Update global module settings based on detected school type
-                if (fullSchoolData.schoolType === 'primary_junior') {
-                    settings.lessonsPerDay = 8;
-                    settings.schoolDayEnd = "15:30";
-                    if (!settings.breaks.some(b => b.name === "WRAP UP")) {
-                        settings.breaks.push({ name: "WRAP UP", afterLesson: 8, duration: 5 });
+                    // Create a lightweight version for localStorage caching (without the potentially large logo)
+                    const basicSchoolInfoToCache = { name: fullSchoolData.name, schoolType: fullSchoolData.schoolType };
+                    localStorage.setItem(SCHOOL_INFO_CACHE_KEY, JSON.stringify({ timestamp: Date.now(), data: basicSchoolInfoToCache }));
+                    
+                    // Update global module settings based on detected school type
+                    if (fullSchoolData.schoolType === 'primary_junior') {
+                        settings.lessonsPerDay = 8;
+                        settings.schoolDayEnd = "15:30";
+                        if (!settings.breaks.some(b => b.name === "WRAP UP")) {
+                            settings.breaks.push({ name: "WRAP UP", afterLesson: 8, duration: 5 });
+                        }
+                    } else {
+                        settings.lessonsPerDay = 9;
                     }
-                } else {
-                    settings.lessonsPerDay = 9;
-                }
 
-                populateDropdowns(); // Re-populate dropdowns with fresh info (using the now updated schoolInfo)
+                    populateDropdowns(); // Re-populate dropdowns with fresh info (using the now updated schoolInfo)
+                } else {
+                    // Fallback if server fetch fails
+                    console.warn("Failed to fetch school info from server, falling back to default 'full' school type.");
+                    schoolInfo = { schoolType: 'full' };
+                    populateDropdowns();
+                }
             }
         } catch (err) {
             console.error("Failed to fetch school info for timetable module:", err);
@@ -840,11 +989,17 @@ const TimetableModule = (function() {
     }
 
     function attachEventListeners() {
-        document.getElementById('generateTimetableBtn')?.addEventListener('click', () => generateTimetable());
-        // Handle the static "Save PDF" button in the dashboard header
-        document.getElementById('printTimetableBtn')?.addEventListener('click', () => downloadTimetablePDF());
+        // Utility to safely attach listeners
+        const listen = (id, evt, fn, useCapture = false) => {
+            const el = document.getElementById(id);
+            if (el) el.addEventListener(evt, fn, useCapture);
+        };
 
-        document.getElementById('ttViewMode')?.addEventListener('change', async (e) => {
+        listen('generateTimetableBtn', 'click', () => generateTimetable());
+
+        const ttViewMode = document.getElementById('ttViewMode');
+        if (ttViewMode) {
+            ttViewMode.addEventListener('change', async (e) => {
             // 🆕 Optimization: Refresh scheduling context (allocations & saved TTs) 
             // when switching views to ensure data is current.
             await fetchSchedulingContext();
@@ -871,11 +1026,16 @@ const TimetableModule = (function() {
             document.getElementById('ttPlaceholder').style.display = 'block';
             document.getElementById('timetableOutput').style.display = 'none';
             currentTimetableData = null;
-        });
+            });
+        } else {
+            console.warn("Timetable Module: ttViewMode not found.");
+        }
 
-        document.getElementById('timetableOutput')?.addEventListener('click', (e) => {
+        const timetableOutput = document.getElementById('timetableOutput');
+        if (timetableOutput) { // Use event delegation for dynamically added buttons
+            timetableOutput.addEventListener('click', (e) => { // Use event delegation for dynamically added buttons
             const saveBtn = e.target.closest('#saveTimetableToPortalBtn');
-            if (saveBtn) saveTimetableToPortal();
+            if (saveBtn) saveTimetableToPortal(); // Handles button inside the generated grid
 
             const downloadPdfBtn = e.target.closest('#downloadTimetablePDFBtn');
             if (downloadPdfBtn) downloadTimetablePDF(); // Handles button inside the generated grid
@@ -893,10 +1053,20 @@ const TimetableModule = (function() {
             
             const autoFixBtn = e.target.closest('#autoFixClashesBtn');
             if (autoFixBtn) {
+                const originalHTML = autoFixBtn.innerHTML;
                 autoFixBtn.disabled = true; // Prevent double-click
                 autoFixBtn.innerHTML = '<span class="spinner"></span> Fixing...';
                 selectedSwapSlot = null;
-                autoFixClashes();
+                
+                // Await the process and reset the button if the grid wasn't re-rendered
+                autoFixClashes().finally(() => {
+                    const currentBtn = document.getElementById('autoFixClashesBtn');
+                    // If the button still exists and is still spinning, restore it
+                    if (currentBtn && currentBtn.innerHTML.includes('spinner')) {
+                        currentBtn.disabled = false;
+                        currentBtn.innerHTML = originalHTML;
+                    }
+                });
             }
 
             // 🆕 Manual Slot Edit / Swap Trigger
@@ -993,18 +1163,22 @@ const TimetableModule = (function() {
                 resetDay(parseInt(resetBtn.dataset.day));
             }
         });
-        
-        // 🆕 Health Check Trigger
-        document.getElementById('runHealthCheckBtn')?.addEventListener('click', () => {
-            runHealthCheck();
-        });
+        } else {
+            console.warn("Timetable Module: timetableOutput container not found.");
+        }
+
+        // Sidebar Config Buttons
+        listen('runHealthCheckBtn', 'click', () => runHealthCheck());
+        listen('configureSettingsBtn', 'click', () => openDayScheduleModal());
 
         document.getElementById('saveSlotBtn')?.addEventListener('click', () => saveSlotEdit());
         document.getElementById('cancelEditSlotBtn')?.addEventListener('click', () => {
             document.getElementById('editSlotModal').style.display = 'none';
         });
 
-        document.getElementById('ttGradeSelect')?.addEventListener('change', (e) => {
+        const ttGradeSelect = document.getElementById('ttGradeSelect');
+        if (ttGradeSelect) {
+            ttGradeSelect.addEventListener('change', (e) => {
             const grade = e.target.value;
             const pathwayGroup = document.getElementById('ttPathwayGroup'); 
             if (grade && window.cbcUtils && window.cbcUtils.isSeniorGrade(grade)) {
@@ -1024,9 +1198,12 @@ const TimetableModule = (function() {
             // 🆕 Populate schedule defaults based on grade level
             updateScheduleSettingsForGrade(grade);
         });
+        }
         
-        document.getElementById('configureFrequenciesBtn')?.addEventListener('click', async () => {
-            const grade = document.getElementById('ttGradeSelect').value;
+        const configureFrequenciesBtn = document.getElementById('configureFrequenciesBtn');
+        if (configureFrequenciesBtn) {
+            configureFrequenciesBtn.addEventListener('click', async () => {
+            const grade = document.getElementById('ttGradeSelect')?.value;
             if (!grade) return cbcUtils.showToast("Please select a grade first.", "error");
             
             // 🆕 Mandatory stream validation
@@ -1042,51 +1219,55 @@ const TimetableModule = (function() {
             btn.disabled = false;
             
             openFrequencyModal(grade);
-        });
+            });
+        }
 
-        document.getElementById('saveFrequenciesBtn')?.addEventListener('click', () => {
-            saveCurrentFrequencies();
-            document.getElementById('frequencyModal').style.display = 'none';
-            cbcUtils.showToast("Frequencies updated locally.", "success");
-        });
+        listen('ttRefreshBtn', 'click', () => refreshTimetableDashboard());
 
-        document.getElementById('cancelFrequencyBtn')?.addEventListener('click', () => {
-            document.getElementById('frequencyModal').style.display = 'none';
-        });
+        const saveFrequenciesBtn = document.getElementById('saveFrequenciesBtn');
+        if (saveFrequenciesBtn) {
+            saveFrequenciesBtn.addEventListener('click', () => {
+                saveCurrentFrequencies();
+                document.getElementById('frequencyModal').classList.remove('visible');
+                document.getElementById('frequencyModal').classList.add('hidden');
+                cbcUtils.showToast("Frequencies updated locally.", "success");
+            });
 
-        document.getElementById('configureSettingsBtn')?.addEventListener('click', () => openDayScheduleModal());
-        
-        document.getElementById('ttRefreshBtn')?.addEventListener('click', () => {
-            refreshTimetableDashboard();
+            document.getElementById('cancelFrequencyBtn')?.addEventListener('click', () => {
+                document.getElementById('frequencyModal').classList.remove('visible');
+                document.getElementById('frequencyModal').classList.add('hidden');
         });
+        }
 
-        document.getElementById('saveScheduleBtn')?.addEventListener('click', () => {
+        listen('saveScheduleBtn', 'click', () => {
             if (saveDayScheduleSettings()) {
-                document.getElementById('dayScheduleModal').style.display = 'none';
+                document.getElementById('dayScheduleModal').classList.remove('visible');
+                document.getElementById('dayScheduleModal').classList.add('hidden');
                 cbcUtils.showToast("Day schedule updated.", "success");
             }
         });
 
-        document.getElementById('cancelScheduleBtn')?.addEventListener('click', () => {
-            document.getElementById('dayScheduleModal').style.display = 'none';
+        listen('cancelScheduleBtn', 'click', () => {
+            document.getElementById('dayScheduleModal').classList.remove('visible');
+            document.getElementById('dayScheduleModal').classList.add('hidden');
         });
 
-        // 🆕 Placement Rules Event Listeners
-        document.getElementById('configurePlacementRulesBtn')?.addEventListener('click', () => {
-            openPlacementRulesModal();
-        });
+        listen('configurePlacementRulesBtn', 'click', () => openPlacementRulesModal());
 
-        document.getElementById('savePlacementRulesBtn')?.addEventListener('click', () => {
-            savePlacementRules();
-            document.getElementById('placementRulesModal').style.display = 'none';
+        listen('savePlacementRulesBtn', 'click', () => {
+            savePlacementRules(); // Save rules to localStorage
+            // document.getElementById('placementRulesModal').style.display = 'none'; // Removed: Redundant with class-based display
+            document.getElementById('placementRulesModal').classList.remove('visible');
+            document.getElementById('placementRulesModal').classList.add('hidden');
             cbcUtils.showToast("Placement rules updated.", "success");
         });
 
-        document.getElementById('cancelPlacementRulesBtn')?.addEventListener('click', () => {
-            document.getElementById('placementRulesModal').style.display = 'none';
+        listen('cancelPlacementRulesBtn', 'click', () => {
+            document.getElementById('placementRulesModal').classList.remove('visible');
+            document.getElementById('placementRulesModal').classList.add('hidden');
         });
 
-        document.getElementById('resetPlacementRulesBtn')?.addEventListener('click', () => {
+        listen('resetPlacementRulesBtn', 'click', () => {
             resetPlacementRulesToDefaults();
             openPlacementRulesModal(); // Refresh the modal to show reset values
         });
@@ -1109,7 +1290,7 @@ const TimetableModule = (function() {
     async function fetchSchedulingContext(forceRefresh = false) {
         try {
             const API_BASE = window.config.api.baseURL;
-            const token = localStorage.getItem("token");
+            const token = authService.getToken(); // Use authService for consistency
             if (!token) return authService.redirectToLogin();
             const headers = { "Authorization": `Bearer ${token}` };
 
@@ -1215,6 +1396,7 @@ const TimetableModule = (function() {
         });
 
         // 🆕 Inject mandatory subjects if not present (Frequency defaults to 0 for Junior/Senior)
+        // PPI should appear in the frequency list for all grades to allow visibility/toggling
         if (grade) {
             subjects.add("PPI");
         }
@@ -1260,12 +1442,14 @@ const TimetableModule = (function() {
             </div>`;
         }).join('');
 
-        modal.style.display = 'flex';
+        modal.classList.remove('hidden');
+        modal.classList.add('visible');
     }
 
     function saveCurrentFrequencies() {
         const grade = document.getElementById('ttGradeSelect').value;
         const inputs = document.querySelectorAll('.freq-input');
+        // 🆕 Ensure subjectPlacements[grade] is initialized before accessing
         const placementInputs = document.querySelectorAll('.placement-input');
         
         if (!lessonFrequencies[grade]) lessonFrequencies[grade] = {};
@@ -1302,7 +1486,8 @@ const TimetableModule = (function() {
             </div>
         `).join('');
 
-        modal.style.display = 'flex';
+        modal.classList.remove('hidden');
+        modal.classList.add('visible');
     }
 
     /**
@@ -1350,14 +1535,17 @@ const TimetableModule = (function() {
             });
         };
 
-        attachToggle('coreSubs_enabled', ['coreSubs_beforeLunch']);
+        // 🆕 Corrected to use the actual IDs for core subjects
+        attachToggle('coreSubs_enabled', ['coreSubs_beforeLunch']); 
         attachToggle('technical_enabled', ['technical_preferMorning']);
         attachToggle('ppi_enabled', ['ppi_friday']);
         attachToggle('creative_enabled', ['creative_afternoon']);
         attachToggle('sports_enabled', ['sports_breaks']);
         attachToggle('visualArts_enabled', ['visualArts_breaks']);
 
-        modal.style.display = 'flex';
+            // modal.style.display = 'flex'; // Removed: Redundant with class-based display
+        modal.classList.remove('hidden');
+        modal.classList.add('visible');
     }
 
     /**
@@ -1546,14 +1734,18 @@ const TimetableModule = (function() {
 
     // 🆕 Helper to convert "HH:MM" to total minutes from midnight
     function timeToMinutes(timeStr) {
-        const [h, m] = timeStr.split(':').map(Number);
-        return h * 60 + m;
+        if (!timeStr || typeof timeStr !== 'string') return 0;
+        const parts = timeStr.split(':');
+        const h = parseInt(parts[0], 10) || 0;
+        const m = parseInt(parts[1], 10) || 0;
+        return (h * 60) + m;
     }
 
     // 🆕 Helper to convert total minutes from midnight to "HH:MM"
     function minutesToTime(totalMinutes) {
-        const h = Math.floor(totalMinutes / 60);
-        const m = totalMinutes % 60;
+        let mins = Math.max(0, Math.round(totalMinutes));
+        const h = Math.floor(mins / 60) % 24; // Ensure wrap around midnight
+        const m = mins % 60;
         return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
     }
 
@@ -1951,12 +2143,13 @@ const TimetableModule = (function() {
         }
 
         const pdfBtn = document.getElementById('downloadTimetablePDFBtn');
-        const printBtn = document.getElementById('printTimetableBtn');
+            // 🆕 The sidebar download button is removed, so only check for the one in the grid
+            const downloadBtn = null; 
         const origPdf = pdfBtn ? pdfBtn.innerHTML : null;
-        const origPrint = printBtn ? printBtn.innerHTML : null;
+        const origDownload = downloadBtn ? downloadBtn.innerHTML : null;
 
         if (pdfBtn) { pdfBtn.disabled = true; pdfBtn.innerHTML = '<span class="spinner"></span> Generating...'; }
-        if (printBtn) { printBtn.disabled = true; printBtn.innerHTML = '<span class="spinner"></span> Generating...'; }
+        if (downloadBtn) { downloadBtn.disabled = true; downloadBtn.innerHTML = '<span class="spinner"></span> Generating...'; }
 
         try {
             // Give UI thread time to update buttons
@@ -2010,12 +2203,12 @@ const TimetableModule = (function() {
                     return cols;
                 };
 
-                const sorted = currentTimetableData.timetables.sort((a, b) => {
-                    const ga = Number((a.grade || '').match(/\d+/)?.[0] || 0);
-                    const gb = Number((b.grade || '').match(/\d+/)?.[0] || 0);
-                    if (ga !== gb) return ga - gb;
-                    return (a.stream || '').localeCompare(b.stream || '');
-                });
+        const sorted = currentTimetableData.timetables.sort((a, b) => {
+            const orderA = window.cbcUtils.GRADE_ORDER.indexOf(window.cbcUtils.normalizeGrade(a.grade));
+            const orderB = window.cbcUtils.GRADE_ORDER.indexOf(window.cbcUtils.normalizeGrade(b.grade));
+            if (orderA !== -1 && orderB !== -1 && orderA !== orderB) return orderA - orderB;
+            return (a.stream || '').localeCompare(b.stream || '');
+        });
 
                 const chunks = [];
                 for (let i = 0; i < sorted.length; i += CLASSES_PER_PAGE) chunks.push(sorted.slice(i, i + CLASSES_PER_PAGE));
@@ -2056,11 +2249,11 @@ const TimetableModule = (function() {
                                 const subject = tt.grid[lNum - 1]?.[dIdx];
                                     if (subject) { // Abbreviate subject for PDF display
                                     const teacher = getTeacherForSubject(tt.grade, tt.stream, subject);
-                                    const gMatch = (tt.grade || '').match(/\d+/);
+                                    const gLabel = (tt.grade || '').toUpperCase().startsWith('PP') ? tt.grade : ((tt.grade || '').match(/\d+/)?.[0] || tt.grade);
                                     const subAbbr = window.cbcUtils.getAbbreviatedSubjectName(subject);
                                     const isSpecial = subject.toUpperCase() === "PE" || subject.toUpperCase() === "PPI";
                                     
-                                    const line = `${gMatch ? gMatch[0] : tt.grade}${tt.stream || ''}: ${subAbbr}`;
+                                    const line = `${gLabel}${tt.stream || ''}: ${subAbbr}`;
                                     entries.push(isSpecial ? line : `${line}\n(${teacher?.name || 'Unassigned'})`);
                                 }
                             });
@@ -2140,12 +2333,11 @@ const TimetableModule = (function() {
                 currentTimetableData.timetables.forEach(tt => {
                     (tt.grid || []).forEach(row => {
                         (row || []).forEach(subject => {
-                            if (subject) { // Ensure the slot is not empty
-                                // Exclude PPI from being counted as "Unassigned" if it doesn't have a teacher
-                                if (subject === "PPI" && !getTeacherForSubject(tt.grade, tt.stream, subject)) {
-                                    return; // Skip counting PPI if no teacher is assigned to it
-                                }
+                            if (subject) {
                                 const teacherInfo = getTeacherForSubject(tt.grade, tt.stream, subject);
+                                // 🆕 Consistently skip PPI if unassigned, but track others as 'Unassigned' for gaps
+                                if (subject === "PPI" && !teacherInfo) return;
+                                
                                 const tName = teacherInfo ? teacherInfo.name : 'Unassigned';
                                 globalWorkload[tName] = (globalWorkload[tName] || 0) + 1;
                             }
@@ -2155,7 +2347,11 @@ const TimetableModule = (function() {
 
                 const workloadPairs = Object.entries(globalWorkload)
                     .sort((a, b) => a[0].localeCompare(b[0]))
-                    .map(([name, count]) => [name, `${count} lessons`]);
+                    .map(([name, count]) => {
+                        // 🆕 Pedagogical Alert: Flag teachers with > 30 lessons (approx 20 hrs/week)
+                        const isHigh = count > 30;
+                        return [name, `${count} lessons${isHigh ? ' ⚠️' : ''}`];
+                    });
 
                 if (workloadPairs.length > 0) {
                     doc.addPage();
@@ -2370,19 +2566,19 @@ const TimetableModule = (function() {
                     head,
                     body,
                     theme: 'grid',
-                    styles: { 
+                    styles: {
                         fontSize: 7, 
-                        cellPadding: 4, 
-                        minCellHeight: 50, 
+                        cellPadding: 6, 
+                        minCellHeight: 65, 
                         halign: 'center', 
-                        valign: 'middle', 
+                        valign: 'top', 
                         overflow: 'linebreak',
                         lineWidth: 0.5,
                         lineColor: [40, 40, 40]
                     },
-                    headStyles: { fillColor: [51, 65, 85], halign: 'center', fontSize: 8, minCellHeight: 30 },
+                    headStyles: { fillColor: [51, 65, 85], halign: 'center', fontSize: 8, minCellHeight: 25 },
                     showHead: 'everyPage',
-                    rowPageBreak: 'avoid',
+                    rowPageBreak: 'auto',
                     columnStyles: { 0: { fontStyle: 'bold', halign: 'left', width: 85, fillColor: [248, 250, 252] } },
                     didParseCell: (data) => { 
                         const isBreak = data.cell.text[0] && (data.cell.text[0].toUpperCase().includes("BREAK") || data.cell.text[0].toUpperCase().includes("LUNCH"));
@@ -2406,7 +2602,7 @@ const TimetableModule = (function() {
                             const p = cell.styles.cellPadding;
                             const pTop = (typeof p === 'number' ? p : (p.top || 0));
                             const centerX = cell.x + cell.width / 2;
-                            let y = cell.y + pTop + 16; 
+                            let y = cell.y + pTop + 12; 
 
                             let inTeacherName = false;
                             data.cell.text.forEach(line => {
@@ -2435,12 +2631,11 @@ const TimetableModule = (function() {
                 // 🆕 Add Class Teacher at the bottom of the individual class timetable
                 const classTeacherName = getClassTeacherForGrade(currentTimetableData.grade, currentTimetableData.stream);
                 if (classTeacherName) {
-                    const finalY = doc.lastAutoTable.finalY + 30;
+                    const finalY = doc.lastAutoTable.finalY + 25;
                     doc.setFontSize(10);
                     doc.setFont("helvetica", "bold");
                     doc.setTextColor(15, 23, 42); // slate-900
-                    doc.text(`CLASS TEACHER: ${classTeacherName.toUpperCase()}`, 40, finalY);
-                    
+                    doc.text(`CLASS TEACHER: ${classTeacherName.toUpperCase()}`, 40, finalY); 
                 }
             }
 
@@ -2467,7 +2662,7 @@ const TimetableModule = (function() {
             window.showToast("Failed to generate PDF.", "error");
         } finally {
             if (pdfBtn) { pdfBtn.disabled = false; pdfBtn.innerHTML = origPdf; }
-            if (printBtn) { printBtn.disabled = false; printBtn.innerHTML = origPrint; }
+            if (downloadBtn) { downloadBtn.disabled = false; downloadBtn.innerHTML = origDownload; }
         }
     }
 
@@ -2484,7 +2679,7 @@ const TimetableModule = (function() {
 
         try {
             const API_BASE = window.config.api.baseURL;
-            const token = localStorage.getItem("token");
+            const token = authService.getToken(); // Use authService for consistency
             
             // 🆕 Construct a clean payload that explicitly maps to the backend Timetable model
             const streamVal = currentTimetableData.stream || "";
@@ -2545,7 +2740,11 @@ const TimetableModule = (function() {
             (t.allocations || []).some(a => {
                 const allocGrade = (window.cbcUtils?.normalizeGrade(a.grade) || a.grade).toLowerCase().trim();
                 const allocStream = (a.stream || "").toLowerCase().trim();
-                return allocGrade === normalizedTarget && allocStream === streamTarget && (a.subjects || []).includes(subject);
+                 // 🆕 Case-insensitive subject match for robustness
+                const subjects = Array.isArray(a.subjects) ? a.subjects : [];
+                return allocGrade === normalizedTarget && 
+                       allocStream === streamTarget && 
+                       subjects.some(s => s.toLowerCase().trim() === subject.toLowerCase().trim());
             })
         );
         return teacher ? { id: teacher._id, name: teacher.name } : null;
@@ -2605,7 +2804,8 @@ const TimetableModule = (function() {
             selectEl.appendChild(opt);
         });
 
-        modal.style.display = 'flex';
+        modal.classList.remove('hidden');
+        modal.classList.add('visible');
     }
 
     /**
@@ -2660,7 +2860,8 @@ const TimetableModule = (function() {
         // Re-render using the updated state
         renderGrid(grade, stream, false);
 
-        document.getElementById('editSlotModal').style.display = 'none';
+        document.getElementById('editSlotModal').classList.remove('visible');
+        document.getElementById('editSlotModal').classList.add('hidden');
         cbcUtils.showToast("Slot updated manually.", "info");
         activeEditSlot = null;
     }
@@ -2678,7 +2879,8 @@ const TimetableModule = (function() {
 
         const gradeMatch = (grade || "").match(/\d+/);
         const gradeNum = gradeMatch ? parseInt(gradeMatch[0]) : 0;
-        const isPrimary = gradeNum >= 1 && gradeNum <= 6;
+        const isPP = grade && grade.toUpperCase().includes('PP');
+        const isPrimary = (gradeNum >= 1 && gradeNum <= 6) || isPP;
 
         // 1. Calculate how many lessons of each subject are used on OTHER days
         const usedOnOtherDays = {};
@@ -2704,7 +2906,7 @@ const TimetableModule = (function() {
         const dayColumn = Array(settings.lessonsPerDay).fill("");
         const subjectsScheduledThisDay = new Set();
 
-        // 3a. 🆕 Pre-place double lessons if any double-eligible subjects have 2+ lessons today
+        // 3a. Pre-place double lessons if any double-eligible subjects have 2+ lessons today
         if (placementRules.doubleLessons.enabled) {
             const doublesCandidates = placementRules.doubleLessons.subjects;
             let doublePlacedToday = false;
@@ -2755,8 +2957,8 @@ const TimetableModule = (function() {
 
         // 3b. Fill remaining single slots
 
-        // 🆕 Step 3.1: PPI Priority for Friday Morning
-        if (dayIdx === 4 && placementRules.ppiPreference.enabled) {
+        // Step 3.1: PPI Priority for Friday Morning
+        if (dayIdx === 4 && placementRules.ppiPreference.enabled && placementRules.ppiPreference.fridayMorningOnly) {
             const ppiIdx = dayPool.findIndex(p => p === "PPI");
             if (ppiIdx !== -1) {
                 const t = getTeacherForSubject(grade, stream, "PPI");
@@ -2772,7 +2974,7 @@ const TimetableModule = (function() {
             }
         }
 
-        // 🆕 Step 3.2: Core Priority for Morning Slots (L1-L3)
+        // Step 3.2: Core Priority for Morning Slots (L1-L3)
         if (placementRules.coreSubjectsPreference.enabled) {
             const coreSubjects = placementRules.coreSubjectsPreference.subjects;
             const morningSlots = [0, 1, 2].filter(l => l < settings.lessonsPerDay && !dayColumn[l]);
@@ -2818,6 +3020,17 @@ const TimetableModule = (function() {
 
                     const teacherInfo = getTeacherForSubject(grade, stream, candidate);
                     if (isTeacherBusy(teacherInfo?.id, dayIdx, lIdx, grade, stream)) continue;
+
+                    // 🆕 Integrity Rule: No Technical subjects immediately after Sports/PE (Cool-down)
+                    if (lIdx > 0 && cType === "TECHNICAL") {
+                        const prevSub = dayColumn[lIdx - 1];
+                        if (prevSub) {
+                            const isPrevSports = prevSub.toLowerCase().includes("sports") || 
+                                                 prevSub.toLowerCase().includes("physical education") ||
+                                                 prevSub === "Physical Health Education";
+                            if (isPrevSports) continue;
+                        }
+                    }
 
                     // 🆕 Technical Subjects Preference: Morning Priority & Mid-day Avoidance
                     if (placementRules.technicalSubjectsPreference.enabled) {
@@ -2947,8 +3160,7 @@ const TimetableModule = (function() {
             let displayGrade = tt.grade;
             let displayStream = tt.stream ? tt.stream.trim() : "";
 
-            const gradeMatch = displayGrade.match(/\d+/);
-            const gradeShort = gradeMatch ? gradeMatch[0] : displayGrade;
+            const gradeShort = displayGrade.toUpperCase().startsWith('PP') ? displayGrade : (displayGrade.match(/\d+/)?.[0] || displayGrade);
             const classLabel = `${gradeShort}${displayStream}`;
 
             tt.grid.forEach((row, lIdx) => {
@@ -3159,9 +3371,9 @@ const TimetableModule = (function() {
         }
 
         const sortedTimetables = schoolTimetables.sort((a, b) => {
-            const ga = Number((a.grade || '').match(/\d+/)?.[0] || 0);
-            const gb = Number((b.grade || '').match(/\d+/)?.[0] || 0);
-            if (ga !== gb) return ga - gb;
+            const orderA = window.cbcUtils.GRADE_ORDER.indexOf(window.cbcUtils.normalizeGrade(a.grade));
+            const orderB = window.cbcUtils.GRADE_ORDER.indexOf(window.cbcUtils.normalizeGrade(b.grade));
+            if (orderA !== -1 && orderB !== -1 && orderA !== orderB) return orderA - orderB;
             return (a.stream || '').localeCompare(b.stream || '');
         });
 
@@ -3208,9 +3420,11 @@ const TimetableModule = (function() {
             const lessonCells = Array.from({ length: 5 }, () => Array.from({ length: totalCols }, () => []));
             
             chunk.forEach(tt => {
-                    const gradeMatch = (tt.grade || '').match(/\d+/);
-                    const gradeNum = gradeMatch ? gradeMatch[0] : tt.grade;
-                    const classLabel = `${gradeNum}${tt.stream || ''}`.trim();
+                    // 🆕 Use normalized grade label
+                    const normalizedGrade = window.cbcUtils?.normalizeGrade(tt.grade) || tt.grade;
+                    const gradeMatch = normalizedGrade.match(/\d+/);
+                    const gradeLabel = normalizedGrade.toUpperCase().startsWith('PP') ? normalizedGrade : (gradeMatch ? gradeMatch[0] : normalizedGrade);
+                    const classLabel = `${gradeLabel}${tt.stream || ''}`.trim();
 
                     const subjectGrid = tt.grid || [];
                     subjectGrid.forEach((row, lessonIdx) => {

@@ -2,21 +2,57 @@
 import mongoose from "mongoose";
 import Mark from "../models/mark.js";
 import { User } from "../models/User.js";
+import { Student } from "../models/RoleModels.js";
 import StudentEnrollment from "../models/StudentEnrollment.js";
+import { School } from "../models/school.js";
 import Setting from "../models/Setting.js";
+import cache from "../utils/cacheManager.js";
+import sendSMS, { countSMSSegments } from "../utils/sendSMS.js";
+import SMSLog from "../models/SMSLog.js";
 
 // ---------------------------
-// HELPER: Performance Level Subdivision
-// ---------------------------
-const getPerformanceSubdivision = (score) => {
-  if (score >= 90) return "EE1";
-  if (score >= 75) return "EE2";
-  if (score >= 58) return "ME1";
-  if (score >= 41) return "ME2";
-  if (score >= 31) return "AE1";
-  if (score >= 21) return "AE2";
-  if (score >= 11) return "BE1";
-  return "BE2";
+// 🆕 Helper to extract numeric grade
+const getGradeLevel = (grade) => parseInt(String(grade).replace(/\D/g, ""), 10);
+
+// 🆕 Helper to check if a grade is Primary (PP1 - Grade 6)
+const isPrimaryGrade = (grade) => {
+  if (!grade) return false;
+  const normalized = String(grade).trim();
+  if (normalized === "PP1" || normalized === "PP2") return true;
+  const match = normalized.match(/\d+/);
+  if (match) {
+    const num = parseInt(match[0]);
+    return num >= 1 && num <= 6;
+  }
+  return false;
+};
+
+// 🆕 Helper to calculate points in the backend for SMS, now grade-aware
+const getPoints = (score, grade, customConfig = null) => {
+  if (score === null || score === undefined || score === "" || isNaN(score) || String(score).toUpperCase() === "X") return 0;
+  const s = Number(score);
+  const isPrimary = isPrimaryGrade(grade);
+
+  // 1. Check for custom configuration first
+  const levelConfig = isPrimary ? customConfig?.primary : customConfig?.secondary;
+  if (levelConfig && Array.isArray(levelConfig)) {
+    const range = levelConfig.find(r => s >= r.min && s <= r.max);
+    if (range) return range.points;
+  }
+
+  // 2. Default Logic
+  if (isPrimary) {
+    // New primary point system
+    if (s >= 75) return 4; // EE
+    if (s >= 41) return 3; // ME 
+    if (s >= 21) return 2; // AE
+    if (s >= 0) return 1;  // BE
+  } else {
+    // Default secondary point system (8-point)
+    if (s >= 90) return 8; if (s >= 75) return 7; if (s >= 58) return 6; if (s >= 41) return 5;
+    if (s >= 31) return 4; if (s >= 21) return 3; if (s >= 11) return 2; if (s >= 0) return 1;
+  }
+  return 0;
 };
 
 // 🆕 Helper to safely parse input to Number or NULL (for "X" / Absence)
@@ -26,16 +62,84 @@ const safeParse = (val) => {
   return isNaN(n) ? null : n;
 };
 
-// Helper to extract numeric grade
-const getGradeLevel = (grade) => parseInt(String(grade).replace(/\D/g, ""), 10);
+// ---------------------------
+// HELPER: Performance Level Subdivision (now grade-aware)
+// ---------------------------
+const getPerformanceSubdivision = (score, grade, customConfig = null) => {
+  if (score === null || score === undefined || score === "" || isNaN(score) || String(score).toUpperCase() === "X") return "ABS";
+  const s = Number(score);
+  const isPrimary = isPrimaryGrade(grade);
+
+  // 1. Check for custom configuration
+  const levelConfig = isPrimary ? customConfig?.primary : customConfig?.secondary;
+  if (levelConfig && Array.isArray(levelConfig)) {
+    const range = levelConfig.find(r => s >= r.min && s <= r.max);
+    if (range) return range.label;
+  }
+
+  // 2. Default Logic
+  if (isPrimary) {
+    // Simplified subdivision for Primary grades (PP1 - Grade 6)
+    if (s >= 75) return "EE";
+    if (s >= 41) return "ME";
+    if (s >= 21) return "AE";
+    return "BE";
+  } else {
+    // Existing sublevels for Junior (7-9) and Senior (10-12)
+    if (s >= 90) return "EE1"; if (s >= 75) return "EE2"; if (s >= 58) return "ME1"; if (s >= 41) return "ME2";
+    if (s >= 31) return "AE1"; if (s >= 21) return "AE2"; if (s >= 11) return "BE1"; return "BE2";
+  }
+};
+
+// 🆕 Helper for SMS Subject Abbreviation to save characters
+const getSubjectAbbr = (subject) => {
+  const abbreviations = {
+    "Mathematics": "MATH",
+    "English": "ENG",
+    "Kiswahili": "KISW",
+    "Integrated Science": "I/SCI",
+    "Science and Technology": "SCI/T",
+    "Social Studies": "S/S",
+    "Christian Religious Studies (CRE)": "CRE",
+    "Christian Religious Education": "CRE",
+    "Agriculture": "AGR",
+    "Business Studies": "B/S",
+    "Pre-Technical Studies": "P/TECH",
+    "Health Education": "HLTH",
+    "Physical Health Education": "PHE",
+    "Environmental Activities": "ENV",
+    "Creative Arts": "C/A",
+    "Creative Arts and Sports": "C/A",
+    "Sports C/A(s)": "SPRT",
+    "Visual Arts C/A(v)": "VISL",
+    "Performing Arts C/A(p)": "PERF",
+    "Home Science": "H/S",
+    "Computer Studies": "COMP",
+    "History & Citizenship": "H&C",
+    "Geography": "GEO",
+    "Physics": "PHY",
+    "Chemistry": "CHEM",
+    "Biology": "BIO",
+  };
+
+  const normalized = (subject || "").trim();
+  return abbreviations[normalized] || (normalized.length > 5 ? normalized.substring(0, 4).toUpperCase() : normalized.toUpperCase());
+};
 
 // ---------------------------
 // HELPER: Process Single Mark (for add, update, and bulk operations)
 // ---------------------------
-const processSingleMark = async (markData, reqUser, isNew = true) => {
+const processSingleMark = async (markData, reqUser, isNew = true, cachedContext = null) => {
   // Determine school level early to avoid ReferenceErrors
   const gradeNum = getGradeLevel(markData.grade);
   const isSeniorSchool = gradeNum >= 10 && gradeNum <= 12;
+  
+  // 🚀 Optimization: Use gradingConfig from cachedContext if available to prevent N+1 queries
+  let customConfig = cachedContext?.gradingConfig;
+  if (!customConfig && !cachedContext) {
+    const school = await School.findById(reqUser.schoolId).select("gradingConfig").lean();
+    customConfig = school?.gradingConfig;
+  }
 
   const {
     _id, // Only present for updates
@@ -55,38 +159,46 @@ const processSingleMark = async (markData, reqUser, isNew = true) => {
     endTermExam
   } = markData;
 
-  // 🆕 Term Lock Check
-  // Prevents any modifications (add/update/bulk) if the school admin has locked the term.
-  // Lock keys are stored as: term_lock_{schoolId}_{year}_{termNum}
-  const lockKey = `term_lock_${reqUser.schoolId}_${year}_${term}`;
-  const isLocked = await Setting.findOne({ key: lockKey });
-
-  if (isLocked && isLocked.value === true && reqUser.role !== 'super_admin') {
-    throw new Error(`Action denied: Year ${year} Term ${term} is officially locked. Please contact the Dean or Admin to make corrections.`);
+  // 🆕 Term Lock Check (Optimized: bypass if already checked in bulk)
+  if (!cachedContext?.lockChecked) {
+    const lockKey = `term_lock_${reqUser.schoolId}_${year}_${term}`;
+    const isLocked = await Setting.findOne({ key: lockKey });
+    if (isLocked?.value === true && reqUser.role !== 'super_admin') {
+      throw new Error(`Action denied: Year ${year} Term ${term} is officially locked.`);
+    }
   }
 
   // Find student if new or if admissionNo is provided for update
   let student;
   let enrollment;
   if (isNew || admissionNo) { // For updates, admissionNo might not be in req.body, but it's in the mark object
-    student = await User.findOne({
-      admission: admissionNo,
-      role: "student",
-      schoolId: reqUser.schoolId
-    }).select("name admission _id");
+    
+    // Optimized: Use pre-fetched map if available
+    if (cachedContext?.studentMap && admissionNo) {
+      student = cachedContext.studentMap.get(admissionNo);
+    } else {
+      student = await Student.findOne({
+        admission: admissionNo,
+        schoolId: reqUser.schoolId
+      }).select("name admission _id");
+    }
 
     if (!student) {
       throw new Error(`Student with admission ${admissionNo} not found in your school`);
     }
 
     // 🆕 Strict Active Enrollment Check
-    // Ensures marks can only be recorded for students with an "active" status for the given year.
-    enrollment = await StudentEnrollment.findOne({
-      studentId: student._id,
-      schoolId: reqUser.schoolId,
-      academicYear: Number(year),
-      status: "active"
-    });
+  // Optimized: Use pre-fetched map to eliminate N+1 queries during bulk operations
+    if (cachedContext?.enrollmentMap) {
+      enrollment = cachedContext.enrollmentMap.get(String(student._id));
+    } else {
+      enrollment = await StudentEnrollment.findOne({
+        studentId: student._id,
+        schoolId: reqUser.schoolId,
+        academicYear: Number(year),
+        status: "active"
+      });
+    }
 
     if (!enrollment) {
       throw new Error(`Recording failed: Student ${student.name} (${student.admission}) is not actively enrolled for ${year}. Check promotion status.`);
@@ -95,25 +207,37 @@ const processSingleMark = async (markData, reqUser, isNew = true) => {
 
   // 🆕 NEW: Check for existing mark if this is a new submission
   if (isNew) {
-    const existingMarkQuery = {
-      admissionNo: student.admission,
-      schoolId: reqUser.schoolId,
-      teacherId: reqUser.id, // Important: same teacher
-      term: Number(term),
-      year: Number(year),
-      assessment: Number(assessment),
-    };
-
-    if (isSeniorSchool) {
-      existingMarkQuery.pathway = pathway;
-      existingMarkQuery.course = course;
+    if (cachedContext?.existingMarksMap) {
+      // Efficient O(1) lookup in pre-fetched set
+      const checkKey = isSeniorSchool 
+        ? `${student.admission}_${pathway}_${course}`
+        : `${student.admission}_${subject}`;
+        
+      if (cachedContext.existingMarksMap.has(checkKey)) {
+        throw new Error("Duplicate, marks already exist.");
+      }
     } else {
-      existingMarkQuery.subject = subject;
-    }
+      // Fallback for single record additions
+      const existingMarkQuery = {
+        admissionNo: student.admission,
+        schoolId: reqUser.schoolId,
+        teacherId: reqUser.id,
+        term: Number(term),
+        year: Number(year),
+        assessment: Number(assessment),
+      };
 
-    const existingMark = await Mark.findOne(existingMarkQuery);
-    if (existingMark) {
-      throw new Error("Duplicate, marks already exist.");
+      if (isSeniorSchool) {
+        existingMarkQuery.pathway = pathway;
+        existingMarkQuery.course = course;
+      } else {
+        existingMarkQuery.subject = subject;
+      }
+
+      const existingMark = await Mark.findOne(existingMarkQuery);
+      if (existingMark) {
+        throw new Error("Duplicate, marks already exist.");
+      }
     }
   }
 
@@ -135,6 +259,7 @@ const processSingleMark = async (markData, reqUser, isNew = true) => {
   }
 
   const markFields = {
+    studentId: student ? student._id : (markData.studentId || null), // 🆕 Link directly to User ID for robust relations
     admissionNo: student ? student.admission : admissionNo, // Use found student's admission if available
     studentName: studentName || (student ? student.name : undefined),
     grade,
@@ -164,17 +289,19 @@ const processSingleMark = async (markData, reqUser, isNew = true) => {
       const ca = markFields.continuousAssessment;
       const pw = markFields.projectWork;
       const et = markFields.endTermExam;
-      const finalScore = (ca * 0.3) + (pw * 0.2) + (et * 0.5);
-      markFields.finalScore = Math.round(finalScore * 10) / 10; markFields.performanceLevel = getPerformanceSubdivision(markFields.finalScore);
+      const finalScore = (ca * 0.3) + (pw * 0.2) + (et * 0.5); // Final score calculation remains the same
+      markFields.finalScore = Math.round(finalScore * 10) / 10; markFields.performanceLevel = getPerformanceSubdivision(markFields.finalScore, grade, customConfig);
     } else { 
       markFields.finalScore = null; 
       markFields.performanceLevel = null; 
     }
   } else {
     markFields.subject = subject; markFields.pathway = null; markFields.course = null;
-    markFields.score = safeParse(score);
+    markFields.score = safeParse(score); 
     markFields.finalScore = null; markFields.performanceLevel = null;
-  }
+    // 🆕 Calculate performance level for junior school
+    markFields.performanceLevel = getPerformanceSubdivision(markFields.score, grade, customConfig);
+  } 
   return markFields;
 };
 
@@ -188,6 +315,8 @@ export const addMark = async (req, res) => {
     const processedFields = await processSingleMark(req.body, req.user, true);
     const mark = new Mark(processedFields);
     await mark.save();
+    
+    cache.clearByPattern(String(req.user.schoolId));
 
     return res.status(201).json({
       message: "Mark saved successfully",
@@ -219,6 +348,8 @@ export const updateMark = async (req, res) => {
       { $set: processedFields },
       { new: true, runValidators: true }
     );
+    
+    cache.clearByPattern(String(req.user.schoolId));
 
     return res.status(200).json({
       message: "Mark updated successfully",
@@ -241,15 +372,72 @@ export const bulkAddUpdateMarks = async (req, res) => {
       return res.status(400).json({ message: "Request body must be an array of marks" });
     }
 
+    const schoolId = req.user.schoolId;
+    const sample = marksArray[0];
+
+    // 1. Pre-fetch Term Lock and School Config once for the whole batch
+    const lockKey = `term_lock_${schoolId}_${sample.year}_${sample.term}`;
+    const isLocked = await Setting.findOne({ key: lockKey });
+    if (isLocked?.value === true && req.user.role !== 'super_admin') {
+      return res.status(403).json({ message: `Year ${sample.year} Term ${sample.term} is locked.` });
+    }
+
+    // 2. Pre-fetch students and enrollments to avoid N+1 queries
+    const admissions = [...new Set(marksArray.map(m => m.admissionNo).filter(Boolean))];
+    const students = await Student.find({ 
+      admission: { $in: admissions }, 
+      schoolId 
+    }).select("name admission _id").lean();
+    
+    const studentMap = new Map(students.map(s => [s.admission, s]));
+    
+    const enrollments = await StudentEnrollment.find({
+      studentId: { $in: students.map(s => s._id) },
+      schoolId,
+      academicYear: Number(sample.year),
+      status: "active"
+    }).lean();
+    
+    const enrollmentMap = new Map(enrollments.map(e => [String(e.studentId), e]));
+
+    // 3. Pre-fetch existing marks for duplicate check to eliminate N+1 queries
+    const existingMarksQuery = {
+      schoolId,
+      year: Number(sample.year),
+      term: Number(sample.term),
+      assessment: Number(sample.assessment),
+      admissionNo: { $in: admissions }
+    };
+
+    // 🚀 Optimization: Include subject/course to leverage the full unique index prefix
+    const sampleGradeNum = getGradeLevel(sample.grade);
+    if (sampleGradeNum >= 10 && sampleGradeNum <= 12) {
+      existingMarksQuery.pathway = sample.pathway;
+      existingMarksQuery.course = sample.course;
+    } else {
+      existingMarksQuery.subject = sample.subject;
+    }
+
+    const existingMarks = await Mark.find(existingMarksQuery).select("admissionNo subject course pathway grade").lean();
+
+    const existingMarksMap = new Set(existingMarks.map(m => {
+      const gNum = getGradeLevel(m.grade);
+      return gNum >= 10 && gNum <= 12 
+        ? `${m.admissionNo}_${m.pathway}_${m.course}`
+        : `${m.admissionNo}_${m.subject}`;
+    }));
+
+    // 🚀 NEW: Fetch school grading config once for bulk processing
+    const school = await School.findById(schoolId).select("gradingConfig").lean();
+
+    const cachedContext = { studentMap, enrollmentMap, lockChecked: true, existingMarksMap, gradingConfig: school?.gradingConfig };
     const ops = [];
     const errors = [];
-    let validationFailures = 0;
 
-    // Step 1: Process and Validate all marks in the array
     for (const markData of marksArray) {
       try {
         const isUpdate = !!markData._id;
-        const processedFields = await processSingleMark(markData, req.user, !isUpdate);
+        const processedFields = await processSingleMark(markData, req.user, !isUpdate, cachedContext);
 
         if (isUpdate) {
           ops.push({
@@ -266,7 +454,6 @@ export const bulkAddUpdateMarks = async (req, res) => {
           });
         }
       } catch (error) {
-        validationFailures++;
         errors.push({ mark: markData, message: error.message });
       }
     }
@@ -278,6 +465,8 @@ export const bulkAddUpdateMarks = async (req, res) => {
       // Count inserts, updates (modified), and matches (no change needed) as successes
       successCount = (bulkResult.insertedCount || 0) + (bulkResult.matchedCount || 0) + (bulkResult.upsertedCount || 0);
     }
+    
+    cache.clearByPattern(String(schoolId));
 
     return res.status(200).json({
       message: "Bulk mark operation completed",
@@ -334,11 +523,13 @@ export const deleteMark = async (req, res) => {
     // 🆕 Check Lock before deletion
     const lockKey = `term_lock_${req.user.schoolId}_${mark.year}_${mark.term}`;
     const isLocked = await Setting.findOne({ key: lockKey });
-    if (isLocked && isLocked.value === true && req.user.role !== 'super_admin') {
+    if (isLocked?.value === true && req.user.role !== 'super_admin') {
       return res.status(403).json({ message: "Cannot delete marks: This academic term is officially locked." });
     }
 
     await mark.deleteOne();
+    cache.clearByPattern(String(req.user.schoolId));
+
     return res.json({ message: "Mark deleted" });
   } catch (err) {
     console.error("deleteMark error:", err);
@@ -375,16 +566,23 @@ export const bulkDeleteMarks = async (req, res) => {
     }
 
     // 3. Perform Term Lock Check
-    // Collect all unique (year, term) combinations for the marks to be deleted
-    const uniqueTerms = [...new Set(marksToDelete.map(mark => `${mark.year}_${mark.term}`))];
+    // Collect all unique (year, term) combinations for the marks to be deleted.
+    // Use req.user.schoolId and req.user.role.
+    const termKeys = [...new Set(marksToDelete.map(m => `term_lock_${req.user.schoolId}_${m.year}_${m.term}`))];
+    if (req.user.role !== 'super_admin') {
+      // Optimized: Fetch all relevant lock settings in one go
+      const lockedSettings = await Setting.find({ 
+        key: { $in: termKeys }, 
+        value: true 
+      }).lean();
 
-    for (const termKey of uniqueTerms) {
-      const [year, term] = termKey.split('_');
-      const lockKey = `term_lock_${req.user.schoolId}_${year}_${term}`;
-      const isLocked = await Setting.findOne({ key: lockKey });
-
-      if (isLocked && isLocked.value === true && req.user.role !== 'super_admin') {
-        return res.status(403).json({ message: `Cannot delete marks: Academic Term ${term} (Year ${year}) is officially locked.` });
+      if (lockedSettings.length > 0) {
+        const firstLocked = lockedSettings[0].key.split('_');
+        const lockedYear = firstLocked[3];
+        const lockedTerm = firstLocked[4];
+        return res.status(403).json({ 
+          message: `Cannot delete marks: One or more academic terms (e.g., Year ${lockedYear} Term ${lockedTerm}) are officially locked.` 
+        });
       }
     }
 
@@ -394,6 +592,8 @@ export const bulkDeleteMarks = async (req, res) => {
       teacherId: req.user.id, // Double-check ownership during deletion
       schoolId: req.user.schoolId
     });
+    
+    cache.clearByPattern(String(req.user.schoolId));
 
     return res.status(200).json({ message: `Successfully deleted ${deleteResult.deletedCount} marks.` });
   } catch (err) {
@@ -407,16 +607,25 @@ export const bulkDeleteMarks = async (req, res) => {
 // ---------------------------
 export const getStudentMarks = async (req, res) => {
   try {
+    const studentId = req.user.id; // Using ID from JWT
     const admissionNo = req.user.admission;
     const schoolId = req.user.schoolId;
     let { term, year, assessment } = req.query;
 
-    if (!admissionNo || !schoolId) {
+    if (!studentId || !schoolId) {
       return res.status(400).json({ message: "Student info missing" });
     }
 
     // 🆕 Build query dynamically based on filters to prevent heavy fetch
-    const filter = { admissionNo, schoolId };
+    // Prioritize studentId, but fallback to admissionNo for historical records
+    const filter = { 
+      $or: [
+        { studentId: studentId },
+        { admissionNo: admissionNo }
+      ],
+      schoolId 
+    };
+
     if (term && term !== "all") filter.term = Number(term);
     if (year && year !== "all") filter.year = Number(year);
     if (assessment && assessment !== "all") filter.assessment = Number(assessment);
@@ -435,16 +644,9 @@ export const getStudentMarks = async (req, res) => {
     const refAssess = contextMark.assessment;
     const refGrade = contextMark.grade;
 
-    // Optimized class comparison fetch: only fetch marks for the same grade/context
-    const allClassMarks = await Mark.find({
-      term: refTerm,
-      year: refYear,
-      assessment: refAssess,
-      grade: refGrade,
-      schoolId
-    }).lean();
-
-    return res.json({ studentMarks, allClassMarks });
+    // 🚀 Performance Optimization: Removed redundant class comparison fetch.
+    // Dashboard analytics are calculated locally from student marks; fetching class sets is unnecessary.
+    return res.json({ studentMarks, allClassMarks: [] });
   } catch (err) {
     console.error("getStudentMarks error:", err);
     return res.status(500).json({ message: "Server error fetching marks" });
@@ -505,50 +707,12 @@ export const getMarksByGrade = async (req, res) => {
       ];
     }
 
-// ---------------------------
-// STREAM FILTER (SMART + OPTIONAL)
-// ---------------------------
-if (filterByStream) {
-  const requestedStream = req.query.stream.trim();
-
-  const studentGradeVariants = [gradeStr, `Grade ${gradeStr}`];
-
-  // Determine whether this grade uses streams (some schools don't)
-  const streamsExist = await StudentEnrollment.exists({
-    schoolId: schoolId,
-    grade: { $in: studentGradeVariants },
-    stream: { $ne: null }
-  });
-
-  const enrollmentFilter = {
-    schoolId: schoolId,
-    grade: { $in: studentGradeVariants },
-    // status: "active" // 🛑 REMOVE THIS FILTER FOR HISTORICAL ANALYSIS
-  };
-
-  // If streams are used, filter by requested stream; otherwise use stream=null
-  if (streamsExist) enrollmentFilter.stream = requestedStream;
-  else enrollmentFilter.stream = null;
-
-  const enrollments = await StudentEnrollment.find(enrollmentFilter)
-    .populate({ path: "studentId", select: "admission" })
-    .select("studentId")
-    .lean();
-
-  const admissions = enrollments.map(e => (e.studentId && e.studentId.admission) ? e.studentId.admission : null).filter(Boolean);
-
-  // Combine admission filter with existing search filters properly
-  if (markQuery.$or) {
-    markQuery.$and = [
-      { admissionNo: { $in: admissions } },
-      { $or: markQuery.$or }
-    ];
-    delete markQuery.$or;
-  } else {
-    markQuery.admissionNo = { $in: admissions };
-  }
-}
-
+    // ---------------------------
+    // STREAM FILTER (DIRECT & OPTIMIZED)
+    // ---------------------------
+    if (filterByStream) {
+      markQuery.stream = req.query.stream.trim();
+    }
 
     console.log("[getMarksByGrade] final mark query:", markQuery);
 
@@ -567,6 +731,7 @@ if (filterByStream) {
             assessment: "$assessment"
           },
           // Persist student details from the first record found
+          studentId: { $first: "$studentId" },
           studentName: { $first: "$studentName" },
           grade: { $first: "$grade" },
           stream: { $first: "$stream" },
@@ -591,6 +756,7 @@ if (filterByStream) {
         $project: {
           _id: 0,
           admissionNo: "$_id.admissionNo",
+          studentId: 1,
           studentName: 1,
           grade: 1,
           stream: 1,
@@ -668,6 +834,7 @@ export const getClassMarks = async (req, res) => {
       {
         $group: {
           _id: "$admissionNo",
+          studentId: { $first: "$studentId" },
           studentName: { $first: "$studentName" },
           grade: { $first: "$grade" },
           stream: { $first: "$stream" },
@@ -690,6 +857,7 @@ export const getClassMarks = async (req, res) => {
         $project: {
           _id: 0,
           admissionNo: "$_id",
+          studentId: 1,
           studentName: 1,
           grade: 1,
           stream: 1,
@@ -748,5 +916,326 @@ export const getMarksByGradeAndStudents = async (req, res) => {
   } catch (err) {
     console.error("getMarksByGradeAndStudents error:", err);
     return res.status(500).json({ message: "Server error fetching existing marks" });
+  }
+};
+
+// ---------------------------
+// BROADCAST RESULTS VIA SMS
+// ---------------------------
+export const broadcastResultsSMS = async (req, res) => {
+  try {
+    const { grade, term, year, assessment } = req.body;
+    const schoolId = req.user.schoolId;
+
+    if (!grade || !term || !year || !assessment) {
+      return res.status(400).json({ message: "Selection parameters missing" });
+    }
+
+    // 🆕 Safeguard: Prevent duplicate broadcast within 2 minutes
+    const lockKey = cache.generateKey(`sms_broadcast_lock:${schoolId}`, {
+      grade,
+      term,
+      year,
+      assessment
+    });
+
+    if (cache.get(lockKey)) {
+      return res.status(429).json({ 
+        message: "A broadcast for these results was recently initiated. Please wait 2 minutes before trying again." 
+      });
+    }
+
+    // 1. Fetch relevant marks and School config
+    const school = await School.findById(schoolId).select("smsCredits gradingConfig").lean();
+    const marks = await Mark.find({
+      schoolId,
+      grade,
+      term: Number(term),
+      year: Number(year),
+      assessment: Number(assessment)
+    }).lean();
+
+    if (!marks.length) return res.status(404).json({ message: "No marks found to broadcast" });
+
+    // 2. Fetch students for contacts
+    const studentIds = [...new Set(marks.map(m => m.studentId).filter(Boolean))];
+    const adms = [...new Set(marks.map(m => m.admissionNo).filter(Boolean))];
+
+    const students = await Student.find({ 
+      $or: [
+        { _id: { $in: studentIds } },
+        { admission: { $in: adms } }
+      ],
+      schoolId 
+    })
+      .select("admission contact name")
+      .lean();
+
+    const studentMap = new Map();
+    students.forEach(s => {
+      studentMap.set(String(s._id), s);
+      studentMap.set(s.admission, s);
+    });
+
+    // 3. Aggregate marks per student
+    const records = marks.reduce((acc, m) => {
+      const groupKey = m.studentId ? String(m.studentId) : m.admissionNo;
+      if (!acc[groupKey]) acc[groupKey] = [];
+      acc[groupKey].push(m);
+      return acc;
+    }, {});
+
+    // 4. Send messages
+    const isSenior = getGradeLevel(grade) >= 10;
+    const mapping = { 1: "Opener", 5: "Midterm", 8: "Endterm" }; 
+    const assessLabel = mapping[assessment] || `A${assessment}`;
+
+    const messagesToSend = [];
+    let totalRequiredCredits = 0;
+    let tooLongCount = 0;
+
+    for (const [key, sMarks] of Object.entries(records)) {
+      const student = studentMap.get(key);
+      if (!student || !student.contact) continue;
+
+      // 🆕 EXCLUSION LOGIC: Skip students with any missing marks or "X" (absences)
+      // This ensures parents only receive the SMS if the performance profile is complete.
+      const hasIncompleteMarks = sMarks.some(m => {
+        const score = isSenior ? m.finalScore : m.score;
+        return score === null || score === undefined || String(score).toUpperCase() === "X";
+      });
+
+      if (hasIncompleteMarks) {
+        console.log(`[SMS Broadcast] Skipping ${student.name} (${adm}) due to incomplete mark profile.`);
+        continue;
+      }
+
+      const firstName = student.name.split(' ')[0];
+      
+      // Compact Header: "John Opener T1/2026:" (Note: removing the trailing space here)
+      let content = `${firstName} ${assessLabel} T${term}/${year}:`;
+
+      const subScores = [];
+      let studentTotal = 0;
+      let studentCount = 0;
+      let totalPoints = 0; // 🆕 Track total points for the entire assessment
+
+      sMarks.forEach(m => {
+        const fullSub = isSenior ? (m.course || "Sub") : (m.subject || "Sub");
+        const score = isSenior ? m.finalScore : m.score;
+        const abbr = getSubjectAbbr(fullSub);
+        
+        // Use X for absent, or round the score to save space
+        const displayScore = (score === null || score === undefined || score === "X") ? "X" : Math.round(score);
+        subScores.push(`${abbr} ${displayScore}`);
+
+        studentTotal += Number(displayScore);
+        studentCount++;
+        totalPoints += getPoints(displayScore, grade, school?.gradingConfig); 
+      });
+
+      content += ' ' + subScores.join(', ');
+
+      // Add Total Points and Overall Performance Level using subdivision codes
+      if (studentCount > 0) {
+        const mean = studentTotal / studentCount;
+        const level = getPerformanceSubdivision(mean, grade, school?.gradingConfig);
+        content += ` | PTS:${totalPoints} LVL:${level}`;
+      }
+
+      const segments = countSMSSegments(content.trim());
+      if (segments > 1) tooLongCount++;
+      
+      totalRequiredCredits += segments;
+      messagesToSend.push({ 
+        contact: student.contact, 
+        content: content.trim(),
+        studentName: student.name 
+      });
+    }
+
+    // 🆕 Safeguard: Prevent long SMS that cost beyond 1 credit
+    if (tooLongCount > 0) {
+      return res.status(400).json({ 
+        message: `Broadcast blocked: Results for ${tooLongCount} learners exceed the 160-character limit (1 credit). To prevent multi-segment costs, please contact support to enable long messages or simplify the results format.` 
+      });
+    }
+
+    if (!school || (school.smsCredits || 0) < totalRequiredCredits) {
+      return res.status(402).json({ 
+        message: `Insufficient credit: Balance ${school?.smsCredits || 0}. Please top up your balance.`
+      });
+    }
+
+    // Set a 2-minute lock now that credits are verified
+    cache.set(lockKey, true, 120);
+
+    let isCancelled = false;
+    req.on('close', () => {
+      isCancelled = true;
+      console.log(`[SMS Broadcast] Connection closed. Cancelling remaining messages for school ${schoolId}`);
+    });
+
+    // 🆕 Batch sending to prevent network congestion and timeout errors
+    const BATCH_SIZE = 50;
+    for (let i = 0; i < messagesToSend.length; i += BATCH_SIZE) {
+      if (isCancelled) break;
+
+      const batch = messagesToSend.slice(i, i + BATCH_SIZE);
+      const batchResults = await Promise.all(batch.map(async (m) => {
+        const response = await sendSMS(m.contact, m.content);
+        
+        // 🆕 Only count as success if status is 'Success' or 'Sent'
+        const isActualSuccess = response?.SMSMessageData?.Recipients?.some(recp => ['Success', 'Sent'].includes(recp.status));
+
+        return {
+          schoolId,
+          senderId: req.user.id,
+          recipient: m.contact,
+          studentName: m.studentName,
+          content: m.content,
+          status: isActualSuccess ? "Sent" : "Failed",
+          providerResponse: response
+        };
+      }));
+
+      await SMSLog.insertMany(batchResults);
+
+      // 🆕 Add a short delay between batches to reduce network spikes
+      if (i + BATCH_SIZE < messagesToSend.length) {
+        await new Promise(resolve => setTimeout(resolve, 500));
+      }
+    }
+
+    // 🆕 Deduct Credits after successful broadcast initiation
+    if (totalRequiredCredits > 0) {
+      await School.findByIdAndUpdate(schoolId, { $inc: { smsCredits: -totalRequiredCredits } });
+      
+      // 🆕 Invalidate school profile cache to reflect new balance immediately
+      cache.clearByPattern(String(schoolId));
+    }
+
+    return res.json({ message: `Successfully initiated results SMS for ${messagesToSend.length} learners with complete records.` });
+
+  } catch (err) {
+    console.error("broadcastResultsSMS error:", err);
+    return res.status(500).json({ message: "SMS Broadcast failed" });
+  }
+};
+
+/**
+ * 🆕 Fetches a summary of SMS activity (Success counts + Detailed Failures)
+ */
+export const getSMSLogsSummary = async (req, res) => {
+  try {
+    const schoolId = new mongoose.Types.ObjectId(req.user.schoolId);
+    
+    // 1. Get counts for the last 30 days
+    const successCount = await SMSLog.countDocuments({ schoolId, status: "Sent" });
+    const failureCount = await SMSLog.countDocuments({ schoolId, status: "Failed" });
+
+    // 2. Fetch the most recent failures for action
+    const recentFailures = await SMSLog.find({ schoolId, status: "Failed" })
+      .sort({ createdAt: -1 })
+      .limit(50)
+      .select("recipient studentName content createdAt providerResponse")
+      .lean();
+
+    return res.json({
+      summary: { sent: successCount, failed: failureCount },
+      recentFailures
+    });
+  } catch (err) {
+    console.error("getSMSLogsSummary error:", err);
+    return res.status(500).json({ message: "Failed to fetch SMS history summary" });
+  }
+};
+
+/**
+ * 🆕 GET SCHOOL-WIDE RANKINGS
+ * Aggregates mean scores across all grades for a specific term/year/assessment.
+ * This provides a single view of the top performers in the entire school.
+ */
+export const getSchoolWideRankings = async (req, res) => {
+  try {
+    const { year, term, assessment, page = 1, limit = 50 } = req.query;
+    const schoolId = req.user.schoolId;
+
+    if (!year || !term || !assessment) {
+      return res.status(400).json({ message: "Year, Term, and Assessment are required." });
+    }
+
+    const pageNum = Math.max(1, parseInt(page, 10));
+    const limitNum = Math.min(100, Math.max(1, parseInt(limit, 10)));
+    const skip = (pageNum - 1) * limitNum;
+
+    // 🚀 NEW: Server-side caching for rankings
+    const cacheKey = cache.generateKey(`rankings:${schoolId}`, {
+      year,
+      term,
+      assessment,
+      page: pageNum,
+      limit: limitNum
+    });
+
+    const cachedData = cache.get(cacheKey);
+    if (cachedData) {
+      return res.json(cachedData);
+    }
+
+    const pipeline = [
+      {
+        $match: {
+          schoolId: new mongoose.Types.ObjectId(schoolId),
+          year: Number(year),
+          term: Number(term),
+          assessment: Number(assessment)
+        }
+      },
+      {
+        $group: {
+          _id: "$admissionNo",
+          studentName: { $first: "$studentName" },
+          grade: { $first: "$grade" },
+          stream: { $first: "$stream" },
+          studentId: { $first: "$studentId" },
+          // Extract either the Senior finalScore or Junior score
+          scores: { $push: { $ifNull: ["$finalScore", "$score"] } }
+        }
+      },
+      {
+        $addFields: {
+          meanScore: { $avg: "$scores" },
+          totalSubjects: { $size: "$scores" }
+        }
+      },
+      // 🏆 Calculate Competition Rank (1, 2, 2, 4) globally across all grades
+      {
+        $setWindowFields: {
+          sortBy: { meanScore: -1 },
+          output: { rank: { $rank: {} } }
+        }
+      },
+      {
+        $facet: {
+          metadata: [{ $count: "total" }],
+          data: [{ $sort: { rank: 1, studentName: 1 } }, { $skip: skip }, { $limit: limitNum }]
+        }
+      }
+    ];
+
+    const [result] = await Mark.aggregate(pipeline).allowDiskUse(true);
+    const total = result.metadata[0]?.total || 0;
+    const rankings = result.data || [];
+
+    const response = { rankings, total, page: pageNum, limit: limitNum, totalPages: Math.ceil(total / limitNum) };
+    
+    // Cache the result for 10 minutes (600 seconds)
+    cache.set(cacheKey, response, 600);
+
+    res.json(response);
+  } catch (err) {
+    console.error("[getSchoolWideRankings] Error:", err);
+    res.status(500).json({ message: "Failed to generate school-wide ranking report." });
   }
 };

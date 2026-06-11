@@ -1,6 +1,6 @@
 /**
- * CBC Portal Shared Utilities
  * Centralized logic for grading, performance levels, and score calculations.
+ * This utility object is designed to be flexible and extensible, allowing for school-specific grading configurations while providing sensible defaults. It also includes helper functions for consistent performance level labeling and point calculations across the application.
  */
 window.cbcUtils = {
     WEIGHTS: {
@@ -8,6 +8,11 @@ window.cbcUtils = {
         pw: 0.20,
         exam: 0.50
     },
+
+    /**
+     * Store for school-specific grading overrides
+     */
+    customGradingConfig: null,
 
     /**
      * Standards for subdivisions
@@ -22,16 +27,54 @@ window.cbcUtils = {
     /**
      * Full performance key data for reports and dashboards
      */
-    PERFORMANCE_KEY: [
-        { subdivision: 'EE1', range: '90-100', points: 8 },
-        { subdivision: 'EE2', range: '75-89', points: 7 },
-        { subdivision: 'ME1', range: '58-74', points: 6 },
-        { subdivision: 'ME2', range: '41-57', points: 5 },
-        { subdivision: 'AE1', range: '31-40', points: 4 },
-        { subdivision: 'AE2', range: '21-30', points: 3 },
-        { subdivision: 'BE1', range: '11-20', points: 2 },
-        { subdivision: 'BE2', range: '0-10', points: 1 },
-    ],
+    get PERFORMANCE_KEY() {
+        // Prioritize custom secondary scale for general report legends
+        const custom = window.cbcUtils.customGradingConfig?.secondary;
+        const config = (custom && custom.length > 0) ? custom : [
+            { min: 90, max: 100, label: "EE1", points: 8 },
+            { min: 75, max: 89, label: "EE2", points: 7 },
+            { min: 58, max: 74, label: "ME1", points: 6 },
+            { min: 41, max: 57, label: "ME2", points: 5 },
+            { min: 31, max: 40, label: "AE1", points: 4 },
+            { min: 21, max: 30, label: "AE2", points: 3 },
+            { min: 11, max: 20, label: "BE1", points: 2 },
+            { min: 0, max: 10, label: "BE2", points: 1 }
+        ];
+        return [...config].sort((a, b) => b.min - a.min).map(c => ({
+            subdivision: c.label,
+            range: `${c.min}-${c.max}`,
+            points: c.points
+        }));
+    },
+
+    /**
+     * 🆕 Returns the performance key data for a specific grade
+     */
+    getPerformanceKey: function(grade) {
+        const isPrimary = window.cbcUtils.isPrimaryGrade(grade);
+        const custom = isPrimary ? window.cbcUtils.customGradingConfig?.primary : window.cbcUtils.customGradingConfig?.secondary;
+
+        const config = (custom && custom.length > 0) ? custom : (isPrimary ? [
+            { min: 75, max: 100, label: "EE", points: 4 },
+            { min: 41, max: 74, label: "ME", points: 3 },
+            { min: 21, max: 40, label: "AE", points: 2 },
+            { min: 0, max: 20, label: "BE", points: 1 }
+        ] : [
+            { min: 90, max: 100, label: "EE1", points: 8 },
+            { min: 75, max: 89, label: "EE2", points: 7 },
+            { min: 58, max: 74, label: "ME1", points: 6 },
+            { min: 41, max: 57, label: "ME2", points: 5 },
+            { min: 31, max: 40, label: "AE1", points: 4 },
+            { min: 21, max: 30, label: "AE2", points: 3 },
+            { min: 11, max: 20, label: "BE1", points: 2 },
+            { min: 0, max: 10, label: "BE2", points: 1 }
+        ]);
+        return [...config].sort((a, b) => b.min - a.min).map(c => ({
+            subdivision: c.label,
+            range: `${c.min}-${c.max}`,
+            points: c.points
+        }));
+    },
 
     /**
      * Official Grade Progression
@@ -43,16 +86,120 @@ window.cbcUtils = {
      */
     normalizeGrade: (g) => {
         if (!g) return "";
-        const str = String(g).trim();
-        const match = str.match(/\d+/); // Extract only the numeric part
+        let str = String(g).trim();
+
+        // 🆕 Remove "Grade " prefix if present before checking for PP
+        if (str.toUpperCase().startsWith("GRADE ")) {
+            str = str.replace(/^GRADE\s+/i, "").trim();
+        }
+        if (str.toUpperCase().startsWith("PP")) return str.toUpperCase();
+        const match = str.match(/\d+/);
         if (match) {
             return `Grade ${match[0]}`;
         }
-        // If no numeric part, but it's already "Grade X", return as is.
-        // Otherwise, if it's just a string, return it as is (e.g., "PP1", "PP2")
-        return str.toLowerCase().startsWith("grade") ? str : str;
+        return str;
     },
 
+    /**
+     * Returns the grade options for the current school type.
+     * @returns {string[]} An array of grade strings (e.g., ["Grade 1", "Grade 2"]).
+     */
+    getGradeOptionsForSchool: function() {
+        const schoolType = this.getSchoolTypeKey();
+        return this.SCHOOL_TYPES[schoolType].gradeOptions.map(g => 
+            String(g).toUpperCase().startsWith("PP") ? g : `Grade ${g}`
+        );
+    },
+
+    /**
+     * Determines the school type key based on the global schoolInfo object.
+     * @returns {string} The school type key (e.g., 'full', 'primary_junior', 'senior').
+     */
+    getSchoolTypeKey: function() {
+        // Assuming window.schoolInfo is populated globally
+        const schoolInfo = window.schoolInfo || {};
+        return (schoolInfo.schoolType && this.SCHOOL_TYPES[schoolInfo.schoolType]) ? schoolInfo.schoolType : 'full';
+    },
+
+
+    /**
+     * Helper to convert image URL to base64 for reliable PDF embedding
+     */
+    getImageBase64: async function(url) {
+      if (!url) return null;
+      // If it's already a data URI, return it immediately to avoid CSP issues with fetch
+      if (url.startsWith('data:')) return url;
+
+      try {
+        // Prepend backend URL if the path is relative (e.g., /uploads/...)
+        const BACKEND_URL = config.api.baseURL.replace('/api', '');
+        const absoluteUrl = (url.startsWith('http') || url.startsWith('data:')) 
+          ? url 
+          : `${BACKEND_URL}${url.startsWith('/') ? '' : '/'}${url}`;
+        const response = await fetch(absoluteUrl);
+        const blob = await response.blob();
+        return new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onloadend = () => resolve(reader.result);
+          reader.onerror = reject;
+          reader.readAsDataURL(blob);
+        });
+      } catch (e) {
+        console.error("Image conversion error:", e);
+        return null;
+      }
+    },
+
+    /**
+     * Helper to extract image format from base64 data URI
+     */
+    getImageFormat: function(base64String) {
+      if (!base64String) return 'PNG';
+      const match = base64String.match(/^data:image\/([a-zA-Z+]+);base64,/);
+      if (match && match[1]) {
+        const format = match[1].toUpperCase();
+        return format === 'JPG' ? 'JPEG' : format;
+      }
+      return 'PNG';
+    },
+
+    /**
+     * Extracts the numeric part of a grade string.
+     * @param {string} grade - The grade string (e.g., "Grade 5", "5").
+     * @returns {number} The numeric grade, or 0 if not found.
+     */
+    getGradeNum: (grade) => {
+        const match = String(grade || "").match(/\d+/);
+        return match ? parseInt(match[0], 10) : 0;
+    },
+
+
+    /**
+     * Checks if a given grade falls within the Primary school range (PP1 - Grade 6).
+     * @param {string} grade - The grade label (e.g., "PP1", "Grade 3", "6").
+     * @returns {boolean} True if it's a primary grade, false otherwise.
+     */
+    isPrimaryGrade: (grade) => {
+        if (!grade) return false;
+        const normalized = window.cbcUtils.normalizeGrade(grade);
+        if (normalized === "PP1" || normalized === "PP2") return true;
+        const match = normalized.match(/\d+/);
+        if (match) {
+            const num = parseInt(match[0]);
+            return num >= 1 && num <= 6;
+        }
+        return false;
+    },
+
+    /**
+     * Checks if a given grade falls within the Junior Secondary range (Grade 7 - 9).
+     * @param {string} grade - The grade label (e.g., "Grade 7", "9").
+     * @returns {boolean} True if it's a junior secondary grade, false otherwise.
+     */
+    isJuniorGrade: (grade) => {
+        const num = window.cbcUtils.getGradeNum(grade);
+        return num >= 7 && num <= 9;
+    },
     /**
      * Calculates weighted final score for Senior School (Grade 10-12)
      */
@@ -66,15 +213,21 @@ window.cbcUtils = {
         const total = (caVal * 0.30) + (pwVal * 0.20) + (examVal * 0.50);
         // Ensure score is between 0 and 100
         const clampedTotal = Math.max(0, Math.min(100, total));
-        return parseFloat(clampedTotal.toFixed(2));
-
-
+        return Math.round(clampedTotal * 10) / 10; 
     },
 
-    getPerformanceLevel: (score) => {
-        if (score >= 75) return "EE";
-        if (score >= 41) return "ME";
-        if (score >= 21) return "AE";
+    getPerformanceLevel: (score, grade) => { 
+        const isPrimary = window.cbcUtils.isPrimaryGrade(grade);
+        const config = window.cbcUtils.customGradingConfig?.[isPrimary ? 'primary' : 'secondary'];
+        
+        if (config && Array.isArray(config)) {
+            const range = config.find(r => Number(score) >= r.min && Number(score) <= r.max);
+            if (range) return range.label.substring(0, 2);
+        }
+        const s = Number(score);
+        if (s >= 75) return "EE";
+        if (s >= 41) return "ME";
+        if (s >= 21) return "AE";
         return "BE";
     },
 
@@ -82,44 +235,60 @@ window.cbcUtils = {
         return window.cbcUtils.LEVEL_LABELS[level] || "Unknown";
     },
 
-    getPoints: (score) => {
-        const scoreStr = (score !== null && score !== undefined) ? String(score).trim().toUpperCase() : "";
-        if (score === null || score === undefined || score === "" || isNaN(score) || scoreStr === "X") return 0;
-        if (score >= 90) return 8;
-        if (score >= 75) return 7;
-        if (score >= 58) return 6;
-        if (score >= 41) return 5;
-        if (score >= 31) return 4;
-        if (score >= 21) return 3;
-        if (score >= 11) return 2;
-        if (score >= 0) return 1;
-        return 0;
+    getPoints: function(score, grade) {
+        if (score === null || score === undefined || score === "" || isNaN(score) || String(score).toUpperCase() === "X") return 0;
+        const s = Number(score);
+        const isPrimary = window.cbcUtils.isPrimaryGrade(grade);
+        const config = window.cbcUtils.customGradingConfig?.[isPrimary ? 'primary' : 'secondary'];
+        
+        if (config && Array.isArray(config) && config.length > 0) {
+            const range = config.find(r => s >= r.min && s <= r.max);
+            if (range) return range.points;
+        }
+
+        if (isPrimary) {
+            if (s >= 75) return 4; if (s >= 41) return 3; if (s >= 21) return 2; return 1;
+        } else {
+            if (s >= 90) return 8; if (s >= 75) return 7; if (s >= 58) return 6; if (s >= 41) return 5;
+            if (s >= 31) return 4; if (s >= 21) return 3; if (s >= 11) return 2; return 1;
+        }
     },
 
-    getSubdivision: (score) => {
-        const scoreStr = (score !== null && score !== undefined) ? String(score).trim().toUpperCase() : "";
-        if (score === null || score === undefined || score === "" || isNaN(score) || scoreStr === "X") return "ABS";
-        if (score >= 90) return "EE1";
-        if (score >= 75) return "EE2";
-        if (score >= 58) return "ME1";
-        if (score >= 41) return "ME2";
-        if (score >= 31) return "AE1";
-        if (score >= 21) return "AE2";
-        if (score >= 11) return "BE1";
-        return "BE2";
+    getSubdivision: function(score, grade) {
+        if (score === null || score === undefined || score === "" || isNaN(score) || String(score).toUpperCase() === "X") return "ABS";
+        const s = Number(score);
+        const isPrimary = window.cbcUtils.isPrimaryGrade(grade);
+        const config = window.cbcUtils.customGradingConfig?.[isPrimary ? 'primary' : 'secondary'];
+        
+        if (config && Array.isArray(config) && config.length > 0) {
+            const range = config.find(r => s >= r.min && s <= r.max);
+            if (range) return range.label;
+        }
+
+        if (isPrimary) {
+            if (s >= 75) return "EE"; if (s >= 41) return "ME"; if (s >= 21) return "AE"; return "BE";
+        } else {
+            if (s >= 90) return "EE1"; if (s >= 75) return "EE2"; if (s >= 58) return "ME1"; if (s >= 41) return "ME2";
+            if (s >= 31) return "AE1"; if (s >= 21) return "AE2"; if (s >= 11) return "BE1"; return "BE2";
+        }
     },
 
-    getTeacherComment: (mean) => {
-        return mean >= 75 ? "Great progress this term!" : mean >= 41 ? "Good effort, stay focused." : mean >= 21 ? "You can do better with more effort." : "Work harder next term.";
+    getTeacherComment: (score) => {
+        if (score >= 75) return "An outstanding performance. Keep it up!";
+        if (score >= 58) return "Very good progress shown this term.";
+        if (score >= 41) return "Attained basic competencies. Can do better.";
+        return "More effort is required in all learning areas.";
     },
 
-    getHeadteacherComment: (mean) => {
-        return mean >= 75 ? "Keep up the outstanding work." : mean >= 41 ? "A commendable performance." : mean >= 21 ? "Needs improvement in some areas." : "Put in more effort to improve.";
+    getHeadteacherComment: (score) => {
+        if (score >= 75) return "Excellent result. Consistently high standards.";
+        if (score >= 58) return "A commendable performance. Aim higher next term.";
+        if (score >= 41) return "Satisfactory progress. Room for improvement.";
+        return "Please see me regarding this learner's performance.";
     },
 
     isSeniorGrade: (grade) => {
-        const match = (grade || "").toString().match(/\d+/);
-        const num = match ? parseInt(match[0]) : 0;
+        const num = window.cbcUtils.getGradeNum(grade);
         return num >= 10 && num <= 12;
     },
 
@@ -131,16 +300,17 @@ window.cbcUtils = {
     getAbbreviatedSubjectName: (subject) => {
         const abbreviations = {
             "Physics": "PHY",
+            "ICT": "ICT",
             "Chemistry": "CHEM",
             "Biology": "BIO",
-            "Science and Technology": "SCI&T", // Added for junior school
+            "Science and Technology": "SCI/T", // Added for junior school
             "History": "HIST",
-            "Geography": "GEOG",
+            "Geography": "GEO",
             "English": "ENG",
             "Kiswahili": "KISW",
             "Social Studies": "S/S",
             "Mathematics": "MATHS",
-            "Agriculture": "AGRI",
+            "Agriculture": "AGR",
             "Christian Religious Studies": "CRE", // Added for robustness
             "Christian Religious Education": "CRE", // Added for robustness
             "Christian Religion": "CRE", // Added to catch common variations/typos
@@ -149,7 +319,7 @@ window.cbcUtils = {
             "Creative Arts and Sports": "C/A",
             "Visual Arts C/A(v)": "C/A(v)",
             "Performing Arts C/A(p)": "C/A(p)",
-            "Pre-Technical Studies": "PRE-TECH",
+            "Pre-Technical Studies": "P/TECH",
             "Christian Religious Studies (CRE)": "CRE",
             "Integrated Science": "I/SCI",
             "Environmental Activities": "EA",
@@ -181,7 +351,11 @@ window.cbcUtils = {
             "Music and Dance": "M&D",
             "Theatre and Film": "T&F",
             "Sports and Recreation": "S&R",
-            "PPI": "PPI" // Ensure PPI is recognized
+            "PPI": "PPI",
+            "PP1": "PP1",
+            "PP2": "PP2",
+            "Language Activities": "LA",
+            "Mathematical Activities": "MA"
         };
 
         const normalizedSubject = (subject || "").trim().toLowerCase();
@@ -237,5 +411,49 @@ window.cbcUtils = {
         localStorage.clear();
         sessionStorage.clear();
         window.location.href = "/login";
+    },
+
+    //.........................
+    //Subjects remarks
+    //......................
+    getSubjectRemark: (score, subject) => {
+      const normalizedSubject = String(subject || "").trim().toLowerCase();
+      // Handle absences or missing marks
+      if (score === null || score === undefined || score === "" || isNaN(score) || String(score).toUpperCase() === "X") {
+        return "ABSENT";
+      }
+      const numScore = Number(score);
+
+      // Kiswahili specific remarks
+      if (normalizedSubject.includes("kiswahili")) {
+        if (numScore >= 75) return "Nzuri Sana";
+        if (numScore >= 41) return "Nzuri";
+        if (numScore >= 21) return "Inahitaji Kazi Zaidi";
+        return "Jitahadie Zaidi";
+      }
+
+      // Default English remarks
+      if (numScore >= 75) return "Excellent";
+      if (numScore >= 41) return "Good";
+      if (numScore >= 21) return "Average";
+      return "Needs Improvement";
+    }
+};
+
+/**
+ * 🆕 School Types configuration (moved from dean.js for centralization)
+ */
+window.cbcUtils.SCHOOL_TYPES = {
+    full: {
+        label: "Full School (Grades PP1-12)",
+        gradeOptions: ["PP1", "PP2","1","2","3","4","5","6","7","8","9","10","11","12"]
+    },
+    primary_junior: {
+        label: "Primary + Junior (Grades PP1-9)",
+        gradeOptions: ["PP1", "PP2","1","2","3","4","5","6","7","8","9"]
+    },
+    senior: {
+        label: "Senior School (Grades 10-12)",
+        gradeOptions: ["10","11","12"]
     }
 };

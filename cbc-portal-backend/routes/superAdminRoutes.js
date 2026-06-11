@@ -18,7 +18,9 @@ import {
   getSettings,
   updateSettings,
   toggleSchoolStatus,
-  cleanLoginAttempts
+  cleanLoginAttempts,
+  topUpSmsCredits,
+  getSMSProviderBalance
 } from '../controllers/superAdminController.js';
 import { School } from "../models/school.js"; 
 
@@ -51,6 +53,8 @@ router.get('/schools/:id', superAdminOnly, getSchoolById);
 router.put('/schools/:id', superAdminOnly, upload.single('logo'), updateSchool);
 router.delete('/schools/:id', superAdminOnly, deleteSchool);
 router.patch('/schools/:id/toggle-status', superAdminOnly, toggleSchoolStatus);
+router.post('/schools/:id/top-up-sms', superAdminOnly, topUpSmsCredits);
+router.get('/sms-provider-balance', superAdminOnly, getSMSProviderBalance);
 
 // ----------------------------
 // Admins routes (super admin)

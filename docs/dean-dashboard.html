@@ -3,50 +3,102 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>DEAN DASHBOARD</title>
-  <link rel="stylesheet" href="css/teachers.css" />
+  <title>DEAN</title>
+  <link rel="stylesheet" href="css/style.css" />
   <link rel="stylesheet" href="css/dean.css" />
+   <link rel="stylesheet" href="css/sidebar.css" />
   <link rel="stylesheet" href="css/timetables.css" />
+  <link rel="stylesheet" href="css/announcements.css">
   <link rel="icon" type="image/png" href="/images/favicon.png"/> 
+  <style>
+    /* Layout and Sidebar Offset */
+    .dashboard-wrapper {
+      display: flex;
+      min-height: 100vh;
+      background-color: #f8fafc;
+    }
+
+    .main-content {
+      flex-grow: 1;
+      margin-left: 10px; /* Prevents content from being hidden by fixed sidebar */
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      transition: margin-left 0.3s ease;
+    }
+
+    /* Anchored Header and Filters */
+    .main-content > .header {
+      position: sticky;
+      top: 0;
+      z-index: 110; /* Above filters */
+      background: #ffffff;
+      padding: 12px 30px;
+      border-bottom: 1px solid #e2e8f0;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+    }
+
+    .filters-section {
+      position: sticky;
+      top: 65px; /* Adjust this value to match your header's actual height */
+      z-index: 100;
+      background: #ffffff;
+      margin: 0 !important;
+      padding: 20px 30px !important;
+      border-bottom: 1px solid #e2e8f0;
+      box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);
+    }
+
+    /* Utility for JS-added elements */
+    .header-actions { display: flex; gap: 10px; align-items: center; }
+  </style>
  <meta http-equiv="Content-Security-Policy" 
-content="style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com; font-src https://fonts.gstatic.com https://cdnjs.cloudflare.com;">
+  content="style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com; font-src https://fonts.gstatic.com https://cdnjs.cloudflare.com;">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.28/jspdf.plugin.autotable.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
 </head>
 <body>
-  <header>
-    <a href="teacher-dashboard.html" class="back-link">← BACK</a>
-    <h1>DEAN</h1>
-    <button id="logoutBtn">Logout</button>
-  </header>
-
   <div id="toastContainer"></div>
 
-  <main>
-    <div class="dashboard-layout">
-      <!-- Sidebar Navigation -->
-      <aside class="sidebar-nav">
-        <button class="tab-btn active" data-tab="overviewTab"><i class="fas fa-th-large"></i> Overview</button>
-        <button class="tab-btn" data-tab="rankingsTab"><i class="fas fa-users"></i> Learner Rankings</button>
-        <button class="tab-btn" data-tab="analyticsTab"><i class="fas fa-chart-line"></i> Analytics</button>
-        <button class="tab-btn" data-tab="missingExamsTab"><i class="fas fa-user-times"></i> Missing Exams</button>
-        <button class="tab-btn" data-tab="timetableTab"><i class="fas fa-calendar-alt"></i> Timetables</button>
-        <button class="tab-btn" data-tab="learnersReportsTab"><i class="fas fa-file-invoice"></i> Learners Reports</button>
-       
-        
-        <div class="status-card-sidebar">
-          <p id="deanStatus">Checking...</p>
-          <p id="deanRoleText"></p>
-        </div>
-      </aside>
+  <div class="dashboard-wrapper">
+    <!-- Sidebar Navigation -->
+    <aside class="sidebar">
+      <div class="sidebar-brand">
+        <h2 class="logo" id="schoolName">COMPETHUB</h2>
+      </div>
 
-      <!-- Main Analysis Area -->
-      <section class="main-content-area">
+      <ul class="menu">
+        <li class="active" data-tab="overviewTab"><a href="#"><i class="fas fa-th-large"></i> Overview</a></li>
+        <li data-tab="rankingsTab"><a href="#"><i class="fas fa-users"></i> Learner Rankings</a></li>
+        <li data-tab="schoolRankingsTab">
+        <a href="#"><i class="fas fa-trophy"></i> School Rankings</a>
+       </li>
+
+        <li data-tab="analyticsTab"><a href="#"><i class="fas fa-chart-line"></i> Analytics</a></li>
+        <li data-tab="missingExamsTab"><a href="#"><i class="fas fa-user-times"></i> Missing Exams</a></li>
+        <li data-tab="learnersReportsTab"><a href="#"><i class="fas fa-file-invoice"></i> Learners Reports</a></li>
+        <li data-tab="timetableTab"><a href="#"><i class="fas fa-calendar-alt"></i> Timetable Module</a></li>
+        <!--<li data-tab="smsResultsTab"><a href="#"><i class="fas fa-paper-plane"></i> SMS Results</a></li>-->
+        <li><button id="configureGradingBtn" class="btn secondary-btn" style="width:100%; text-align:left; margin-top: 10px;"><i class="fas fa-cogs"></i> Configure Grading</button></li>
+        <!-- Configure Grading button will be added dynamically by dean.js -->
+      </ul>
+
+      <div class="sidebar-actions">
+        <button id="logoutBtn" class="logout-btn">Logout</button>
+      </div>
+    </aside>
+
+    <!-- Main Content Area -->
+    <main class="main-content">
+      <header class="header">
+        <h1 id="pageTitle">Dean's Panel</h1>
+      </header>
+
+      <section id="contentArea">
         <section class="filters-section">
           <h3>Oversight Filters</h3>
           <div class="filter-grid">
@@ -131,6 +183,16 @@ content="style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://c
             </div>
           </div>
 
+          <!-- School Rankings Tab: The Detailed Table -->
+           <div class="tab-pane" id="schoolRankingsTab">
+    <div class="card">
+        <div id="schoolRankingsTableWrap">
+            <!-- Rankings table will be rendered here by JavaScript -->
+            <div class="empty-state">Select a Term and Assessment, then click the tab to view school-wide rankings.</div>
+        </div>
+    </div>
+</div>
+
           <!-- Analytics Tab: Trend Charts -->
           <div id="analyticsTab" class="tab-pane">
             <div class="dashboard-card">
@@ -203,17 +265,69 @@ content="style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://c
               </div>
             </div>
           </div>
+              <!-- SMS Results Tab -->
+          <div id="smsResultsTab" class="tab-pane">
+            <div class="dashboard-card">
+              <div style="text-align: center; padding: 20px; border-bottom: 1px solid #edf2f7; margin-bottom: 20px;">
+                <i class="fas fa-sms" style="font-size: 2.5rem; color: #2b6cb0; margin-bottom: 10px;"></i>
+                <h3>SMS Results Broadcast</h3>
+                <p style="color: #64748b; font-size: 0.9rem;">Broadcast learner performance results for the selected context to parents via SMS.</p>
+              </div>
+              
+              <div id="smsBroadcastUI" style="max-width: 500px; margin: 0 auto; padding: 30px; display: none;">
+                <div id="smsBalanceDisplay" style="margin-bottom: 25px; padding: 15px; background: #eef2ff; border-radius: 12px; border: 1px solid #c7d2fe; text-align: center;">
+                  <span style="font-size: 0.9rem; color: #3730a3; font-weight: 600;">Available SMS Credits: </span>
+                  <strong id="deanSmsBalance" style="font-size: 1.2rem; color: #1e1b4b;">--</strong>
+                </div>
+                <p id="smsTargetText" style="margin-bottom: 20px; font-weight: 600; color: #2d3748; text-align: center; line-height: 1.5;"></p>
+                <button id="broadcastSmsBtn" class="btn primary-btn" style="width: 100%; padding: 14px; font-size: 1.1rem; border-radius: 10px; display: flex; align-items: center; justify-content: center; gap: 10px;">
+                  <i class="fas fa-broadcast-tower"></i> Start SMS Broadcast
+                </button>
+
+                <!-- 🆕 Progress Bar for SMS Broadcast -->
+                <div id="smsBroadcastProgressWrap" style="display: none; margin-top: 25px;">
+                  <div style="background: #e2e8f0; border-radius: 10px; height: 12px; overflow: hidden; margin-bottom: 8px;">
+                    <div id="smsBroadcastProgressBar" style="width: 0%; height: 100%; background: #2b6cb0; transition: width 0.4s ease;"></div>
+                  </div>
+                  <p id="smsBroadcastProgressText" style="text-align: center; font-size: 0.85rem; color: #64748b; font-weight: 600;"></p>
+                  
+                  <!-- 🆕 Cancel Button for sending -->
+                  <div style="text-align: center; margin-top: 12px;">
+                    <button id="cancelSmsBroadcastBtn" class="btn secondary-btn" style="padding: 6px 18px; font-size: 0.8rem; border: 1px solid #cbd5e1; color: #4a5568;">
+                      <i class="fas fa-times-circle"></i> Cancel Sending
+                    </button>
+                  </div>
+                </div>
+
+                <!-- 🆕 Recent Activity Summary -->
+                <div id="smsHistorySummary" style="margin-top: 35px; border-top: 1px solid #e2e8f0; padding-top: 25px;">
+                  <h4 style="font-size: 0.9rem; color: #475569; margin-bottom: 15px; text-transform: uppercase; letter-spacing: 0.05em;">Recent Activity (Last 30 Days)</h4>
+                  <div id="smsStatsGrid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 20px;"></div>
+                  <div id="smsFailureLogWrap"></div>
+                </div>
+              </div>
+              <div id="smsPlaceholder" style="text-align: center; padding: 40px; color: #94a3b8;">
+                <p>Please apply filters and click "View Results" above to enable SMS broadcasting for a grade.</p>
+              </div>
+            </div>
+          </div>
         </div>
       </section>
-    </div>
-  </main>
+    </main>
+  </div>
 
   <script src="js/config.js"></script>
   <script src="js/auth-service.js"></script>
+   <script src="js/announcements.js"></script>
+  <script src="js/spinner.js"></script>
   <script src="js/cbc-utils.js"></script>
   <script src="js/ui.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.28/jspdf.plugin.autotable.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
   <script src="js/subject-data.js"></script>
-  <script src="js/dean.js"></script>
   <script src="js/timetables.js"></script>
+  <script src="js/dean.js"></script>
 </body>
 </html>

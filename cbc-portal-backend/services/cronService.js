@@ -6,6 +6,9 @@ import Payment from '../models/Payment.js';
 import LoginAttempt from '../models/LoginAttempt.js';
 import Timetable from '../models/Timetable.js';
 import { cleanOrphanedEnrollments } from '../controllers/enrollmentController.js'; // Import the cleanup function
+import { School } from '../models/school.js';
+import { User } from '../models/User.js';
+import SMSAllocation from '../models/SMSAllocation.js';
 //import { S3Client } from '@aws-sdk/client-s3';
 //import { Upload } from '@aws-sdk/lib-storage';
 
@@ -154,8 +157,8 @@ export const startCronJobs = () => {
       } else {
         console.warn('⚠️ AWS S3 credentials or bucket name not configured. Skipping S3 upload.');
         // If S3 upload is skipped, apply local retention logic
-        const thirtyDaysAgo = new Date();
-        thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+        const sevenDaysAgo = new Date();
+        sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
 
         const files = fs.readdirSync(BACKUPS_DIR);
         let deletedCount = 0;
@@ -164,7 +167,7 @@ export const startCronJobs = () => {
           const fullPath = path.join(BACKUPS_DIR, file);
           const stats = fs.statSync(fullPath);
 
-          if (stats.mtime < thirtyDaysAgo) {
+          if (stats.mtime < sevenDaysAgo) {
             fs.unlinkSync(fullPath);
             deletedCount++;
           }
@@ -225,6 +228,51 @@ export const startCronJobs = () => {
       } catch (err) {
         console.error('❌ Error during timetables cleanup job:', err);
       }
+    }
+  });
+
+  // 🆕 Cron Job: Monthly automatic SMS allocation
+  // Runs at 00:00 on the 1st of every month (server timezone)
+  cron.schedule('0 0 1 * *', async () => {
+    console.log('🕒 [Cron Job] Starting monthly SMS allocation to schools...');
+    try {
+      const schools = await School.find().select('name');
+      const monthStr = (() => {
+        const d = new Date();
+        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      })();
+
+      for (const s of schools) {
+        try {
+          // Count users in the school that have contact numbers (likely recipients)
+          const usersCount = await User.countDocuments({ schoolId: s._id, contact: { $ne: null }, role: { $ne: 'super_admin' } });
+
+          if (usersCount <= 0) {
+            console.log(`   [${s.name}] No users with contact numbers found. Skipping allocation.`);
+            continue;
+          }
+
+          // Increment school's smsCredits by usersCount
+          await School.findByIdAndUpdate(s._id, { $inc: { smsCredits: usersCount } });
+
+          // Record the allocation for auditing
+          await SMSAllocation.create({
+            schoolId: s._id,
+            count: usersCount,
+            month: monthStr,
+            source: 'monthly_auto',
+            allocatedBy: 'system'
+          });
+
+          console.log(`   [${s.name}] Allocated ${usersCount} SMS credits for ${monthStr}.`);
+        } catch (innerErr) {
+          console.error(`   ❌ Allocation error for school ${s._id}:`, innerErr.message || innerErr);
+        }
+      }
+
+      console.log('✅ Monthly SMS allocation job completed.');
+    } catch (err) {
+      console.error('❌ Error during monthly SMS allocation job:', err);
     }
   });
 };

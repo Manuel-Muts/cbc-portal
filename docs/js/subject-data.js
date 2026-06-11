@@ -1,6 +1,13 @@
 window.SUBJECT_DATA = window.SUBJECT_DATA || {};
 
 window.SUBJECT_DATA.gradeSubjects = {
+  "PP1-PP2": [
+    "Language Activities",
+    "Mathematical Activities",
+    "Environmental Activities",
+    "Psychomotor Activities",
+    "Christian Religious Studies (CRE)"
+  ],
   "1-3": [
     "Mathematics",
     "Kiswahili",

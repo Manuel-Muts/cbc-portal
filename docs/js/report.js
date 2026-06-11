@@ -1,126 +1,51 @@
 document.addEventListener("DOMContentLoaded", async () => {
-  const user = JSON.parse(localStorage.getItem("loggedInUser"));
-  const token = localStorage.getItem("token");
+  console.log("📄 Report generator initializing...");
 
-  if (!user || !token) {
-    alert("Please log in again.");
+  // 1. Resolve Authentication - Use the stored session token
+  const user = await window.authService?.getUserProfile(["student", "learner", "admin", "teacher", "classteacher"]); 
+  if (!user) {
+    console.error("User session not found.");
+    return;
+  }
+
+  const token = window.authService?.getToken();
+  if (!token) { 
+    alert("Authentication token missing. Please log in again.");
     window.location.href = "/login";
     return;
   }
 
-  // Inject CSS to ensure signatures are visible and properly sized for embedding
-  const sigStyle = document.createElement('style');
-  sigStyle.textContent = `
-    .report-container {
-      padding: 10px 20px !important;
-    }
-    h2 { margin: 10px 0 5px 0 !important; font-size: 16px !important; }
-    .student-info { margin-bottom: 10px !important; display: grid; grid-template-columns: 1fr 1fr; gap: 5px; }
-    .student-info p { margin: 2px 0 !important; font-size: 13px !important; }
-    
-    .signatures {
-      margin-top: 15px !important;
-      gap: 10px !important;
-    }
-    .signature-line {
-      display: flex !important;
-      flex-direction: column !important;
-      align-items: center !important;
-      justify-content: flex-end !important;
-      min-height: 50px !important;
-      text-align: center !important;
-      border-top: none !important; /* Remove the CSS border-top to use the span line instead */
-    }
-    .signature-line img {
-      max-height: 40px !important;
-      max-width: 150px !important;
-      display: block !important;
-      margin: 0 auto 2px auto !important;
-      opacity: 1 !important;
-      visibility: visible !important;
-      object-fit: contain;
-    }
-    .signature-line span {
-      display: block !important;
-      margin: 0 !important;
-      line-height: 0.8 !important;
-    }
-    .signature-line p {
-      margin: 2px 0 0 0 !important;
-      font-size: 12px !important;
-      font-weight: 500 !important;
-    }
-
-    /* side-by-side Marks & Key Layout */
-    .report-layout-container {
-      display: flex !important;
-      gap: 15px !important;
-      align-items: flex-start !important;
-      margin-bottom: 10px !important;
-    }
-    #performanceKeySide {
-      flex: 0 0 140px !important;
-      font-size: 10px !important;
-    }
-    #performanceKeySide table { width: 100%; border-collapse: collapse; }
-    #performanceKeySide th, #performanceKeySide td { border: 1px solid #ccc; padding: 2px; text-align: center; }
-    
-    .marks-section { flex: 1 !important; margin: 0 !important; }
-    #marksTable { font-size: 12px !important; text-align: center !important; }
-    #marksTable th, #marksTable td { padding: 4px 8px !important; }
-    #marksTable td:first-child, #marksTable th:first-child { text-align: left !important; }
-
-    .remarks-container {
-      display: flex !important;
-      gap: 10px !important;
-      margin-top: 5px !important;
-      align-items: stretch !important;
-    }
-    .remark-item {
-      flex: 1 !important;
-      font-size: 12px !important;
-      padding: 8px !important;
-      background: #f9f9f9 !important;
-      border-radius: 6px !important;
-      border-left: 3px solid #1a237e !important;
-    }
-    .remark-item strong {
-      display: block !important;
-      margin-bottom: 3px !important;
-      color: #1a237e !important;
-      font-size: 11px !important;
-      text-transform: uppercase !important;
-      letter-spacing: 0.5px !important;
-    }
-    .remark-item p {
-      margin: 0 !important;
-      line-height: 1.4 !important;
-      border-left: none !important; /* Override external styles */
-      padding-left: 0 !important;
-    }
-  `;
-  document.head.appendChild(sigStyle);
+  // -----------------------------
+  // API Configuration
+  // -----------------------------
+  const API_BASE = window.config?.api?.baseURL || "http://localhost:5000/api";
+  const BACKEND_URL = API_BASE.replace('/api', '');
 
   // -----------------------------
   // Helper Functions (Moved up to prevent 'before initialization' errors)
   // -----------------------------
   const setText = (id, value) => { const el = document.getElementById(id); if(el) el.textContent = value; };
   const capitalizeWords = str => str.split(" ").map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(" ");
+  const getGradeNum = (g) => {
+    const match = String(g || "").match(/\d+/);
+    return match ? parseInt(match[0], 10) : 0;
+  };
 
 // Helper to convert image URL to base64 for reliable PDF embedding
 async function getImageBase64(url) {
   if (!url) return null;
-  // If it's already a data URI, return it immediately to avoid CSP issues with fetch
   if (url.startsWith('data:')) return url;
 
   try {
-    // Prepend backend URL if the path is relative (e.g., /uploads/...)
     const absoluteUrl = (url.startsWith('http') || url.startsWith('data:')) 
       ? url 
-      : `${config.api.baseURL.replace('/api', '')}${url.startsWith('/') ? '' : '/'}${url}`;
+      : `${BACKEND_URL}${url.startsWith('/') ? '' : '/'}${url}`;
 
     const response = await fetch(absoluteUrl, { mode: 'cors' });
-    if (!response.ok) return null;
+    if (!response.ok) {
+        console.warn(`Failed to fetch image ${absoluteUrl}: ${response.statusText}`);
+        return null;
+    }
     const blob = await response.blob();
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
@@ -136,17 +61,27 @@ async function getImageBase64(url) {
   // -----------------------------
   // Data Resolution (Marks, Enrollment, School)
   // -----------------------------
-  const BACKEND_URL = config.api.baseURL.replace('/api', '');
   let reportGrade = user.grade || "N/A";
   let reportStream = "";
 
-  // 1. Fetch Local Marks (baseline data)
+  // 1. Load Local Marks (synced from the student dashboard)
   let marks = JSON.parse(localStorage.getItem("studentReportMarks") || "[]");
   if (!marks.length) marks = JSON.parse(localStorage.getItem("submittedMarks") || "[]");
 
-  const studentMarks = marks.filter(m => m.admissionNo === user.admission);
+  // 🆕 Robust Filtering: If staff is viewing, or if we have a small set of marks from sync, don't over-filter.
+  const isStaff = ["admin", "teacher", "classteacher"].includes(user.role);
+  const studentAdmission = String(user.admission || user.admissionNo || "").trim();
+  
+  const studentMarks = isStaff ? marks : marks.filter(m => {
+    const mAdm = String(m.admissionNo || m.admission || "").trim();
+    // If admission numbers exist, match them. Otherwise, accept the marks if the set is small (already filtered by student sync).
+    return (mAdm === studentAdmission && studentAdmission !== "") || marks.length < 20;
+  });
+
+  console.log(`📊 Processing ${studentMarks.length} mark records.`);
+
   if (!studentMarks.length) {
-    alert("No report data found for this student yet.");
+    alert("No report data found for this student. Please sync from the dashboard again.");
     return;
   }
 
@@ -155,27 +90,55 @@ async function getImageBase64(url) {
   if (latestMarkRecord.grade) reportGrade = latestMarkRecord.grade;
   if (latestMarkRecord.stream) reportStream = latestMarkRecord.stream;
 
-  // 2. Fetch School and Enrollment info in parallel for better performance
+  // 2. Fetch School and Enrollment info in parallel
   try {
     const [schoolRes, enrollmentRes] = await Promise.all([
-      // Request school info with logo specifically for report generation
-      fetch(`${BACKEND_URL}/api/users/my-school?includeLogo=true`, { headers: { Authorization: `Bearer ${token}` } }),
-      fetch(`${BACKEND_URL}/api/enrollments/my-enrollment`, { headers: { Authorization: `Bearer ${token}` } }).catch(() => null)
+       // Request only necessary school info fields for report generation
+      fetch(`${API_BASE}/users/my-school?includeLogo=true&fields=name,logo,logoMimeType,headteacherSignatureUrl,gradingConfig`, { headers: { Authorization: `Bearer ${token}` } }),
+      fetch(`${API_BASE}/enrollments/my-enrollment`, { headers: { Authorization: `Bearer ${token}` } }).catch(() => null)
     ]);
+
+    if (!schoolRes.ok) {
+      console.warn(`Failed to fetch school info: ${schoolRes.status} ${schoolRes.statusText}`);
+    }
 
     // Process School Info & Headteacher Signature
     if (schoolRes && schoolRes.ok) {
       const school = await schoolRes.json();
-      setText("schoolName", school.name.toUpperCase());
-      setText("schoolAddress", school.address || "");
+      
+      // Logic to match Bulk Report: Split name if >= 3 words
+      const schoolNameText = school.name.toUpperCase();
+      const nameWords = schoolNameText.split(' ');
+      let schoolLogoElem = document.getElementById("schoolLogo");
+      const schoolNameEl = document.getElementById("schoolName");
 
-      const schoolLogoElem = document.getElementById("schoolLogo");
+      if (nameWords.length >= 3 && schoolNameEl) {
+        const mid = Math.ceil(nameWords.length / 2);
+        const part1 = nameWords.slice(0, mid).join(' ');
+        const part2 = nameWords.slice(mid).join(' ');
+        
+        // Restructure header DOM for split layout
+        const headerRow = schoolNameEl.parentElement;
+        headerRow.classList.add("school-title-row");
+        headerRow.innerHTML = `<h2>${part1}</h2><img id="schoolLogo" alt="logo"><h2>${part2}</h2>`;
+        // Re-fetch the newly created logo element
+        schoolLogoElem = document.getElementById("schoolLogo");
+      } else {
+        setText("schoolName", schoolNameText);
+      }
+
+      // 🆕 Activate custom school grading logic if defined
+      if (school.gradingConfig) {
+        if (window.cbcUtils) window.cbcUtils.customGradingConfig = school.gradingConfig;
+      }
+
       if (schoolLogoElem && school.logo) {
-        schoolLogoElem.crossOrigin = "anonymous";
-        let logoPath = school.logo;
-        if (logoPath.startsWith('/') || logoPath.includes('uploads/')) {
-          logoPath = logoPath.startsWith("/uploads") ? logoPath : `/uploads${logoPath.startsWith("/") ? "" : "/"}${logoPath}`;
-          schoolLogoElem.src = `${BACKEND_URL}${logoPath}`;
+        let logoPath = school.logo.trim();
+        
+        if (logoPath.includes('uploads/')) {
+          const cleanPath = logoPath.replace(/^\/+/, ""); 
+          const finalUrl = `${BACKEND_URL}/${cleanPath}`;
+          schoolLogoElem.src = finalUrl;
         } else if (logoPath.startsWith("http")) {
           schoolLogoElem.src = logoPath;
         } else {
@@ -214,6 +177,9 @@ async function getImageBase64(url) {
       localStorage.setItem("loggedInUser", JSON.stringify(user));
     }
 
+    // 🆕 Debug log to verify level identification
+    console.log(`[DEBUG] Grading Scale Identification: Grade="${reportGrade}" => ${window.cbcUtils.isPrimaryGrade(reportGrade) ? 'PRIMARY (4-point)' : 'SECONDARY (8-point)'}`);
+
     // 3. Fetch Class Teacher Signature using determined grade/stream
     // The backend endpoint handles variant formats (e.g. "Grade 2W" or "2")
     if (reportGrade && reportGrade !== "N/A") {
@@ -243,27 +209,38 @@ async function getImageBase64(url) {
   // -----------------------------
   // Helper Functions
   // -----------------------------
-  const getSubjectRemark = score => score >= 75 ? "Excellent" : score >= 41 ? "Good" : score >= 21 ? "Average" : "Needs Improvement";
-  const getTeacherComment = mean => mean >= 75 ? "Great progress this term!" : mean >= 41 ? "Good effort, stay focused." : mean >= 21 ? "You can do better with more effort." : "Work harder next term.";
-  const getHeadteacherComment = mean => mean >= 75 ? "Keep up the outstanding work." : mean >= 41 ? "A commendable performance." : mean >= 21 ? "Needs improvement in some areas." : "Put in more effort to improve.";
-  
   const updateReportSummary = (mean, points) => {
+    // 1. Update numerical summary
     const summaryEl = document.querySelector(".summary");
     if (summaryEl) {
       summaryEl.innerHTML = `
         <div style="text-align:center;">
-          <p style="font-size: 12px; color: #555; text-transform: uppercase; margin-bottom: 5px;">PERFORMANCE LEVEL</p>
-          <p style="font-size: 14px; font-weight: bold; color: #1a237e; margin: 0;">${cbcUtils.getPerformanceLabel(cbcUtils.getPerformanceLevel(mean))} (${cbcUtils.getSubdivision(mean)})</p>
+          <p style="font-size: 11px; color: #64748b; text-transform: uppercase; margin-bottom: 3px; font-weight: 700;">PERFORMANCE LEVEL</p>
+          <p style="font-size: 14px; font-weight: 800; color: #1a237e; margin: 0;">${window.cbcUtils.getSubdivision(mean, reportGrade)}</p>
         </div>
-        <div style="border-left: 1px solid #ccc; margin: 0 15px;"></div>
+        <div style="border-left: 1px solid #e2e8f0; margin: 0 10px;"></div>
         <div style="text-align:center;">
-          <p style="font-size: 12px; color: #555; text-transform: uppercase; margin-bottom: 5px;">TOTAL POINTS</p>
-          <p style="font-size: 14px; font-weight: bold; color: #1a237e; margin: 0;">${points}</p>
+          <p style="font-size: 11px; color: #64748b; text-transform: uppercase; margin-bottom: 3px; font-weight: 700;">TOTAL POINTS</p>
+          <p style="font-size: 14px; font-weight: 800; color: #1a237e; margin: 0;">${points}</p>
         </div>
       `;
     }
-    setText("teacherComment", cbcUtils.getTeacherComment(mean));
-    setText("headComment", cbcUtils.getHeadteacherComment(mean));
+
+    // 2. Update Remarks with consistent styling
+    const remarksContainer = document.querySelector(".remarks-container");
+    if (remarksContainer) {
+      const isSenior = parseInt(reportGrade) >= 10;
+      remarksContainer.innerHTML = `
+        <div class="remark-item">
+          <strong>Class Teacher's Comment</strong>
+          <p>${window.cbcUtils.getTeacherComment(mean)}</p>
+        </div>
+        <div class="remark-item">
+          <strong>${isSenior ? "Principal's" : "Headteacher's"} Comment</strong>
+          <p>${window.cbcUtils.getHeadteacherComment(mean)}</p>
+        </div>
+      `;
+    }
   };
 
   // -----------------------------
@@ -285,12 +262,11 @@ async function getImageBase64(url) {
 
   // ===== Show pathway for Grade 10-11 students =====
   try {
-    const gradeNum = parseInt(user.grade);
-    if (gradeNum === 10 || gradeNum === 11) {
+    const gradeNum = getGradeNum(reportGrade);
+    if (gradeNum >= 10 && gradeNum <= 12) {
       // Find pathway from submitted marks
       const pathwayMark = studentMarks.find(m => m.pathway && String(m.pathway).trim());
       if (pathwayMark && pathwayMark.pathway) {
-        // Create pathway element after student grade
         const studentGradeEl = document.getElementById("studentGrade");
         if (studentGradeEl) {
           let pathwayLineEl = document.getElementById("studentPathwayLine");
@@ -318,14 +294,36 @@ async function getImageBase64(url) {
 
   const latestMark = sortedMarks[0];
   const currentYear = latestMark.year || new Date().getFullYear();
+  const assessMapping = window.ASSESSMENT_MAPPING || {
+    1: "Opener", 2: "Assessment 2", 3: "Assessment 3", 4: "Assessment 4",
+    5: "Midterm", 6: "Assessment 6", 7: "Assessment 7", 8: "Endterm"
+  };
+  const assessLabel = assessMapping[latestMark.assessment] || `Assessment ${latestMark.assessment}`;
 
   if (!latestMark.term && document.getElementById("studentTerm")) document.getElementById("studentTerm").closest("p")?.remove();
   else setText("studentTerm", latestMark.term || "");
   if (!latestMark.year && document.getElementById("studentYear")) document.getElementById("studentYear").closest("p")?.remove();
   else setText("studentYear", currentYear);
 
+  // 🆕 Add Bulk-style sub-headers dynamically
+  const existingHeader = document.querySelector(".report-title-area");
+  if (existingHeader) existingHeader.remove(); // Prevent duplicates
+
+  const titleArea = document.createElement("div");
+  titleArea.className = "report-title-area";
+  titleArea.style.textAlign = "center";
+  titleArea.style.marginBottom = "10px";
+  
+  titleArea.innerHTML = `
+    <h3 class="report-main-title" style="margin: 8px 0 2px 0; font-weight: 800; color: #1a237e;">LEARNER'S PROGRESS REPORT</h3>
+    <p class="report-sub-title" style="margin: 0; font-weight: 700; color: #4b5563; font-size: 13px;">${assessLabel.toUpperCase()} — TERM ${latestMark.term || "-"}, ${currentYear}</p>
+  `;
+
+  const nameEl = document.getElementById("schoolName") || document.querySelector(".school-title-row");
+  if (nameEl) nameEl.insertAdjacentElement("afterend", titleArea);
+
   // ===== Determine if Senior School (Grade 10-12) =====
-  const gradeNum = parseInt(user.grade);
+  const gradeNum = getGradeNum(reportGrade);
   const isSeniorSchool = gradeNum >= 10 && gradeNum <= 12;
 
   // Update report titles based on level (Head Teacher vs Principal)
@@ -375,25 +373,26 @@ async function getImageBase64(url) {
     let totalPoints = 0;
 
     studentMarks.forEach(m => {
-      const finalScore = cbcUtils.calculateFinalScore(m.continuousAssessment, m.projectWork, m.endTermExam);
+      const finalScore = window.cbcUtils.calculateFinalScore(m.continuousAssessment, m.projectWork, m.endTermExam);
+      const isAbs = finalScore === null || String(finalScore).toUpperCase() === "X";
       const fs = finalScore !== null ? finalScore : "-";
-      const points = finalScore !== null ? cbcUtils.getPoints(finalScore) : "-";
-      const perfLevel = finalScore !== null ? cbcUtils.getSubdivision(finalScore) : "N/A";
-      const remark = finalScore !== null ? getSubjectRemark(finalScore) : "-";
+      const points = finalScore !== null ? window.cbcUtils.getPoints(finalScore, reportGrade) : "-";
+      const perfLevel = finalScore !== null ? window.cbcUtils.getSubdivision(finalScore, reportGrade) : "N/A";
+      const remark = isAbs ? "ABSENT" : (finalScore !== null ? window.cbcUtils.getSubjectRemark(finalScore, m.course) : "-");
 
       const tr = document.createElement("tr");
       tr.innerHTML = `
         <td>${capitalizeWords((m.course || "").replace(/-/g, " "))}</td>
-        <td><strong>${fs}${fs !== "-" ? "%" : ""}</strong></td>
+        <td><strong>${isAbs ? "ABS" : fs + "%"}</strong></td>
         <td>${points}</td>
         <td>${perfLevel}</td>
         <td>${remark}</td>
       `;
       tbody.appendChild(tr);
 
-      if (finalScore !== null) {
-        totalFinalScore += finalScore;
-        totalPoints += cbcUtils.getPoints(finalScore);
+      if (finalScore !== null && finalScore !== "X") {
+        totalFinalScore += Number(finalScore);
+        totalPoints += cbcUtils.getPoints(finalScore, reportGrade);
         validScoreCount++;
       }
     });
@@ -416,25 +415,31 @@ async function getImageBase64(url) {
     const tbody = document.querySelector("#marksTable tbody");
     tbody.innerHTML = "";
     let total = 0;
+    let validScoreCount = 0;
     let totalPoints = 0;
 
     studentMarks.forEach(m => {
-      const score = Number(m.score || 0);
-      const points = cbcUtils.getPoints(score);
+      const isAbs = m.score === null || m.score === undefined || String(m.score).toUpperCase() === "X";
+      const score = isAbs ? "X" : Number(m.score || 0);
+      const points = window.cbcUtils.getPoints(score, reportGrade);
+      const remark = isAbs ? "ABSENT" : window.cbcUtils.getSubjectRemark(score, m.subject);
       const tr = document.createElement("tr");
       tr.innerHTML = `
         <td>${capitalizeWords((m.subject || "").replace(/-/g, " "))}</td>
-        <td>${score}%</td>
+        <td>${isAbs ? "ABS" : score + "%"}</td>
         <td>${points}</td>
-        <td>${cbcUtils.getSubdivision(score)}</td>
-        <td>${getSubjectRemark(score)}</td>
+        <td>${window.cbcUtils.getSubdivision(score, reportGrade)}</td>
+        <td>${remark}</td>
       `;
       tbody.appendChild(tr);
-      total += score;
+      if (!isAbs) {
+        total += score;
+        validScoreCount++;
+      }
       totalPoints += points;
     });
 
-    const mean = studentMarks.length ? (total / studentMarks.length).toFixed(1) : 0;
+    const mean = validScoreCount > 0 ? (total / validScoreCount).toFixed(1) : 0;
     
     updateReportSummary(mean, totalPoints);
   }
@@ -458,7 +463,7 @@ async function getImageBase64(url) {
             <thead><tr><th>Level</th><th>Range</th><th>Pts</th></tr></thead>
             <tbody>
     `;
-    cbcUtils.PERFORMANCE_KEY.forEach(item => {
+    window.cbcUtils.getPerformanceKey(reportGrade).forEach(item => {
         keyTableHTML += `<tr><td>${item.subdivision}</td><td>${item.range}</td><td>${item.points}</td></tr>`;
     });
     keyTableHTML += `</tbody></table>`;
@@ -489,12 +494,12 @@ async function getImageBase64(url) {
       const filename = `Report_${user.grade || "Grade"}_${latestMark.term || "Term"}_${currentYear}.pdf`;
 
       const opt = {
-        margin: [10, 10, 15, 10], // Adjusted margins in mm to accommodate the footer
+        margin: [8, 10, 12, 10], // Tightened margins to prevent unnecessary page breaks
         filename,
         image: { type: "png", quality: 1 },
         html2canvas: { scale: 2, useCORS: true, scrollY: 0, logging: false, letterRendering: true },
         jsPDF: { unit: "mm", format: "a4", orientation: "portrait" },
-        pagebreak: { mode: ["avoid-all", "css", "legacy"] }
+        pagebreak: { mode: ["css", "legacy"] } // Removed avoid-all to prevent pushing the entire container to page 2
       };
 
       // Use worker-based approach to inject CompetenceHub Analytics branding and page numbering into the PDF footer
@@ -508,7 +513,7 @@ async function getImageBase64(url) {
           pdf.setPage(i);
           pdf.setFontSize(8);
           pdf.setTextColor(150); // Subtle gray color for footer text
-          const dateStr = `Generated: ${new Date().toLocaleString()} | CompetenceHub Analytics | ${user.grade || ''}`;
+          const dateStr = `Printed: ${new Date().toLocaleString()} | CompetenceHub Analytics | ${reportGrade}`;
           pdf.text(dateStr, marginX, pageHeight - 8);
           pdf.text(`Page ${i} of ${totalPages}`, pageWidth - marginX, pageHeight - 8, { align: 'right' });
         }

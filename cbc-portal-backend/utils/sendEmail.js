@@ -15,7 +15,7 @@ const apiInstance = new SibApiV3Sdk.TransactionalEmailsApi();
 const sendEmail = async ({ to, subject, text, html }) => {
   try {
     const response = await apiInstance.sendTransacEmail({
-      sender: { email: "cbcportal71@gmail.com", name: "COMPETENCE HUB" },
+      sender: { email: "cbcportal71@gmail.com", name: "COMPETENCEHUB" },
       to: [{ email: to }],
       subject,
       textContent: text,

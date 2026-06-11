@@ -73,12 +73,113 @@ if (overlay) {
     }, {
         threshold: 0.15
     });
+// --- 5. Clean URL Enforcement ---
+    // If the URL ends with .html, redirect to the clean URL
+    const currentPath = window.location.pathname;
+    if (currentPath.endsWith('.html')) {
+        let cleanPath = currentPath.replace(/\.html$/, '');
+        
+        // Specific mappings for dashboards to reach the "extra clean" paths you want
+        const dashboardMappings = {
+            '/teacher-dashboard': '/teacher',
+            '/student-dashboard': '/student',
+            '/dean-dashboard': '/dean',
+            '/studentstudymaterial': '/study-materials'
+        };
 
+        window.location.replace((dashboardMappings[cleanPath] || cleanPath) + window.location.search + window.location.hash);
+    }
     revealElements.forEach(el => revealObserver.observe(el));
     
     // Immediately reveal first section
     if (revealElements[0]) revealElements[0].classList.add('active');
 });
+
+// Inject global UI styles for toasts, modals, and common tables
+(function injectGlobalUIStyles() {
+  if (document.getElementById('global-ui-styles')) return;
+  const style = document.createElement('style');
+  style.id = 'global-ui-styles';
+  style.textContent = `
+    /* Modern Toast & Confirm Styles */
+    #toastContainer {
+      position: fixed;
+      right: 20px;
+      bottom: 20px;
+      z-index: 99999;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .toast {
+      padding: 12px 18px;
+      border-radius: 8px;
+      color: white !important;
+      font-weight: 600;
+      font-size: 0.9rem;
+      box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+      min-width: 250px;
+      transform: translateX(0);
+      transition: all 0.35s ease;
+    }
+    .toast-success { background: #38a169 !important; border-left: 5px solid #22543d; }
+    .toast-error { background: #e53e3e !important; border-left: 5px solid #742a2a; }
+    .toast-info { background: #3182ce !important; border-left: 5px solid #2a4365; }
+    .toast-warning { background: #d69e2e !important; border-left: 5px solid #975a16; }
+    .toast.hiding { opacity: 0; transform: translateX(50px); }
+
+    .confirm-overlay {
+      position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
+      background: rgba(0, 0, 0, 0.4); backdrop-filter: blur(4px);
+      display: flex; justify-content: center; align-items: center;
+      z-index: 11000; opacity: 0; visibility: hidden; transition: all 0.3s ease;
+    }
+    .confirm-overlay.visible { opacity: 1; visibility: visible; }
+    .confirm-box {
+      background: white; padding: 30px; border-radius: 16px; width: 90%; max-width: 400px;
+      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25); transform: scale(0.9);
+      transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1); text-align: center;
+    }
+    .confirm-overlay.visible .confirm-box { transform: scale(1); }
+    .confirm-box h4 { margin: 0 0 10px; font-size: 1.3rem; font-weight: 800; color: #1a202c; }
+    .confirm-box p { margin: 0 0 25px; color: #4a5568; line-height: 1.6; }
+    .confirm-buttons { display: flex; justify-content: center; gap: 15px; }
+    .confirm-buttons .btn { padding: 10px 24px; font-size: 0.95rem; font-weight: 700; border-radius: 10px; border: none; cursor: pointer; }
+
+    /* Generic .marks-table styles for consistency across dashboards */
+    .marks-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.85rem;
+    }
+    .marks-table th, .marks-table td {
+      padding: 8px 12px;
+      border: 1px solid #e2e8f0; /* Light gray border */
+      text-align: left;
+      vertical-align: middle;
+    }
+    .marks-table th {
+      background-color: #f8fafc; /* Light background for headers */
+      font-weight: 700;
+      color: #475569; /* Darker text for headers */
+      text-transform: uppercase;
+      font-size: 0.75rem;
+      letter-spacing: 0.025em;
+    }
+    .marks-table tbody tr:nth-child(even) {
+      background-color: #fdfdfd; /* Slightly different background for even rows */
+    }
+    .marks-table tbody tr:hover {
+      background-color: #f0f4f8; /* Hover effect */
+    }
+    .marks-table tfoot {
+      background-color: #f8fafc;
+      font-weight: bold;
+      border-top: 2px solid #cbd5e0;
+    }
+  `;
+  document.head.appendChild(style);
+})();
 // docs/js/ui-utils.js
 
 /**

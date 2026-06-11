@@ -7,6 +7,10 @@ export const getTermLockStatus = async (req, res) => {
     if (!year || !term) {
       return res.status(400).json({ message: "Year and term are required" });
     }
+    // 🆕 Ensure schoolId is present in the request user object
+    if (!req.user || !req.user.schoolId) {
+      return res.status(403).json({ message: "School ID missing from user token. Unauthorized." });
+    }
 
     const lockKey = `term_lock_${req.user.schoolId}_${year}_${term}`;
     const setting = await Setting.findOne({ key: lockKey });

@@ -38,6 +38,9 @@ const markSchema = new mongoose.Schema({
     required: true
   },
 
+  // 🆕 Link directly to User ID for robust relations
+  studentId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', index: true },
+
   // ✅ NEW (strong lock)
   enrollmentId: {
     type: mongoose.Schema.Types.ObjectId,
@@ -58,8 +61,9 @@ const markSchema = new mongoose.Schema({
 // 🚀 Optimized Indexes
 
 // For Duplication Checks & Controller uniqueness logic
+// Optimized for batching: narrows down to context (school/year/term/subject) first, then students.
 markSchema.index({
-  schoolId: 1, admissionNo: 1, year: 1, term: 1, assessment: 1, subject: 1, course: 1
+  schoolId: 1, year: 1, term: 1, assessment: 1, subject: 1, pathway: 1, course: 1, admissionNo: 1
 }, { name: "idx_uniqueness_check", unique: true });
 
 // For Teacher Dashboard queries (getMarks)
@@ -68,7 +72,11 @@ markSchema.index({
 });
 
 // For Student & Class Performance queries
-markSchema.index({ schoolId: 1, grade: 1, year: 1, term: 1, assessment: 1 });
+markSchema.index({ schoolId: 1, grade: 1, stream: 1, year: 1, term: 1, assessment: 1 });
+
+// 🆕 For Dean/Admin analytics queries that filter by performance level
+markSchema.index({ schoolId: 1, year: 1, term: 1, assessment: 1, performanceLevel: 1 });
+
 
 const Mark = mongoose.model("Mark", markSchema);
 export default Mark;

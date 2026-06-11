@@ -30,12 +30,7 @@ header {
   box-shadow: 0 4px 12px rgba(0,0,0,0.1);
 }
 
-.logo {
-  font-weight: 800;
-  font-size: 1.4rem;
-  color: #2563eb !important;
-  letter-spacing: 1px;
-}
+
 
 /* Navigation */
 .role-nav ul {
@@ -88,6 +83,21 @@ header {
 
 /* Mobile Responsive Updates */
 @media (max-width: 1024px) {
+  header {
+    flex-wrap: wrap;
+    height: auto !important;
+    padding: 8px 5%;
+    
+  }
+
+  
+  .logo {
+    width: 100%;
+    order: 2;
+    text-align: center;
+    font-size: 0.9rem;
+    margin-top: 5px;
+  }
   .role-nav ul {
     gap: 5px;
   }

@@ -52,7 +52,7 @@ const paymentSchema = new mongoose.Schema(
 
     recordedByRole: {
       type: String,
-      enum: ["accounts"],
+      enum: ["accounts", "system"],
       required: true
     },
 
@@ -83,7 +83,15 @@ paymentSchema.pre("findOneAndUpdate", function () {
 paymentSchema.pre("deleteOne", function () {
   throw new Error("Payments cannot be deleted.");
 });
-paymentSchema.index({ studentId: 1, academicYear: 1, isReversed: 1 });
+
+// 🚀 Optimized Indexes for Financial Reporting & Ledger Queries
+// 1. Supports Student Ledger, Statements, and real-time Balance calculations
+paymentSchema.index({ studentId: 1, academicYear: 1, isReversed: 1, createdAt: -1 });
+// 2. Supports School-wide financial summaries (Income stats on dashboards)
+paymentSchema.index({ schoolId: 1, academicYear: 1, isReversed: 1, term: 1 });
+// 3. Supports Duplicate B/F balance detection during the promotion process
+paymentSchema.index({ studentId: 1, academicYear: 1, method: 1, isReversed: 1 });
+// 4. Supports Super Admin global "Recent Payments" audit logs
 paymentSchema.index({ createdAt: -1 });
-paymentSchema.index({ studentId: 1, createdAt: -1 });
+
 export default mongoose.model("Payment", paymentSchema);

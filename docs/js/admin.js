@@ -14,13 +14,27 @@
   const pageTitle = document.getElementById('pageTitle');
   const sidebarBrandLogo = document.querySelector('.sidebar-brand .logo'); // New shortcut
 
+  // Inject CSS for compactness of subject allocations table
+  const compactStyle = document.createElement("style");
+  compactStyle.textContent = `
+    #subjectAllocTable th, #subjectAllocTable td, #classAllocTable th, #classAllocTable td, #promotionPreviewTable th, #promotionPreviewTable td {
+      padding: 6px 8px !important; /* Reduced padding */
+      font-size: 0.85rem !important; /* Slightly smaller font */
+    }
+    #subjectAllocTable th, #classAllocTable th, #promotionPreviewTable th {
+      font-size: 0.75rem !important; /* Even smaller for headers */
+    }
+    #subjectAllocTable .btn, #subjectAllocTable .btn-edit-profile, #subjectAllocTable .danger, #classAllocTable .btn, #classAllocTable .danger, #promotionPreviewTable .btn, #promotionPreviewTable select {
+      padding: 2px 6px !important; /* Smaller buttons */
+      font-size: 0.7rem !important;
+    }
+    #subjectAllocTable .dean-toggle {
+      transform: scale(0.8); /* Smaller toggle */
+    }
+  `;
+  document.head.appendChild(compactStyle);
+
   let schoolInfo = null;
-
-  // ---------------------------
-  // SIDEBAR TOGGLE FUNCTIONALITY (Removed - not needed in new design)
-  // ---------------------------
-
-
 
 
   // DOM elements
@@ -43,6 +57,10 @@
   const subjectAllocNextBtn = document.getElementById("subjectAllocNextBtn");
   const subjectAllocPageInfo = document.getElementById("subjectAllocPageInfo");
 
+  const classAllocPrevBtn = document.getElementById("classAllocPrevBtn");
+  const classAllocNextBtn = document.getElementById("classAllocNextBtn");
+  const classAllocPageInfo = document.getElementById("classAllocPageInfo");
+
   // Pagination + caching for user list
 
   // Cached teacher list (used in allocation forms)
@@ -60,7 +78,17 @@
   const promotionPreviewBody = document.querySelector("#promotionPreviewTable tbody");
   const studentSearchInput = document.getElementById("studentSearchInput");
   const studentSearchBtn = document.getElementById("studentSearchBtn");
-   const studentSearchBody = document.getElementById("studentSearchBody");
+  const promotionSearchInput = document.getElementById("promotionSearchInput"); // 🆕 New search input for promotion
+  const studentSearchBody = document.getElementById("studentSearchBody");
+
+  // 🆕 Bulk Delete Students DOM elements
+  const openBulkDeleteModalBtn = document.getElementById("openBulkDeleteModalBtn");
+  const bulkDeleteModal = document.getElementById("bulkDeleteModal");
+  const confirmBulkDeleteBtn = document.getElementById("confirmBulkDeleteBtn");
+  const cancelBulkDeleteBtn = document.getElementById("cancelBulkDeleteBtn");
+  const bulkDeleteGradeSelect = document.getElementById("bulkDeleteGradeSelect");
+  const bulkDeleteStreamSelect = document.getElementById("bulkDeleteStreamSelect");
+  const bulkDeleteYearSelect = document.getElementById("bulkDeleteYearSelect");
 
 
   let promoPage = 1;
@@ -68,11 +96,23 @@
   let promoTotalPages = 1;
   let promoLoading = false;
 
+  // New DOM elements for promotion progress bar
+  let promotionProgressBarContainer;
+  let promotionProgressBar;
+  let promotionProgressText;
+  let promotionProgressPercent;
   let subjectAllocPage = 1;
-  const SUBJECT_ALLOC_LIMIT = 5;
+  const SUBJECT_ALLOC_LIMIT = 10;
   let subjectAllocTotalPages = 1;
+  let classAllocPage = 1;
+  const CLASS_ALLOC_LIMIT = 10;
+  let classAllocTotalPages = 1;
+  let teacherListPage = 1;
+  let teacherSearchTerm = ''; // 🆕 Global search term for teacher dropdowns
+  let teacherListTotalPages = 1;
   let showUnassignedOnly = false; // 🆕 Track sub-tab filter
   let isRefreshing = false;
+  let currentSchoolInfo = null; // 🆕 Store school info for grade options
 // ---------------------------
   // Term Lock Management DOM elements
   const termLockYearSelect = document.getElementById("termLockYearSelect");
@@ -97,6 +137,7 @@ async function loadSchoolInfo(forceReload = false) {
         if (Date.now() - timestamp < CACHE_DURATION) {
           console.log("✅ Using cached school info");
           schoolInfo = data;
+          currentSchoolInfo = data; // 🆕 Store for grade options
           window.schoolInfo = schoolInfo;
           renderSchoolInfo();
           return;
@@ -119,6 +160,7 @@ async function loadSchoolInfo(forceReload = false) {
     if (!res.ok) throw new Error("Failed to fetch school info");
 
     schoolInfo = await res.json();
+    currentSchoolInfo = schoolInfo; // 🆕 Store for grade options
     window.schoolInfo = schoolInfo;
     
     localStorage.setItem(CACHE_KEY, JSON.stringify({
@@ -174,11 +216,214 @@ function renderSchoolInfo() {
   renderAdminSignature();
   applySchoolTypeToGradeSelectors();
 
+  // 🆕 Initialize promotion search input
+  if (promotionSearchInput) {
+    promotionSearchInput.placeholder = "Search by name or admission...";
+  }
+
   // For PDF export (ensure window.schoolLogoElem is defined in admin.html if needed)
   const pdfSchoolLogo = document.getElementById("pdfSchoolLogo"); // Assuming an element for PDF logo
   if (pdfSchoolLogo && logoURL) {
     pdfSchoolLogo.src = logoURL;
   }
+
+  // 🆕 Update SMS Balance display in announcement section
+  const smsBalanceBadge = document.getElementById("smsBalanceBadge");
+  const currentSmsCredits = document.getElementById("currentSmsCredits");
+  if (smsBalanceBadge && currentSmsCredits) {
+    currentSmsCredits.textContent = schoolInfo.smsCredits || 0;
+    smsBalanceBadge.style.display = "block";
+    
+    // 🆕 Add Buy Button if not already there
+    if (!document.getElementById("buySmsBtn")) {
+      const buyBtn = document.createElement("button");
+      buyBtn.id = "buySmsBtn";
+      buyBtn.innerHTML = '<i class="fas fa-plus-circle"></i> Buy Credits';
+      buyBtn.style.cssText = "margin-left: 10px; background: #2b6cb0; color: white; border: none; padding: 4px 10px; border-radius: 15px; cursor: pointer; font-size: 0.7rem; font-weight: 700;";
+      buyBtn.onclick = handleSmsTopup;
+      smsBalanceBadge.appendChild(buyBtn);
+    }
+  }
+}
+
+/**
+ * 🆕 Handle SMS Top-up via IntaSend
+ */
+async function handleSmsTopup() {
+  const modal = document.createElement("div");
+  modal.className = "confirm-overlay";
+  modal.style.zIndex = "11001"; 
+
+  modal.innerHTML = `
+    <div class="confirm-box" style="max-width: 400px; text-align: left;">
+      <h4 style="margin-bottom: 10px; text-align: center;"><i class="fas fa-sms" style="color: #2b6cb0;"></i> Buy SMS Credits</h4>
+      <p style="font-size: 0.85rem; color: #64748b; margin-bottom: 20px; text-align: center;">Top up your school's SMS balance via IntaSend (M-Pesa).</p>
+      
+      <div style="margin-bottom: 15px;">
+        <label style="display: block; font-size: 0.7rem; font-weight: 800; color: #475569; margin-bottom: 5px; text-transform: uppercase;">Amount (KES)</label>
+        <input type="number" id="topupAmount" value="500" min="10" step="10" style="width: 100%; padding: 10px; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 1rem; font-weight: 600;">
+      </div>
+
+      <div style="margin-bottom: 10px; padding: 12px; background: #f0f9ff; border-radius: 10px; border: 1px dashed #bae6fd; text-align: center;">
+        <p style="margin: 0; font-size: 0.7rem; color: #0369a1; font-weight: 800; text-transform: uppercase; letter-spacing: 0.025em;">SMS Credits to be Added</p>
+        <h2 id="creditPreview" style="margin: 4px 0 0; color: #0284c7; font-weight: 900; font-size: 1.75rem;">500</h2>
+      </div>
+
+      <p style="font-size: 0.65rem; color: #94a3b8; text-align: center; margin-bottom: 20px;"><i class="fas fa-info-circle"></i> A small transaction fee will be added to the total at checkout.</p>
+
+      <div class="confirm-buttons">
+        <button id="cancelTopupBtn" class="btn secondary-btn" style="flex: 1; padding: 10px; font-weight: 700;">Cancel</button>
+        <button id="confirmTopupBtn" class="btn primary-btn" style="flex: 1; padding: 10px; font-weight: 700; background: #2b6cb0; color: white; border: none;">Pay Now</button>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(modal);
+  requestAnimationFrame(() => modal.classList.add("visible"));
+
+  const cancelBtn = modal.querySelector("#cancelTopupBtn");
+  const confirmBtn = modal.querySelector("#confirmTopupBtn");
+  const amountInput = modal.querySelector("#topupAmount");
+  const creditPreview = modal.querySelector("#creditPreview");
+
+  cancelBtn.onclick = () => {
+    modal.classList.remove("visible");
+    setTimeout(() => modal.remove(), 300);
+  };
+
+  // 🆕 Live Credit Calculation Listener
+  amountInput.addEventListener("input", () => {
+    const amount = Number(amountInput.value) || 0;
+    const credits = Math.floor(amount / 1.0); // Matches your backend 1:1 economy
+    creditPreview.textContent = credits.toLocaleString();
+  });
+
+  confirmBtn.onclick = async () => {
+    const amount = Number(amountInput.value);
+
+    if (!amount || amount < 10) {
+      showToast("Minimum top-up is KES 10", "error");
+      return;
+    }
+
+    confirmBtn.disabled = true;
+    confirmBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Processing...';
+
+    try {
+      const res = await secureFetch(`${API_BASE}/sms-topup`, {
+        method: 'POST',
+        body: JSON.stringify({ amount })
+      });
+
+      if (res && res.url) {
+        window.location.href = res.url;
+      }
+    } catch (err) {
+      showToast("Failed to initiate top-up", "error");
+      confirmBtn.disabled = false;
+      confirmBtn.innerHTML = "Pay Now";
+    }
+  };
+}
+
+async function fetchSmsHistorySummary(forceReload = false) {
+  const statsGrid = document.getElementById("smsStatsGrid");
+  const logWrap = document.getElementById("smsFailureLogWrap");
+  if (!statsGrid || !logWrap) return;
+
+  const CACHE_KEY = "admin_sms_summary_cache";
+  const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
+
+  if (!forceReload) {
+    const cached = localStorage.getItem(CACHE_KEY);
+    if (cached) {
+      try {
+        const { timestamp, data } = JSON.parse(cached);
+        if (Date.now() - timestamp < CACHE_DURATION) {
+          renderSmsSummary(data, statsGrid, logWrap);
+          return;
+        }
+      } catch (e) { console.warn("SMS Summary cache read error:", e); }
+    }
+  }
+
+  try {
+    const data = await secureFetch(`${API_BASE}/announcements/sms-summary`);
+    if (!data) return;
+
+    localStorage.setItem(CACHE_KEY, JSON.stringify({ timestamp: Date.now(), data }));
+    renderSmsSummary(data, statsGrid, logWrap);
+  } catch (e) {
+    console.error("Failed to fetch SMS history:", e);
+  }
+}
+
+function renderSmsSummary(data, statsGrid, logWrap) {
+    // Render Stats
+    statsGrid.innerHTML = `
+      <div style="background: #f0fdf4; border: 1px solid #bcf0da; padding: 12px; border-radius: 10px; text-align: center; flex: 1;">
+        <div style="font-size: 1.2rem; font-weight: 800; color: #166534;">${data.summary.sent}</div>
+        <div style="font-size: 0.65rem; color: #15803d; font-weight: 700; text-transform: uppercase;">Successful</div>
+      </div>
+      <div style="background: #fff1f2; border: 1px solid #fecaca; padding: 12px; border-radius: 10px; text-align: center; flex: 1;">
+        <div style="font-size: 1.2rem; font-weight: 800; color: #991b1b;">${data.summary.failed}</div>
+        <div style="font-size: 0.65rem; color: #991b1b; font-weight: 700; text-transform: uppercase;">Failed</div>
+         ${data.summary.failed > 0 ? `<button id="retryFailedSmsBtn" class="btn primary-btn" style="margin-top:8px; width:100%; font-size:0.65rem; padding:4px; background:#991b1b; font-weight:700;">Retry All</button>` : ''}
+      </div>
+    `;
+// 🆕 Attach Retry Handler
+    const retryBtn = document.getElementById("retryFailedSmsBtn");
+    if (retryBtn) {
+        retryBtn.addEventListener("click", async () => {
+            const confirmed = await showConfirm({
+                title: "Retry Failed SMS",
+                message: `Attempt to resend ${data.summary.failed} failed messages? This will consume SMS credits.`
+            });
+            if (!confirmed) return;
+
+            retryBtn.disabled = true;
+            retryBtn.innerHTML = '<span class="spinner"></span> Retrying...';
+
+            try {
+                const res = await secureFetch(`${API_BASE}/announcements/retry-failed`, { method: 'POST' });
+                showToast(res?.message || "SMS retry successfully initiated", "success");
+                fetchSmsHistorySummary(true);
+                loadSchoolInfo(true);
+            } catch (err) {
+                showToast(err.message || "Failed to retry SMS broadcast", "error");
+                retryBtn.disabled = false;
+                retryBtn.innerHTML = 'Retry All';
+            }
+        });
+    }
+    // Render Failures List
+    if (data.recentFailures && data.recentFailures.length > 0) {
+      let html = `
+        <div style="background: #f8fafc; border-radius: 10px; border: 1px solid #e2e8f0; padding: 12px; margin-top: 10px;">
+          <p style="font-size: 0.75rem; font-weight: 700; color: #ef4444; margin-bottom: 10px;"><i class="fas fa-exclamation-circle"></i> RECENT DELIVERY FAILURES:</p>
+          <table style="width: 100%; font-size: 0.75rem; border-collapse: collapse;">
+            <tbody>
+      `;
+      
+      data.recentFailures.forEach(log => {
+        html += `
+          <tr style="border-bottom: 1px solid #f1f5f9;">
+            <td style="padding: 6px 0;"><strong>${log.studentName}</strong></td>
+            <td style="text-align: right; color: #94a3b8;">${new Date(log.createdAt).toLocaleDateString()}</td>
+          </tr>
+        `;
+      });
+
+      html += `</tbody></table></div>`;
+      logWrap.innerHTML = html;
+    } else {
+      logWrap.innerHTML = `
+        <div style="text-align: center; padding: 15px; border: 1px dashed #cbd5e1; border-radius: 10px; color: #94a3b8; font-size: 0.8rem; margin-top: 10px;">
+          <i class="fas fa-check-circle" style="color: #10b981; margin-bottom: 5px; display: block;"></i>
+          No delivery failures.
+        </div>
+      `;
+    }
 }
 
 function renderAdminSignature() {
@@ -313,112 +558,22 @@ function attachAdminSignatureLogic() {
     style.id = id;
     style.textContent = `
       @keyframes spin { to { transform: rotate(360deg); } }
-      
-      /* Dashboard Layout */
-      .dashboard-wrapper { display: flex; min-height: 100vh; width: 100%; }
-      .sidebar { width: 260px; background: #2b6cb0 !important; color: white !important; padding: 20px 0; flex-shrink: 0; position: sticky; top: 0; height: 100vh; z-index: 1100; box-shadow: 4px 0 10px rgba(0,0,0,0.1); }
-      .main-content { flex-grow: 1; background: #f8fafc; min-width: 0; }
-      
-      .sidebar-brand .logo { font-size: 1.4rem; font-weight: 800; margin-bottom: 20px; text-align: center; border-bottom: 1px solid rgba(255,255,255,0.1); padding: 0 20px 15px 20px; letter-spacing: 1px; color: white; }
-      
-      /* Sidebar Menu Styling */
-      .menu { padding: 0 20px; margin: 0; list-style: none; display: flex !important; flex-direction: column !important; gap: 4px; }
-      .menu li { transition: all 0.2s ease; margin: 6px 0; border-radius: 8px; overflow: hidden; }
-      .menu li:not([data-section]) { padding: 0; }
-      .menu li[data-section] { padding: 12px 15px; cursor: pointer; color: rgba(255,255,255,0.8); font-weight: 500; display: flex; align-items: center; }
-      .menu li:hover { background: rgba(255, 255, 255, 0.1) !important; color: white !important; }
-      .menu li.active { background: #1a4d8c !important; color: white !important; font-weight: 700; box-shadow: inset 4px 0 0 #fff; }
-      
-      /* Menu Icons */
-      .menu li[data-section]::before { margin-right: 12px; font-size: 1.1rem; width: 20px; text-align: center; }
-      .menu li[data-section="userManagement"]::before { content: "👥"; }
-      .menu li[data-section="subjectAllocations"]::before { content: "📖"; }
-      .menu li[data-section="classAllocations"]::before { content: "👨‍🏫"; }
-      .menu li[data-section="studentPromotion"]::before { content: "🎓"; }
-      .menu li[data-section="studentSearch"]::before { content: "🔍"; }
-      .menu li[data-section="signatureUploadSection"]::before { content: "✍️"; } /* New icon for signature */
-      .menu li[data-section="termLockManagementSection"]::before { content: "🔒"; } /* New icon for term lock management */
-      
-      .menu li a { display: block; padding: 12px 15px; color: rgba(255,255,255,0.8); text-decoration: none; font-weight: 500; transition: all 0.2s; }
-      .menu li a:hover { color: white; background: rgba(255, 255, 255, 0.1); }
-      
-      .menu-divider { height: 1px; background: rgba(255,255,255,0.1); margin: 15px 0 !important; }
-      
-      /* Professional Blue Header */
-      .header { position: sticky !important; top: 0; z-index: 1000; background: #2b6cb0 !important; padding: 15px 30px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
-      .header .school-name, .header .school-address, .header h1, .header h2, .header p, .header span { color: #ffffff !important; }
-      
-      .feedback.error { color: #721c24; background: #f8d7da; padding:8px; border-radius:6px; border-left: 4px solid #dc3545; }
-      .feedback.info { color: #0f5132; background: #d1e7dd; padding:8px; border-radius:6px; }
-      .toast { transition: opacity .35s ease; }
-      tr.clickable-row { cursor: pointer; }
-      .danger { background: #dc3545; color: #fff; border: none; padding: 4px 8px; border-radius:4px; cursor:pointer; }
-      /* Compact Table Styles */
-      table td { padding: 6px 10px !important; vertical-align: middle !important; }
-      table th { padding: 10px 10px !important; }
-      
-      /* Modern Toast Styles */
-      #toastContainer { position: fixed; right: 20px; bottom: 20px; z-index: 99999; display: flex; flex-direction: column; gap: 10px; }
-      .toast { 
-        padding: 12px 18px; border-radius: 8px; color: white !important; font-weight: 600; font-size: 0.9rem;
-        box-shadow: 0 4px 15px rgba(0,0,0,0.2); min-width: 250px;
-        transform: translateX(0); transition: all 0.35s ease;
-      }
-      .toast-success { background: #38a169 !important; border-left: 5px solid #22543d; }
-      .toast-error { background: #e53e3e !important; border-left: 5px solid #742a2a; }
-      .toast-info { background: #3182ce !important; border-left: 5px solid #2a4365; }
-      .toast.hiding { opacity: 0; transform: translateX(50px); }
-
-      /* Centered Modal Styles */
-      .confirm-overlay {
-        position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
-        background: rgba(0, 0, 0, 0.4); backdrop-filter: blur(4px);
-        display: flex; justify-content: center; align-items: center;
-        z-index: 11000; opacity: 0; visibility: hidden; transition: all 0.3s ease;
-      }
-      .confirm-overlay.visible { opacity: 1; visibility: visible; }
-      .confirm-box {
-        background: white; padding: 30px; border-radius: 16px; width: 90%; max-width: 400px;
-        box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25); transform: scale(0.9);
-        transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1); text-align: center;
-      }
-      .confirm-overlay.visible .confirm-box { transform: scale(1); }
-      .confirm-box h4 { margin: 0 0 10px; font-size: 1.3rem; font-weight: 800; color: #1a202c; }
-      .confirm-box p { margin: 0 0 25px; color: #4a5568; line-height: 1.6; font-size: 1rem; }
-      .confirm-buttons { display: flex; justify-content: center; gap: 15px; }
-      
-      .admin-section-header-row { display: flex; align-items: center; gap: 24px; flex-wrap: wrap; margin-bottom: 25px; width: 100%; border-bottom: 1px solid #f1f5f9; padding-bottom: 15px; }
-      .admin-section-header-row h1, .admin-section-header-row h2, .admin-section-header-row h3 { margin: 0 !important; font-size: 1.4rem; color: #1e293b; }
-      #adminSignatureSection { margin-left: auto; }
-      .admin-section-header-row button { margin-left: 12px; }
-
-      /* Suspended Status Styling */
-      .suspended-status { color: #dc3545 !important; font-weight: 700; }
-      .toggleStatusBtn { 
-        background: #64748b; color: white; border: none; padding: 4px 8px; border-radius: 4px; cursor: pointer;
-        font-size: 0.75rem; font-weight: 600;
-      }
-      .toggleStatusBtn:hover { background: #475569; }
-
-      .headteacher-sig-box { display: flex; flex-direction: column; align-items: center; background: #ffffff; border: 1px solid #e2e8f0; padding: 8px 16px; border-radius: 10px; margin: 0; width: fit-content; min-width: 180px; box-shadow: 0 1px 2px rgba(0,0,0,0.05); }
-      .sig-label { font-size: 0.6rem; font-weight: 800; color: #64748b; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.05em; border-bottom: 1px solid #f1f5f9; width: 100%; text-align: center; padding-bottom: 2px; }
-      .sig-preview-area { min-height: 50px; display: flex; align-items: center; justify-content: center; width: 100%; background: #fafafa; border-radius: 6px; }
     `;
     document.head.appendChild(style);
   })();
-
-  const GRADE_ORDER = ["Grade 1", "Grade 2", "Grade 3", "Grade 4", "Grade 5", "Grade 6", "Grade 7", "Grade 8", "Grade 9", "Grade 10", "Grade 11", "Grade 12"];
+   const GRADE_ORDER = ["PP1", "PP2", "Grade 1", "Grade 2", "Grade 3", "Grade 4", "Grade 5", "Grade 6", "Grade 7", "Grade 8", "Grade 9", "Grade 10", "Grade 11", "Grade 12"];
+;
 
   const SCHOOL_TYPES = {
     full: {
-      label: "Full School (Grades 1-12)",
-      rangeOptions: ["1-3", "4-6", "7-9", "10-12"],
-      gradeOptions: ["1","2","3","4","5","6","7","8","9","10","11","12"]
+      label: "Full School (Grades PP1-12)",
+      rangeOptions: ["PP1-PP2", "1-3", "4-6", "7-9", "10-12"],
+      gradeOptions: ["PP1", "PP2", "1","2","3","4","5","6","7","8","9","10","11","12"]
     },
     primary_junior: {
-      label: "Primary + Junior (Grades 1-9)",
-      rangeOptions: ["1-3", "4-6", "7-9"],
-      gradeOptions: ["1","2","3","4","5","6","7","8","9"]
+      label: "Primary + Junior (Grades PP1-9)",
+      rangeOptions: ["PP1-PP2", "1-3", "4-6", "7-9"],
+      gradeOptions: ["PP1", "PP2", "1","2","3","4","5","6","7","8","9"]
     },
     senior: {
       label: "Senior School (Grades 10-12)",
@@ -429,12 +584,18 @@ function attachAdminSignatureLogic() {
 
   const normalizeGrade = (g) => {
     if (!g) return "";
-    const match = String(g).match(/\d+/);
+    const str = String(g).trim();
+    if (str.toUpperCase().startsWith("PP")) return str.toUpperCase();
+    const match = str.match(/\d+/);
     return match ? `Grade ${match[0]}` : g;
   };
 
   const getSchoolTypeKey = () => {
-    return (schoolInfo && schoolInfo.schoolType && SCHOOL_TYPES[schoolInfo.schoolType]) ? schoolInfo.schoolType : 'full';
+    if (!schoolInfo || !schoolInfo.schoolType) return 'full';
+    const rawType = String(schoolInfo.schoolType).toLowerCase().replace(/[^a-z]/g, '_');
+    if (rawType.includes('primary') || rawType.includes('junior')) return 'primary_junior';
+    if (rawType.includes('senior')) return 'senior';
+    return 'full';
   };
 
   const populateGradeRangeOptions = () => {
@@ -446,8 +607,12 @@ function attachAdminSignatureLogic() {
     options.forEach(range => {
       const opt = document.createElement('option');
       opt.value = range;
-      const [start, end] = range.split('-').map(Number);
-      opt.textContent = start === end ? `Grade ${start}` : `Grade ${start}-${end}`;
+      if (range.includes('PP')) { // Handle PP ranges specifically
+        opt.textContent = range; // Display as "PP1-PP2"
+      } else {
+        const [start, end] = range.split('-').map(Number);
+        opt.textContent = start === end ? `Grade ${start}` : `Grade ${start}-${end}`;
+      }
       gradeRangeSelect.appendChild(opt);
     });
   };
@@ -460,8 +625,8 @@ function attachAdminSignatureLogic() {
     classGradeSelect.innerHTML = '';
     options.forEach(grade => {
       const opt = document.createElement('option');
-      opt.value = grade;
-      opt.textContent = `Grade ${grade}`;
+      opt.value = grade; // Value can be "PP1" or "1"
+      opt.textContent = String(grade).toUpperCase().startsWith("PP") ? grade : `Grade ${grade}`; // Display "PP1" or "Grade 1"
       classGradeSelect.appendChild(opt);
     });
   };
@@ -475,6 +640,7 @@ function attachAdminSignatureLogic() {
     populateGradeRangeOptions();
     populateClassGradeOptions();
     resetGradeSelection();
+    populateBulkDeleteGradeOptions(); // 🆕 Populate for bulk delete modal
   };
 
   const getNextGrade = (currentGrade) => {
@@ -488,6 +654,7 @@ function attachAdminSignatureLogic() {
 // ---------------------------
 // PROMOTION PREVIEW RENDERER (UPDATED)
 // ---------------------------
+// ... (no changes to renderPromotionPreview)
 function renderPromotionPreview(data = []) {
   if (!promotionPreviewBody) return;
   
@@ -504,11 +671,14 @@ function renderPromotionPreview(data = []) {
     const tr = document.createElement("tr");
     tr.dataset.studentId = s.studentId;
 
-    const disabled = s.status !== "active";
+   
+    const status = s.status || "N/A";
+    const disabled = status !== "active";
 
     const actionSelect = disabled
       ? `<select disabled>
-           <option>${s.status.toUpperCase()}</option>
+          
+           <option>${status.toUpperCase()}</option>
          </select>`
       : `<select class="promotion-action">
            <option value="promote" selected>Promote</option>
@@ -531,14 +701,52 @@ function renderPromotionPreview(data = []) {
   if (confirmPromotionBtn) confirmPromotionBtn.disabled = !data.some(s => s.status === "active");
 }
 
+// Function to create and append the promotion progress bar UI
+function setupPromotionProgressBar() {
+  const promotionSection = document.getElementById("promotionSection");
+  if (!promotionSection || document.getElementById("promotionProgressBarContainer")) return; // Only create once
+
+  const progressBarHtml = `
+    <div id="promotionProgressBarContainer" style="display: none; margin-top: 15px; background: #e0e7ff; border-radius: 8px; overflow: hidden; border: 1px solid #c7d2fe;">
+      <div style="display: flex; justify-content: space-between; padding: 8px 12px; font-size: 0.8rem; color: #3b82f6; font-weight: 600;">
+        <span id="promotionProgressText">Processing batch...</span>
+        <span id="promotionProgressPercent">0%</span>
+      </div>
+      <div style="height: 8px; background: #c7d2fe;">
+        <div id="promotionProgressBar" style="width: 0%; height: 100%; background: #3b82f6; transition: width 0.3s ease-in-out;"></div>
+      </div>
+    </div>
+  `;
+  
+  // Find the confirmPromotionBtn and insert the progress bar after it
+  const confirmBtn = document.getElementById("confirmPromotionBtn");
+  if (confirmBtn && confirmBtn.parentNode) {
+    confirmBtn.parentNode.insertAdjacentHTML('afterend', progressBarHtml);
+  }
+
+  promotionProgressBarContainer = document.getElementById("promotionProgressBarContainer");
+  promotionProgressBar = document.getElementById("promotionProgressBar");
+  promotionProgressText = document.getElementById("promotionProgressText");
+  promotionProgressPercent = document.getElementById("promotionProgressPercent");
+}
 
 previewPromotionBtn.addEventListener("click", () => {
     if (promoLoading) return;
     loadPromotionPreview(1);
   });
 
+   // 🆕 Debounce for promotion search input
+  let promotionSearchDebounce;
+  promotionSearchInput?.addEventListener("input", () => {
+    clearTimeout(promotionSearchDebounce);
+    promotionSearchDebounce = setTimeout(() => {
+      loadPromotionPreview(1); // Reset to page 1 on search
+    }, 300);
+  });
+
   async function loadPromotionPreview(page = 1) {
   const year = fromAcademicYearInput.value.trim();
+  const search = promotionSearchInput?.value.trim() || ''; // 🆕 Get search term
   if (!year) {
     showToast("Enter academic year", "error");
     return;
@@ -556,7 +764,7 @@ previewPromotionBtn.addEventListener("click", () => {
 
   try {
     const res = await secureFetch(
-      `${API_BASE}/promotions/preview?academicYear=${year}&page=${page}&limit=${promoLimit}`
+      `${API_BASE}/promotions/preview?academicYear=${year}&page=${page}&limit=${promoLimit}&search=${encodeURIComponent(search)}` // 🆕 Pass search term
     );
 
     if (res) {
@@ -637,6 +845,15 @@ confirmPromotionBtn.addEventListener("click", async () => {
   confirmPromotionBtn.disabled = true;
   confirmPromotionBtn.innerHTML = '<span class="spinner"></span>Processing...';
 
+  // Show promotion progress bar
+  if (promotionProgressBarContainer) {
+    promotionProgressBarContainer.style.display = "block";
+    promotionProgressBar.style.width = "10%";
+    promotionProgressBar.style.backgroundColor = "#3b82f6"; // Reset color
+    promotionProgressText.textContent = "Processing batch...";
+    promotionProgressPercent.textContent = "10%";
+  }
+
   try {
     const res = await secureFetch(`${API_BASE}/promotions/promote`, {
       method: "POST",
@@ -647,17 +864,94 @@ confirmPromotionBtn.addEventListener("click", async () => {
       })
     });
 
-    if (res) {
+    if (res) { // Success path
+      if (promotionProgressBarContainer) {
+        promotionProgressBar.style.width = "100%";
+        promotionProgressText.textContent = "Batch complete!";
+        promotionProgressPercent.textContent = "100%";
+        promotionProgressBar.style.backgroundColor = "#10b981"; // Green for success
+        setTimeout(() => { promotionProgressBarContainer.style.display = "none"; }, 2000); // Hide after delay
+      }
       showToast("Promotion completed", "success");
       promotionPreviewBody.innerHTML = "";
       confirmPromotionBtn.disabled = true;
+    } else { // secureFetch returned null, meaning an error was already handled and displayed (e.g., modal)
+      if (promotionProgressBarContainer) {
+        promotionProgressBar.style.width = "100%";
+        promotionProgressText.textContent = "Batch failed!";
+        promotionProgressPercent.textContent = "100%";
+        promotionProgressBar.style.backgroundColor = "#ef4444"; // Red for error
+        setTimeout(() => { promotionProgressBarContainer.style.display = "none"; }, 3000); // Hide after delay
+      }
+      // No need to showToast here, secureFetch already did it.
     }
+  } catch (err) { // This catch block would only be hit if secureFetch itself threw an unhandled error
+    console.error("Promotion initiation error:", err);
+    if (promotionProgressBarContainer) {
+      promotionProgressBar.style.width = "100%";
+      promotionProgressText.textContent = "Batch failed!";
+      promotionProgressPercent.textContent = "100%";
+      promotionProgressBar.style.backgroundColor = "#ef4444"; // Red for error
+      setTimeout(() => { promotionProgressBarContainer.style.display = "none"; }, 3000); // Hide after delay
+    }
+    showToast(err.message || "Promotion failed unexpectedly", "error");
   } finally {
     confirmPromotionBtn.disabled = false;
     confirmPromotionBtn.innerHTML = originalHTML;
   }
 });
 
+/**
+   * 🆕 Displays a readable summary of promotion failures in a modal.
+   */
+  function showPromotionErrorSummary(errors, mainMessage) {
+    const modal = document.createElement("div");
+    modal.className = "confirm-overlay visible";
+    modal.style.zIndex = "10005";
+
+    let rows = "";
+    errors.forEach(err => {
+      rows += `
+        <tr style="border-bottom: 1px solid #fecaca;">
+          <td style="padding: 10px; font-weight: 700; color: #b91c1c; white-space: nowrap;">${err.name} (${err.admission})</td>
+          <td style="padding: 10px; color: #475569; font-size: 0.85rem;">${err.message}</td>
+        </tr>
+      `;
+    });
+
+    modal.innerHTML = `
+      <div class="confirm-box" style="max-width: 550px; text-align: left; background: #fff; border-top: 4px solid #ef4444; border-radius: 12px;">
+        <h3 style="color: #991b1b; margin-top: 0; display: flex; align-items: center; gap: 10px;">
+          <i class="fas fa-exclamation-circle"></i> Batch Promotion Blocked
+        </h3>
+        <p style="font-size: 0.85rem; color: #4b5563; margin-bottom: 15px; line-height: 1.5;">
+          ${mainMessage || "Errors were encountered with specific learners. To ensure data consistency, no changes were saved."}
+        </p>
+        
+        <div style="max-height: 250px; overflow-y: auto; border: 1px solid #fecaca; border-radius: 8px; margin-bottom: 20px; background: #fff5f5;">
+          <table style="width: 100%; border-collapse: collapse;">
+            <thead style="background: #fee2e2; position: sticky; top: 0;">
+              <tr>
+                <th style="text-align: left; padding: 10px; font-size: 0.7rem; text-transform: uppercase; color: #991b1b;">Learner</th>
+                <th style="text-align: left; padding: 10px; font-size: 0.7rem; text-transform: uppercase; color: #991b1b;">Reason for Failure</th>
+              </tr>
+            </thead>
+            <tbody>${rows}</tbody>
+          </table>
+        </div>
+
+        <div style="text-align: right;">
+          <button id="closePromoErrorBtn" class="btn secondary-btn" style="padding: 10px 24px; font-weight: 700; border-radius: 8px;">Got it</button>
+        </div>
+      </div>
+    `;
+
+    document.body.appendChild(modal);
+    modal.querySelector("#closePromoErrorBtn").onclick = () => {
+      modal.classList.remove("visible");
+      setTimeout(() => modal.remove(), 300);
+    };
+  }
 
   // ---------------------------
   // API HELPER
@@ -669,6 +963,9 @@ confirmPromotionBtn.addEventListener("click", async () => {
       const res = await fetch(url, options);
       const contentType = res.headers.get("content-type") || "";
 
+      // Redirect to login if the session is invalid or the user lacks permission
+      if (res.status === 401 || res.status === 403) return authService.redirectToLogin();
+
       if (!res.ok) {
         const text = contentType.includes("application/json") ? await res.json() : await res.text();
         const errMsg = typeof text === "string" ? text : JSON.stringify(text);
@@ -678,8 +975,24 @@ confirmPromotionBtn.addEventListener("click", async () => {
       if (contentType.includes("application/json")) return res.json();
       return res.text();
     } catch (err) {
+      if (err.name === 'AbortError') {
+        console.log("Fetch aborted by user.");
+        return null;
+      }
       console.error("Fetch error:", err);
-      showToast(err.message || "Network error", "error");
+      
+      // 🆕 Try to handle structured batch errors specifically
+      try {
+        const errorData = JSON.parse(err.message);
+        if (errorData.errors && Array.isArray(errorData.errors)) {
+          showPromotionErrorSummary(errorData.errors, errorData.message);
+          return null; // Suppress toast since we show a modal
+        }
+        showToast(errorData.message || err.message || "Network error", "error");
+      } catch (e) {
+        showToast(err.message || "Network error", "error");
+      }
+
       return null;
     }
   }
@@ -734,7 +1047,9 @@ confirmPromotionBtn.addEventListener("click", async () => {
         frag.appendChild(tr);
       } else {
         allocations.forEach((alloc, index) => {
-          const gradeLabel = alloc.stream ? `Grade ${alloc.grade}${alloc.stream}` : `Grade ${alloc.grade}`;
+          const normalized = normalizeGrade(alloc.grade);
+          const isPP = normalized.toUpperCase().startsWith("PP");
+          const gradeLabel = isPP ? (alloc.stream ? `${alloc.grade}${alloc.stream}` : alloc.grade) : (alloc.stream ? `Grade ${alloc.grade}${alloc.stream}` : `Grade ${alloc.grade}`);
           const tr = document.createElement("tr");
           tr.innerHTML = `
             <td style="white-space: nowrap;">
@@ -763,7 +1078,11 @@ confirmPromotionBtn.addEventListener("click", async () => {
     const frag = document.createDocumentFragment();
 
     data.forEach(item => {
-      const classLabel = item.classLabel || (item.assignedStream ? `Grade ${item.assignedClass}${item.assignedStream}` : `Grade ${item.assignedClass}`);
+      let classLabel = item.classLabel || (item.assignedStream ? `Grade ${item.assignedClass}${item.assignedStream}` : `Grade ${item.assignedClass}`);
+      // Fix: If it's a PP grade, ensure "Grade" is not prepended
+      if (classLabel.toUpperCase().startsWith("GRADE PP")) {
+        classLabel = classLabel.replace(/^GRADE\s+/i, "");
+      }
       const tr = document.createElement("tr");
       tr.innerHTML = `
         <td>${item.teacherName}${item.isClassTeacher ? " (Class Teacher)" : ""}</td>
@@ -780,42 +1099,118 @@ confirmPromotionBtn.addEventListener("click", async () => {
   // ---------------------------
   // LOADERS
   // ---------------------------
-  async function loadTeacherOptions(forceReload = false) {
+  async function loadTeacherOptions(page = 1, forceReload = false) {
+    // Handle legacy calls like loadTeacherOptions(true)
+    if (typeof page === 'boolean') {
+      forceReload = page;
+      page = 1;
+    }
+
     const CACHE_KEY = "admin_teachers_cache";
     const CACHE_DURATION = 15 * 60 * 1000; // 15 minutes
-
-    if (teachersCache && !forceReload) {
-      populateTeacherSelects(teachersCache);
-      return;
-    }
+    const queryKey = `p${page}`;
 
     if (!forceReload) {
-      const cached = localStorage.getItem(CACHE_KEY);
-      if (cached) {
-        try {
-          const { timestamp, data } = JSON.parse(cached);
-          if (Date.now() - timestamp < CACHE_DURATION) {
-            console.log("✅ Using cached teacher list");
-            teachersCache = data;
-            populateTeacherSelects(data);
-            return;
-          }
-        } catch (e) { console.warn("Cache read error:", e); }
+      let store = {};
+      try { store = JSON.parse(localStorage.getItem(CACHE_KEY) || "{}"); } catch(e) {}
+      const cached = store[queryKey];
+
+      if (cached && (Date.now() - cached.timestamp < CACHE_DURATION)) {
+        teacherListPage = cached.data.page || page;
+        teacherListTotalPages = cached.data.pages || 1;
+        populateTeacherSelects(cached.data.users);
+        updateTeacherDropdownPaginationUI();
+        return;
       }
+    } else {
+      localStorage.removeItem(CACHE_KEY);
     }
 
-    const token = authService.getToken();
-    const res = await secureFetch(`${API_BASE}/users?role=teacher&limit=500`);
-    if (!res || !res.users) return;
+    try { // 🆕 Include search term in the API call
+      const res = await secureFetch(`${API_BASE}/users?role=teacher&page=${page}&limit=10&search=${encodeURIComponent(teacherSearchTerm)}`);
+      if (!res || !res.users) return;
 
-    teachersCache = res.users;
-    
-    localStorage.setItem(CACHE_KEY, JSON.stringify({
-      timestamp: Date.now(),
-      data: teachersCache
-    }));
+      teacherListPage = res.page || page;
+      teacherListTotalPages = res.pages || 1;
 
-    populateTeacherSelects(teachersCache);
+      // Update Cache (page-specific storage)
+      try {
+        const store = JSON.parse(localStorage.getItem(CACHE_KEY) || "{}"); // 🆕 Cache key now includes search term
+        store[queryKey] = { timestamp: Date.now(), data: res };
+        localStorage.setItem(CACHE_KEY, JSON.stringify(store));
+      } catch (e) {}
+
+      populateTeacherSelects(res.users);
+      updateTeacherDropdownPaginationUI();
+    } catch (err) {
+      console.error("Load teachers error:", err);
+    }
+  }
+
+  // Debounce utility function
+  function debounce(func, delay) {
+    let timeout;
+    return function(...args) {
+      const context = this;
+      clearTimeout(timeout);
+      timeout = setTimeout(() => func.apply(context, args), delay);
+    };
+  }
+
+  // 🆕 Debounced search handler for teacher dropdowns
+  const handleTeacherSearch = debounce((searchTerm) => {
+    teacherSearchTerm = searchTerm;
+    // When search term changes, reset to page 1 and force reload
+    loadTeacherOptions(1, true); 
+  }, 300); // 300ms debounce delay
+
+  function initTeacherDropdownPagination() {
+    [teacherSelect, classTeacherSelect].forEach(select => {
+      // 🆕 Add search input for each dropdown
+      const searchInput = document.createElement("input");
+      searchInput.type = "text";
+      searchInput.placeholder = "Search teachers...";
+      searchInput.className = "form-control";
+      searchInput.style.cssText = "margin-bottom: 5px; padding: 6px; font-size: 0.8rem; border: 1px solid #ccc; border-radius: 4px;";
+      searchInput.addEventListener("input", (e) => handleTeacherSearch(e.target.value.trim()));
+      select.parentNode.insertBefore(searchInput, select);
+
+      if (!select || select.nextElementSibling?.classList.contains("tt-dropdown-pagination")) return;
+      
+      const wrapper = document.createElement("div");
+      wrapper.className = "tt-dropdown-pagination";
+      wrapper.style.cssText = "display: flex; gap: 8px; align-items: center; margin-top: 5px;";
+
+      const prev = document.createElement("button");
+      prev.type = "button"; prev.className = "btn secondary-btn";
+      prev.innerHTML = "&laquo; Prev"; prev.style.cssText = "padding: 2px 6px; font-size: 0.65rem;";
+      
+      const next = document.createElement("button");
+      next.type = "button"; next.className = "btn secondary-btn";
+      next.innerHTML = "Next &raquo;"; next.style.cssText = "padding: 2px 6px; font-size: 0.65rem;";
+
+      const info = document.createElement("span");
+      info.className = "page-info";
+      info.style.cssText = "font-size: 0.65rem; color: #64748b; font-weight: 600;";
+
+      select.parentNode.insertBefore(wrapper, select.nextSibling);
+      wrapper.appendChild(prev); wrapper.appendChild(next); wrapper.appendChild(info);
+
+      prev.onclick = () => { if (teacherListPage > 1) loadTeacherOptions(teacherListPage - 1); };
+      next.onclick = () => { if (teacherListPage < teacherListTotalPages) loadTeacherOptions(teacherListPage + 1); };
+    });
+  }
+
+  function updateTeacherDropdownPaginationUI() {
+    document.querySelectorAll(".tt-dropdown-pagination").forEach(wrapper => {
+      const prev = wrapper.querySelector("button:first-child");
+      const next = wrapper.querySelector("button:nth-child(2)");
+      const info = wrapper.querySelector(".page-info");
+
+      if (prev) prev.disabled = teacherListPage <= 1;
+      if (next) next.disabled = teacherListPage >= teacherListTotalPages;
+      if (info) info.textContent = `Page ${teacherListPage} of ${teacherListTotalPages}`;
+    });
   }
 
   async function loadSubjectAllocations(page = subjectAllocPage, limit = SUBJECT_ALLOC_LIMIT, force = false) {
@@ -895,20 +1290,93 @@ confirmPromotionBtn.addEventListener("click", async () => {
     }
   }
 
-  async function loadClassAllocations() {
+  function updateSubjectAllocPaginationControls() {
+    if (subjectAllocPageInfo) {
+      subjectAllocPageInfo.textContent = `Page ${subjectAllocPage} of ${subjectAllocTotalPages}`;
+    }
+    if (subjectAllocPrevBtn) {
+      subjectAllocPrevBtn.disabled = subjectAllocPage <= 1 || subjectAllocTableBody.dataset.loading === "true";
+    }
+    if (subjectAllocNextBtn) {
+      subjectAllocNextBtn.disabled = subjectAllocPage >= subjectAllocTotalPages || subjectAllocTableBody.dataset.loading === "true";
+    }
+  }
+
+   function updateSubjectAllocPaginationControls() {
+    if (subjectAllocPageInfo) {
+      subjectAllocPageInfo.textContent = `Page ${subjectAllocPage} of ${subjectAllocTotalPages}`;
+    }
+    if (subjectAllocPrevBtn) {
+      subjectAllocPrevBtn.disabled = subjectAllocPage <= 1 || subjectAllocTableBody.dataset.loading === "true";
+    }
+    if (subjectAllocNextBtn) {
+      subjectAllocNextBtn.disabled = subjectAllocPage >= subjectAllocTotalPages || subjectAllocTableBody.dataset.loading === "true";
+    }
+  }
+  async function loadClassAllocations(page = classAllocPage, limit = CLASS_ALLOC_LIMIT, force = false) {
     if (!classAllocTableBody) return;
     if (classAllocTableBody.dataset.loading === "true") return;
     classAllocTableBody.dataset.loading = "true";
 
+     const CACHE_KEY = `class_allocations_p${page}`;
+    if (!force) {
+      const cached = localStorage.getItem(CACHE_KEY);
+      if (cached) {
+        const { timestamp, data } = JSON.parse(cached);
+        if (Date.now() - timestamp < 5 * 60 * 1000) {
+          classAllocPage = data.pagination?.page || page;
+          classAllocTotalPages = data.pagination?.totalPages || 1;
+          renderClassAllocations(data.data || data);
+          classAllocTableBody.dataset.loading = "false";
+          updateClassAllocPaginationControls();
+          return;
+        }
+      }
+    }
+
     classAllocTableBody.innerHTML = `<tr><td colspan="3" style="text-align:center">${createSpinner().outerHTML} Loading class allocations...</td></tr>`;
     try {
-      const data = await secureFetch(`${API_BASE}/users/allocations`);
-      if (!data) { classAllocTableBody.innerHTML = ""; return; }
-      renderClassAllocations(data);
+        const res = await secureFetch(`${API_BASE}/users/allocations?page=${page}&limit=${limit}`);
+      if (!res) { classAllocTableBody.innerHTML = ""; return; }
+
+      const allocationsData = Array.isArray(res) ? res : res.data || [];
+      const pagination = res.pagination || {};
+
+      classAllocPage = pagination.page || page;
+      classAllocTotalPages = pagination.totalPages || 1;
+
+      localStorage.setItem(CACHE_KEY, JSON.stringify({ timestamp: Date.now(), data: res }));
+      renderClassAllocations(allocationsData);
     } finally {
       classAllocTableBody.dataset.loading = "false";
+      updateClassAllocPaginationControls();
     }
   }
+
+  function updateClassAllocPaginationControls() {
+    if (classAllocPageInfo) {
+      classAllocPageInfo.textContent = `Page ${classAllocPage} of ${classAllocTotalPages}`;
+    }
+    if (classAllocPrevBtn) {
+      classAllocPrevBtn.disabled = classAllocPage <= 1 || classAllocTableBody.dataset.loading === "true";
+    }
+    if (classAllocNextBtn) {
+      classAllocNextBtn.disabled = classAllocPage >= classAllocTotalPages || classAllocTableBody.dataset.loading === "true";
+    }
+  }
+
+  if (classAllocPrevBtn) {
+    classAllocPrevBtn.addEventListener("click", () => {
+      if (classAllocPage > 1) loadClassAllocations(classAllocPage - 1);
+    });
+  }
+
+  if (classAllocNextBtn) {
+    classAllocNextBtn.addEventListener("click", () => {
+      if (classAllocPage < classAllocTotalPages) loadClassAllocations(classAllocPage + 1);
+    });
+  }
+
 //------------------------
   //EDIT ENROLLMENT MODAL
 //------------------------
@@ -1205,6 +1673,7 @@ async function openHistoryModal(studentId) {
     // Map section IDs to display names
     const sectionTitles = {
       "subjectAllocSection": "Subject Allocations",
+      "announcementSection": "School Announcements",
       "classAllocSection": "Class Allocations",
       "searchSection": "Learner Search",
       "promotionSection": "Learner Promotion",
@@ -1244,6 +1713,8 @@ async function openHistoryModal(studentId) {
         } else if (targetId === "termLockManagementSection") {
           populateTermLockYearOptions();
           loadTermLockStatus(); // Load status for default year/term
+        } else if (targetId === "announcementSection") {
+          fetchSmsHistorySummary(); // 🆕 Refresh SMS stats for Admin
         }
       });
     });
@@ -1377,8 +1848,10 @@ saveTermLockBtn?.addEventListener("click", saveTermLockStatus);
       loadTeacherOptions(),
       loadSubjectAllocations(),
       loadClassAllocations(),
-      loadSchoolInfo()
+      loadSchoolInfo(), // Add comma here
+          setupPromotionProgressBar() // Call to setup progress bar
     ]); 
+    initTeacherDropdownPagination();
     setupNavigation();
   } catch (err) { 
     console.error("Initial load error:", err); 
@@ -1430,7 +1903,7 @@ const subjects = subjectsSelect ? Array.from(subjectsSelect.selectedOptions).map
     });
 
     if (res) {
-      await loadClassAllocations(); // should GET /users/classes/allocations and pass to renderClassAllocations
+      await loadClassAllocations(1, CLASS_ALLOC_LIMIT, true);
       showToast("Class allocation saved successfully!", "success");
     }
 
@@ -1509,7 +1982,7 @@ const subjects = subjectsSelect ? Array.from(subjectsSelect.selectedOptions).map
         });
         
         if (result) {
-          await loadClassAllocations();
+          await loadClassAllocations(1, CLASS_ALLOC_LIMIT, true);
           showToast("Class allocation removed", "success");
         }
       } catch (err) {
@@ -1580,6 +2053,154 @@ studentSearchBody.addEventListener("click", async (e) => {
     btn.innerHTML = originalHTML;
   }
 });
+
+  // ---------------------------
+  // BULK DELETE STUDENTS LOGIC (🆕)
+  // ---------------------------
+  function populateBulkDeleteGradeOptions() {
+    if (!bulkDeleteGradeSelect) return;
+    const schoolType = getSchoolTypeKey();
+    const grades = SCHOOL_TYPES[schoolType].gradeOptions;
+    bulkDeleteGradeSelect.innerHTML = '<option value="">-- Select Grade --</option>';
+    grades.forEach(g => {
+      const opt = document.createElement('option');
+      const isPP = String(g).toUpperCase().startsWith("PP");
+      opt.value = isPP ? g : `Grade ${g}`;
+      opt.textContent = isPP ? g : `Grade ${g}`;
+      bulkDeleteGradeSelect.appendChild(opt);
+    });
+  }
+
+  async function populateBulkDeleteStreamOptions(grade) {
+    if (!bulkDeleteStreamSelect) return;
+    bulkDeleteStreamSelect.innerHTML = '<option value="">All Streams</option>';
+    if (!grade) return;
+
+    try {
+      const streams = await secureFetch(`${API_BASE}/enrollments/unique-streams?grade=${encodeURIComponent(grade)}`);
+      if (streams && Array.isArray(streams)) {
+        streams.forEach(s => {
+          const opt = document.createElement('option');
+          opt.value = s;
+          opt.textContent = `Stream ${s}`;
+          bulkDeleteStreamSelect.appendChild(opt);
+        });
+      }
+    } catch (e) {
+      console.error("Failed to load streams for bulk delete:", e);
+    }
+  }
+
+  function populateBulkDeleteYearOptions() {
+    if (!bulkDeleteYearSelect) return;
+    const currentYear = new Date().getFullYear();
+    bulkDeleteYearSelect.innerHTML = '';
+    for (let y = currentYear - 5; y <= currentYear + 5; y++) { // Range of 10 years
+      const opt = document.createElement('option');
+      opt.value = y;
+      opt.textContent = y;
+      if (y === currentYear) opt.selected = true;
+      bulkDeleteYearSelect.appendChild(opt);
+    }
+  }
+
+  openBulkDeleteModalBtn?.addEventListener("click", () => {
+    populateBulkDeleteGradeOptions();
+    populateBulkDeleteYearOptions();
+    bulkDeleteStreamSelect.innerHTML = '<option value="">All Streams</option>'; // Reset streams
+    
+    // 🆕 Reset verification input
+    const verifyInput = document.getElementById("bulkDeleteVerifyInput");
+    if (verifyInput) {
+      verifyInput.value = "";
+      verifyInput.style.borderColor = "#fecaca";
+    }
+
+    bulkDeleteModal.classList.remove("hidden");
+  });
+
+  cancelBulkDeleteBtn?.addEventListener("click", () => {
+    bulkDeleteModal.classList.add("hidden");
+  });
+
+  bulkDeleteGradeSelect?.addEventListener("change", (e) => {
+    populateBulkDeleteStreamOptions(e.target.value);
+  });
+
+  confirmBulkDeleteBtn?.addEventListener("click", async () => {
+    const grade = bulkDeleteGradeSelect.value;
+    const stream = bulkDeleteStreamSelect.value || null;
+    const academicYear = bulkDeleteYearSelect.value;
+    const verifyInput = document.getElementById("bulkDeleteVerifyInput");
+    const verifyText = verifyInput?.value?.trim();
+
+    if (!grade || !academicYear) {
+      showToast("Please select a Grade and Academic Year.", "error");
+      return;
+    }
+
+    // 🆕 Check text verification before showing the confirmation modal
+    if (verifyText !== "DELETE") {
+      showToast("Verification failed: You must type 'DELETE' to proceed.", "error");
+      if (verifyInput) {
+        verifyInput.style.borderColor = "#ef4444";
+        verifyInput.focus();
+      }
+      return;
+    }
+
+    // 🆕 Hide selection modal so the confirm overlay is clearly visible
+    bulkDeleteModal.classList.add("hidden");
+
+    const confirmed = await showConfirm({
+      title: "PERMANENTLY DELETE LEARNERS?",
+      message: `Are you absolutely sure you want to delete ALL learners in <strong>${grade}${stream ? ' Stream ' + stream : ''}</strong> for the <strong>${academicYear}</strong> academic year? This action is irreversible and will delete all their marks, payments, and enrollment history.`,
+      confirmText: "YES, DELETE ALL",
+      cancelText: "Cancel",
+      confirmBtnClass: "danger-btn"
+    });
+
+    if (!confirmed) {
+      bulkDeleteModal.classList.remove("hidden"); // Re-show the modal if the user cancels
+      return;
+    }
+
+    confirmBulkDeleteBtn.disabled = true;
+    confirmBulkDeleteBtn.innerHTML = '<span class="spinner"></span> Deleting...';
+
+    try {
+      const res = await secureFetch(`${API_BASE}/users/bulk-delete-students`, {
+        method: "DELETE",
+        body: JSON.stringify({ grade, stream, academicYear: Number(academicYear) })
+      });
+      if (res) { // Success path
+        showToast(res.message, "success");
+        bulkDeleteModal.classList.add("hidden");
+        // Refresh relevant data on this page after deletion
+        if (fromAcademicYearInput && fromAcademicYearInput.value.trim()) {
+          loadPromotionPreview(1); // Refresh promotion preview only if a year is set
+        }
+        // 🆕 Clear search results to prevent displaying stale/deleted records
+        if (studentSearchBody) studentSearchBody.innerHTML = "";
+      } else { // secureFetch returned null, meaning an error was already handled and displayed (e.g., modal)
+       
+        // secureFetch already handled the error and showed a toast/modal.
+        // We just ensure the modal is re-shown if the user cancelled the confirm dialog or an error occurred,
+        // but only if the modal element actually exists.
+        if (bulkDeleteModal) {
+          bulkDeleteModal.classList.remove("hidden");
+        }
+      }
+    } catch (err) {
+      showToast(err.message || "Failed to delete students unexpectedly.", "error");
+      if (bulkDeleteModal) { // Re-show modal on unexpected error, if it exists
+        bulkDeleteModal.classList.remove("hidden");
+      }
+    } finally {
+      confirmBulkDeleteBtn.disabled = false;
+      confirmBulkDeleteBtn.innerHTML = "Confirm Deletion";
+    }
+  });
 
   // ---------------------------
   // DEAN TOGGLE HANDLER
@@ -1662,11 +2283,12 @@ studentSearchBody.addEventListener("click", async (e) => {
         const results = await Promise.allSettled([
           loadTeacherOptions(true), // Force reload teachers
           loadSubjectAllocations(), 
-          loadClassAllocations(),
-          loadSchoolInfo(true) // Force reload school info
+          loadClassAllocations(1, CLASS_ALLOC_LIMIT, true),
+          loadSchoolInfo(true), // Force reload school info
+          fetchSmsHistorySummary(true) // 🆕 Force reload SMS stats
         ]);
         results.forEach((r, idx) => {
-          if (r.status === "rejected") errors.push({ step: ["loadTeacherOptions", "loadSubjectAllocations", "loadClassAllocations", "loadSchoolInfo"][idx], error: r.reason });
+          if (r.status === "rejected") errors.push({ step: ["loadTeacherOptions", "loadSubjectAllocations", "loadClassAllocations", "loadSchoolInfo", "fetchSmsHistorySummary"][idx], error: r.reason });
         });
 
         refreshBtn.textContent = "✅ Refreshed!";
@@ -1723,7 +2345,14 @@ studentSearchBody.addEventListener("click", async (e) => {
       if (gradesSelect) { 
         gradesSelect.innerHTML = ""; 
         gradesSelect.multiple = true; 
-        if (selectedRange) { 
+        if (selectedRange === "PP1-PP2") {
+          ["PP1", "PP2"].forEach(g => {
+            const opt = document.createElement("option");
+            opt.value = g;
+            opt.textContent = g;
+            gradesSelect.appendChild(opt);
+          });
+        } else if (selectedRange) { 
           const [start, end] = selectedRange.split("-").map(Number); 
           for (let i=start;i<=end;i++){ 
             const opt=document.createElement("option"); 
@@ -2077,5 +2706,259 @@ studentSearchBtn.addEventListener("click", async () => {
     studentSearchBtn.innerHTML = originalHTML;
   }
 });
+
+// ---------------------------
+// ANNOUNCEMENT FORM HANDLER (SMS Integration)
+// ---------------------------
+const announcementForm = document.getElementById("announcementForm");
+if (announcementForm) {
+  const annMessage = document.getElementById("announcementMessage");
+  const charCounter = document.getElementById("charCounter");
+  const smsWarning = document.getElementById("smsWarning");
+  const sendAsSmsCheckbox = document.getElementById("sendAsSms");
+  const submitBtn = document.getElementById("createAnnouncementBtn");
+  const titleInput = document.getElementById("announcementTitle");
+  const expiresInput = document.getElementById("announcementExpiresAt");
+  const targetRoleSelect = document.getElementById("announcementTargetRole");
+  const targetPageSelect = document.getElementById("announcementTargetPage");
+  const targetGradeSelect = document.getElementById("announcementTargetGrade");
+  const targetStreamSelect = document.getElementById("announcementTargetStream");
+  const announcementGradeGroup = document.getElementById("announcementGradeGroup");
+  const announcementStreamGroup = document.getElementById("announcementStreamGroup");
+
+  // New DOM elements for progress bar
+  let smsAbortController = null;
+  const smsProgressBarContainer = document.getElementById("smsProgressBarContainer");
+  const smsProgressBar = document.getElementById("smsProgressBar");
+
+  // 🆕 Update placeholders as requested
+  if (titleInput) titleInput.placeholder = "For announcements only";
+  if (annMessage) annMessage.placeholder = "Type your message";
+
+  // 🆕 Helper to populate the grade dropdown for SMS targeting
+  const populateTargetGrades = () => {
+    if (!targetGradeSelect) return;
+    const type = getSchoolTypeKey();
+    const grades = SCHOOL_TYPES[type].gradeOptions;
+    
+    targetGradeSelect.innerHTML = '<option value="all">All Grades</option>';
+    grades.forEach(g => {
+      const opt = document.createElement("option");
+      opt.value = `Grade ${g}`;
+      opt.textContent = `Grade ${g}`;
+      targetGradeSelect.appendChild(opt);
+    });
+  };
+
+  const updateGradeFilterVisibility = () => {
+    if (!targetGradeSelect) return;
+    const isSms = sendAsSmsCheckbox.checked;
+    const isParent = targetRoleSelect?.value === 'student';
+
+    if (announcementGradeGroup) {
+      announcementGradeGroup.style.display = isParent ? "block" : "none";
+    }
+    if (isParent && targetGradeSelect.options.length <= 1) populateTargetGrades();
+    
+    // Refresh stream visibility based on current selections
+    updateStreamFilterVisibility();
+  };
+
+  const updateStreamFilterVisibility = () => {
+    if (!announcementStreamGroup) return;
+    const isParent = targetRoleSelect?.value === 'student';
+    const selectedGrade = targetGradeSelect?.value;
+    
+    const showStream = isParent && selectedGrade && selectedGrade !== 'all';
+    announcementStreamGroup.style.display = showStream ? "block" : "none";
+    
+    if (showStream) populateTargetStreams(selectedGrade);
+  };
+
+  const populateTargetStreams = async (grade) => {
+    if (!targetStreamSelect) return;
+    targetStreamSelect.innerHTML = '<option value="all">All Streams</option>';
+    try {
+      const res = await secureFetch(`${API_BASE}/enrollments/unique-streams?grade=${encodeURIComponent(grade)}`);
+      if (res && Array.isArray(res)) {
+        res.forEach(s => {
+          const opt = document.createElement("option");
+          opt.value = s;
+          opt.textContent = `Stream ${s}`;
+          targetStreamSelect.appendChild(opt);
+        });
+      }
+    } catch (e) { console.error("Failed to load streams for announcement targeting:", e); }
+  };
+
+  if (annMessage) {
+    annMessage.addEventListener("input", () => {
+      const len = annMessage.value.length;
+      if (charCounter) {
+        charCounter.textContent = `${len} / 160 characters (${Math.ceil(len / 160) || 0} SMS Credit${len > 160 ? 's' : ''})`;
+        charCounter.style.color = len > 160 ? "#ef4444" : "#667eea";
+      }
+      
+      if (len > 160 && sendAsSmsCheckbox?.checked) {
+        if (smsWarning) smsWarning.style.display = "block";
+        if (submitBtn) submitBtn.disabled = true;
+      } else {
+        if (smsWarning) smsWarning.style.display = "none";
+        if (submitBtn) submitBtn.disabled = false;
+      }
+    });
+  }
+
+  if (sendAsSmsCheckbox) {
+    sendAsSmsCheckbox.addEventListener("change", () => {
+      const len = annMessage ? annMessage.value.length : 0;
+      if (len > 160 && sendAsSmsCheckbox.checked) {
+        if (smsWarning) smsWarning.style.display = "block";
+        if (submitBtn) submitBtn.disabled = true;
+      } else {
+        if (smsWarning) smsWarning.style.display = "none";
+        if (submitBtn) submitBtn.disabled = false;
+      }
+      
+      if (submitBtn) {
+        submitBtn.textContent = sendAsSmsCheckbox.checked ? "Send SMS" : "Post Announcement";
+      }
+
+      // 🆕 Toggle visibility of fields not relevant to SMS
+      if (titleInput) {
+        const titleGroup = titleInput.closest(".form-group") || titleInput.parentElement;
+        titleGroup.style.display = sendAsSmsCheckbox.checked ? "none" : "block";
+        titleInput.required = !sendAsSmsCheckbox.checked;
+      }
+      if (expiresInput) {
+        const expiresGroup = expiresInput.closest(".form-group") || expiresInput.parentElement;
+        expiresGroup.style.display = sendAsSmsCheckbox.checked ? "none" : "block";
+      }
+      if (targetPageSelect) {
+        const pageGroup = targetPageSelect.closest(".form-group") || targetPageSelect.parentElement;
+        pageGroup.style.display = sendAsSmsCheckbox.checked ? "none" : "block";
+      }
+
+      updateGradeFilterVisibility();
+    });
+  }
+
+  if (targetRoleSelect) {
+    targetRoleSelect.addEventListener("change", updateGradeFilterVisibility);
+  }
+
+  if (targetGradeSelect) {
+    targetGradeSelect.addEventListener("change", updateStreamFilterVisibility);
+  }
+
+  announcementForm.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    
+    const title = document.getElementById("announcementTitle").value.trim();
+    const message = annMessage.value.trim();
+    const targetRole = targetRoleSelect?.value || document.getElementById("announcementTargetRole")?.value;
+    const targetGrade = targetGradeSelect?.value || 'all';
+    const targetStream = targetStreamSelect?.value || 'all';
+    const targetPage = targetPageSelect?.value || 'all';
+    const expiresAt = document.getElementById("announcementExpiresAt").value;
+    const sendAsSms = sendAsSmsCheckbox.checked;
+
+    if (sendAsSms && message.length > 160) {
+      showToast("SMS blocked: Message exceeds 160 characters.", "error");
+      return;
+    }
+
+    // Map technical roles to professional audience labels for SMS
+    const roleLabels = {
+      all: "parents and teachers",
+      teacher: "teachers",
+      student: "parents"
+    };
+    let audienceLabel = roleLabels[targetRole] || "recipients";
+    if (sendAsSms && targetRole === 'student' && targetGrade !== 'all') {
+      audienceLabel = `${targetGrade} parents`;
+    }
+    if (sendAsSms && targetRole === 'student' && targetStream !== 'all') {
+      audienceLabel = `${targetGrade} Stream ${targetStream} parents`;
+    }
+
+    const ok = await showConfirm({
+      title: sendAsSms ? "Confirm SMS Broadcast" : "Confirm Announcement",
+      message: sendAsSms
+        ? `Broadcast this message via SMS to ${audienceLabel}? This will use SMS credits.`
+        : "Post this announcement to the dashboard?"
+    });
+
+    if (!ok) return;
+
+    submitBtn.disabled = true;
+    submitBtn.innerHTML = '<span class="spinner"></span>Processing...';
+
+    // Create new abort controller for this session
+    smsAbortController = new AbortController();
+
+    // --- Progress Bar Logic for SMS ---
+    let progressInterval;
+    if (sendAsSms && smsProgressBarContainer && smsProgressBar) {
+      smsProgressBarContainer.style.display = "block";
+      smsProgressBar.style.width = "5%";
+      smsProgressBar.textContent = "5%";
+      let currentProgress = 5;
+      const increment = 5; // Increment by 5%
+      const maxProgress = 95; // Stop at 95% before actual completion
+      const intervalTime = 500; // Update every 500ms
+
+      progressInterval = setInterval(() => {
+        if (currentProgress < maxProgress) {
+          currentProgress = Math.min(currentProgress + increment, maxProgress);
+          smsProgressBar.style.width = `${currentProgress}%`;
+          smsProgressBar.textContent = `${currentProgress}%`;
+        }
+      }, intervalTime);
+    }
+
+    const res = await secureFetch(`${API_BASE}/announcements`, {
+      method: "POST",
+      body: JSON.stringify({ title, message, targetRole, expiresAt, sendAsSms, targetGrade, targetStream, targetPage }),
+      signal: smsAbortController.signal
+    });
+
+    if (res) {
+      showToast(res.message || (sendAsSms ? "SMS Broadcast initiated!" : "Announcement posted successfully!"), "success");
+      announcementForm.reset();
+      if (charCounter) charCounter.textContent = "0 / 160 characters (0 SMS Credits)";
+      // 🆕 Refresh school info to update SMS balance badge if SMS was sent
+      if (sendAsSms) loadSchoolInfo(true);
+    } else if (sendAsSms) {
+      showToast("Broadcast operation stopped.", "info");
+    }
+    submitBtn.disabled = false;
+    submitBtn.innerHTML = sendAsSms ? "Send SMS" : "Post Announcement";
+
+    // --- Finalize Progress Bar ---
+    if (sendAsSms && smsProgressBarContainer && smsProgressBar) {
+      clearInterval(progressInterval);
+      smsProgressBar.style.width = "100%";
+      smsProgressBar.textContent = "100%";
+      setTimeout(() => {
+        smsProgressBarContainer.style.display = "none";
+        smsProgressBar.style.width = "0%"; // Reset for next time
+        smsProgressBar.textContent = "";
+      }, 1000); // Hide after 1 second
+    }
+  });
+
+  document.getElementById("cancelSmsBtn")?.addEventListener("click", async () => {
+    if (smsAbortController) {
+      const ok = await showConfirm({
+        title: "Cancel SMS Broadcast",
+        message: "Are you sure you want to stop sending the remaining SMS messages? This action cannot be reversed."
+      });
+      if (ok) {
+        smsAbortController.abort();
+      }
+    }
+  });
+}
 
 })();

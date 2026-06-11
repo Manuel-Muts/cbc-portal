@@ -126,8 +126,10 @@ document.addEventListener("DOMContentLoaded", function () {
       localStorage.clear();
 
       // Save user + token + schoolId in localStorage
-      localStorage.setItem("token", data.token);
-      localStorage.setItem("loggedInUser", JSON.stringify(data.user));
+      const tokenKey = config?.auth?.tokenKey || "token";
+      const userKey = config?.auth?.userKey || "loggedInUser";
+      localStorage.setItem(tokenKey, data.token);
+      localStorage.setItem(userKey, JSON.stringify(data.user));
       localStorage.setItem("userRole", selectedRole);
       if (data.user.schoolId) localStorage.setItem("schoolId", data.user.schoolId);
 
@@ -139,8 +141,11 @@ document.addEventListener("DOMContentLoaded", function () {
         return;
       }
 
-      // Redirect based on role
-      const redirectUrl = config.redirects[selectedRole] || config.redirects.learner;
+      // Redirect based on role using clean URL mappings from config.js
+      // This ensures users land on paths like /teacher instead of teacher-dashboard.html
+      const redirectUrl = config.redirects[selectedRole] || 
+                         config.redirects.learner;
+
       window.location.href = redirectUrl;
     } catch (err) {
       console.error(err);
@@ -159,8 +164,10 @@ document.addEventListener("DOMContentLoaded", function () {
   const changePasswordModal = document.getElementById("changePasswordModal");
   window.openChangePasswordModal = function () {
     changePasswordModal.classList.remove("hidden");
-    const user = JSON.parse(localStorage.getItem("loggedInUser"));
+    const userKey = config?.auth?.userKey || "loggedInUser";
+    const user = JSON.parse(localStorage.getItem(userKey));
     const currentField = document.getElementById("currentPasswordField");
+    if (!user) return;
     currentField.style.display = (user.role === "classteacher" || user.isClassTeacher) ? "none" : "block";
     changePasswordModal.querySelector("input[name='newPassword']").focus();
   };
@@ -173,12 +180,16 @@ document.addEventListener("DOMContentLoaded", function () {
 
     if (!newPassword || newPassword.length < 8) return alert("New password must be at least 8 characters.");
 
-    const token = localStorage.getItem("token");
+    // Retrieve token reliably using the key from config
+    const tokenKey = config?.auth?.tokenKey || "authToken";
+    const token = window.authService?.getToken() || localStorage.getItem(tokenKey);
+    
     const selectedRole = localStorage.getItem("userRole");
     const payload = { newPassword };
     if (selectedRole !== "classteacher") payload.currentPassword = currentPassword;
 
-    // Get the submit button and show loading state
+    if (!token) return alert("Session token missing. Please try logging in again.");
+
     const submitBtn = changePasswordForm.querySelector("button[type='submit']");
     const originalText = submitBtn.textContent;
     submitBtn.disabled = true;
@@ -190,13 +201,18 @@ document.addEventListener("DOMContentLoaded", function () {
       if (schoolId) payload.schoolId = schoolId;
 
       const data = await apiRequest("change-password", "PUT", payload, token);
-      localStorage.setItem("token", data.token);
-      localStorage.setItem("loggedInUser", JSON.stringify(data.user));
+      localStorage.setItem(tokenKey, data.token); // Persist the new token returned after password change
+      const userKey = config?.auth?.userKey || "loggedInUser";
+      localStorage.setItem(userKey, JSON.stringify(data.user));
       if (data.user.schoolId) localStorage.setItem("schoolId", data.user.schoolId);
 
       alert("Password changed successfully!");
       changePasswordModal.classList.add("hidden");
-      const redirectUrl = config.redirects[selectedRole] || config.redirects.learner;
+
+      // Use configuration for clean redirection after password change
+      const redirectUrl = config.redirects[selectedRole] || 
+                         config.redirects.learner;
+
       window.location.href = redirectUrl;
     } catch (err) {
       console.error("Change password error:", err);

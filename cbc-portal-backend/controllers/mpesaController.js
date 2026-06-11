@@ -101,8 +101,7 @@ export const mpesaCallback = async (req, res) => {
       term: getCurrentTerm(),
       academicYear: new Date().getFullYear(),
       recordedBy: recordedById,
-      // Use the accounts role required by the Payment schema so the record persists
-      recordedByRole: "accounts"
+      recordedByRole: "system"
     });
 
     console.log(`C2B Payment recorded: ${amount} KES for student ${student.name} (${admission}) at ${school.name}`);

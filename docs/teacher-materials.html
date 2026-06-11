@@ -6,8 +6,8 @@
   <title>Teacher Materials</title>
   <!-- Link to your main stylesheet -->
   <link rel="icon" type="image/png" href="/images/favicon.png"/> 
-  <link rel="stylesheet" href="css/styles.css" />
-  <link rel="stylesheet" href="css/teachers.css" />
+
+  <link rel="stylesheet" href="/css/teachers.css" />
   <style>
     /* Inline styles for dashboard-specific elements */
     body {
@@ -141,7 +141,7 @@
     <nav class="top-nav">
       <div class="nav-left"></div>
       <div class="nav-right">
-        <a href="teacher-dashboard.html" class="btn secondary-btn" style="margin-right: 10px;">← Back to Dashboard</a>
+        <a href="/teacher" class="btn secondary-btn" style="margin-right: 10px;">← Back to Dashboard</a>
         <button id="smartRefreshBtn" class="btn secondary-btn">🔄 Refresh</button>
         <button id="logoutBtn" class="btn danger-btn">Logout</button>
       </div>
@@ -273,7 +273,8 @@
   </div>
 
   <!-- Scripts -->
-  <script src="js/config.js"></script>
+   <script src="js/config.js"></script>
+  <script src="js/auth-service.js"></script>
   <script src="js/ui.js"></script>
   <script src="js/subject-data.js"></script>
   <script src="js/teacher-materials.js"></script>

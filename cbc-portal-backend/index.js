@@ -24,7 +24,8 @@ import { mpesaCallback } from './controllers/mpesaController.js';
 import { startCronJobs } from './services/cronService.js';
 import expenseRoutes from './routes/expenseRoutes.js'; // 🆕
 import settingsRoutes from './routes/settingsRoutes.js'; // New import
-import timetableRoutes from './routes/timetableRoutes.js'; 
+import timetableRoutes from './routes/timetableRoutes.js';
+import announcementRoutes from './routes/announcementRoutes.js'; 
 
 dotenv.config();
 
@@ -129,8 +130,8 @@ app.use('/api/users', userRoutes);
 app.use('/api/marks', markRoutes);
 app.use('/api/materials', materialRoutes);
 app.use('/api/reset', resetRoutes);
-app.use('/api', superAdminRoutes);
 app.use("/api", schoolRoutes);
+app.use('/api', superAdminRoutes);
 app.use("/api/promotions", promotionRoutes);
 app.use("/api/enrollments", enrollmentRoutes);
 app.use("/api/accounts", accountsRoutes);
@@ -139,6 +140,7 @@ app.use("/api/reports", reportsRoutes);
 app.use('/api/expenses', expenseRoutes); // 🆕
 app.use('/api/settings', settingsRoutes); // New route
 app.use('/api/timetables', timetableRoutes); 
+app.use('/api/announcements', announcementRoutes);
 // app.use("/api/payments", paymentsRoutes); // Removed: payments handled in userRoutes
 
 
@@ -155,13 +157,13 @@ const pathMap = {
   '/login': 'login.html',
   '/admin': 'admin.html',
   '/super-admin': 'super-admin.html',
-  '/teacher': 'teacher-dashboard.html',
-  '/teacher-dashboard': 'teacher-dashboard.html',
   '/dean': 'dean-dashboard.html',
-  '/dean-dashboard': 'dean-dashboard.html',
+  '/users': 'users.html',
+  '/teacher': 'teacher-dashboard.html',
   '/student': 'student-dashboard.html',
-  '/student-dashboard': 'student-dashboard.html',
   '/performance': 'performance.html',
+  '/student-accounts': 'student-accounts.html',
+  '/about': 'about.html',
 
   // ✅ STANDARDIZED ROUTE (IMPORTANT)
   '/study-materials': 'studentstudymaterial.html',
@@ -180,6 +182,11 @@ app.use(express.static(frontendPath));
 // SPA fallback handler
 app.use((req, res) => {
   // Ignore API routes
+  if (req.path.startsWith('/api/')) {
+    console.warn(`❌ Missing API Route: ${req.method} ${req.path}`);
+    return res.status(404).json({ message: `API endpoint not found: ${req.method} ${req.path}` });
+  }
+
   if (req.path.includes('.')) {
     return res.status(404).send('File not found');
   }

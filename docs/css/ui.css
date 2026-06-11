@@ -4,24 +4,12 @@
     --glass-bg: rgba(255, 255, 255, 0.9);
 }
 
-/* Header */
-header {
-  background: linear-gradient(90deg, #2563eb, #1e40af);
-  box-shadow: 0 4px 20px rgba(0,0,0,0.08);
-  color: #fff;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 15px 40px;
-  position: fixed;
-  top: 0;
-  width: 100%;
-  z-index: 100;
-}
 
 .logo {
   font-weight: bold;
-  font-size: 22px;
+  font-size: 1.3rem;
+  color: #2563eb !important;
+  letter-spacing: 1px;
 }
 
 /* Ensure links are visible on the blue gradient header */

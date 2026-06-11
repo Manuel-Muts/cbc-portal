@@ -1,16 +1,22 @@
 (() => {
+document.addEventListener("DOMContentLoaded", async () => {
   // ---------------------------
   // CONFIG + GLOBALS
   // ---------------------------
   console.log("📚 Teacher Materials Dashboard loading...");
-  
-  const API_BASE = config.api.baseURL;
-  const token = localStorage.getItem("token");
-  
+
+  const API_BASE = window.config?.api?.baseURL || "http://localhost:5000/api";
+  const BACKEND_URL = API_BASE.replace('/api', '');
+  const token = window.authService?.getToken();
+  const showToast = window.showToast || ((msg) => console.log(msg));
+
   if (!token) {
     window.location.href = "/login";
     return;
   }
+  const user = await window.authService?.getUserProfile(["teacher", "classteacher"]);
+  if (!user) return;
+  window.authService?.initLogout();
 
   // ---------------------------
   // DOM ELEMENTS
@@ -37,7 +43,7 @@
 
   async function loadSchoolInfoAndPopulateGrades() {
     try {
-      const res = await fetch(`${API_BASE}/my-school`, {
+      const res = await fetch(`${API_BASE}/users/my-school`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       if (!res.ok) throw new Error("Failed to fetch school info");
@@ -386,9 +392,6 @@
       progressContainer = document.createElement("div");
       progressContainer.id = "uploadProgressContainer";
       progressContainer.style.cssText = "margin-bottom: 15px; width: 100%; background: #e9ecef; border-radius: 4px; overflow: hidden; display: none; box-shadow: inset 0 1px 2px rgba(0,0,0,.1);";
-      progressContainer.innerHTML = `
-        <div id="uploadProgressBar" style="width: 0%; height: 20px; background: #28a745; transition: width 0.3s ease; text-align: center; color: white; font-size: 12px; line-height: 20px;">0%</div>
-      `;
       // Insert before submit button if possible
       if (uploadBtn.parentNode) {
         uploadBtn.parentNode.insertBefore(progressContainer, uploadBtn);
@@ -396,15 +399,22 @@
         materialsForm.appendChild(progressContainer);
       }
     }
+
+    // Always ensure the internal progress bar element is injected and reset
+    progressContainer.innerHTML = `
+      <div id="uploadProgressBar" style="width: 0%; height: 20px; background: #28a745; transition: width 0.1s linear; text-align: center; color: white; font-size: 12px; line-height: 20px; font-weight: bold;">0%</div>
+    `;
     
     const progressBar = document.getElementById("uploadProgressBar");
     progressContainer.style.display = "block";
     progressBar.style.width = "0%";
     progressBar.textContent = "0%";
 
+    // Ensure error toast function exists
+    const showToast = window.showToast || ((msg) => alert(msg));
+    const showConfirm = window.showConfirm || ((msg) => confirm(msg));
+
     const xhr = new XMLHttpRequest();
-    xhr.open("POST", `${API_BASE}/materials/add`, true);
-    xhr.setRequestHeader("Authorization", `Bearer ${token}`);
 
     // Track upload progress
     xhr.upload.onprogress = (e) => {
@@ -414,6 +424,9 @@
         progressBar.textContent = `${percentComplete}%`;
       }
     };
+
+    xhr.open("POST", `${API_BASE}/materials/add`, true);
+    xhr.setRequestHeader("Authorization", `Bearer ${token}`);
 
     xhr.onload = () => {
       if (xhr.status >= 200 && xhr.status < 300) {
@@ -497,8 +510,7 @@
   });
 
   logoutBtn?.addEventListener("click", () => {
-    localStorage.clear();
-    window.location.href = "/login";
+    window.authService?.logout();
   });
 
   // ---------------------------
@@ -510,4 +522,5 @@
     await loadMaterials();
   })();
 
+});
 })();

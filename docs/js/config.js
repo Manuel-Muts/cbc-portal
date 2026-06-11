@@ -36,10 +36,11 @@ const environmentConfigs = {
       baseURL: 'http://localhost:5000/api',
       timeout: 30000,
       version: 'v1',
+      announcements: '/announcements/active'
     },
     app: {
       name: 'CBC Student Portal',
-      version: '1.0.0',
+      version: '2.1.0',
       environment: 'development',
       debug: true,
     },
@@ -55,10 +56,11 @@ const environmentConfigs = {
       baseURL: 'https://competence-hub.onrender.com/api',
       timeout: 30000,
       version: 'v1',
+      announcements: '/announcements/active'
     },
     app: {
       name: 'CBC Student Portal',
-      version: '1.0.0',
+      version: '2.1.0',
       environment: 'production',
       debug: false,
     },
@@ -87,14 +89,16 @@ const sharedConfig = {
   // PAGE REDIRECTS AFTER LOGIN
   // ===========================
   redirects: {
-    student: 'student-dashboard.html',
-    learner: 'student-dashboard.html',
-    teacher: 'teacher-dashboard.html',
-    dean: 'dean-dashboard.html',
-    classteacher: 'analysis.html',
-    accounts: 'accounts.html',
-    admin: 'admin.html',
-    superAdmin: 'super-admin.html',
+    student: '/student',
+    learner: '/student',
+    teacher: '/teacher',
+    dean: '/dean',
+    classteacher: '/analysis',
+    accounts: '/accounts',
+    admin: '/admin',
+    users: '/users',
+    superAdmin: '/super-admin',
+    super_admin: '/super-admin',
   },
 
   // ===========================

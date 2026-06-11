@@ -2,12 +2,13 @@
 import mongoose from "mongoose";
 import Payment from "../models/Payment.js";
 import { User } from "../models/User.js";
+import { Student } from "../models/RoleModels.js";
 import PaymentReversal from "../models/PaymentReversal.js";
 import StudentEnrollment from "../models/StudentEnrollment.js";
 import { calculateBalance } from "../services/balanceService.js";
 import FeeStructure from "../models/FeeStructure.js";
 import Setting from "../models/Setting.js";
-import cache from "../utils/simpleCache.js";
+import cache from "../utils/cacheManager.js";
 
 const escapeRegex = (text) => {
   return text.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, "\\$&");
@@ -22,9 +23,8 @@ export const recordPayment = async (req, res) => {
     }
 
     // 🔎 Find student (scoped to school)
-    const student = await User.findOne({
+    const student = await Student.findOne({
       admission,
-      role: "student",
       schoolId: req.user.schoolId
     });
 
@@ -162,9 +162,8 @@ export const getStudentLedger = async (req, res) => {
     const limit = parseInt(req.query.limit) || 50; // Default to 50 for ledger history
     const skip = (page - 1) * limit;
 
-    const student = await User.findOne({
+    const student = await Student.findOne({
       admission,
-      role: "student",
       schoolId: req.user.schoolId
     }).select("name admission _id"); // Select only necessary fields
 

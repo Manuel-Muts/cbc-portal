@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>COMPETENCE HUB</title>
+  <title>COMPETENCEHUB</title>
   <link rel="stylesheet" href="css/style.css" />
   <link rel="stylesheet" href="css/ui.css" />
   <link rel="icon" type="image/png" href="/images/favicon.png"/> 
@@ -35,8 +35,8 @@
 
   <nav>
     <ul id="navMenu">
-      <li><a href="about.html">About</a></li>
-      <li><a href="contact.html">Contact</a></li>
+      <li><a href="/about">About</a></li>
+      <li><a href="/contact">Contact</a></li>
     </ul>
   </nav>
 
@@ -186,8 +186,8 @@ and real-time academic insights tailored for modern institutions.
 <!-- Footer -->
 <footer>
   <p> 
-     <a href="#" id="openSuperAdminModal">MUTS_TECH LTD</a> |  
-   © Muts Tech Ltd · Secure CBE Education Platform ·
+     <a href="#" id="openSuperAdminModal">MUTS</a> |  
+   © Muts Tech· Secure CBE Education Platform ·
 <script>document.write(new Date().getFullYear());</script>
 </p>
 </footer>
@@ -196,7 +196,7 @@ and real-time academic insights tailored for modern institutions.
 <div id="superAdminModal" class="modal">
   <div class="modal-content">
     <span class="close">&times;</span>
-    <h2>Super Admin Login</h2>
+    <h2>Login</h2>
 
     <form id="superAdminLoginForm">
       <label>Email</label>
@@ -324,8 +324,12 @@ document.addEventListener("DOMContentLoaded", () => {
         return;
       }
 
-      localStorage.setItem("token", data.token);
-      window.location.href = "super-admin.html";
+      // Use the consistent token key from config or default to "token"
+      const tokenKey = (window.config && window.config.auth && window.config.auth.tokenKey) || "token";
+      
+      localStorage.clear(); // 🆕 Clear any previous session data (e.g. stale user_profile_cache)
+      localStorage.setItem(tokenKey, data.token);
+      window.location.href = "/super-admin";
 
     } catch (err) {
       console.error(err);

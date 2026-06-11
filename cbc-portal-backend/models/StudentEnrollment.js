@@ -34,8 +34,17 @@ const studentEnrollmentSchema = new mongoose.Schema({
   },
 
   stream: {
-    type: String, // e.g. "W", "E", "A" for Grade 5W, Grade 5E, Grade 5A
-    default: null
+    type: String,
+    default: null,
+    trim: true,
+    uppercase: true,
+    validate: {
+      validator: function(v) {
+        if (!v) return true; // Allow null/empty
+        return /^[A-Z]+$/.test(v); // Strictly letters only
+      },
+      message: props => `${props.value} is not a valid stream. Streams must contain letters only (e.g., A, B, BLUE, WEST).`
+    }
   },
 
   term: {
@@ -79,8 +88,9 @@ studentEnrollmentSchema.index(
   { unique: true }
 );
 
-// Index for Promotion Preview (School + Year + Grade Sort)
-studentEnrollmentSchema.index({ schoolId: 1, academicYear: 1, grade: 1 });
+// 🚀 Optimized Index for Promotion Preview & Class Roster lookups
+studentEnrollmentSchema.index({ schoolId: 1, academicYear: 1, grade: 1, stream: 1, status: 1 });
+studentEnrollmentSchema.index({ studentId: 1, schoolId: 1 }); // For efficient lookups of a student's enrollments within a school
 
 const StudentEnrollment = mongoose.model(
   "StudentEnrollment",

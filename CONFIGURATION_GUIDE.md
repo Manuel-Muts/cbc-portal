@@ -135,6 +135,11 @@ MAX_FILE_SIZE=50
 # Rate Limiting
 RATE_LIMIT_WINDOW_MS=900000
 RATE_LIMIT_MAX_REQUESTS=100
+
+# Africa's Talking SMS
+AT_USERNAME=your_africas_talking_username
+AT_API_KEY=your_africas_talking_api_key
+AT_SENDER_ID=
 ```
 
 ---
@@ -434,4 +439,3 @@ For questions or issues with the configuration system, refer to:
 - Backend config: `cbc-portal-backend/config.js`
 - Frontend config: `docs/js/config.js`
 - Environment setup: `.env` file
-

@@ -1,13 +1,15 @@
 // controllers/superAdminController.js
 import { User } from '../models/User.js';
 import { School } from '../models/school.js';
+import { Student, Teacher } from '../models/RoleModels.js'; // 🆕 Import discriminator models
 import bcrypt from 'bcryptjs';
 import { sendCredentialsEmail } from '../utils/authHelpers.js';
 import Payment from '../models/Payment.js';
 import Setting from '../models/Setting.js';
 import LoginAttempt from '../models/LoginAttempt.js';
 import fs from 'fs';
-import cache from "../utils/simpleCache.js";
+import cache from "../utils/cacheManager.js";
+import axios from 'axios';
 
 const parseBoolean = (value) => {
   if (typeof value === 'boolean') return value;
@@ -56,7 +58,7 @@ export const createSchool = async (req, res) => {
       logoMimeType 
     });
 
-    cache.clearByPattern('super_schools');
+    cache.clearByPattern('super_');
     res.status(201).json({ msg: 'School created', school });
   } catch (err) {
     console.error('Create School Error:', err);
@@ -85,7 +87,7 @@ export const createAdmin = async (req, res) => {
     const rawPassword = password || Math.random().toString(36).slice(-6);
     const hashedPassword = await bcrypt.hash(rawPassword, 10);
  
-    const admin = await User.create({
+    const admin = new User({
       name,
       role: 'admin',
       email,
@@ -94,6 +96,7 @@ export const createAdmin = async (req, res) => {
       schoolName: school.name,
       passwordMustChange: true
     });
+    await admin.save();
 
     try {
       await sendCredentialsEmail({ name, email, rawPassword });
@@ -106,7 +109,7 @@ export const createAdmin = async (req, res) => {
       });
     }
 
-    cache.clearByPattern('super_admins');
+    cache.clearByPattern('super_');
     res.status(201).json({ msg: 'Admin created successfully', admin });
   } catch (err) {
     console.error('Create Admin Error:', err);
@@ -199,9 +202,14 @@ export const getAdminById = async (req, res) => {
     if (req.user.role !== 'super_admin')
       return res.status(403).json({ msg: 'Only super-admins can view admins' });
 
-    const admin = await User.findById(req.params.id).populate('schoolId', 'name');
+    const cacheKey = `super_admin_detail_${req.params.id}`;
+    const cached = cache.get(cacheKey);
+    if (cached) return res.json(cached);
+
+    const admin = await User.findById(req.params.id).populate('schoolId', 'name').lean();
     if (!admin) return res.status(404).json({ msg: 'Admin not found' });
 
+    cache.set(cacheKey, admin, 300);
     res.json(admin);
   } catch (err) {
     console.error('Get Admin Error:', err);
@@ -232,7 +240,7 @@ export const updateAdmin = async (req, res) => {
     }
 
     await admin.save();
-    cache.clearByPattern('super_admins');
+    cache.clearByPattern('super_');
     res.json({ msg: 'Admin updated successfully', admin });
   } catch (err) {
     console.error('Update Admin Error:', err);
@@ -252,7 +260,7 @@ export const deleteAdmin = async (req, res) => {
     if (!admin) return res.status(404).json({ msg: 'Admin not found' });
 
     await admin.deleteOne(); // <-- changed from remove()
-    cache.clearByPattern('super_admins');
+    cache.clearByPattern('super_');
     res.json({ msg: 'Admin deleted successfully' });
   } catch (err) {
     console.error('Delete Admin Error:', err);
@@ -267,9 +275,14 @@ export const getSchoolById = async (req, res) => {
     if (req.user.role !== 'super_admin')
       return res.status(403).json({ msg: 'Only super-admins can view schools' });
 
-    const school = await School.findById(req.params.id);
+    const cacheKey = `super_school_detail_${req.params.id}`;
+    const cached = cache.get(cacheKey);
+    if (cached) return res.json(cached);
+
+    const school = await School.findById(req.params.id).lean();
     if (!school) return res.status(404).json({ msg: 'School not found' });
 
+    cache.set(cacheKey, school, 300);
     res.json(school);
   } catch (err) {
     console.error('Get School Error:', err);
@@ -314,10 +327,33 @@ export const updateSchool = async (req, res) => {
     }
 
     await school.save();
-    cache.clearByPattern('super_schools');
+    cache.clearByPattern('super_');
     res.json({ msg: 'School updated successfully', school });
   } catch (err) {
     console.error('Update School Error:', err);
+    res.status(500).json({ msg: err.message });
+  }
+};
+
+// ---------------------------
+// TOP UP SMS CREDITS (Super Admin Only)
+// ---------------------------
+export const topUpSmsCredits = async (req, res) => {
+  try {
+    const { id } = req.params; // School ID
+    const { amount } = req.body;
+
+    if (amount === undefined || isNaN(amount)) {
+      return res.status(400).json({ msg: "Valid amount is required" });
+    }
+
+    const school = await School.findByIdAndUpdate(id, { $inc: { smsCredits: Number(amount) } }, { new: true }).select('name smsCredits');
+    if (!school) return res.status(404).json({ msg: "School not found" });
+
+    cache.clearByPattern('super_');
+    res.json({ msg: `Successfully added ${amount} credits to ${school.name}`, currentBalance: school.smsCredits });
+  } catch (err) {
+    console.error("Top Up Credits Error:", err);
     res.status(500).json({ msg: err.message });
   }
 };
@@ -334,7 +370,7 @@ export const deleteSchool = async (req, res) => {
     if (!school) return res.status(404).json({ msg: 'School not found' });
 
     await school.deleteOne(); // <-- changed from remove()
-    cache.clearByPattern('super_schools');
+    cache.clearByPattern('super_');
     res.json({ msg: 'School deleted successfully' });
   } catch (err) {
     console.error('Delete School Error:', err);
@@ -347,11 +383,15 @@ export const deleteSchool = async (req, res) => {
 // ---------------------------
 export const getSystemOverview = async (req, res) => {
   try {
+    const cacheKey = 'super_overview';
+    const cached = cache.get(cacheKey);
+    if (cached) return res.json(cached);
+
     // --- Total counts ---
     const totalSchools = await School.countDocuments();
-    const totalAdmins = await User.countDocuments({ role: 'admin' });
-    const totalTeachers = await User.countDocuments({ role: 'teacher' });
-    const totalStudents = await User.countDocuments({ role: 'student' });
+    const totalAdmins = await User.countDocuments({ role: 'admin' }); // Admin is not a discriminator
+    const totalTeachers = await Teacher.countDocuments(); // 🆕 Use Teacher discriminator
+    const totalStudents = await Student.countDocuments(); // 🆕 Use Student discriminator
 
     // --- Recent Schools ---
     const recentSchools = await School.find()
@@ -377,7 +417,7 @@ export const getSystemOverview = async (req, res) => {
   // --- Users & Teachers per school ---
   // Produce counts for every school (include zeros) so frontend charts show correct bars
   const usersAgg = await User.aggregate([
-    { $match: { role: { $in: ['student', 'teacher'] } } },
+    { $match: { role: { $in: ['student', 'teacher'] } } }, // Aggregation still targets base collection
     { $group: {
         _id: '$schoolId',
         studentsCount: { $sum: { $cond: [{ $eq: ['$role', 'student'] }, 1, 0] } },
@@ -410,7 +450,7 @@ export const getSystemOverview = async (req, res) => {
     ]);
 
     // --- Response ---
-    res.json({
+    const response = {
       totalSchools,
       totalAdmins,
       totalTeachers,
@@ -419,7 +459,10 @@ export const getSystemOverview = async (req, res) => {
       recentAdmins: mappedRecentAdmins,
       usersPerSchool: usersPerSchoolAgg,
       adminsPerSchool: adminsPerSchoolAgg
-    });
+    };
+
+    cache.set(cacheKey, response, 300); // 5 mins
+    res.json(response);
   } catch (err) {
     console.error('System Overview Error:', err);
     res.status(500).json({ message: 'Failed to fetch system overview' });
@@ -431,6 +474,10 @@ export const getSystemOverview = async (req, res) => {
 // ---------------------------
 export const getAnalytics = async (req, res) => {
   try {
+    const cacheKey = 'super_analytics';
+    const cached = cache.get(cacheKey);
+    if (cached) return res.json(cached);
+
     // Monthly user registrations (last 12 months)
     const now = new Date();
     const oneYearAgo = new Date(now.getFullYear(), now.getMonth() - 11, 1);
@@ -442,17 +489,10 @@ export const getAnalytics = async (req, res) => {
       { $sort: { '_id.year': 1, '_id.month': 1 } }
     ]);
 
-    // Payments per month (last 12 months)
-    const payments = await Payment.aggregate([
-      { $match: { createdAt: { $gte: oneYearAgo } } },
-      { $project: { year: { $year: '$createdAt' }, month: { $month: '$createdAt' }, amount: 1 } },
-      { $group: { _id: { year: '$year', month: '$month' }, total: { $sum: '$amount' } } },
-      { $sort: { '_id.year': 1, '_id.month': 1 } }
-    ]);
 
     // Top schools by student count
     const topSchools = await User.aggregate([
-      { $match: { role: 'student' } },
+      { $match: { role: 'student' } }, // Aggregation still targets base collection
       { $group: { _id: '$schoolId', students: { $sum: 1 } } },
       { $lookup: { from: 'schools', localField: '_id', foreignField: '_id', as: 'school' } },
       { $unwind: { path: '$school', preserveNullAndEmptyArrays: true } },
@@ -461,7 +501,10 @@ export const getAnalytics = async (req, res) => {
       { $limit: 10 }
     ]);
 
-    res.json({ registrations, payments, topSchools });
+    const response = { registrations, topSchools };
+    
+    cache.set(cacheKey, response, 300);
+    res.json(response);
   } catch (err) {
     console.error('Get Analytics Error:', err);
     res.status(500).json({ message: 'Failed to fetch analytics' });
@@ -477,6 +520,10 @@ export const getLogs = async (req, res) => {
     const page = Math.max(parseInt(req.query.page || '1', 10), 1);
     const limit = Math.max(parseInt(req.query.limit || '10', 10), 1);
     const q = req.query.q ? String(req.query.q).trim() : '';
+
+    const cacheKey = `super_logs_${type}_p${page}_l${limit}_q${q}`;
+    const cached = cache.get(cacheKey);
+    if (cached) return res.json(cached);
 
     // Top failed login attempts (user-level)
     const topLoginAgg = await LoginAttempt.aggregate([
@@ -518,7 +565,10 @@ export const getLogs = async (req, res) => {
       const total = metadata.total || 0;
       const totalPages = Math.ceil(total / limit);
 
-      return res.json({ payments: data, meta: { total, page, limit, totalPages }, topLoginAttempt });
+      const response = { payments: data, meta: { total, page, limit, totalPages }, topLoginAttempt };
+      
+      cache.set(cacheKey, response, 60); // Cache logs for 1 minute
+      return res.json(response);
     }
 
     if (type === 'schools') {
@@ -527,7 +577,10 @@ export const getLogs = async (req, res) => {
       const total = await School.countDocuments(filter);
       const data = await School.find(filter).sort({ createdAt: -1 }).skip((page - 1) * limit).limit(limit).select('name adminEmail createdAt address');
       const totalPages = Math.ceil(total / limit);
-      return res.json({ schools: data, meta: { total, page, limit, totalPages }, topLoginAttempt });
+      
+      const response = { schools: data, meta: { total, page, limit, totalPages }, topLoginAttempt };
+      cache.set(cacheKey, response, 60);
+      return res.json(response);
     }
 
     if (type === 'admins') {
@@ -536,11 +589,17 @@ export const getLogs = async (req, res) => {
       const total = await User.countDocuments(filter);
       const data = await User.find(filter).sort({ createdAt: -1 }).skip((page - 1) * limit).limit(limit).select('name email createdAt schoolId').populate('schoolId', 'name');
       const totalPages = Math.ceil(total / limit);
-      return res.json({ admins: data, meta: { total, page, limit, totalPages }, topLoginAttempt });
+      
+      const response = { admins: data, meta: { total, page, limit, totalPages }, topLoginAttempt };
+      cache.set(cacheKey, response, 60);
+      return res.json(response);
     }
 
     // Default: return only topLoginAttempt
-    return res.json({ topLoginAttempt });
+    const response = { topLoginAttempt };
+    cache.set(cacheKey, response, 60);
+    return res.json(response);
+
   } catch (err) {
     console.error('Get Logs Error:', err);
     res.status(500).json({ message: 'Failed to fetch logs' });
@@ -574,9 +633,15 @@ export const cleanLoginAttempts = async (req, res) => {
 // ---------------------------
 export const getSettings = async (req, res) => {
   try {
+    const cacheKey = 'super_settings';
+    const cached = cache.get(cacheKey);
+    if (cached) return res.json(cached);
+
     const entries = await Setting.find().lean();
     const settings = {};
     entries.forEach(e => settings[e.key] = e.value);
+    
+    cache.set(cacheKey, { settings }, 600); // Settings rarely change
     res.json({ settings });
   } catch (err) {
     console.error('Get Settings Error:', err);
@@ -591,6 +656,7 @@ export const updateSettings = async (req, res) => {
     for (const key of keys) {
       await Setting.findOneAndUpdate({ key }, { value: updates[key] }, { upsert: true });
     }
+    cache.clearByPattern('super_');
     res.json({ message: 'Settings updated' });
   } catch (err) {
     console.error('Update Settings Error:', err);
@@ -614,10 +680,62 @@ export const toggleSchoolStatus = async (req, res) => {
     school.version += 1; // increment version on status change
     await school.save();
 
-    cache.clearByPattern('super_schools');
+    cache.clearByPattern('super_');
     res.json({ msg: `School ${school.status}`, school });
   } catch (err) {
     console.error("Toggle School Status Error:", err);
     res.status(500).json({ msg: "Failed to toggle school status" });
+  }
+};
+
+/**
+ * 🆕 Get Africa's Talking Master Wallet Balance
+ */
+export const getSMSProviderBalance = async (req, res) => {
+  try {
+    // Only super-admins can see the master wholesale balance
+    if (req.user.role !== 'super_admin') {
+      return res.status(403).json({ msg: 'Unauthorized' });
+    }
+
+    const cacheKey = 'super_sms_provider_balance';
+    const cached = cache.get(cacheKey);
+    if (cached) return res.json(cached);
+
+    // 🆕 Robust credential fetching (Matches sendSMS.js logic)
+    const username = (process.env.AT_USERNAME || process.env.AFRICASTALKING_USERNAME || 'sandbox').trim();
+    const apiKey = (process.env.AT_API_KEY || process.env.AFRICASTALKING_API_KEY || "").trim();
+
+    if (!apiKey) {
+      console.error("❌ SMS Balance Config Missing. Found:", { username: !!username, apiKey: !!apiKey });
+      return res.status(500).json({ msg: "Africa's Talking configuration (username or API key) is missing in .env" });
+    }
+
+    const isSandbox = username.toLowerCase() === 'sandbox';
+    const finalUsername = isSandbox ? 'sandbox' : username;
+
+    // Determine URL based on sandbox vs live
+    const url = isSandbox 
+      ? `https://api.sandbox.africastalking.com/version1/user?username=${finalUsername}`
+      : `https://api.africastalking.com/version1/user?username=${finalUsername}`;
+
+    const response = await axios.get(url, {
+      headers: {
+        'apikey': apiKey,
+        'Accept': 'application/json'
+      }
+    });
+
+    res.json({ balance: response.data.UserData.balance, isSandbox });
+  } catch (err) {
+    const errorDetail = err.response?.data;
+    // Africa's Talking sometimes returns errors as plain strings or objects
+    const errorMsg = typeof errorDetail === 'string' ? errorDetail : (errorDetail?.errorMessage || err.message);
+    
+    console.error("❌ SMS Balance Fetch Error:", {
+      status: err.response?.status,
+      detail: errorMsg
+    });
+    res.status(500).json({ msg: errorMsg });
   }
 };

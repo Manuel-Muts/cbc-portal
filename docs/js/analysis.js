@@ -1,6 +1,6 @@
 // ===== ANALYSIS.JS(CLASSTEACHERS) =====
 
-document.addEventListener("DOMContentLoaded", () => {
+document.addEventListener("DOMContentLoaded", async () => {
   // ---------------------------
   // DOM ELEMENTS
   // ---------------------------
@@ -27,26 +27,21 @@ document.addEventListener("DOMContentLoaded", () => {
   const lowSubjectEl = document.getElementById("lowSubject");
   const recordsCountEl = document.getElementById("recordsCount");
 
+  let missingExamsTableWrap = document.getElementById("missingExamsTableWrap");
   // ===== API CONFIG =====
   // API_BASE is now loaded from config.js
   // To change the API endpoint, update config.js
   const API_BASE = config.api.baseURL;
-  const token = localStorage.getItem("token");
   let user = null;
 
-  // ===== AUTH CHECK =====
-  try {
-    const stored = localStorage.getItem("loggedInUser");
-    if (!stored || !token) return showNotAllowed();
-    user = JSON.parse(stored);
-  } catch {
-    localStorage.removeItem("loggedInUser");
-    return showNotAllowed();
-  }
+  // ===== AUTH CHECK USING CENTRALIZED SERVICE =====
+  user = await window.authService?.getUserProfile(["teacher", "classteacher"]);
+  if (!user) return; // authService handles redirect to login if session is invalid
 
-  const roles = user.roles || [];
-  if (!user?.isClassTeacher && !roles.includes("classteacher")) return showNotAllowed();
-  user.subjects = Array.isArray(user.subjects) ? user.subjects : [];
+  if (!user.isClassTeacher && !user.roles?.includes("classteacher")) {
+    alert("Access Denied: Class Teacher role required.");
+    return window.location.href = "/teacher";
+  }
 
   function showNotAllowed() {
     notAllowedEl?.classList.remove("hidden");
@@ -95,6 +90,7 @@ document.addEventListener("DOMContentLoaded", () => {
   // ===== FETCH SCHOOL =====
   async function fetchSchoolInfo() {
     try {
+      const token = window.authService?.getToken();
       const res = await fetch(`${API_BASE}/my-school`, {
         headers: { Authorization: `Bearer ${token}` }
       });
@@ -110,11 +106,7 @@ document.addEventListener("DOMContentLoaded", () => {
   refreshBtn?.addEventListener("click", () => window.location.reload());
   generateBtn?.addEventListener("click", generateReport);
   applyFiltersBtn?.addEventListener("click", generateReport);
-  logoutBtn?.addEventListener("click", () => {
-    localStorage.removeItem("loggedInUser");
-    localStorage.removeItem("token");
-    window.location.href = "/login";
-  });
+  window.authService?.initLogout();
   exportPdfBtn?.addEventListener("click", exportPdf);
 
   // ===== LOAD LEARNERS (EDIT MODE) BUTTON =====
@@ -149,6 +141,7 @@ document.addEventListener("DOMContentLoaded", () => {
   // ===== FETCH USER PROFILE =====
   const fetchUserAndAllocations = async () => {
     try {
+      const token = window.authService?.getToken();
       const userRes = await fetch(`${API_BASE}/users/user`, {
         headers: { Authorization: `Bearer ${token}` }
       });
@@ -156,7 +149,7 @@ document.addEventListener("DOMContentLoaded", () => {
       const profile = await userRes.json();
 
       // Require schoolId for class-teacher flows
-      if (!profile?.schoolId) {
+      if (!profile || !profile.schoolId) {
         console.error("Profile missing schoolId:", profile);
         return showNotAllowed();
       }
@@ -164,8 +157,8 @@ document.addEventListener("DOMContentLoaded", () => {
       let classGrade = profile.classGrade;
 
       if (!classGrade) {
+        const token = window.authService?.getToken();
         const allocRes = await fetch(`${API_BASE}/users/allocations`, {
-
           headers: { Authorization: `Bearer ${token}` }
         });
         const allocations = allocRes.ok ? await allocRes.json() : [];
@@ -219,6 +212,11 @@ document.addEventListener("DOMContentLoaded", () => {
       const logoEl = document.getElementById("schoolLogo");
       const addressEl = document.getElementById("schoolAddress");
 
+      // 🆕 Activate custom school grading logic if defined
+      if (school.gradingConfig) {
+        if (window.cbcUtils) window.cbcUtils.customGradingConfig = school.gradingConfig;
+      }
+
       if (nameEl) nameEl.textContent = `${school.name} — Class Analysis`;
       if (addressEl && school.address) addressEl.textContent = school.address;
 
@@ -266,7 +264,7 @@ document.addEventListener("DOMContentLoaded", () => {
     yearFilter.value = currentYear.toString();
   }
 
-  async function getFilteredMarks(page = null, limit = null, search = "") {
+   async function getFilteredMarks(page = null, limit = null, search = "", streamOverride = null) {
     if (!user?.classGrade) return [];
 
     // Build filter values - always send term and assessment (use "all" if not selected)
@@ -282,7 +280,8 @@ document.addEventListener("DOMContentLoaded", () => {
     });
 
     // 🆕 Handle stream filter based on selection
-    if (streamFilterSelect?.value === "assigned" && user.assignedStream) {
+    const streamMode = streamOverride || streamFilterSelect?.value;
+    if (streamMode === "assigned" && user.assignedStream) {
       // "My Stream Only" - filter by the teacher's assigned stream
       params.append("stream", user.assignedStream);
     } else {
@@ -297,8 +296,8 @@ document.addEventListener("DOMContentLoaded", () => {
     console.log("[Analysis] Fetching marks with params:", Object.fromEntries(params.entries()));
 
     try {
+      const token = window.authService?.getToken();
       const res = await fetch(`${API_BASE}/marks/by-grade?${params}`, {
-
         headers: { Authorization: `Bearer ${token}` }
       });
       if (res.status === 403) {
@@ -357,14 +356,74 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   // ===== CALCULATE STATS =====
-  function calculateStats(filtered) {
-    if (!filtered.length) return { studentArray: [], subjects: [], subjectMeans: {}, classMean: 0, topMean: 0, lowMean: 0, topSubject: "-", lowSubject: "-", records: 0, groupedByAssessment: {} };
+  function calculateStats(filtered, roster = [], selectedStreamMode = "all", allTermRaw = null, prevTermRaw = null) {
+    if (!filtered.length && !roster.length) return { studentArray: [], subjects: [], subjectMeans: {}, classMean: 0, topMean: 0, lowMean: 0, topSubject: "-", lowSubject: "-", records: 0, groupedByAssessment: {}, missingExamsList: [], streamDiscrepancies: [] };
 
+    const assessment = assessmentFilter?.value || "all";
+    const isAllAssessments = assessment === "all";
+
+    // 🆕 Determine Baseline for Progress (Intra-term vs Inter-term)
+    const prevSubjectMeans = {};
+    const prevStudentMeans = {};
+    let prevBaselineData = null;
+
+    if (assessment !== "all" && allTermRaw) {
+      const currentId = parseInt(assessment);
+      const predecessorId = [...new Set(allTermRaw.map(m => parseInt(m.assessment)))]
+        .filter(id => id < currentId)
+        .sort((a, b) => b - a)[0];
+
+      prevBaselineData = predecessorId ? allTermRaw.filter(m => parseInt(m.assessment) === predecessorId) : prevTermRaw;
+    } else {
+      prevBaselineData = prevTermRaw;
+    }
+
+    if (prevBaselineData && Array.isArray(prevBaselineData)) {
+      const pStudentsMap = {};
+      prevBaselineData.forEach(m => {
+        if (!pStudentsMap[m.admissionNo]) pStudentsMap[m.admissionNo] = { subjects: {}, hasAbsence: false };
+        m.subjects.forEach(sub => {
+          const score = sub.score;
+          const isAbs = score === null || score === undefined || String(score).toUpperCase() === "X" || String(score).trim() === "";
+          if (isAbs) pStudentsMap[m.admissionNo].hasAbsence = true;
+          pStudentsMap[m.admissionNo].subjects[sub.subject] = isAbs ? null : Number(score);
+        });
+      });
+
+      const pSubTotals = {}, pSubCounts = {};
+      Object.entries(pStudentsMap).forEach(([adm, s]) => {
+        if (s.hasAbsence) return;
+        const vals = Object.values(s.subjects).filter(v => v !== null);
+        if (vals.length) {
+          prevStudentMeans[adm] = vals.reduce((a, b) => a + b, 0) / vals.length;
+          Object.entries(s.subjects).forEach(([sub, score]) => {
+            pSubTotals[sub] = (pSubTotals[sub] || 0) + score;
+            pSubCounts[sub] = (pSubCounts[sub] || 0) + 1;
+          });
+        }
+      });
+      Object.keys(pSubCounts).forEach(sub => prevSubjectMeans[sub] = pSubTotals[sub] / pSubCounts[sub]);
+    }
+
+    const streamExpectedSubjectsMap = {};
+    const allSubjectsInGrade = new Set();
     const subjectsSet = new Set();
     const students = {};
+    const missingExamsMap = {};
+
     filtered.forEach(m => {
+      const stream = m.stream || "Unassigned";
+      if (!streamExpectedSubjectsMap[stream]) streamExpectedSubjectsMap[stream] = new Set();
+      
+      m.subjects.forEach(sub => {
+        if (sub.subject) {
+          streamExpectedSubjectsMap[stream].add(sub.subject);
+          allSubjectsInGrade.add(sub.subject);
+          subjectsSet.add(sub.subject);
+        }
+      });
+
       const key = `${m.admissionNo}_${m.assessment}_${m.term}_${m.year}`;
-      m.subjects.forEach(s => subjectsSet.add(s.subject));
 
       if (!students[key]) students[key] = { admissionNo: m.admissionNo, name: m.studentName || "Unnamed", grade: m.grade, assessment: m.assessment, term: m.term, year: m.year, subjects: {}, hasAbsence: false };
       m.subjects.forEach(s => { 
@@ -377,15 +436,73 @@ document.addEventListener("DOMContentLoaded", () => {
       });
     });
 
+    Object.keys(streamExpectedSubjectsMap).forEach(s => {
+      streamExpectedSubjectsMap[s] = Array.from(streamExpectedSubjectsMap[s]);
+    });
+
+    const streamDiscrepancies = calculateStreamDiscrepancies(streamExpectedSubjectsMap, allSubjectsInGrade);
+    const sortedSubjects = Array.from(subjectsSet).sort();
+    const assessment = assessmentFilter?.value || "all";
+    const isAllAssessments = assessment === "all";
+
+    // Pass 2: Detect Absences/Missing Components
+    Object.values(students).forEach(s => {
+      const stream = s.stream || "Unassigned";
+      const subjectsToValidate = (selectedStreamMode === "all") ? (streamExpectedSubjectsMap[stream] || []) : sortedSubjects;
+
+      subjectsToValidate.forEach(subName => {
+        const score = s.subjects[subName];
+        const isMissing = score === undefined || score === null || (typeof score === 'string' && score.trim().toUpperCase() === "X");
+
+        if (isMissing) {
+          s.hasAbsence = true;
+          const studentAssessKey = isAllAssessments ? `${s.admissionNo}_overall` : `${s.admissionNo}_${s.assessment}`;
+          if (!missingExamsMap[studentAssessKey]) {
+            missingExamsMap[studentAssessKey] = { name: s.name, adm: s.admissionNo, stream: s.stream || "Unassigned", assess: isAllAssessments ? "Overall Performance" : getAssessmentLabel(s.assessment), subjects: [] };
+          }
+          if (!missingExamsMap[studentAssessKey].subjects.includes(subName)) {
+            missingExamsMap[studentAssessKey].subjects.push(subName);
+          }
+        }
+      });
+    });
+
+    // Pass 3: Identify Entirely Ungraded Learners
+    const targetStream = (selectedStreamMode === "assigned") ? user.assignedStream : null;
+    let filteredRoster = roster;
+    if (targetStream) filteredRoster = roster.filter(r => r.stream === targetStream);
+
+    if (filteredRoster.length > 0 && !isAllAssessments) {
+      const submittedAdms = new Set(filtered.map(m => m.admissionNo));
+      const currentAssessLabel = getAssessmentLabel(assessment);
+
+      filteredRoster.forEach(learner => {
+        const adm = learner.admissionNo || learner.admission;
+        if (!submittedAdms.has(adm)) {
+          missingExamsMap[`${adm}_ungraded`] = {
+            name: learner.name,
+            adm: adm,
+            stream: learner.stream || "Unassigned",
+            assess: currentAssessLabel,
+            subjects: ["RECORDS NOT FOUND (Entirely Ungraded)"]
+          };
+        }
+      });
+    }
+
     const studentArray = Object.values(students)
       .filter(s => !s.hasAbsence) // 🚫 Exclude students with any "X" or missing component from ranking
       .map(s => {
       const scores = Object.values(s.subjects);
       const total = scores.reduce((a, b) => a + b, 0);
       const mean = scores.length ? total / scores.length : 0;
-      const totalPoints = scores.reduce((sum, score) => sum + cbcUtils.getPoints(score), 0);
+      const totalPoints = scores.reduce((sum, score) => sum + window.cbcUtils.getPoints(score, s.grade), 0);
       const avgPoints = scores.length ? totalPoints / scores.length : 0;
-      return { ...s, total, mean, totalPoints, avgPoints };
+      
+      const pMean = prevStudentMeans[s.admissionNo];
+      const progress = (pMean !== undefined && pMean > 0) ? (mean - pMean) : null;
+      
+      return { ...s, total, mean, totalPoints, avgPoints, progress };
     });
 
     const groupedByAssessment = {};
@@ -444,17 +561,39 @@ document.addEventListener("DOMContentLoaded", () => {
       if (v < lowVal) { lowVal = v; lowSubject = sub; }
     });
 
-    return { studentArray, subjects, subjectMeans, classMean, topMean, lowMean, topSubject, lowSubject, records: studentArray.length, groupedByAssessment };
+    return { studentArray, subjects: sortedSubjects, subjectMeans, classMean, topMean, lowMean, topSubject, lowSubject, records: studentArray.length, groupedByAssessment, missingExamsList: Object.values(missingExamsMap).sort((a,b) => a.name.localeCompare(b.name)), streamDiscrepancies };
   }
 
   // ===== CALCULATE SENIOR SCHOOL STATS (Component-Based) =====
-  function calculateSeniorSchoolStats(filtered) {
-    if (!filtered.length) {
-      return { studentArray: [], groupedByAssessment: {}, subjects: [], classMean: 0, records: 0, topSubject: '-', lowSubject: '-', subjectMeans: {} };
+  function calculateSeniorSchoolStats(filtered, roster = [], selectedStreamMode = "all") {
+    if (!filtered.length && !roster.length) {
+      return { studentArray: [], groupedByAssessment: {}, subjects: [], classMean: 0, records: 0, topSubject: '-', lowSubject: '-', subjectMeans: {}, missingExamsList: [], streamDiscrepancies: [] };
     }
   
+    const streamExpectedSubjectsMap = {};
+    const allSubjectsInGrade = new Set();
     const subjectsSet = new Set();
     const students = {};
+    const missingExamsMap = {};
+
+    // Pass 1: Build Subject Maps
+    filtered.forEach(m => {
+      const stream = m.stream || "Unassigned";
+      if (!streamExpectedSubjectsMap[stream]) streamExpectedSubjectsMap[stream] = new Set();
+      
+      if (m.subjects) {
+        m.subjects.forEach(sub => {
+          const subName = sub.course || sub.subject;
+          if (subName && subName !== 'null') {
+            streamExpectedSubjectsMap[stream].add(subName);
+            allSubjectsInGrade.add(subName);
+            subjectsSet.add(subName);
+          }
+        });
+      }
+    });
+    Object.keys(streamExpectedSubjectsMap).forEach(s => streamExpectedSubjectsMap[s] = Array.from(streamExpectedSubjectsMap[s]));
+
     const subjectTotals = {};
     const subjectCounts = {};
   
@@ -482,7 +621,7 @@ document.addEventListener("DOMContentLoaded", () => {
         if (!subjectName || subjectName === 'null') return; // Skip if no name found or is the string 'null'
         
         subjectsSet.add(subjectName);
-        const finalScore = cbcUtils.calculateFinalScore(sub.continuousAssessment, sub.projectWork, sub.endTermExam);
+        const finalScore = window.cbcUtils.calculateFinalScore(sub.continuousAssessment, sub.projectWork, sub.endTermExam);
         const isAbs = finalScore === null || finalScore === "X";
 
         if (isAbs) students[studentKey].hasAbsence = true;
@@ -495,6 +634,53 @@ document.addEventListener("DOMContentLoaded", () => {
       });
     });
   
+    const streamDiscrepancies = calculateStreamDiscrepancies(streamExpectedSubjectsMap, allSubjectsInGrade);
+    const sortedSubjects = Array.from(subjectsSet).sort();
+    const assessment = assessmentFilter?.value || "all";
+    const isAllAssessments = assessment === "all";
+
+    // Pass 2: Absences
+    Object.values(students).forEach(s => {
+      const stream = s.stream || "Unassigned";
+      const subjectsToValidate = (selectedStreamMode === "all") ? (streamExpectedSubjectsMap[stream] || []) : sortedSubjects;
+
+      subjectsToValidate.forEach(subName => {
+        const score = s.subjects[subName];
+        const isMissing = score === undefined || score === null || score === "X";
+        if (isMissing) {
+          s.hasAbsence = true;
+          const studentAssessKey = isAllAssessments ? `${s.admissionNo}_overall` : `${s.admissionNo}_${s.assessment}`;
+          if (!missingExamsMap[studentAssessKey]) {
+            missingExamsMap[studentAssessKey] = { name: s.name, adm: s.admissionNo, stream: s.stream || "Unassigned", assess: isAllAssessments ? "Overall" : getAssessmentLabel(s.assessment), subjects: [] };
+          }
+          if (!missingExamsMap[studentAssessKey].subjects.includes(subName)) missingExamsMap[studentAssessKey].subjects.push(subName);
+        }
+      });
+    });
+
+    // Pass 3: Ungraded
+    const targetStream = (selectedStreamMode === "assigned") ? user.assignedStream : null;
+    let filteredRoster = roster;
+    if (targetStream) filteredRoster = roster.filter(r => r.stream === targetStream);
+
+    if (filteredRoster.length > 0 && !isAllAssessments) {
+      const submittedAdms = new Set(filtered.map(m => m.admissionNo));
+      const currentAssessLabel = getAssessmentLabel(assessment);
+
+      filteredRoster.forEach(learner => {
+        const adm = learner.admissionNo || learner.admission;
+        if (!submittedAdms.has(adm)) {
+          missingExamsMap[`${adm}_ungraded`] = {
+            name: learner.name,
+            adm: adm,
+            stream: learner.stream || "Unassigned",
+            assess: currentAssessLabel,
+            subjects: ["RECORDS NOT FOUND (Entirely Ungraded)"]
+          };
+        }
+      });
+    }
+
     // 2. Calculate total, mean, and points for each student
     const studentArray = Object.values(students)
       .filter(s => !s.hasAbsence) // 🚫 Exclude students with any "X" or missing component from ranking
@@ -502,7 +688,7 @@ document.addEventListener("DOMContentLoaded", () => {
       const scores = Object.values(s.subjects).filter(score => score !== null);
       const total = scores.reduce((a, b) => a + b, 0);
       const mean = scores.length ? total / scores.length : 0;
-      const totalPoints = scores.reduce((sum, score) => sum + cbcUtils.getPoints(score), 0);
+      const totalPoints = scores.reduce((sum, score) => sum + window.cbcUtils.getPoints(score, s.grade), 0);
       const avgPoints = scores.length ? totalPoints / scores.length : 0;
       
       return { ...s, total, mean, totalPoints, avgPoints };
@@ -555,8 +741,19 @@ document.addEventListener("DOMContentLoaded", () => {
       records: studentArray.length,
       subjectMeans,
       topSubject,
-      lowSubject
+      lowSubject,
+      missingExamsList: Object.values(missingExamsMap).sort((a,b) => a.name.localeCompare(b.name)),
+      streamDiscrepancies
     };
+  }
+
+  function calculateStreamDiscrepancies(streamExpectedSubjectsMap, allSubjectsInGrade) {
+    const discrepancies = [];
+    Object.entries(streamExpectedSubjectsMap).forEach(([stream, subjects]) => {
+      const missingInStream = Array.from(allSubjectsInGrade).filter(s => !subjects.includes(s));
+      if (missingInStream.length > 0) discrepancies.push({ stream, missingSubjects: missingInStream });
+    });
+    return discrepancies;
   }
 
 
@@ -573,9 +770,18 @@ document.addEventListener("DOMContentLoaded", () => {
       html += `<table style="border-collapse: collapse; width: 100%; border:1px solid #000; margin-bottom: 15px;">
         <thead><tr><th>Rank</th><th>Name</th><th>Assessment</th>`;
       stats.subjects.forEach(sub => html += `<th>${sub}</th>`);
-      html += `<th>Total Marks</th><th>Total Points</th><th>Avg Points</th><th>Performance Level</th></tr></thead><tbody>`;
+      html += `<th>Total Marks</th><th>Progress</th><th>Total Points</th><th>Avg Points</th><th>Performance Level</th></tr></thead><tbody>`;
       arr.forEach(s => { // Use getAssessmentLabel for row as well
         let assessLabelRow = getAssessmentLabel(s.assessment);
+
+        let progressHtml = '<span style="color:#94a3b8; font-size:0.7rem;">N/A</span>';
+        if (s.progress !== null) {
+            const diff = s.progress;
+            if (diff > 0.1) progressHtml = `<span style="color:#10b981; font-weight:700;">+${diff.toFixed(1)}</span>`;
+            else if (diff < -0.1) progressHtml = `<span style="color:#ef4444; font-weight:700;">${diff.toFixed(1)}</span>`;
+            else progressHtml = `<span style="color:#3498db; font-size:0.8rem;">-</span>`;
+        }
+
         html += `<tr><td>${s.rank}</td><td>${s.name}</td><td>${assessLabelRow}</td>`;
         stats.subjects.forEach(sub => {
           const score = s.subjects[sub];
@@ -583,7 +789,7 @@ document.addEventListener("DOMContentLoaded", () => {
           const display = isAbs ? '<span style="color:#ef4444; font-weight:700;">ABS</span>' : score;
           html += `<td>${display}</td>`;
         });
-        html += `<td>${s.total}</td><td><strong>${s.totalPoints}</strong></td><td>${s.avgPoints.toFixed(2)}</td><td>${cbcUtils.getSubdivision(s.mean)}</td></tr>`;
+        html += `<td>${s.total}</td><td style="text-align:center;">${progressHtml}</td><td><strong>${s.totalPoints}</strong></td><td>${s.avgPoints.toFixed(2)}</td><td>${window.cbcUtils.getSubdivision(s.mean, s.grade)}</td></tr>`;
       });
 
       // Calculate Totals and Means for Footer
@@ -616,7 +822,7 @@ document.addEventListener("DOMContentLoaded", () => {
       html += `<td style="text-align: center; padding: 8px;">${(groupTotalMarks / groupCount).toFixed(1)}</td>`;
       html += `<td style="text-align: center; padding: 8px;">${(groupTotalPoints / groupCount).toFixed(1)}</td>`;
       html += `<td style="text-align: center; padding: 8px;">${(groupAvgPointsSum / groupCount).toFixed(2)}</td>`;
-      html += `<td style="text-align: center; padding: 8px; color: #1a237e;">${cbcUtils.getSubdivision(groupMeanSum / groupCount)}</td>`;
+      html += `<td style="text-align: center; padding: 8px; color: #1a237e;">${window.cbcUtils.getSubdivision(groupMeanSum / groupCount, arr[0]?.grade)}</td>`;
       html += `</tr></tfoot></table>`;
 
 // ===== TIE-AWARE TOP & LOW STUDENTS =====
@@ -901,6 +1107,7 @@ html += `
           btn.disabled = true;
           
           try {
+            const token = window.authService?.getToken();
             const res = await fetch(`${API_BASE}/marks/${id}`, {
               method: 'PUT',
               headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
@@ -942,12 +1149,16 @@ html += `
     generateBtn.disabled = true;
 
     try {
-      const filtered = await getFilteredMarks();
+      const [filtered, rosterResponse] = await Promise.all([
+        getFilteredMarks(),
+        fetch(`${API_BASE}/enrollments/class/${user.classGrade}?limit=1000`, { headers: { Authorization: `Bearer ${window.authService?.getToken()}` } }).then(r => r.json())
+      ]);
+      
+      const roster = rosterResponse.students || (Array.isArray(rosterResponse) ? rosterResponse : []);
       console.log("[Analysis] Filtered marks count:", filtered.length);
 
-      if (!filtered.length) {
+      if (filtered.length === 0) {
         console.warn("[Analysis] No marks found for the selected filters");
-        alert("No marks found for the selected filters. Please check your grade, term, year, and assessment selections.");
         rankingTableWrap.innerHTML = "<div class='small'>No ranking data found.</div>";
         subjectTableWrap.innerHTML = "<div class='small'>No subject means found.</div>";
         classMeanEl.textContent = "-";
@@ -962,7 +1173,7 @@ html += `
         const isSeniorSchool = gradeNum >= 10 && gradeNum <= 12;
 
         if (!isSeniorSchool) {
-          const stats = calculateStats(filtered);
+          const stats = calculateStats(filtered, roster, streamFilterSelect?.value);
           renderRankingTable(stats);
           renderSubjectMeansTable(stats);
           classMeanEl.textContent = stats.classMean.toFixed(2);
@@ -972,8 +1183,9 @@ html += `
           lowSubjectEl.textContent = stats.lowSubject;
           recordsCountEl.textContent = stats.records;
           renderTrendChartWithData(filtered, false);
+          renderMissingExamsTable(stats.missingExamsList, stats.streamDiscrepancies);
         } else {
-          const stats = calculateSeniorSchoolStats(filtered);
+          const stats = calculateSeniorSchoolStats(filtered, roster, streamFilterSelect?.value);
           renderSeniorSchoolAnalysis(stats);
           renderSubjectMeansTable(stats);
           classMeanEl.textContent = stats.classMean.toFixed(2);
@@ -984,6 +1196,7 @@ html += `
           lowSubjectEl.textContent = stats.lowSubject;
           recordsCountEl.textContent = stats.records;
           renderTrendChartWithData(filtered, true);
+          renderMissingExamsTable(stats.missingExamsList, stats.streamDiscrepancies);
         }
       }
     } catch (err) {
@@ -1045,8 +1258,8 @@ html += `
       // Render body
       html += "<tbody>";
       group.forEach(s => {
-        const subLevel = cbcUtils.getSubdivision(s.mean);
-        const mainLevel = cbcUtils.getPerformanceLevel(s.mean);
+        const subLevel = window.cbcUtils.getSubdivision(s.mean, s.grade);
+        const mainLevel = window.cbcUtils.getPerformanceLevel(s.mean, s.grade);
         const bg = s.rank % 2 === 0 ? "#f9f9f9" : "#fff";
         
         html += `<tr style='background:${bg};'>`;
@@ -1062,7 +1275,7 @@ html += `
         });
         
         html += `<td style='border:1px solid #ddd;padding:8px;text-align:center;'><strong>${s.totalPoints}</strong></td>`;
-        html += `<td style='border:1px solid #ddd;padding:8px;'>${subLevel} (${cbcUtils.getPerformanceLabel(mainLevel)})</td>`;
+        html += `<td style='border:1px solid #ddd;padding:8px;'>${subLevel} (${window.cbcUtils.getPerformanceLabel(mainLevel)})</td>`;
         html += "</tr>";
       });
 
@@ -1090,13 +1303,60 @@ html += `
         html += `<td style="border:1px solid #ddd;padding:8px;text-align:center;">${(subSum / subCount).toFixed(1)}</td>`;
       });
       html += `<td style="border:1px solid #ddd;padding:8px;text-align:center;">${(groupTotalPoints / groupCount).toFixed(1)}</td>`;
-      html += `<td style="border:1px solid #ddd;padding:8px;text-align:center; color: #1a237e;">${cbcUtils.getSubdivision(groupMeanSum / groupCount)}</td>`;
+      html += `<td style="border:1px solid #ddd;padding:8px;text-align:center; color: #1a237e;">${window.cbcUtils.getSubdivision(groupMeanSum / groupCount, group[0]?.grade)}</td>`;
       html += `</tr></tfoot></table>`;
     });
     
     rankingTableWrap.innerHTML = html;
   
-    // subjectTableWrap is now populated by renderSubjectMeansTable
+  }
+ // subjectTableWrap is now populated by renderSubjectMeansTable
+  function renderMissingExamsTable(missingList, streamDiscrepancies = []) {
+    if (!missingExamsTableWrap) {
+      missingExamsTableWrap = document.createElement("div");
+      missingExamsTableWrap.id = "missingExamsTableWrap";
+      missingExamsTableWrap.className = "card";
+      subjectTableWrap.parentNode.insertBefore(missingExamsTableWrap, subjectTableWrap.nextSibling);
+    }
+
+    if (missingList.length === 0 && streamDiscrepancies.length === 0) {
+      missingExamsTableWrap.innerHTML = `
+        <div style="text-align:center; padding:20px; color:#64748b; border: 1px dashed #cbd5e0; border-radius:8px;">
+          <i class="fas fa-check-circle" style="color:#10b981;"></i> All individual learner exams accounted for.
+        </div>`;
+      return;
+    }
+
+    let html = `<h3>⚠️ Records Audit & Absences</h3>`;
+    if (streamDiscrepancies.length > 0) {
+      html += `<div style="background:#fff5f5; padding:10px; border:1px solid #feb2b2; border-radius:8px; margin-bottom:15px;">
+        <h4 style="color:#c53030; margin-top:0;">🚨 Stream Missing Data</h4>
+        <ul style="font-size:0.85rem;">
+          ${streamDiscrepancies.map(d => `<li><strong>Stream ${d.stream}:</strong> Missing entire results for ${d.missingSubjects.join(", ")}</li>`).join("")}
+        </ul>
+      </div>`;
+    }
+
+    if (missingList.length > 0) {
+      html += `<table class="table" style="width:100%; border-collapse: collapse; font-size:0.85rem;">
+        <thead><tr style="background:#f1f5f9;"><th>Name</th><th>Adm</th><th>Assessment</th><th style="color:#e53e3e;">Missed Subject(s)</th></tr></thead>
+        <tbody>`;
+
+      missingList.forEach(m => {
+        html += `
+          <tr>
+            <td><strong>${m.name}</strong></td>
+            <td>${m.adm}</td>
+            <td>${m.assess}</td>
+            <td>
+              ${m.subjects.map(s => `<span style="display:inline-block; background:#fff5f5; color:#c53030; padding:2px 6px; border-radius:4px; margin:2px; font-size:0.7rem; font-weight:600;">${s}</span>`).join("")}
+            </td>
+          </tr>`;
+      });
+      html += `</tbody></table>`;
+    }
+
+    missingExamsTableWrap.innerHTML = html;
   }
 
   // ===== EXPORT PDF =====
@@ -1160,7 +1420,7 @@ async function exportPdf() {
             return isAbs ? "ABS" : score.toFixed(1);
           }),
           s.totalPoints ?? "-",
-          cbcUtils.getSubdivision(s.mean)
+          window.cbcUtils.getSubdivision(s.mean, s.grade)
         ]);
         
         const totalRow = ["", "TOTAL:"];
@@ -1174,7 +1434,7 @@ async function exportPdf() {
         const gPoints = arr.reduce((acc, s) => acc + (s.totalPoints || 0), 0);
         const gMean = arr.reduce((acc, s) => acc + (s.mean || 0), 0) / (arr.length || 1);
         totalRow.push(gPoints.toFixed(0), "");
-        meanRow.push((gPoints / (arr.length || 1)).toFixed(1), cbcUtils.getSubdivision(gMean));
+        meanRow.push((gPoints / (arr.length || 1)).toFixed(1), window.cbcUtils.getSubdivision(gMean, arr[0]?.grade));
         foot = [totalRow, meanRow];
     } else {
         head = [["Rank", "Student", ...subjects, "Total Marks", "Total Points", "Avg Points", "Performance Level"]];
@@ -1189,7 +1449,7 @@ async function exportPdf() {
           s.total ?? 0,
           s.totalPoints ?? 0,
           s.avgPoints.toFixed(2),
-          cbcUtils.getSubdivision(s.mean)
+          window.cbcUtils.getSubdivision(s.mean, s.grade)
         ]);
 
         const fTotalMarks = arr.reduce((acc, s) => acc + s.total, 0);
@@ -1207,7 +1467,7 @@ async function exportPdf() {
           meanRow.push((sSum / sCnt).toFixed(1));
         });
         totalRow.push(fTotalMarks.toFixed(0), fTotalPoints, fAvgPoints.toFixed(1), "");
-        meanRow.push((fTotalMarks / fCount).toFixed(1), (fTotalPoints / fCount).toFixed(1), (fAvgPoints / fCount).toFixed(2), cbcUtils.getSubdivision(fMeanSum / fCount));
+        meanRow.push((fTotalMarks / fCount).toFixed(1), (fTotalPoints / fCount).toFixed(1), (fAvgPoints / fCount).toFixed(2), window.cbcUtils.getSubdivision(fMeanSum / fCount, arr[0]?.grade));
         foot = [totalRow, meanRow];
       }
 
@@ -1298,28 +1558,67 @@ async function exportPdf() {
     const ctx = chartCanvas.getContext("2d");
     if (!ctx) return;
 
-    const assessmentsSet = new Set(filtered.map(s => s.assessment));
-    const assessments = Array.from(assessmentsSet).sort((a, b) => Number(a) - Number(b));
+    const isAllTerms = termFilter?.value === "all";
 
-    const classMeans = assessments.map(a => {
-      const subset = filtered.filter(s => s.assessment === a);
-      const studentAverages = subset.map(stu => {
+    // 🆕 Group by Term + Assessment to prevent data collisions and ensure chronological sorting
+    const assessmentData = {};
+    filtered.forEach(s => {
+      const key = `${s.term}_${String(s.assessment).padStart(2, '0')}`;
+      if (!assessmentData[key]) assessmentData[key] = { term: s.term, assessment: s.assessment, students: [] };
+      assessmentData[key].students.push(s);
+    });
+
+    const sortedKeys = Object.keys(assessmentData).sort();
+
+    const classMeans = sortedKeys.map(key => {
+      const group = assessmentData[key];
+      const studentAverages = group.students.map(stu => {
         if (isSeniorSchool) {
           const finalScores = stu.subjects.map(s => s.finalScore).filter(score => score !== null && score !== undefined);
           return finalScores.length ? finalScores.reduce((sum, score) => sum + score, 0) / finalScores.length : 0;
         } else {
-          const scores = stu.subjects.map(s => Number(s.score) || 0);
+          const scores = stu.subjects.map(s => (s.score === null || s.score === "X") ? 0 : Number(s.score));
           return scores.length ? scores.reduce((sum, score) => sum + score, 0) / scores.length : 0;
         }
       });
       return studentAverages.length ? (studentAverages.reduce((x, y) => x + y, 0) / studentAverages.length) : 0;
     });
 
+    const labels = sortedKeys.map(key => {
+      const group = assessmentData[key];
+      const label = getAssessmentLabel(group.assessment);
+      return isAllTerms ? `T${group.term} ${label}` : label;
+    });
+
     if (window.trendChart) window.trendChart.destroy();
     window.trendChart = new Chart(ctx, {
       type: "line",
-      data: { labels: assessments.map(a => getAssessmentLabel(a)), datasets: [{ label: "Class Mean", data: classMeans, borderColor: "blue", fill: false, tension: 0.2 }] },
-      options: { responsive: true, plugins: { legend: { position: 'bottom' } }, scales: { y: { beginAtZero: true, title: { display: true, text: "Class Mean (%)" } }, x: { title: { display: true, text: "Assessment" } } } }
+      data: { 
+        labels, 
+        datasets: [{ 
+          label: "Class Mean (%)", 
+          data: classMeans, 
+          borderColor: "#2563eb", 
+          backgroundColor: "rgba(37, 99, 235, 0.1)", 
+          fill: true, 
+          tension: 0.3, 
+          pointRadius: 5 
+        }] 
+      },
+      options: { 
+        responsive: true, 
+        plugins: { legend: { position: 'bottom' } }, 
+        scales: { 
+          y: { 
+            beginAtZero: true, 
+            suggestedMax: 100,
+            title: { display: true, text: "Class Mean (%)" } 
+          }, 
+          x: { 
+            title: { display: true, text: isAllTerms ? "Academic Timeline" : "Assessments" } 
+          } 
+        } 
+      }
     });
   }
 });
