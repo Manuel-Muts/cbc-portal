@@ -58,6 +58,29 @@ document.addEventListener("DOMContentLoaded", async () => {
       flex-direction: column;
       gap: 6px;
     }
+    /* 🆕 Fix: Ensure announcement modals remain fixed overlays 
+       instead of being trapped as flex items in the filters grid. */
+    .announcement-overlay {
+      position: fixed !important;
+      top: 0 !important;
+      left: 0 !important;
+      width: 100vw !important;
+      height: 100vh !important;
+      background: rgba(0, 0, 0, 0.5) !important;
+      z-index: 200000 !important;
+      display: flex !important;
+      align-items: center !important;
+      justify-content: center !important;
+    }
+    /* 🆕 Fix: Ensure announcement popups remain fixed and floating 
+       instead of being trapped as flex items in the filters grid. */
+    #announcementContainer, .announcement-popup, .dashboard-announcement {
+      position: fixed !important;
+      top: 85px !important; /* Positioned below header */
+      right: 20px !important;
+      z-index: 100000 !important;
+      max-width: 350px !important;
+    }
     .filter-item label {
       font-size: 0.75rem;
       font-weight: 700;
@@ -68,6 +91,11 @@ document.addEventListener("DOMContentLoaded", async () => {
     @media (max-width: 768px) {
       .filters-grid { flex-direction: column; align-items: stretch; }
       .filter-item { width: 100%; }
+      .filter-item label {
+        font-size: 0.65rem !important;
+        margin-bottom: 2px !important;
+        font-weight: 800 !important;
+      }
     }
   `;
   document.head.appendChild(filterStyle);
@@ -77,7 +105,11 @@ document.addEventListener("DOMContentLoaded", async () => {
   if (filterContainer) {
     filterContainer.classList.add('filters-section', 'filters-grid');
     filterContainer.querySelectorAll('.form-group, .col, .filter-group').forEach(el => {
-      el.classList.add('filter-item');
+      // 🆕 Safeguard: Only apply filter-item styling to actual input groups
+      // and never to announcement elements or their containers.
+      if (!el.closest('#announcementContainer, .announcement-popup, .announcement-overlay, .dashboard-announcement')) {
+        el.classList.add('filter-item');
+      }
     });
   }
 
@@ -414,7 +446,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   // ===== CALCULATE STATS =====
   function calculateStats(filtered, roster = [], selectedStreamMode = "all", allTermRaw = null, prevTermRaw = null) {
-    if (!filtered.length && !roster.length) return { studentArray: [], subjects: [], subjectMeans: {}, classMean: 0, topMean: 0, lowMean: 0, topSubject: "-", lowSubject: "-", records: 0, groupedByAssessment: {}, missingExamsList: [], streamDiscrepancies: [] };
+    if (!filtered.length && !roster.length) return { studentArray: [], subjects: [], subjectMeans: {}, classMean: 0, records: 0, groupedByAssessment: {}, missingExamsList: [], streamDiscrepancies: [] };
 
     const assessment = assessmentFilter?.value || "all";
     const isAllAssessments = assessment === "all";
@@ -598,31 +630,13 @@ document.addEventListener("DOMContentLoaded", async () => {
       subjectMeans[sub] = subjectCounts[sub] ? (subjectTotals[sub] / subjectCounts[sub]) : 0; 
     });
 
-    // Fix: Calculate actual min/max means from the student array
-    // This ensures topMean and lowMean reflect the actual student performance, not just subject averages
-    let topMean = 0;
-    let lowMean = 0;
-    if (studentArray.length > 0) {
-      const means = studentArray.map(s => s.mean);
-      topMean = Math.max(...means);
-      lowMean = Math.min(...means);
-    }
-
-    let topSubject = "-", lowSubject = "-";
-    let topVal = -Infinity, lowVal = Infinity;
-    subjects.forEach(sub => {
-      const v = subjectMeans[sub];
-      if (v > topVal) { topVal = v; topSubject = sub; }
-      if (v < lowVal) { lowVal = v; lowSubject = sub; }
-    });
-
-    return { studentArray, subjects: sortedSubjects, subjectMeans, classMean, topMean, lowMean, topSubject, lowSubject, records: studentArray.length, groupedByAssessment, missingExamsList: Object.values(missingExamsMap).sort((a,b) => a.name.localeCompare(b.name)), streamDiscrepancies };
+    return { studentArray, subjects: sortedSubjects, subjectMeans, classMean, records: studentArray.length, groupedByAssessment, missingExamsList: Object.values(missingExamsMap).sort((a,b) => a.name.localeCompare(b.name)), streamDiscrepancies };
   }
 
   // ===== CALCULATE SENIOR SCHOOL STATS (Component-Based) =====
   function calculateSeniorSchoolStats(filtered, roster = [], selectedStreamMode = "all", allTermRaw = null, prevTermRaw = null) {
     if (!filtered.length && !roster.length) {
-      return { studentArray: [], groupedByAssessment: {}, subjects: [], classMean: 0, records: 0, topSubject: '-', lowSubject: '-', subjectMeans: {}, missingExamsList: [], streamDiscrepancies: [] };
+      return { studentArray: [], groupedByAssessment: {}, subjects: [], classMean: 0, records: 0, subjectMeans: {}, missingExamsList: [], streamDiscrepancies: [] };
     }
 
     const assessment = assessmentFilter?.value || "all";
@@ -828,14 +842,6 @@ document.addEventListener("DOMContentLoaded", async () => {
       subjectMeans[sub] = (subjectTotals[sub] || 0) / (subjectCounts[sub] || 1);
     });
 
-    let topSubject = "-", lowSubject = "-";
-    let topVal = -Infinity, lowVal = Infinity;
-    allSubjects.forEach(sub => {
-      const v = subjectMeans[sub];
-      if (v > topVal) { topVal = v; topSubject = sub; }
-      if (v < lowVal) { lowVal = v; lowSubject = sub; }
-    });
-  
     return {
       studentArray,
       groupedByAssessment,
@@ -843,8 +849,6 @@ document.addEventListener("DOMContentLoaded", async () => {
       classMean,
       records: studentArray.length,
       subjectMeans,
-      topSubject,
-      lowSubject,
       missingExamsList: Object.values(missingExamsMap).sort((a,b) => a.name.localeCompare(b.name)),
       streamDiscrepancies,
       prevSubjectMeans
@@ -1245,10 +1249,6 @@ document.addEventListener("DOMContentLoaded", async () => {
         currentFilteredData = [];
         subjectTableWrap.innerHTML = "<div class='small'>No subject means found.</div>";
         classMeanEl.textContent = "-";
-        topMeanEl.textContent = "-";
-        lowMeanEl.textContent = "-";
-        topSubjectEl.textContent = "-";
-        lowSubjectEl.textContent = "-";
         recordsCountEl.textContent = "0";
         renderTrendChartWithData([]); // Pass empty array to hide and destroy
       } else {

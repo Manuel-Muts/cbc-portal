@@ -1,0 +1,165 @@
+/* login.css - Professional Glassmorphism Theme */
+
+.login-body {
+    background: linear-gradient(rgba(15, 23, 42, 0.8), rgba(15, 23, 42, 0.8)), 
+                url('https://images.unsplash.com/photo-1523050335392-93851179ae09?q=80&w=2070&auto=format&fit=crop') !important;
+    background-size: cover !important;
+    background-position: calc(50% + var(--parallax-x, 0px)) calc(50% + var(--parallax-y, 0px)) !important;
+    background-attachment: fixed !important;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    margin: 0 !important;
+    font-family: 'Inter', -apple-system, sans-serif;
+    transition: background-position 0.1s ease-out;
+}
+
+.login-card {
+    max-width: 440px;
+    width: 92%;
+    background: rgba(255, 255, 255, 0.92) !important;
+    backdrop-filter: blur(15px);
+    -webkit-backdrop-filter: blur(15px);
+    border-radius: 28px !important;
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5) !important;
+    border: 1px solid rgba(255, 255, 255, 0.3) !important;
+    padding: 45px 40px !important;
+    box-sizing: border-box;
+    text-align: center;
+}
+
+.login-card h2 {
+    color: #1e3a8a;
+    font-size: 1.8rem;
+    font-weight: 800;
+    margin-bottom: 8px;
+    letter-spacing: -0.025em;
+}
+
+.login-card p.subtitle {
+    color: #475569;
+    font-size: 0.9rem;
+    margin-bottom: 30px;
+    font-weight: 500;
+}
+
+.login-form .form-group {
+    text-align: left;
+    margin-bottom: 18px;
+}
+
+.login-form label {
+    display: block;
+    font-size: 0.75rem;
+    font-weight: 700;
+    color: #64748b;
+    text-transform: uppercase;
+    margin-bottom: 6px;
+    padding-left: 4px;
+    letter-spacing: 0.05em;
+}
+
+.login-form input, .login-form select {
+    width: 100%;
+    padding: 12px 16px;
+    border-radius: 12px;
+    border: 1.5px solid #e2e8f0;
+    background: #f8fafc;
+    font-size: 1rem;
+    color: #1e293b;
+    transition: all 0.2s ease;
+    box-sizing: border-box;
+}
+
+.login-form input:focus, .login-form select:focus {
+    outline: none;
+    border-color: #2563eb;
+    background: #ffffff;
+    box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.1);
+}
+
+.login-form button[type="submit"] {
+    width: 100%;
+    padding: 14px;
+    background: #2563eb;
+    color: white;
+    border: none;
+    border-radius: 14px;
+    font-size: 1rem;
+    font-weight: 700;
+    cursor: pointer;
+    margin-top: 10px;
+    box-shadow: 0 10px 15px -3px rgba(37, 99, 235, 0.3);
+    transition: all 0.2s ease;
+}
+
+.login-form button[type="submit"]:hover {
+    background: #1d4ed8;
+    transform: translateY(-1px);
+    box-shadow: 0 20px 25px -5px rgba(37, 99, 235, 0.4);
+}
+
+/* Animation for field switching */
+@keyframes fieldFadeIn {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.field-fade-in {
+    animation: fieldFadeIn 0.3s ease-out forwards;
+}
+
+.login-footer { color: rgba(255,255,255,0.6); margin-top: 30px; font-size: 0.8rem; }
+
+/* Password Toggle Icon Styling */
+.password-input-wrapper {
+    position: relative;
+    width: 100%;
+}
+
+.toggle-password-icon {
+    position: absolute;
+    right: 16px;
+    top: 50%;
+    transform: translateY(-50%);
+    cursor: pointer;
+    color: #64748b;
+    z-index: 10;
+    font-size: 0.95rem;
+    transition: color 0.2s;
+}
+
+.toggle-password-icon:hover {
+    color: #2563eb;
+}
+
+/* Password Strength Meter Styling */
+.pw-strength-meter {
+    margin-top: 8px;
+    margin-bottom: 15px;
+}
+
+.pw-strength-bar-bg {
+    height: 4px;
+    background: #e2e8f0;
+    border-radius: 2px;
+    overflow: hidden;
+}
+
+.pw-strength-bar {
+    height: 100%;
+    width: 0;
+    transition: all 0.3s ease;
+}
+
+.pw-strength-text {
+    font-size: 0.7rem;
+    font-weight: 700;
+    color: #64748b;
+    margin-top: 4px;
+    text-align: right;
+    text-transform: uppercase;
+    letter-spacing: 0.025em;
+}

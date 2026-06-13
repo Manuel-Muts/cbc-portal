@@ -304,10 +304,6 @@
     font-weight: 600 !important;
   }
 
-  .marks-controls .form-grid {
-    grid-template-columns: 1fr;
-  }
-
   .marks-controls,
   .material-card,
   .allocations-section {
@@ -1820,18 +1816,8 @@ header.teacher-header .secondary-btn:hover {
   .btn-group .btn, .submit-btn { width: 100% !important; padding: 10px !important; font-size: 0.8rem !important; }
 
   /* Form Field Optimization */
-  .form-group label { font-size: 0.72rem !important; margin-bottom: 3px !important; }
+  .form-group label { font-size: 0.62rem !important; margin-bottom: 2px !important; font-weight: 800 !important; text-transform: uppercase !important; letter-spacing: 0.02em !important; line-height: 1 !important; }
   .form-group select, .form-group input { padding: 8px !important; font-size: 0.8rem !important; border-radius: 6px !important; }
-}
-
-@media (max-width: 480px) {
-  .marks-controls .form-grid {
-    grid-template-columns: 1fr !important; /* Full stack for very small devices */
-  }
-  
-  .tab-btn {
-    flex-basis: 100% !important;
-  }
 }
 
 .students-pagination {

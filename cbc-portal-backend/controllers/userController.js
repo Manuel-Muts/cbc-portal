@@ -77,24 +77,20 @@ export const registerUser = async (req, res) => {
       return res.status(403).json({ msg: "Only admins can register users" });
     }
 
+    // roles that MUST belong to a school
+    const rolesNeedingSchool = ["admin", "accounts","teacher", "student", "parent", "classteacher"];
+
     const { name, email, role, admission, schoolId, grade, academicYear, stream, contact } = req.body;
     const formattedContact = formatContact(contact);
 
     if (!name || !role)
       return res.status(400).json({ msg: "Name and role are required" });
-    const allowedRoles = [
-  "student",
-  "teacher",
-  "accounts",
-  "classteacher",
-  "admin",
-  "super_admin"
-];
 
-if (!allowedRoles.includes(role)) {
-  return res.status(400).json({ msg: "Invalid role" });
-}
+    const allowedRoles = ["student", "teacher", "accounts", "classteacher", "admin", "super_admin"];
 
+    if (!allowedRoles.includes(role)) {
+      return res.status(400).json({ msg: "Invalid role" });
+    }
 
     // ----------------------------
     // SCHOOL ID ENFORCEMENT LOGIC
@@ -111,9 +107,6 @@ if (!allowedRoles.includes(role)) {
       }
       // For roles that don't need school (like accounts), schoolIdToAssign remains null
     }
-
-    // roles that MUST belong to a school
-    const rolesNeedingSchool = ["admin", "accounts","teacher", "student", "parent", "classteacher"];
 
     if (admin.role === "admin") {
       // admin MUST assign their own schoolId only for roles that need it
@@ -155,6 +148,10 @@ if (!allowedRoles.includes(role)) {
 
     if (role === "student" && !admission) {
       return res.status(400).json({ msg: "Admission required for students" });
+    }
+
+    if (role !== "student" && !email) {
+      return res.status(400).json({ msg: "Email is required for staff registrations" });
     }
 
     // ----------------------------
@@ -1768,8 +1765,13 @@ export const bulkRegisterUsers = async (req, res) => {
           }
 
           // 🚀 FIX: Sync User record and ensure it links to the enrollment ID for table display
-          // Suggestion: Collect these into an array and use bulkWrite at the end
-
+          await User.findByIdAndUpdate(student._id, {
+            name,
+            contact: formattedContact,
+            grade: normalizedGrade,
+            enrollmentId: enrollment._id
+          });
+          
           results.successCount++;
         } else {
           // Create new student

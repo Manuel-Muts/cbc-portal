@@ -65,14 +65,14 @@ const AnnouncementSystem = (() => {
         
         overlay.innerHTML = `
             <div class="announcement-modal glass-card" style="max-width: 1000px; width: 95%; display: flex; flex-direction: column; padding: 0; overflow: hidden; border: none; max-height: 85vh;">
-                <!-- Landscape Header: Horizontal Bar -->
-                <header class="ann-header" style="position: relative; width: 100%; margin: 0; display: flex; flex-direction: row; align-items: center; gap: 20px; padding: 25px 40px; background: radial-gradient(circle at 2px 2px, rgba(255,255,255,0.1) 1px, transparent 0), linear-gradient(135deg, #6366f1 0%, #4f46e5 100%); background-size: 20px 20px, 100% 100%; color: white; border-radius: 0; overflow: hidden;">
+                <!-- 🆕 Specific class to avoid conflict with dashboard headers -->
+                <div class="ann-modal-header" style="position: relative; width: 100%; margin: 0; display: flex; flex-direction: row; align-items: center; gap: 20px; padding: 25px 40px; background: radial-gradient(circle at 2px 2px, rgba(255,255,255,0.1) 1px, transparent 0), linear-gradient(135deg, #6366f1 0%, #4f46e5 100%); background-size: 20px 20px, 100% 100%; color: white; border-radius: 0; overflow: hidden;">
                     <i class="fas fa-bullhorn" style="position: absolute; right: -20px; bottom: -30px; font-size: 150px; opacity: 0.1; transform: rotate(-15deg); color: white; pointer-events: none;"></i>
                     <div class="ann-icon-badge" style="position: relative; z-index: 1; width: 50px; height: 50px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; background: rgba(255,255,255,0.2); border-radius: 12px; font-size: 1.4rem; box-shadow: 0 4px 12px rgba(0,0,0,0.1);">
                         <i class="fas fa-bullhorn"></i>
                     </div>
-                    <h3 class="ann-gradient-title" style="position: relative; z-index: 1; margin: 0; color: white; font-size: 1.6rem; text-align: left; background: none; -webkit-text-fill-color: initial; line-height: 1.2; text-shadow: 0 2px 4px rgba(0,0,0,0.1); font-weight: 700; flex-grow: 1;">${ann.title}</h3>
-                </header>
+                    <h3 style="position: relative; z-index: 1; margin: 0; color: white; font-size: 1.6rem; text-align: left; line-height: 1.2; text-shadow: 0 2px 4px rgba(0,0,0,0.1); font-weight: 700; flex-grow: 1;">${ann.title}</h3>
+                </div>
 
                 <!-- Landscape Body: Wide Content Area -->
                 <div style="width: 100%; display: flex; flex-direction: column; background: white; padding: 40px; min-height: 250px;">

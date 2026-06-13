@@ -20,16 +20,114 @@ document.addEventListener("DOMContentLoaded", function () {
   document.addEventListener("mousemove", (e) => {
     const body = document.querySelector(".login-body");
     if (!body) return;
-    const moveX = (e.clientX - window.innerWidth / 2) * 0.01;
-    const moveY = (e.clientY - window.innerHeight / 2) * 0.01;
+    const moveX = (e.clientX - window.innerWidth / 2) * 0.006;
+    const moveY = (e.clientY - window.innerHeight / 2) * 0.006;
     body.style.setProperty("--parallax-x", `${moveX}px`);
     body.style.setProperty("--parallax-y", `${moveY}px`);
   });
 
   // ---------------------------
+  // PASSWORD TOGGLE HELPER
+  // ---------------------------
+  function attachToggle(field) {
+    if (!field) return null;
+    const icon = document.createElement("i");
+    icon.className = "fas fa-eye toggle-password-icon";
+    icon.title = "Toggle Visibility";
+    
+    const wrapper = document.createElement("div");
+    wrapper.className = "password-input-wrapper";
+    field.parentNode.insertBefore(wrapper, field);
+    wrapper.appendChild(field);
+    wrapper.appendChild(icon);
+
+    icon.addEventListener("click", () => {
+      const isPass = field.type === "password";
+      field.type = isPass ? "text" : "password";
+      icon.classList.toggle("fa-eye", !isPass);
+      icon.classList.toggle("fa-eye-slash", isPass);
+    });
+    return icon;
+  }
+
+  const loginToggle = attachToggle(admissionField);
+  if (loginToggle) loginToggle.style.display = "none";
+
+  const currentPasswordInputModal = changePasswordForm?.querySelector("input[name='currentPassword']");
+  const newPasswordInputModal = changePasswordForm?.querySelector("input[name='newPassword']");
+  attachToggle(currentPasswordInputModal);
+  attachToggle(newPasswordInputModal);
+  attachStrengthMeter(newPasswordInputModal);
+
+  // ---------------------------
+  // PASSWORD STRENGTH HELPERS
+  // ---------------------------
+  function scorePassword(pw) {
+    let score = 0;
+    if (!pw) return 0;
+    if (pw.length >= 8) score += 1;
+    if (pw.length >= 12) score += 1;
+    if (/[A-Z]/.test(pw)) score += 1;
+    if (/[0-9]/.test(pw)) score += 1;
+    if (/[^A-Za-z0-9]/.test(pw)) score += 1;
+    return score;
+  }
+
+  function updatePwMeter(pw, bar, text) {
+    if (!bar || !text) return;
+    const s = scorePassword(pw);
+    const pct = (s / 5) * 100;
+    bar.style.width = `${pct}%`;
+    if (s <= 1) {
+      bar.style.background = "linear-gradient(90deg,#f43f5e,#ef4444)";
+      text.textContent = "Very weak";
+    } else if (s === 2) {
+      bar.style.background = "linear-gradient(90deg,#f97316,#f59e0b)";
+      text.textContent = "Weak";
+    } else if (s === 3) {
+      bar.style.background = "linear-gradient(90deg,#f59e0b,#eab308)";
+      text.textContent = "Fair";
+    } else if (s === 4) {
+      bar.style.background = "linear-gradient(90deg,#10b981,#06b6d4)";
+      text.textContent = "Good";
+    } else {
+      bar.style.background = "linear-gradient(90deg,#06b6d4,#0ea5a3)";
+      text.textContent = "Strong";
+    }
+  }
+
+  function attachStrengthMeter(field) {
+    if (!field) return;
+    // The field was wrapped by attachToggle
+    const wrapper = field.parentNode; 
+    if (!wrapper || !wrapper.classList.contains('password-input-wrapper')) return;
+    
+    const meter = document.createElement("div");
+    meter.className = "pw-strength-meter";
+    meter.innerHTML = `
+      <div class="pw-strength-bar-bg">
+        <div class="pw-strength-bar"></div>
+      </div>
+      <div class="pw-strength-text"></div>
+    `;
+    
+    // Insert after the toggle wrapper
+    wrapper.parentNode.insertBefore(meter, wrapper.nextSibling);
+    
+    const bar = meter.querySelector(".pw-strength-bar");
+    const text = meter.querySelector(".pw-strength-text");
+
+    field.addEventListener("input", (e) => {
+      updatePwMeter(e.target.value, bar, text);
+    });
+  }
+
+  // ---------------------------
   // ROLE SWITCHING UI
   // ---------------------------
   function updateRoleUI(selectedRole) {
+    if (!admissionField) return;
+
     const show = (el) => { 
       el.style.display = "block"; 
       el.required = true;
@@ -47,17 +145,25 @@ document.addEventListener("DOMContentLoaded", function () {
     if (selectedRole === "student" || selectedRole === "learner") {
       show(firstnameField); show(firstnameLabel);
       show(admissionField); show(admissionLabel);
+      admissionField.type = "text"; // Show admission number as plain text
+      if (loginToggle) loginToggle.style.display = "none";
       admissionLabel.textContent = "Admission Number";
       hide(emailField); hide(emailLabel);
     } else if (["teacher", "admin", "classteacher", "accounts", "superAdmin", "super_admin"].includes(selectedRole)) {
       show(emailField); show(emailLabel);
       show(admissionField); show(admissionLabel);
+      admissionField.type = "password"; // Hide password by default
+      if (loginToggle) {
+        loginToggle.style.display = "block";
+        loginToggle.className = "fas fa-eye toggle-password-icon"; 
+      }
       hide(firstnameField); hide(firstnameLabel);
       admissionLabel.textContent = selectedRole === "classteacher" ? "Class Teacher Password" : "Password";
     } else {
       hide(firstnameField); hide(firstnameLabel);
       hide(emailField); hide(emailLabel);
       hide(admissionField); hide(admissionLabel);
+      if (loginToggle) loginToggle.style.display = "none";
     }
   }
 

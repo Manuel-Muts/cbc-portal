@@ -739,6 +739,7 @@ async function downloadSchoolWideRankingAsPDF(rankings) {
 }
 
 function processAnalysisData(allRaw, isSenior, assessment, allPrevRaw = null, roster = []) {
+  if (!allRaw || !allRaw.length) return;
   let streamsSet = new Set(); // Use let for reassignment
 
   // 🆕 Build a map of streams to their expected subjects from allRaw (before stream filtering)
@@ -968,7 +969,7 @@ function processAnalysisData(allRaw, isSenior, assessment, allPrevRaw = null, ro
       
       let isAbsent = isSenior 
         ? (isX(sub.endTermExam) || isX(sub.continuousAssessment) || isX(sub.projectWork)) // Check for absence in senior school components
-        : isX(sub.score);
+        : (isX(sub.score) || sub.score === 0); // 🆕 Standard absence detection
       
       const score = isAbsent ? "X" : (isSenior ? window.cbcUtils.calculateFinalScore(sub.continuousAssessment, sub.projectWork, sub.endTermExam) : sub.score);
 
@@ -1109,6 +1110,7 @@ function processAnalysisData(allRaw, isSenior, assessment, allPrevRaw = null, ro
 
   const studentArray = Object.values(studentsMap)
     .filter(s => !s.hasAbsence) // Only include students without absences for ranking
+    .filter(s => !s.hasAbsence || assessment === "all") // 🆕 Allow 'All' view to show partials without disqualifying
     .map(s => {
     const rawScores = Object.values(s.subjects);
     // Filter out non-numeric scores (like "X") for student total and mean calculation (for ranking)
@@ -2009,6 +2011,7 @@ function renderSubjectStats(subjects, totals, counts, prevMeans = {}, termStats 
   const subjectList = subjects.map(s => ({
     name: s,
     mean: Number((totals[s] / counts[s]).toFixed(2)),
+    mean: Number((totals[s] / (counts[s] || 1)).toFixed(2)), // 🆕 Prevent division by zero
     count: counts[s]
   })).sort((a, b) => b.mean - a.mean);
 
@@ -2889,6 +2892,23 @@ async function generateBulkReportCards() {
         // 🆕 Reset color state to Black (0) at the start of every report 
         // to prevent footer grey from leaking into the next page. // Reset color to black
         doc.setTextColor(0, 0, 0);
+
+        // 🆕 Watermark (School Logo)
+        if (deanProfileData?.schoolLogoBase64) {
+            try {
+                const imgProps = deanProfileData.logoProps || doc.getImageProperties(deanProfileData.schoolLogoBase64);
+                const format = deanProfileData.logoFormat || "PNG";
+                const width = 100; // Size of watermark
+                const height = (imgProps.height * width) / imgProps.width;
+
+                doc.saveGraphicsState();
+                doc.setGState(new doc.GState({ opacity: 0.08 })); // Subtle 8% opacity
+                doc.addImage(deanProfileData.schoolLogoBase64, format, (pageWidth - width) / 2, (pageHeight - height) / 2, width, height, undefined, 'FAST');
+                doc.restoreGraphicsState();
+            } catch (e) {
+                console.warn("Bulk Report Watermark rendering error:", e);
+            }
+        }
 
         // 1. Report Header
         let headerY = 8; // Minimised top margin
