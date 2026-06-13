@@ -35,10 +35,19 @@ const normalizeGrade = (grade) => {
   let str = String(grade).trim();
 
   let checkStr = str.toUpperCase();
-  if (checkStr.startsWith("GRADE ")) {
+  if (checkStr.startsWith("GRADE")) {
     checkStr = checkStr.replace(/^GRADE\s+/i, "").trim();
   }
-  if (checkStr.startsWith("PP")) return checkStr;
+  
+  // Normalize PG, PP1, PP2 to uppercase without "Grade" prefix
+  if (checkStr === "PG") return "PG";
+  if (checkStr === "PP1") return "PP1";
+  if (checkStr === "PP2") return "PP2";
+  // Fallback for other PP/PG variations
+  if (checkStr.startsWith("PP") || checkStr.startsWith("PG")) {
+    // Ensure "PG" doesn't get "Grade" prepended even if it has numbers like "PG 1"
+    return checkStr.toUpperCase();
+  }
 
   const match = str.match(/\d+/);
   if (match) return `Grade ${match[0]}`;
@@ -653,11 +662,26 @@ export const assignSubjects = async (req, res) => {
       return res.status(403).json({ message: 'You can only assign subjects to teachers in your school' });
     }
 
-    if (!Array.isArray(teacher.allocations)) teacher.allocations = [];
-
-    const normalizedSubjects = Array.isArray(subjects) ? subjects : [subjects];
     const gradeStr = String(grade);
-    const streamStr = stream ? String(stream) : null; // Optional stream
+    const streamStr = stream ? String(stream) : null;
+    const normalizedSubjects = Array.isArray(subjects) ? subjects : [subjects];
+
+    // 🆕 Validation: Check if any of these subjects are already assigned to another teacher in this class
+    const conflictTeacher = await User.findOne({
+      schoolId: req.user.schoolId,
+      _id: { $ne: teacherId },
+      allocations: {
+        $elemMatch: { grade: gradeStr, stream: streamStr, subjects: { $in: normalizedSubjects } }
+      }
+    }).select('name');
+
+    if (conflictTeacher) {
+      return res.status(400).json({ 
+        message: ` Subject(s) is already allocated to ${conflictTeacher.name} in this class.` 
+      });
+    }
+
+    if (!Array.isArray(teacher.allocations)) teacher.allocations = [];
 
     // Find existing allocation for this grade and stream combination
     const existingAllocation = teacher.allocations.find(
@@ -776,10 +800,10 @@ export const getMyAllocations = async (req, res) => {
 
     // Format allocations with stream information
     const allocations = (teacher.allocations || []).map(a => ({
-      grade: a.grade,
+      grade: normalizeGrade(a.grade),
       stream: a.stream || null, // Could be "W", "E", "A", etc. or null
-      classLabel: String(a.grade).toUpperCase().startsWith("PP") 
-        ? (a.stream ? `${a.grade} ${a.stream}` : `${a.grade}`)
+      classLabel: (String(a.grade).toUpperCase().startsWith("PP") || String(a.grade).toUpperCase().startsWith("PG"))
+        ? (a.stream ? `${normalizeGrade(a.grade)} ${a.stream}` : `${normalizeGrade(a.grade)}`)
         : (a.stream ? `Grade ${a.grade} ${a.stream}` : `Grade ${a.grade}`),
       subjects: Array.isArray(a.subjects) ? a.subjects : []
     }));
@@ -788,8 +812,8 @@ export const getMyAllocations = async (req, res) => {
     const classTeacherInfo = teacher.assignedClass ? {
       grade: teacher.assignedClass,
       stream: teacher.assignedStream || null,
-      classLabel: String(teacher.assignedClass).toUpperCase().startsWith("PP")
-        ? (teacher.assignedStream ? `${teacher.assignedClass} ${teacher.assignedStream}` : `${teacher.assignedClass}`)
+      classLabel: (String(teacher.assignedClass).toUpperCase().startsWith("PP") || String(teacher.assignedClass).toUpperCase().startsWith("PG"))
+        ? (teacher.assignedStream ? `${normalizeGrade(teacher.assignedClass)} ${teacher.assignedStream}` : `${normalizeGrade(teacher.assignedClass)}`)
         : (teacher.assignedStream 
           ? `Grade ${teacher.assignedClass} ${teacher.assignedStream}` 
           : `Grade ${teacher.assignedClass}`)
@@ -829,8 +853,26 @@ export const assignClassTeacher = async (req, res) => {
       return res.status(403).json({ message: 'You can only assign class teachers in your school' });
     }
 
-    teacher.assignedClass = assignedClass;
-    teacher.assignedStream = assignedStream || null; // Optional stream
+    const normalizedGrade = normalizeGrade(assignedClass);
+    const stream = assignedStream || null;
+
+    // 🆕 Validation: Check if another teacher is already assigned to this specific class/stream
+    const existingClassTeacher = await User.findOne({
+      schoolId: req.user.schoolId,
+      _id: { $ne: teacherId },
+      assignedClass: normalizedGrade,
+      assignedStream: stream,
+      isClassTeacher: true
+    }).select('name');
+
+    if (existingClassTeacher) {
+      return res.status(400).json({ 
+        message: `Class ${normalizedGrade}${stream ? ' ' + stream : ''} is already assigned to ${existingClassTeacher.name}.` 
+      });
+    }
+
+    teacher.assignedClass = normalizedGrade;
+    teacher.assignedStream = stream;
     teacher.isClassTeacher = true;
 
     const rawClassTeacherPassword = 'CT-' + Math.random().toString(36).slice(-8).toUpperCase();
@@ -844,8 +886,8 @@ export const assignClassTeacher = async (req, res) => {
 
     // Email the class teacher credentials (if email exists)
     if (teacher.email) {
-      const classLabel = String(assignedClass).toUpperCase().startsWith("PP")
-        ? (assignedStream ? `${assignedClass} ${assignedStream}` : `${assignedClass}`)
+      const classLabel = (String(assignedClass).toUpperCase().startsWith("PP") || String(assignedClass).toUpperCase().startsWith("PG"))
+        ? (assignedStream ? `${normalizeGrade(assignedClass)} ${assignedStream}` : `${normalizeGrade(assignedClass)}`)
         : (assignedStream 
           ? `Grade ${assignedClass} ${assignedStream}` 
           : `Grade ${assignedClass}`);
@@ -914,8 +956,8 @@ export const getClassTeacherAllocations = async (req, res) => {
       teacherAdmission: t.admission,
       assignedClass: t.assignedClass || '',
       assignedStream: t.assignedStream || null,
-      classLabel: String(t.assignedClass).toUpperCase().startsWith("PP")
-        ? (t.assignedStream ? `${t.assignedClass} ${t.assignedStream}` : `${t.assignedClass}`)
+      classLabel: (String(t.assignedClass).toUpperCase().startsWith("PP") || String(t.assignedClass).toUpperCase().startsWith("PG"))
+        ? (t.assignedStream ? `${normalizeGrade(t.assignedClass)} ${t.assignedStream}` : `${normalizeGrade(t.assignedClass)}`)
         : (t.assignedStream ? `Grade ${t.assignedClass} ${t.assignedStream}` : `Grade ${t.assignedClass}`),
       isClassTeacher: !!t.isClassTeacher,
       isDean: !!t.isDean,
@@ -1003,8 +1045,8 @@ export const removeSubjectAllocation = async (req, res) => {
 
     await teacher.save();
     cache.clearByPattern(String(teacher.schoolId)); // Invalidate cache
-    const isPP = String(grade).toUpperCase().startsWith("PP");
-    const gradeLabel = isPP ? (stream ? `${grade}${stream}` : grade) : (stream ? `Grade ${grade}${stream}` : `Grade ${grade}`);
+    const isSpecial = String(grade).toUpperCase().startsWith("PP") || String(grade).toUpperCase().startsWith("PG");
+    const gradeLabel = isSpecial ? (stream ? `${normalizeGrade(grade)} ${stream}` : normalizeGrade(grade)) : (stream ? `Grade ${grade} ${stream}` : `Grade ${grade}`);
     res.json({ 
       message: `Allocation for ${gradeLabel} removed successfully`, 
       removed: originalLength - newLength > 0,

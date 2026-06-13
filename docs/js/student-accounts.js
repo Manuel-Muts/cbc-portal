@@ -146,12 +146,12 @@
 
   const SCHOOL_TYPES = {
     full: {
-      label: "Full School (Grades PP1-12)",
-      gradeOptions: ["PP1", "PP2", "1","2","3","4","5","6","7","8","9","10","11","12"]
+      label: "Full School (Grades PG-12)",
+      gradeOptions: ["PG","PP1", "PP2", "1","2","3","4","5","6","7","8","9","10","11","12"]
     },
     primary_junior: {
       label: "Primary + Junior (Grades PP1-9)",
-      gradeOptions: ["PP1", "PP2", "1","2","3","4","5","6","7","8","9"]
+      gradeOptions: ["PG","PP1", "PP2", "1","2","3","4","5","6","7","8","9"]
     },
     senior: {
       label: "Senior School (Grades 10-12)",
@@ -177,7 +177,7 @@
       classFilter.innerHTML = '<option value="">All Grades</option>'; // Add an "All" option
       grades.forEach(g => {
         const option = document.createElement("option");
-        const displayValue = String(g).toUpperCase().startsWith("PP") ? g : `Grade ${g}`;
+const displayValue = (String(g).toUpperCase().startsWith("PP") || String(g).toUpperCase() === "PG") ? g : `Grade ${g}`;
         option.value = displayValue;
         option.textContent = displayValue;
         classFilter.appendChild(option);

@@ -266,37 +266,6 @@ button.pulsing {
   white-space: nowrap;
 }
 
-#generateReport:hover {
-  background-color: #005f8a;
-}
-
-#generateReport.loading {
-  pointer-events: none;
-  opacity: 0.9;
-  position: relative;
-}
-
-#generateReport.loading::before {
-  content: "";
-  position: absolute;
-  left: 10px;
-  top: 50%;
-  transform: translateY(-50%);
-  width: 14px;
-  height: 14px;
-  border: 2px solid #fff;
-  border-top-color: transparent;
-  border-radius: 50%;
-  animation: spin 0.7s linear infinite;
-}
-
-#generateReport.loading::after {
-  content: "Generating...";
-  color: #fff;
-  font-weight: 600;
-  margin-left: 8px;
-}
-
 @keyframes spin {
   to { transform: translateY(-50%) rotate(360deg); }
 }

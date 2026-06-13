@@ -146,12 +146,12 @@ const TimetableModule = (function() {
     let schoolInfo = null;
     const SCHOOL_TYPES = {
         full: {
-            label: "Full School (Grades PP1-12)",
-            gradeOptions: ["PP1", "PP2", "1","2","3","4","5","6","7","8","9","10","11","12"]
+            label: "Full School (Grades PG-12)",
+            gradeOptions: ["PG","PP1", "PP2", "1","2","3","4","5","6","7","8","9","10","11","12"]
         },
         primary_junior: {
-            label: "Primary + Junior (Grades PP1-9)",
-            gradeOptions: ["PP1", "PP2", "1","2","3","4","5","6","7","8","9"]
+            label: "Primary + Junior (Grades PG-9)",
+            gradeOptions: ["PG","PP1", "PP2", "1","2","3","4","5","6","7","8","9"]
         },
         senior: {
             label: "Senior School (Grades 10-12)",
@@ -169,7 +169,7 @@ const TimetableModule = (function() {
 
     function getGradeOptionsForSchool() {
         const schoolType = getSchoolTypeKey();
-        return SCHOOL_TYPES[schoolType].gradeOptions.map(g => g.startsWith('PP') ? g : `Grade ${g}`);
+        return SCHOOL_TYPES[schoolType].gradeOptions.map(g => (g.startsWith('PP') || g.toUpperCase() === 'PG') ? g : `Grade ${g}`);
     }
 
     function isGradeSupportedBySchoolType(grade) {
@@ -189,22 +189,46 @@ const TimetableModule = (function() {
         const gradeMatch = (grade || "").match(/\d+/);
         const gradeNum = gradeMatch ? parseInt(gradeMatch[0]) : 0;
         
-        const isPP = grade && grade.toUpperCase().includes('PP');
-        const isPrimary = (gradeNum >= 1 && gradeNum <= 6) || isPP;
+        const isEarlyYears = grade && (grade.toUpperCase().includes('PP') || grade.toUpperCase() === 'PG');
+        const isPrimary = (gradeNum >= 1 && gradeNum <= 6) || isEarlyYears;
         const isJunior = gradeNum >= 7 && gradeNum <= 9;
         const isSenior = gradeNum >= 10 && gradeNum <= 12;
 
         if (isPrimary) {
-            settings.startTime = "08:20";
-            settings.lessonDuration = 35;
-            settings.lessonsPerDay = 8;
-            settings.schoolDayEnd = "15:30";
-            settings.breaks = [
-                { name: "SHORT BREAK", afterLesson: 2, duration: 20 },
-                { name: "LONG BREAK", afterLesson: 4, duration: 30 },
-                { name: "LUNCH", afterLesson: 6, duration: 80 },
-                { name: "WRAP UP", afterLesson: 8, duration: 5 }
-            ];
+            const gUpper = (grade || "").toUpperCase();
+            if (gUpper === 'PG' || gUpper === 'PP1') {
+                // 🆕 Playgroup & PP1: 5 lessons, 30 mins each, 30 min break
+                settings.startTime = "08:20";
+                settings.lessonDuration = 30;
+                settings.lessonsPerDay = 5;
+                settings.schoolDayEnd = "11:40";
+                settings.breaks = [
+                    { name: "SHORT BREAK", afterLesson: 2, duration: 30 },
+                    { name: "LONG BREAK", afterLesson: 4, duration: 30 }
+                ];
+            } else if (gUpper === 'PP2') {
+                // 🆕 PP2: 6 lessons, 35 mins each
+                settings.startTime = "08:20";
+                settings.lessonDuration = 35;
+                settings.lessonsPerDay = 6;
+                settings.schoolDayEnd = "12:40";
+                settings.breaks = [
+                    { name: "SHORT BREAK", afterLesson: 2, duration: 30 },
+                    { name: "LONG BREAK", afterLesson: 4, duration: 30 }
+                ];
+            } else {
+                // Standard Primary (Grade 1-6)
+                settings.startTime = "08:20";
+                settings.lessonDuration = 35;
+                settings.lessonsPerDay = 8;
+                settings.schoolDayEnd = "15:30";
+                settings.breaks = [
+                    { name: "SHORT BREAK", afterLesson: 2, duration: 20 },
+                    { name: "LONG BREAK", afterLesson: 4, duration: 30 },
+                    { name: "LUNCH", afterLesson: 6, duration: 80 },
+                    { name: "WRAP UP", afterLesson: 8, duration: 5 }
+                ];
+            }
         } else if (isJunior) {
             settings.startTime = "08:20";
             settings.lessonDuration = 40;
@@ -2188,14 +2212,15 @@ const TimetableModule = (function() {
         if (isBlock) {
                 const schoolType = getSchoolTypeKey();
                 // Re-calculating column structure for PDF
-                const getBlockColsForPDF = (duration, lessonCount) => {
+                 const getBlockColsForPDF = (duration, lessonCount, customBreaks = null) => {
                     const cols = [];
                     let cur = currentTimetableData.settings?.startTime || settings.startTime;
+                    const usedBreaks = customBreaks || (currentTimetableData.settings?.breaks || settings.breaks);
                     for (let l = 1; l <= lessonCount; l++) {
                         const end = addMinutes(cur, duration);
                         cols.push({ type: 'LESSON', lesson: l, startTime: cur, endTime: end });
                         cur = end;
-                        (currentTimetableData.settings?.breaks || settings.breaks).filter(b => b.afterLesson === l && b.name !== 'WRAP UP').forEach(b => {
+                        usedBreaks.filter(b => b.afterLesson === l && b.name !== 'WRAP UP').forEach(b => {
                             cols.push({ type: 'BREAK', name: b.name, startTime: cur, endTime: addMinutes(cur, b.duration) });
                             cur = addMinutes(cur, b.duration);
                         });
@@ -2216,24 +2241,31 @@ const TimetableModule = (function() {
                 chunks.forEach((chunk, cIdx) => {
                     if (cIdx > 0) doc.addPage();
                     drawDocHeader(`MASTER BLOCK TIMETABLE (PART ${cIdx + 1}/${chunks.length})`);
-
+const eyBreaks = [
+                        { name: "SHORT BREAK", afterLesson: 2, duration: 30 },
+                        { name: "LONG BREAK", afterLesson: 4, duration: 30 }
+                    ];
+                    const eyCols = getBlockColsForPDF(30, 5, eyBreaks);
                     const pCols = getBlockColsForPDF(35, 8);
-                    const jCols = getBlockColsForPDF(40, schoolType === 'primary_junior' ? 8 : 9);
-                    const maxCols = Math.max(pCols.length, jCols.length);
-                    const headers = Array.from({ length: maxCols }, (_, i) => ({ p: pCols[i], j: jCols[i] }));
+                    const hasSeniorClasses = currentTimetableData.timetables.some(tt => window.cbcUtils?.isSeniorGrade(tt.grade));
+                    const jCols = getBlockColsForPDF(40, (schoolType === 'primary_junior' || !hasSeniorClasses) ? 8 : 9);
+                    const maxCols = Math.max(eyCols.length, pCols.length, jCols.length);
+                    const headers = Array.from({ length: maxCols }, (_, i) => ({ ey: eyCols[i], p: pCols[i], j: jCols[i] }));
 
                     const head = [["DAY", ...headers.map(h => {
-                        if (h.p?.type === 'BREAK' || h.j?.type === 'BREAK') {
-                            const pTime = h.p?.startTime || '--';
-                            const jTime = h.j?.startTime || '--';
-                            return `${pTime} / ${jTime}`; // Just show times in break headers
+                        const eyT = h.ey?.startTime || '--';
+                        const pT = h.p?.startTime || '--';
+                        const jT = h.j?.startTime || '--';
+                        if (h.ey?.type === 'BREAK' || h.p?.type === 'BREAK' || h.j?.type === 'BREAK') {
+                            return `${eyT}\n${pT}\n${jT}`; 
                         }
-                        return `Lesson ${h.p?.lesson || h.j?.lesson}\n${h.p?.startTime || '--'} / ${h.j?.startTime || '--'}`;
+                        const lNum = h.ey?.lesson || h.p?.lesson || h.j?.lesson;
+                        return `Lesson ${lNum}\n${eyT} (EY)\n${pT} (P)\n${jT} (J)`;
                     }), "ACTIVITIES"]];
 
                     const columnStyles = { 0: { fontStyle: 'bold', width: 60, fillColor: [248, 250, 252] } };
                     headers.forEach((h, hIdx) => {
-                        const lessonNum = h.p?.lesson || h.j?.lesson;
+                         const lessonNum = h.ey?.lesson || h.p?.lesson || h.j?.lesson;
                         if (lessonNum === 1 || lessonNum === 2) {
                             columnStyles[hIdx + 1] = { width: 100 }; // 🆕 Wider for first two lessons in PDF
                         }
@@ -2242,8 +2274,11 @@ const TimetableModule = (function() {
                     const body = ["MON", "TUE", "WED", "THU", "FRI"].map((dayName, dIdx) => {
                         const rowData = [dayName];
                         headers.forEach((h) => {
-                            if (h.p?.type === 'BREAK' || h.j?.type === 'BREAK') { rowData.push(h.p?.name || h.j?.name || "BREAK"); return; }
-                            const lNum = h.p?.lesson || h.j?.lesson;
+                            if (h.ey?.type === 'BREAK' || h.p?.type === 'BREAK' || h.j?.type === 'BREAK') { 
+                                rowData.push(h.ey?.name || h.p?.name || h.j?.name || "BREAK"); 
+                                return; 
+                            }
+                            const lNum = h.ey?.lesson || h.p?.lesson || h.j?.lesson;
                             const entries = [];
                             chunk.forEach(tt => {
                                 const subject = tt.grid[lNum - 1]?.[dIdx];
@@ -2879,8 +2914,8 @@ const TimetableModule = (function() {
 
         const gradeMatch = (grade || "").match(/\d+/);
         const gradeNum = gradeMatch ? parseInt(gradeMatch[0]) : 0;
-        const isPP = grade && grade.toUpperCase().includes('PP');
-        const isPrimary = (gradeNum >= 1 && gradeNum <= 6) || isPP;
+        const isEarlyYears = grade && (grade.toUpperCase().includes('PP') || grade.toUpperCase() === 'PG');
+        const isPrimary = (gradeNum >= 1 && gradeNum <= 6) || isEarlyYears;
 
         // 1. Calculate how many lessons of each subject are used on OTHER days
         const usedOnOtherDays = {};
@@ -3160,7 +3195,7 @@ const TimetableModule = (function() {
             let displayGrade = tt.grade;
             let displayStream = tt.stream ? tt.stream.trim() : "";
 
-            const gradeShort = displayGrade.toUpperCase().startsWith('PP') ? displayGrade : (displayGrade.match(/\d+/)?.[0] || displayGrade);
+            const gradeShort = (displayGrade.toUpperCase().startsWith('PP') || displayGrade.toUpperCase() === 'PG') ? displayGrade : (displayGrade.match(/\d+/)?.[0] || displayGrade);
             const classLabel = `${gradeShort}${displayStream}`;
 
             tt.grid.forEach((row, lIdx) => {
@@ -3383,14 +3418,15 @@ const TimetableModule = (function() {
         }
 
         // 🆕 Define column sequence including breaks for block alignment
-        function getBlockCols(duration, lessonCount) {
+        function getBlockCols(duration, lessonCount, customBreaks = null) {
             const cols = [];
             let cur = settings.startTime;
+            const usedBreaks = customBreaks || settings.breaks;
             for (let l = 1; l <= lessonCount; l++) {
                 const end = addMinutes(cur, duration);
                 cols.push({ type: 'LESSON', lesson: l, startTime: cur, endTime: end });
                 cur = end;
-                settings.breaks.filter(b => b.afterLesson === l).forEach(b => {
+                usedBreaks.filter(b => b.afterLesson === l).forEach(b => {
                     cols.push({ type: 'BREAK', name: b.name, startTime: cur, endTime: addMinutes(cur, b.duration) });
                     cur = addMinutes(cur, b.duration);
                 });
@@ -3398,11 +3434,18 @@ const TimetableModule = (function() {
             return cols;
         }
 
+        const eyBreaks = [
+            { name: "SHORT BREAK", afterLesson: 2, duration: 30 },
+            { name: "LONG BREAK", afterLesson: 4, duration: 30 }
+        ];
+        const hasSeniorClasses = schoolTimetables.some(tt => window.cbcUtils?.isSeniorGrade(tt.grade));
+        const eyCols = getBlockCols(30, 5, eyBreaks);
         const primaryCols = getBlockCols(35, 8);
-        const juniorCols = getBlockCols(40, settings.lessonsPerDay);
-        const totalCols = Math.max(primaryCols.length, juniorCols.length);
+        const juniorCols = getBlockCols(40, (schoolType === 'primary_junior' || !hasSeniorClasses) ? 8 : 9);
+        const totalCols = Math.max(eyCols.length, primaryCols.length, juniorCols.length);
 
         const allColumnHeaders = Array.from({ length: totalCols }, (_, idx) => ({
+            ey: eyCols[idx] || null,
             primary: primaryCols[idx] || null,
             junior: juniorCols[idx] || null
         }));
@@ -3423,15 +3466,16 @@ const TimetableModule = (function() {
                     // 🆕 Use normalized grade label
                     const normalizedGrade = window.cbcUtils?.normalizeGrade(tt.grade) || tt.grade;
                     const gradeMatch = normalizedGrade.match(/\d+/);
-                    const gradeLabel = normalizedGrade.toUpperCase().startsWith('PP') ? normalizedGrade : (gradeMatch ? gradeMatch[0] : normalizedGrade);
+                    const gradeLabel = (normalizedGrade.toUpperCase().startsWith('PP') || normalizedGrade.toUpperCase() === 'PG') ? normalizedGrade : (gradeMatch ? gradeMatch[0] : normalizedGrade);
                     const classLabel = `${gradeLabel}${tt.stream || ''}`.trim();
 
                     const subjectGrid = tt.grid || [];
                     subjectGrid.forEach((row, lessonIdx) => {
                         const lessonNum = lessonIdx + 1;
                         const colIdx = allColumnHeaders.findIndex(h => 
-                            (h.junior?.type === 'LESSON' && h.junior?.lesson === lessonNum) || 
-                            (h.primary?.type === 'LESSON' && h.primary?.lesson === lessonNum)
+                            (h.ey?.type === 'LESSON' && h.ey?.lesson === lessonNum) ||
+                            (h.primary?.type === 'LESSON' && h.primary?.lesson === lessonNum) ||
+                            (h.junior?.type === 'LESSON' && h.junior?.lesson === lessonNum)
                         );
 
                         if (colIdx !== -1) {
@@ -3453,13 +3497,13 @@ const TimetableModule = (function() {
             const rowsHtml = dayNames.map((dayName, dayIdx) => {
                 let cellsHtml = lessonCells[dayIdx].map((entries, colIdx) => {
                     const h = allColumnHeaders[colIdx];
-                    const isBreak = (h.primary?.type === 'BREAK' || h.junior?.type === 'BREAK');
+                    const isBreak = (h.ey?.type === 'BREAK' || h.primary?.type === 'BREAK' || h.junior?.type === 'BREAK');
 
                     if (isBreak) {
                         return `<td style="vertical-align:middle; text-align:center; padding:10px; border:1px solid #e2e8f0; background:#f8fafc; color:#94a3b8; font-weight:800; font-size:0.65rem; text-transform:uppercase; letter-spacing:1px; min-width:80px;">BREAK</td>`;
                     }
 
-                    const lNum = h.primary?.lesson || h.junior?.lesson;
+                    const lNum = h.ey?.lesson || h.primary?.lesson || h.junior?.lesson;
                     const width = (lNum === 1 || lNum === 2) ? '230px' : '180px';
 
                     if (!entries.length) return `<td style="vertical-align:top; padding:10px; border:1px solid #e2e8f0; min-width:${width}; background:#ffffff;">-</td>`;
@@ -3488,10 +3532,12 @@ const TimetableModule = (function() {
             }).join('');
 
             let tableHeaders = allColumnHeaders.map((header, index) => {
+                const ey = header.ey;
                 const p = header.primary;
                 const j = header.junior;
-                const isBreak = (p?.type === 'BREAK' || j?.type === 'BREAK');
-                const title = isBreak ? "" : `Lesson ${p?.lesson || j?.lesson}`; // Hide "BREAK/LUNCH" in on-screen header too
+                const isBreak = (ey?.type === 'BREAK' || p?.type === 'BREAK' || j?.type === 'BREAK');
+                const title = isBreak ? "" : `Lesson ${ey?.lesson || p?.lesson || j?.lesson}`; // Hide "BREAK/LUNCH" in on-screen header too
+                const eyTime = ey ? `${ey.startTime}-${ey.endTime}` : '--';
                 const pTime = p ? `${p.startTime}-${p.endTime}` : '--';
                 const jTime = j ? `${j.startTime}-${j.endTime}` : '--';
                 const bgColor = isBreak ? '#f1f5f9' : '#eef2ff';
@@ -3499,7 +3545,7 @@ const TimetableModule = (function() {
                 let colWidth = isBreak ? '80px' : '180px';
                 
                 // 🆕 Increase width for first two lessons to accommodate teacher names
-                const lNum = p?.lesson || j?.lesson;
+                const lNum = ey?.lesson || p?.lesson || j?.lesson;
                 if (!isBreak && (lNum === 1 || lNum === 2)) {
                     colWidth = '230px'; 
                 }
@@ -3508,8 +3554,9 @@ const TimetableModule = (function() {
                 return `<th style="padding:10px; border:1px solid #e2e8f0; background:${bgColor}; min-width:${colWidth}; text-align:center;">
                             <div style="font-weight:700; color:${textColor}; line-height: 1.2;">${displayTitle}</div>
                             <div style="font-size:0.72rem; color:#0f172a; font-weight:800; margin-top:4px; line-height:1.2;">
-                                <div>${pTime}</div>
-                                <div>${jTime}</div>
+                                <div>${eyTime} (EY)</div>
+                                <div>${pTime} (P)</div>
+                                <div>${jTime} (J)</div>
                             </div>
                         </th>`;
             }).join('');
@@ -3560,7 +3607,8 @@ const TimetableModule = (function() {
         
         const gradeMatch = (grade || "").match(/\d+/);
         const gradeNum = gradeMatch ? parseInt(gradeMatch[0]) : 0;
-        const isPrimary = gradeNum >= 1 && gradeNum <= 6;
+        const isEarlyYears = grade && (grade.toUpperCase().includes('PP') || grade.toUpperCase() === 'PG');
+        const isPrimary = (gradeNum >= 1 && gradeNum <= 6) || isEarlyYears;
         const isJunior = gradeNum >= 7 && gradeNum <= 9;
 
         // Get frequencies for this grade

@@ -79,7 +79,7 @@ window.cbcUtils = {
     /**
      * Official Grade Progression
      */
-    GRADE_ORDER: ["PP1", "PP2", "Grade 1", "Grade 2", "Grade 3", "Grade 4", "Grade 5", "Grade 6", "Grade 7", "Grade 8", "Grade 9", "Grade 10", "Grade 11", "Grade 12"],
+    GRADE_ORDER: ["PG", "PP1", "PP2", "Grade 1", "Grade 2", "Grade 3", "Grade 4", "Grade 5", "Grade 6", "Grade 7", "Grade 8", "Grade 9", "Grade 10", "Grade 11", "Grade 12"],
 
     /**
      * Ensures grades are always in the format "Grade X"
@@ -92,7 +92,7 @@ window.cbcUtils = {
         if (str.toUpperCase().startsWith("GRADE ")) {
             str = str.replace(/^GRADE\s+/i, "").trim();
         }
-        if (str.toUpperCase().startsWith("PP")) return str.toUpperCase();
+        if (str.toUpperCase().startsWith("PP") || str.toUpperCase() === "PG") return str.toUpperCase();
         const match = str.match(/\d+/);
         if (match) {
             return `Grade ${match[0]}`;
@@ -107,7 +107,7 @@ window.cbcUtils = {
     getGradeOptionsForSchool: function() {
         const schoolType = this.getSchoolTypeKey();
         return this.SCHOOL_TYPES[schoolType].gradeOptions.map(g => 
-            String(g).toUpperCase().startsWith("PP") ? g : `Grade ${g}`
+            (String(g).toUpperCase().startsWith("PP") || String(g).toUpperCase() === "PG") ? g : `Grade ${g}`
         );
     },
 
@@ -182,7 +182,7 @@ window.cbcUtils = {
     isPrimaryGrade: (grade) => {
         if (!grade) return false;
         const normalized = window.cbcUtils.normalizeGrade(grade);
-        if (normalized === "PP1" || normalized === "PP2") return true;
+        if (normalized === "PG" || normalized === "PP1" || normalized === "PP2") return true;
         const match = normalized.match(/\d+/);
         if (match) {
             const num = parseInt(match[0]);
@@ -354,8 +354,7 @@ window.cbcUtils = {
             "PPI": "PPI",
             "PP1": "PP1",
             "PP2": "PP2",
-            "Language Activities": "LA",
-            "Mathematical Activities": "MA"
+           
         };
 
         const normalizedSubject = (subject || "").trim().toLowerCase();
@@ -445,12 +444,12 @@ window.cbcUtils = {
  */
 window.cbcUtils.SCHOOL_TYPES = {
     full: {
-        label: "Full School (Grades PP1-12)",
-        gradeOptions: ["PP1", "PP2","1","2","3","4","5","6","7","8","9","10","11","12"]
+        label: "Full School (Grades PG-12)",
+        gradeOptions: ["PG", "PP1", "PP2","1","2","3","4","5","6","7","8","9","10","11","12"]
     },
     primary_junior: {
-        label: "Primary + Junior (Grades PP1-9)",
-        gradeOptions: ["PP1", "PP2","1","2","3","4","5","6","7","8","9"]
+        label: "Primary + Junior (Grades PG-9)",
+        gradeOptions: ["PG", "PP1", "PP2","1","2","3","4","5","6","7","8","9"]
     },
     senior: {
         label: "Senior School (Grades 10-12)",

@@ -452,8 +452,8 @@ export const getOutstandingFees = async (req, res) => {
 
     const schoolType = school.schoolType || 'full';
     const SCHOOL_TYPES = {
-      full: { gradeOptions: ["Grade 1","Grade 2","Grade 3","Grade 4","Grade 5","Grade 6","Grade 7","Grade 8","Grade 9","Grade 10","Grade 11","Grade 12"] },
-      primary_junior: { gradeOptions: ["Grade 1","Grade 2","Grade 3","Grade 4","Grade 5","Grade 6","Grade 7","Grade 8","Grade 9"] },
+      full: { gradeOptions: ["PG", "PP1", "PP2", "Grade 1","Grade 2","Grade 3","Grade 4","Grade 5","Grade 6","Grade 7","Grade 8","Grade 9","Grade 10","Grade 11","Grade 12"] },
+      primary_junior: { gradeOptions: ["PG", "PP1", "PP2", "Grade 1","Grade 2","Grade 3","Grade 4","Grade 5","Grade 6","Grade 7","Grade 8","Grade 9"] },
       senior: { gradeOptions: ["Grade 10","Grade 11","Grade 12"] }
     };
     const allowedGrades = SCHOOL_TYPES[schoolType].gradeOptions;
@@ -1167,8 +1167,8 @@ export const getSchoolTotals = async (req, res) => {
     if (!school) return res.status(404).json({ message: 'School not found' });
     const schoolType = school.schoolType || 'full';
     const SCHOOL_TYPES = {
-      full: { gradeOptions: ["PP1", "PP2", "Grade 1","Grade 2","Grade 3","Grade 4","Grade 5","Grade 6","Grade 7","Grade 8","Grade 9","Grade 10","Grade 11","Grade 12"] },
-      primary_junior: { gradeOptions: ["PP1", "PP2", "Grade 1","Grade 2","Grade 3","Grade 4","Grade 5","Grade 6","Grade 7","Grade 8","Grade 9"] },
+      full: { gradeOptions: ["PG", "PP1", "PP2", "Grade 1","Grade 2","Grade 3","Grade 4","Grade 5","Grade 6","Grade 7","Grade 8","Grade 9","Grade 10","Grade 11","Grade 12"] },
+      primary_junior: { gradeOptions: ["PG", "PP1", "PP2", "Grade 1","Grade 2","Grade 3","Grade 4","Grade 5","Grade 6","Grade 7","Grade 8","Grade 9"] },
       senior: { gradeOptions: ["Grade 10","Grade 11","Grade 12"] }
     };
     const allowedGrades = SCHOOL_TYPES[schoolType].gradeOptions;
@@ -1229,8 +1229,8 @@ export const getSchoolOverviewStats = async (req, res) => {
     if (!school) return res.status(404).json({ message: 'School not found' });
     const schoolType = school.schoolType || 'full';
     const SCHOOL_TYPES = {
-      full: { gradeOptions: ["PP1", "PP2", "Grade 1","Grade 2","Grade 3","Grade 4","Grade 5","Grade 6","Grade 7","Grade 8","Grade 9","Grade 10","Grade 11","Grade 12"] },
-      primary_junior: { gradeOptions: ["PP1", "PP2", "Grade 1","Grade 2","Grade 3","Grade 4","Grade 5","Grade 6","Grade 7","Grade 8","Grade 9"] },
+      full: { gradeOptions: ["PG", "PP1", "PP2", "Grade 1","Grade 2","Grade 3","Grade 4","Grade 5","Grade 6","Grade 7","Grade 8","Grade 9","Grade 10","Grade 11","Grade 12"] },
+      primary_junior: { gradeOptions: ["PG", "PP1", "PP2", "Grade 1","Grade 2","Grade 3","Grade 4","Grade 5","Grade 6","Grade 7","Grade 8","Grade 9"] },
       senior: { gradeOptions: ["Grade 10","Grade 11","Grade 12"] }
     };
     const allowedGrades = SCHOOL_TYPES[schoolType].gradeOptions;

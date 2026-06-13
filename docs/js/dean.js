@@ -295,9 +295,8 @@ document.getElementById('primaryGradingPanel').classList.remove('hidden');
 function getGradeOptionsForSchool() {
   const schoolType = window.cbcUtils.getSchoolTypeKey();
   const gradeOptions = window.cbcUtils.SCHOOL_TYPES[schoolType].gradeOptions;
-  return gradeOptions.map(g => String(g).toUpperCase().startsWith("PP") ? g : `Grade ${g}`);
+  return gradeOptions.map(g => (String(g).toUpperCase().startsWith("PP") || String(g).toUpperCase() === "PG") ? g : `Grade ${g}`);
 }
-
 function getStudentRemark(score) {
   if (score === null || score === undefined || isNaN(score)) return "N/A";
   if (score >= 75) return "Excellent";
@@ -416,8 +415,8 @@ async function generateReport() {
 
   if (!grade) return cbcUtils.showToast("Please select a grade.", "error");
 
-  applyFiltersBtn.disabled = true;
-  applyFiltersBtn.innerHTML = '<span class="spinner"></span> Analyzing...';
+  window.spinner?.show(applyFiltersBtn, "Analyzing...");
+  
 
   // Allow UI to render spinner before potentially heavy cache/processing logic
   await new Promise(resolve => setTimeout(resolve, 100));
@@ -437,8 +436,8 @@ async function generateReport() {
     if (reportsUI) reportsUI.style.display = "block";
     if (reportsPlaceholder) reportsPlaceholder.style.display = "none";
 
-    applyFiltersBtn.disabled = false;
-    applyFiltersBtn.innerHTML = "🔍 View Results";
+  window.spinner?.hide(applyFiltersBtn);
+    
     return;
   }
   
@@ -447,7 +446,7 @@ async function generateReport() {
     const [marksData, rosterResponse] = await Promise.all([
       // 🆕 Fetch all assessments for the term to allow intra-term progress comparison
       fetchWithAuth(`${API_BASE}/marks/by-grade?${new URLSearchParams({ grade, term, year, assessment: 'all' })}`),
-      fetchWithAuth(`${API_BASE}/enrollments/class/${grade}?limit=1000`)
+      fetchWithAuth(`${API_BASE}/enrollments/class/${encodeURIComponent(grade)}?limit=1000`)
     ]);
 
     if (!marksData || marksData.length === 0) {
@@ -501,6 +500,7 @@ async function generateReport() {
   } finally {
     applyFiltersBtn.disabled = false;
     applyFiltersBtn.innerHTML = "🔍 View Results";
+    window.spinner?.hide(applyFiltersBtn);
   }
 }
 
@@ -667,11 +667,11 @@ async function downloadSchoolWideRankingAsPDF(rankings) {
   });
 
   // --- SUMMARY SECTION ---
-  let summaryTitleY = doc.lastAutoTable.finalY + 15;
+  let summaryTitleY = doc.lastAutoTable.finalY + 12;
   const pageHeight = doc.internal.pageSize.getHeight();
   
-  // Check if summary fits on current page (approx 70mm height needed), else add new page
-  if (summaryTitleY > pageHeight - 75) {
+  // Check if summary fits on current page (approx 85mm height needed for new section), else add new page
+  if (summaryTitleY > pageHeight - 90) {
     doc.addPage();
     summaryTitleY = 25;
   }
@@ -1183,10 +1183,10 @@ function processAnalysisData(allRaw, isSenior, assessment, allPrevRaw = null, ro
   setText(lowSubjectEl, lowSubjectNames);
   setText(recordsCountEl, studentArray.length);
 
-  // Calculate Pass Rate (students with mean score >= 41%)
+  // Calculate Pass Rate (students with mean score >= 50%)
   let passCount = 0;
   studentArray.forEach(s => {
-    if (s.mean >= 41) { // ME2 or higher is considered passing
+    if (s.mean >= 50) { // 🆕 Standardized to 50% for consistency with analysis.js
       passCount++;
     }
   });
@@ -1465,6 +1465,12 @@ async function downloadRankingAsPDF() {
           console.warn("Watermark rendering error:", e);
         }
       }
+
+      // 🆕 Footer (Date/Time Stamp on every page)
+      doc.setFontSize(8);
+      doc.setTextColor(150);
+      const dateStr = `Printed: ${new Date().toLocaleString()}`;
+      doc.text(dateStr, pageWidth - 14, pageHeight - 7, { align: "right" });
     },
     margin: { left: 14, right: 14, bottom: 35 }, // 🆕 Leaves space for the signature and footer
     didParseCell: (data) => {
@@ -1533,35 +1539,78 @@ async function downloadRankingAsPDF() {
     margin: { left: keyX }
   });
 
-  // --- DRAW FOOTER ON THE LAST PAGE ---
-  doc.setPage(doc.internal.getNumberOfPages());
-  
-  // Safety: If summary tables ended too close to the footer, add one more page for the signature
-  let footerY = pageHeight - 20; // Default footer Y position
-  if (doc.lastAutoTable.finalY > footerY - 5) {
+  // 3. Most Improved & Most Dropped Students (Side-by-Side)
+  let improvedStartY = doc.lastAutoTable.finalY + 10;
+  if (improvedStartY > pageHeight - 65) {
     doc.addPage();
-    footerY = pageHeight - 20;
+    improvedStartY = 20;
   }
 
-  doc.setFontSize(9);
-  doc.setFont("helvetica", "normal");
+  const progressData = rows
+    .map((row, idx) => ({
+      name: row[headers.indexOf("Name")],
+      progress: parseFloat(tbodyRows[idx].dataset.progress)
+    }))
+    .filter(s => !isNaN(s.progress));
 
-  const dateStr = `Printed: ${new Date().toLocaleString()}`;
-  doc.text(dateStr, pageWidth - 14, footerY, { align: "right" });
+  const improvedStudents = progressData
+    .filter(s => s.progress > 0)
+    .sort((a, b) => b.progress - a.progress).slice(0, 3);
 
-  // Dean's digital signature image // 🆕 Use cbcUtils.getImageFormat
+  const droppedStudents = progressData
+    .filter(s => s.progress < 0)
+    .sort((a, b) => a.progress - b.progress).slice(0, 3);
+
+  if (improvedStudents.length > 0) {
+    doc.setFontSize(9);
+    doc.text("Top 3 Most Improved Learners", 14, improvedStartY);
+    doc.autoTable({
+      startY: improvedStartY + 3,
+      head: [['Rank', 'Name', 'Progress']],
+      body: improvedStudents.map((s, i) => [`#${i + 1}`, s.name, `+${s.progress.toFixed(1)}%`]),
+      theme: 'grid',
+      styles: { fontSize: 7.5, cellPadding: 1.2 },
+      headStyles: { fillColor: [16, 185, 129], halign: 'center' },
+      tableWidth: 80,
+      margin: { left: 14 }
+    });
+  }
+
+  if (droppedStudents.length > 0) {
+    const dropX = 14 + 80 + 10; // After improved table + gap
+    doc.setFontSize(9);
+    doc.text("Top 3 Significant Drops", dropX, improvedStartY);
+    doc.autoTable({
+      startY: improvedStartY + 3,
+      head: [['Rank', 'Name', 'Drop']],
+      body: droppedStudents.map((s, i) => [`#${i + 1}`, s.name, `${s.progress.toFixed(1)}%`]),
+      theme: 'grid',
+      styles: { fontSize: 7.5, cellPadding: 1.2 },
+      headStyles: { fillColor: [239, 68, 68], halign: 'center' },
+      tableWidth: 80,
+      margin: { left: dropX }
+    });
+  }
+
+  // --- DRAW SIGNATURE ON THE SECOND LAST  PAGE ---
+  const totalPagesForSig = doc.internal.getNumberOfPages();
+  const targetPage = totalPagesForSig > 1 ? totalPagesForSig - 1 : 1;
+
+  doc.setPage(targetPage);
+  let footerY = pageHeight - 25;
+
+  // Dean's digital signature image
   if (deanProfileData && deanProfileData.signatureBase64) {
     try {
       const sigFormat = deanProfileData.sigFormat || cbcUtils.getImageFormat(deanProfileData.signatureBase64);
-      doc.addImage(deanProfileData.signatureBase64, sigFormat, pageWidth - 54, footerY + 1, 40, 8, undefined, 'FAST');
-    } catch (e) {
-      console.warn("Could not embed Dean signature in PDF:", e);
-    }
+      doc.addImage(deanProfileData.signatureBase64, sigFormat, pageWidth - 54, footerY - 8, 40, 8, undefined, 'FAST');
+    } catch (e) { console.warn("Signature error:", e); }
   }
 
-  // Dean signature space (right, below date)
-  doc.text("__________________________", pageWidth - 14, footerY + 10, { align: "right" }); // 🆕 Use cbcUtils.getImageFormat
-  doc.text("Dean's Signature", pageWidth - 14, footerY + 15, { align: "right" }); // 🆕 Use cbcUtils.getImageFormat
+  doc.setFontSize(9);
+  doc.setTextColor(0);
+  doc.text("__________________________", pageWidth - 14, footerY, { align: "right" });
+  doc.text("Dean's Signature", pageWidth - 14, footerY + 5, { align: "right" });
 
   // --- ADD PAGE NUMBERS & SYSTEM FOOTER TO ALL PAGES ---
   const totalPages = doc.internal.getNumberOfPages();
@@ -3084,8 +3133,8 @@ function renderSmsSummary(data, statsGrid, logWrap) {
             const confirmed = await cbcUtils.showConfirmToast(`Attempt to resend ${data.summary.failed} failed messages? This will consume SMS credits.`);
             if (!confirmed) return; // If not confirmed, return
 
-            retryBtn.disabled = true;
-            retryBtn.innerHTML = '<span class="spinner"></span> Retrying...';
+           
+            window.spinner?.show(retryBtn, "Retrying...");
 
             try {
                 const res = await fetchWithAuth(`${API_BASE}/announcements/retry-failed`, { method: 'POST' });
@@ -3094,8 +3143,8 @@ function renderSmsSummary(data, statsGrid, logWrap) {
                 updateDeanSmsBalance();
             } catch (err) { // Catch error
                 cbcUtils.showToast(err.message || "Failed to retry SMS broadcast", "error");
-                retryBtn.disabled = false;
-                retryBtn.innerHTML = 'Retry All';
+               
+                window.spinner?.hide(retryBtn);
             }
         });
     }
@@ -3160,9 +3209,8 @@ async function startSmsBroadcast() {
 
   if (!confirmed) return;
 
-  broadcastSmsBtn.disabled = true;
-  const originalHTML = broadcastSmsBtn.innerHTML;
-  broadcastSmsBtn.innerHTML = '<span class="spinner"></span> Initiating Broadcast...'; // Show spinner
+  
+  window.spinner?.show(broadcastSmsBtn, "Initiating Broadcast...");
   smsBroadcastAbortController = new AbortController();
 
   // 🆕 Initialize Progress Bar
@@ -3211,8 +3259,8 @@ async function startSmsBroadcast() {
     console.error("SMS Broadcast Error:", err);
     cbcUtils.showToast(err.message || "Failed to initiate SMS broadcast.", "error");
   } finally {
-    broadcastSmsBtn.disabled = false;
-    broadcastSmsBtn.innerHTML = originalHTML;
+   
+    window.spinner?.hide(broadcastSmsBtn);
   }
 }
 
@@ -3275,4 +3323,5 @@ function attachDeanEventListeners() {
   await loadDeanProfile();
 })();
 
-   
+
+//

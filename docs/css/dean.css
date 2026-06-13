@@ -204,35 +204,6 @@ header #logoutBtn {
 }
 @keyframes dean-spin { to { transform: rotate(360deg); } }
 
-.sidebar-nav {
-  background-color: #2b6cb0 !important;
-  padding: 20px 0 !important;
-  display: flex !important;
-  flex-direction: column !important;
-  gap: 4px !important;
-}
-
-.sidebar-nav .tab-btn {
-  background: transparent !important;
-  color: rgba(255, 255, 255, 0.85) !important;
-  border: none !important;
-  padding: 12px 24px !important;
-  width: 100% !important;
-  display: flex !important;
-  align-items: center !important;
-  gap: 12px !important;
-  font-size: 0.88rem !important;
-  border-radius: 0 !important;
-  transition: all 0.2s ease !important;
-}
-
-.sidebar-nav .tab-btn.active {
-  background-color: #1a4d8c !important;
-  color: white !important;
-  font-weight: 700 !important;
-  box-shadow: inset 5px 0 0 #fff !important;
-}
-
 .status-card-sidebar {
   margin: 20px 12px 13px 13px !important;
   padding: 9px 13px !important;
@@ -539,12 +510,6 @@ header #logoutBtn {
 
 /* Layout & Sidebar */
 .dashboard-layout { display: flex; gap: 24px; min-height: 85vh; margin: 20px; align-items: flex-start; }
-.sidebar-nav { width: 260px; background: #fff; border-radius: 12px; padding: 15px; border: 1px solid #e2e8f0; position: sticky; top: 20px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); z-index: 100; }
-.sidebar-nav h4 { font-size: 0.75rem; color: #94a3b8; text-transform: uppercase; margin-bottom: 15px; padding-left: 12px; letter-spacing: 0.1em; font-weight: 700; border-bottom: 1px solid #f1f5f9; padding-bottom: 8px; }
-.tab-btn { display: flex; align-items: center; gap: 12px; width: 100%; padding: 12px; border: none; background: transparent; border-radius: 8px; color: #64748b; font-weight: 600; cursor: pointer; transition: all 0.2s; text-align: left; margin-bottom: 6px; font-size: 0.9rem; }
-.tab-btn i { width: 20px; text-align: center; font-size: 1.1rem; }
-.tab-btn:hover { background: #f8fafc; color: #2563eb; }
-.tab-btn.active { background: #eff6ff; color: #2563eb; box-shadow: inset 4px 0 0 -1px #2563eb; }
 
 .status-card-sidebar { margin-top: 30px; padding: 12px; background: #f9fafb; border-radius: 8px; border: 1px dashed #cbd5e0; }
 .status-card-sidebar p:first-child { font-weight: 700; color: #2d3748; font-size: 0.85rem; margin-bottom: 4px; }
@@ -577,8 +542,5 @@ header #logoutBtn {
 
 @media (max-width: 992px) {
     .dashboard-layout { flex-direction: column; }
-    .sidebar-nav { width: 100%; position: static; display: flex; overflow-x: auto; gap: 8px; padding: 10px; }
-    .sidebar-nav h4 { display: none; }
     .status-card-sidebar { display: none; }
-    .tab-btn { white-space: nowrap; width: auto; padding: 8px 16px; border: 1px solid #e2e8f0; }
 }

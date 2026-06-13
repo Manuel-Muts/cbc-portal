@@ -112,6 +112,7 @@
   let teacherListTotalPages = 1;
   let showUnassignedOnly = false; // 🆕 Track sub-tab filter
   let isRefreshing = false;
+  let streamsCache = new Map(); // 🆕 Cache for grade streams
   let currentSchoolInfo = null; // 🆕 Store school info for grade options
 // ---------------------------
   // Term Lock Management DOM elements
@@ -561,19 +562,19 @@ function attachAdminSignatureLogic() {
     `;
     document.head.appendChild(style);
   })();
-   const GRADE_ORDER = ["PP1", "PP2", "Grade 1", "Grade 2", "Grade 3", "Grade 4", "Grade 5", "Grade 6", "Grade 7", "Grade 8", "Grade 9", "Grade 10", "Grade 11", "Grade 12"];
+   const GRADE_ORDER = ["PG","PP1", "PP2", "Grade 1", "Grade 2", "Grade 3", "Grade 4", "Grade 5", "Grade 6", "Grade 7", "Grade 8", "Grade 9", "Grade 10", "Grade 11", "Grade 12"];
 ;
 
   const SCHOOL_TYPES = {
     full: {
       label: "Full School (Grades PP1-12)",
-      rangeOptions: ["PP1-PP2", "1-3", "4-6", "7-9", "10-12"],
-      gradeOptions: ["PP1", "PP2", "1","2","3","4","5","6","7","8","9","10","11","12"]
+      rangeOptions: ["PG-PP2", "1-3", "4-6", "7-9", "10-12"],
+      gradeOptions: ["PG","PP1", "PP2", "1","2","3","4","5","6","7","8","9","10","11","12"]
     },
     primary_junior: {
       label: "Primary + Junior (Grades PP1-9)",
-      rangeOptions: ["PP1-PP2", "1-3", "4-6", "7-9"],
-      gradeOptions: ["PP1", "PP2", "1","2","3","4","5","6","7","8","9"]
+      rangeOptions: ["PG-PP2", "1-3", "4-6", "7-9"],
+      gradeOptions: ["PG","PP1", "PP2", "1","2","3","4","5","6","7","8","9"]
     },
     senior: {
       label: "Senior School (Grades 10-12)",
@@ -585,7 +586,7 @@ function attachAdminSignatureLogic() {
   const normalizeGrade = (g) => {
     if (!g) return "";
     const str = String(g).trim();
-    if (str.toUpperCase().startsWith("PP")) return str.toUpperCase();
+    if (str.toUpperCase().startsWith("PP") || str.toUpperCase() === "PG") return str.toUpperCase();
     const match = str.match(/\d+/);
     return match ? `Grade ${match[0]}` : g;
   };
@@ -607,8 +608,8 @@ function attachAdminSignatureLogic() {
     options.forEach(range => {
       const opt = document.createElement('option');
       opt.value = range;
-      if (range.includes('PP')) { // Handle PP ranges specifically
-        opt.textContent = range; // Display as "PP1-PP2"
+     if (range.includes('PP') || range.includes('PG')) { // Handle PP and PG ranges specifically
+        opt.textContent = range; // Display as "PG-PP2" or "PP1-PP2"
       } else {
         const [start, end] = range.split('-').map(Number);
         opt.textContent = start === end ? `Grade ${start}` : `Grade ${start}-${end}`;
@@ -622,11 +623,11 @@ function attachAdminSignatureLogic() {
     const schoolType = getSchoolTypeKey();
     const options = SCHOOL_TYPES[schoolType].gradeOptions;
 
-    classGradeSelect.innerHTML = '';
+    classGradeSelect.innerHTML = '<option value="">-- Select Grade --</option>';
     options.forEach(grade => {
       const opt = document.createElement('option');
       opt.value = grade; // Value can be "PP1" or "1"
-      opt.textContent = String(grade).toUpperCase().startsWith("PP") ? grade : `Grade ${grade}`; // Display "PP1" or "Grade 1"
+     opt.textContent = (String(grade).toUpperCase().startsWith("PP") || String(grade).toUpperCase() === "PG") ? grade : `Grade ${grade}`; // Display "PG", "PP1" or "Grade 1"
       classGradeSelect.appendChild(opt);
     });
   };
@@ -1012,8 +1013,8 @@ confirmPromotionBtn.addEventListener("click", async () => {
 
   function populateTeacherSelects(users = []) {
     if (!teacherSelect || !classTeacherSelect) return;
-    teacherSelect.innerHTML = "";
-    classTeacherSelect.innerHTML = "";
+    teacherSelect.innerHTML = '<option value="">-- Select Teacher --</option>';
+    classTeacherSelect.innerHTML = '<option value="">-- Select Teacher --</option>';
     users.filter(u => u.role === "teacher").forEach(u => {
       const opt1 = document.createElement("option");
       const opt2 = document.createElement("option");
@@ -1048,7 +1049,7 @@ confirmPromotionBtn.addEventListener("click", async () => {
       } else {
         allocations.forEach((alloc, index) => {
           const normalized = normalizeGrade(alloc.grade);
-          const isPP = normalized.toUpperCase().startsWith("PP");
+          const isPP = normalized.toUpperCase().startsWith("PP") || normalized.toUpperCase() === "PG";
           const gradeLabel = isPP ? (alloc.stream ? `${alloc.grade}${alloc.stream}` : alloc.grade) : (alloc.stream ? `Grade ${alloc.grade}${alloc.stream}` : `Grade ${alloc.grade}`);
           const tr = document.createElement("tr");
           tr.innerHTML = `
@@ -1080,7 +1081,7 @@ confirmPromotionBtn.addEventListener("click", async () => {
     data.forEach(item => {
       let classLabel = item.classLabel || (item.assignedStream ? `Grade ${item.assignedClass}${item.assignedStream}` : `Grade ${item.assignedClass}`);
       // Fix: If it's a PP grade, ensure "Grade" is not prepended
-      if (classLabel.toUpperCase().startsWith("GRADE PP")) {
+      if (classLabel.toUpperCase().startsWith("GRADE PP") || classLabel.toUpperCase().startsWith("GRADE PG")) {
         classLabel = classLabel.replace(/^GRADE\s+/i, "");
       }
       const tr = document.createElement("tr");
@@ -1870,12 +1871,30 @@ saveTermLockBtn?.addEventListener("click", saveTermLockStatus);
       if (submitBtn) { submitBtn.disabled = true; submitBtn.appendChild(createSpinner(12)); }
 
      const teacherId = teacherSelect?.value || "";
+      if (!teacherId) {
+        showToast("Please select a teacher for the subject allocation.", "error");
+        if (submitBtn) { submitBtn.disabled = false; Array.from(submitBtn.querySelectorAll(".spinner")).forEach(n => n.remove()); }
+        return;
+      }
+
 const gradeRange = gradeRangeSelect?.value || "";
 const grades = gradesSelect ? Array.from(gradesSelect.selectedOptions).map(opt => opt.value) : [];
 const grade = grades.length > 0 ? grades[0] : ""; // ✅ fix here
-const stream = streamInput?.value?.trim() || null; // 🆕 Get stream from input
+const stream = (streamInput && streamInput.value !== "") ? streamInput.value : null; 
 const subjects = subjectsSelect ? Array.from(subjectsSelect.selectedOptions).map(opt => opt.value) : [];
 
+  // 🆕 Validation: Ensure grade and at least one subject are selected
+      if (!grade) {
+        showToast("Please select a specific Grade.", "error");
+        if (submitBtn) { submitBtn.disabled = false; Array.from(submitBtn.querySelectorAll(".spinner")).forEach(n => n.remove()); }
+        return;
+      }
+      if (subjects.length === 0) {
+        showToast("Please select at least one subject to allocate.", "error");
+        if (submitBtn) { submitBtn.disabled = false; Array.from(submitBtn.querySelectorAll(".spinner")).forEach(n => n.remove()); }
+        return;
+      }
+      
       const res = await secureFetch(`${API_BASE}/users/subjects/assign`, {
         method: 'POST',
         body: JSON.stringify({ teacherId, gradeRange, grade, stream, subjects })
@@ -1886,6 +1905,8 @@ const subjects = subjectsSelect ? Array.from(subjectsSelect.selectedOptions).map
       if (submitBtn) { submitBtn.disabled = false; Array.from(submitBtn.querySelectorAll(".spinner")).forEach(n => n.remove()); }
     });
   }
+
+  
 //class allocation form handler
   if (classAllocForm) {
   classAllocForm.addEventListener("submit", async (e) => {
@@ -1894,8 +1915,20 @@ const subjects = subjectsSelect ? Array.from(subjectsSelect.selectedOptions).map
     if (submitBtn) { submitBtn.disabled = true; submitBtn.appendChild(createSpinner(12)); }
 
     const teacherId = classTeacherSelect?.value || "";
+    if (!teacherId) {
+      showToast("Please select a teacher for the class teacher allocation.", "error");
+      if (submitBtn) { submitBtn.disabled = false; Array.from(submitBtn.querySelectorAll(".spinner")).forEach(n => n.remove()); }
+      return;
+    }
+
     const assignedClass = classGradeSelect?.value || "";
-    const assignedStream = classStreamInput?.value?.trim() || null; // 🆕 Get stream from input
+    const assignedStream = (classStreamInput && classStreamInput.value !== "") ? classStreamInput.value : null;
+
+    if (!assignedClass) {
+      showToast("Please select a Grade for the class teacher allocation.", "error");
+      if (submitBtn) { submitBtn.disabled = false; Array.from(submitBtn.querySelectorAll(".spinner")).forEach(n => n.remove()); }
+      return;
+    }
 
     const res = await secureFetch(`${API_BASE}/users/classes/assign-teacher`, {
       method: 'POST',
@@ -2064,7 +2097,7 @@ studentSearchBody.addEventListener("click", async (e) => {
     bulkDeleteGradeSelect.innerHTML = '<option value="">-- Select Grade --</option>';
     grades.forEach(g => {
       const opt = document.createElement('option');
-      const isPP = String(g).toUpperCase().startsWith("PP");
+       const isPP = String(g).toUpperCase().startsWith("PP") || String(g).toUpperCase() === "PG";
       opt.value = isPP ? g : `Grade ${g}`;
       opt.textContent = isPP ? g : `Grade ${g}`;
       bulkDeleteGradeSelect.appendChild(opt);
@@ -2076,18 +2109,25 @@ studentSearchBody.addEventListener("click", async (e) => {
     bulkDeleteStreamSelect.innerHTML = '<option value="">All Streams</option>';
     if (!grade) return;
 
-    try {
-      const streams = await secureFetch(`${API_BASE}/enrollments/unique-streams?grade=${encodeURIComponent(grade)}`);
-      if (streams && Array.isArray(streams)) {
-        streams.forEach(s => {
-          const opt = document.createElement('option');
-          opt.value = s;
-          opt.textContent = `Stream ${s}`;
-          bulkDeleteStreamSelect.appendChild(opt);
-        });
+    let streams = streamsCache.get(grade);
+    if (!streams) {
+      try {
+        streams = await secureFetch(`${API_BASE}/enrollments/unique-streams?grade=${encodeURIComponent(grade)}`);
+        if (streams && Array.isArray(streams)) {
+          streamsCache.set(grade, streams);
+        }
+      } catch (e) {
+        console.error("Failed to load streams for bulk delete:", e);
       }
-    } catch (e) {
-      console.error("Failed to load streams for bulk delete:", e);
+    }
+
+    if (streams && Array.isArray(streams)) {
+      streams.forEach(s => {
+        const opt = document.createElement('option');
+        opt.value = s;
+        opt.textContent = `Stream ${s}`;
+        bulkDeleteStreamSelect.appendChild(opt);
+      });
     }
   }
 
@@ -2275,6 +2315,7 @@ studentSearchBody.addEventListener("click", async (e) => {
       isRefreshing = true;
       refreshBtn.disabled = true;
       const originalText = refreshBtn.textContent;
+      streamsCache.clear(); // 🆕 Clear streams cache on refresh
       refreshBtn.textContent = "Refreshing... ⏳";
       refreshBtn.classList.add("refreshing");
 
@@ -2339,14 +2380,52 @@ studentSearchBody.addEventListener("click", async (e) => {
   // ---------------------------
   // DYNAMIC GRADE & SUBJECT MULTI-SELECT
   // ---------------------------
+  // 🆕 Helper to populate stream dropdowns for allocation sections
+  async function updateStreamDropdown(grade, elementId) {
+    const streamSelect = document.getElementById(elementId);
+    if (!streamSelect || !grade) return;
+    
+    streamSelect.innerHTML = '<option value="">-- No Stream --</option>';
+    
+    let streams = streamsCache.get(grade);
+    if (!streams) {
+      try {
+        streams = await secureFetch(`${API_BASE}/enrollments/unique-streams?grade=${encodeURIComponent(grade)}`);
+        if (streams && Array.isArray(streams)) {
+          streamsCache.set(grade, streams);
+        }
+      } catch (e) {
+        console.warn(`Failed to load streams for ${elementId}:`, e);
+      }
+    }
+
+    if (streams && Array.isArray(streams)) {
+      streams.forEach(s => {
+        const opt = document.createElement("option");
+        opt.value = s;
+        opt.textContent = `Stream ${s}`;
+        streamSelect.appendChild(opt);
+      });
+    }
+  }
+
+  // 🆕 Attach listeners to handle grade selection changes for streams
+  gradesSelect?.addEventListener("change", () => {
+    if (gradesSelect.value) updateStreamDropdown(gradesSelect.value, "streamInput");
+  });
+
+  classGradeSelect?.addEventListener("change", () => {
+    if (classGradeSelect.value) updateStreamDropdown(classGradeSelect.value, "classStreamInput");
+  });
+
   if (gradeRangeSelect) {
     gradeRangeSelect.addEventListener("change", () => {
       const selectedRange = gradeRangeSelect.value;
       if (gradesSelect) { 
         gradesSelect.innerHTML = ""; 
         gradesSelect.multiple = true; 
-        if (selectedRange === "PP1-PP2") {
-          ["PP1", "PP2"].forEach(g => {
+        if (selectedRange === "PG-PP2" || selectedRange === "PP1-PP2") {
+          (selectedRange === "PG-PP2" ? ["PG", "PP1", "PP2"] : ["PP1", "PP2"]).forEach(g => {
             const opt = document.createElement("option");
             opt.value = g;
             opt.textContent = g;
@@ -2361,6 +2440,8 @@ studentSearchBody.addEventListener("click", async (e) => {
             gradesSelect.appendChild(opt); 
           }
         }
+
+     
       }
       
       if (subjectsSelect) { 

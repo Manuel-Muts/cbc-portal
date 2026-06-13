@@ -21,24 +21,78 @@ document.addEventListener("DOMContentLoaded", async () => {
   const rankingTableWrap = document.getElementById("rankingTableWrap");
   const subjectTableWrap = document.getElementById("subjectTableWrap");
   const classMeanEl = document.getElementById("classMean");
-  const topMeanEl = document.getElementById("topMean");
-  const lowMeanEl = document.getElementById("lowMean");
-  const topSubjectEl = document.getElementById("topSubject");
-  const lowSubjectEl = document.getElementById("lowSubject");
+  const passRateEl = document.getElementById("passRate");
   const recordsCountEl = document.getElementById("recordsCount");
+
+  // 🆕 New DOM elements for tabs
+  const analysisTabsContainer = document.getElementById("analysisTabsContainer");
+  const classRankingTabBtn = document.getElementById("classRankingTabBtn");
+  const subjectAnalysisTabBtn = document.getElementById("subjectAnalysisTabBtn");
+  const trendChartTabBtn = document.getElementById("trendChartTabBtn");
+  const missingExamsTabBtn = document.getElementById("missingExamsTabBtn");
+
+  const classRankingPane = document.getElementById("classRankingPane");
+  const subjectAnalysisPane = document.getElementById("subjectAnalysisPane");
+  const trendChartPane = document.getElementById("trendChartPane");
+
+  // 🆕 Inject CSS for horizontal filters and improved styling
+  const filterStyle = document.createElement("style");
+  filterStyle.textContent = `
+    .filters-section {
+      background: #fff;
+      padding: 20px;
+      border-radius: 12px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+      margin-bottom: 20px;
+    }
+    .filters-grid {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 15px;
+      align-items: flex-end;
+    }
+    .filter-item {
+      flex: 1;
+      min-width: 150px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .filter-item label {
+      font-size: 0.75rem;
+      font-weight: 700;
+      color: #475569;
+      text-transform: uppercase;
+      letter-spacing: 0.025em;
+    }
+    @media (max-width: 768px) {
+      .filters-grid { flex-direction: column; align-items: stretch; }
+      .filter-item { width: 100%; }
+    }
+  `;
+  document.head.appendChild(filterStyle);
+
+  // 🆕 Apply classes to existing filter containers
+  const filterContainer = document.querySelector('.filter-grid') || document.querySelector('.filters-section');
+  if (filterContainer) {
+    filterContainer.classList.add('filters-section', 'filters-grid');
+    filterContainer.querySelectorAll('.form-group, .col, .filter-group').forEach(el => {
+      el.classList.add('filter-item');
+    });
+  }
 
   let missingExamsTableWrap = document.getElementById("missingExamsTableWrap");
   // ===== API CONFIG =====
   // API_BASE is now loaded from config.js
   // To change the API endpoint, update config.js
   const API_BASE = config.api.baseURL;
-  let user = null;
+  let currentUser = null;
 
   // ===== AUTH CHECK USING CENTRALIZED SERVICE =====
-  user = await window.authService?.getUserProfile(["teacher", "classteacher"]);
-  if (!user) return; // authService handles redirect to login if session is invalid
+  currentUser = await window.authService?.getUserProfile(["teacher", "classteacher"]);
+  if (!currentUser) return; // authService handles redirect to login if session is invalid
 
-  if (!user.isClassTeacher && !user.roles?.includes("classteacher")) {
+  if (!currentUser.isClassTeacher && !currentUser.roles?.includes("classteacher")) {
     alert("Access Denied: Class Teacher role required.");
     return window.location.href = "/teacher";
   }
@@ -51,6 +105,8 @@ document.addEventListener("DOMContentLoaded", async () => {
   function showAnalysis() {
     notAllowedEl?.classList.add("hidden");
     analysisWrap?.classList.remove("hidden");
+    // 🆕 Ensure tab content is visible
+    if (analysisTabsContainer) analysisTabsContainer.style.display = "block";
   }
 
   // ===== HELPERS =====
@@ -68,6 +124,23 @@ document.addEventListener("DOMContentLoaded", async () => {
     return mapping[value] || (value === "all" ? "All Assessments" : `Assessment ${value}`);
   };
 
+  // ===== POPULATE YEAR FILTER =====
+  function populateYearFilter() {
+    if (!yearFilter) return;
+    const currentYear = new Date().getFullYear();
+    yearFilter.innerHTML = "";
+    
+    // 🆕 Sensible range for selection
+    for (let y = currentYear - 5; y <= currentYear + 10; y++) {
+      const opt = document.createElement("option");
+      opt.value = y;
+      opt.textContent = y;
+      yearFilter.appendChild(opt);
+    }
+    // 🆕 Select current year by default
+    yearFilter.value = currentYear;
+  }
+  
   // ===== POPULATE ASSESSMENT FILTER =====
   function populateAssessmentFilter() {
     if (assessmentFilter && window.ASSESSMENT_MAPPING) {
@@ -87,19 +160,21 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
   }
 
-  // ===== FETCH SCHOOL =====
-  async function fetchSchoolInfo() {
-    try {
-      const token = window.authService?.getToken();
-      const res = await fetch(`${API_BASE}/my-school`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      if (!res.ok) throw new Error("School fetch failed");
-      return await res.json();
-    } catch (err) {
-      console.error("School fetch error:", err);
-      return null;
-    }
+  // ===== POPULATE TERM FILTER =====
+  function populateTermFilter() {
+    if (!termFilter) return;
+    termFilter.innerHTML = `
+      <option value="all">All Terms</option>
+      <option value="1">Term 1</option>
+      <option value="2">Term 2</option>
+      <option value="3">Term 3</option>
+    `;
+    
+    const month = new Date().getMonth() + 1;
+    let currentTerm = "1";
+    if (month >= 5 && month <= 8) currentTerm = "2";
+    else if (month >= 9) currentTerm = "3";
+    termFilter.value = currentTerm;
   }
 
   // ===== BUTTONS =====
@@ -108,25 +183,6 @@ document.addEventListener("DOMContentLoaded", async () => {
   applyFiltersBtn?.addEventListener("click", generateReport);
   window.authService?.initLogout();
   exportPdfBtn?.addEventListener("click", exportPdf);
-
-  // ===== LOAD LEARNERS (EDIT MODE) BUTTON =====
-  /*if (generateBtn) {
-    const loadLearnersBtn = document.createElement("button");
-    loadLearnersBtn.textContent = "Load Learners (Edit)";
-    loadLearnersBtn.className = "primary-btn"; 
-    loadLearnersBtn.style.marginLeft = "10px";
-    loadLearnersBtn.style.backgroundColor = "#ff9800"; // Orange color
-    loadLearnersBtn.style.color = "#fff";
-    loadLearnersBtn.style.border = "none";
-    loadLearnersBtn.style.padding = "8px 16px";
-    loadLearnersBtn.style.cursor = "pointer";
-    loadLearnersBtn.style.borderRadius = "4px";
-    
-    // Insert after Generate Report button
-    generateBtn.parentNode.insertBefore(loadLearnersBtn, generateBtn.nextSibling);
-    
-    loadLearnersBtn.addEventListener("click", loadLearnersForEditing);
-  } */
 
   // Create Container for Edit Table
   const editContainer = document.createElement("div");
@@ -138,39 +194,53 @@ document.addEventListener("DOMContentLoaded", async () => {
     rankingTableWrap.parentNode.insertBefore(editContainer, rankingTableWrap);
   }
 
-  // ===== FETCH USER PROFILE =====
-  const fetchUserAndAllocations = async () => {
-    try {
-      const token = window.authService?.getToken();
-      const userRes = await fetch(`${API_BASE}/users/user`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      if (!userRes.ok) throw new Error("Unauthorized");
-      const profile = await userRes.json();
+  /**
+   * 🆕 Function to set up tab navigation
+   */
+  function setupAnalysisTabs() {
+    const tabButtons = document.querySelectorAll(".analysis-tabs-container .tab-btn");
+    const tabPanes = document.querySelectorAll(".analysis-tabs-container .tab-pane");
 
-      // Require schoolId for class-teacher flows
-      if (!profile || !profile.schoolId) {
-        console.error("Profile missing schoolId:", profile);
-        return showNotAllowed();
-      }
+    tabButtons.forEach(button => {
+      button.addEventListener("click", () => {
+        const targetTabId = button.dataset.tab;
 
-      let classGrade = profile.classGrade;
+        tabButtons.forEach(btn => btn.classList.remove("active"));
+        tabPanes.forEach(pane => pane.classList.remove("active"));
 
-      if (!classGrade) {
-        const token = window.authService?.getToken();
-        const allocRes = await fetch(`${API_BASE}/users/allocations`, {
-          headers: { Authorization: `Bearer ${token}` }
-        });
-        const allocations = allocRes.ok ? await allocRes.json() : [];
-        const myAllocation = allocations.find(a => a.teacherAdmission === profile.admission);
+        button.classList.add("active");
+        document.getElementById(targetTabId)?.classList.add("active");
 
-        if (myAllocation && myAllocation.assignedClass) {
-          classGrade = myAllocation.assignedClass;
+        // 🆕 Special handling for chart tab to ensure it renders correctly after being hidden
+        if (targetTabId === "trendChartPane") {
+          renderTrendChartWithData(currentFilteredData, currentIsSeniorSchool); // Re-render chart
         }
+      });
+    });
+  }
+
+  /**
+   * 🆕 Consolidated Dashboard Initialization
+   */
+  async function initializeAnalysisDashboard(profile) {
+    try {
+      let classGrade = profile.classGrade || profile.assignedClass;
+
+      // Fallback: If grade isn't in profile, try fetching allocations
+      if (!classGrade) {
+        try {
+          const res = await fetch(`${API_BASE}/users/allocations`, {
+            headers: { Authorization: `Bearer ${authService.getToken()}` }
+          });
+          const allocations = res.ok ? await res.json() : [];
+          const myAlloc = allocations.find(a => a.teacherId === profile.id || a.teacherId === profile._id);
+          if (myAlloc?.assignedClass) classGrade = myAlloc.assignedClass;
+        } catch (e) { console.warn("Grade fallback resolution failed", e); }
       }
 
       if (!classGrade) return showNotAllowed();
-
+      
+      // Update local profile object
       profile.classGrade = classGrade;
       showAnalysis();
 
@@ -184,96 +254,83 @@ document.addEventListener("DOMContentLoaded", async () => {
         teacherInfoEl.innerHTML = `Class Teacher: <strong>${profile.name || "—"}</strong> | Grade: <strong>${classGrade}</strong>`;
       }
 
-      // 🆕 Display class stream if available
       const streamDisplay = document.getElementById("streamDisplay");
       if (streamDisplay) {
-        const classStream = profile.assignedStream || "No Stream";
-        streamDisplay.textContent = classStream;
+        streamDisplay.textContent = profile.assignedStream || "No Stream";
       }
 
-      // 🆕 Hide stream filter if no stream is assigned
       if (streamFilterSelect) {
-        if (profile.assignedStream) {
-          streamFilterSelect.style.display = "block";
-        } else {
-          streamFilterSelect.style.display = "none";
-        }
+        streamFilterSelect.style.display = profile.assignedStream ? "block" : "none";
       }
 
-      user = profile; // update user globally
-      populateAssessmentFilter(); // Populate assessment filter after user is loaded
-     
-      
-      // ===== LOAD SCHOOL HEADER =====
-      const school = await fetchSchoolInfo();
-      if (!school) return;
+      if (termFilter) {
+        populateTermFilter();
+        const group = termFilter.closest('.form-group, .filter-group, .col, .filter-item');
+        if (group) group.style.display = "block";
+        termFilter.style.setProperty('display', 'block', 'important');
+      }
+
+      // 🆕 Setup tabs after all filters are populated
+      setupAnalysisTabs();
+
+      if (yearFilter) {
+        populateYearFilter();
+        
+        // 🆕 Ensure the year filter and its container are visible
+        // Checking for common CBC Portal layout wrappers
+        const group = yearFilter.closest('.form-group, .filter-group, .col, .filter-item');
+        if (group) group.style.display = "block";
+        yearFilter.style.setProperty('display', 'block', 'important');
+      }
+      populateAssessmentFilter();
+
+      // Load School Info
+      const schoolRes = await fetch(`${API_BASE}/users/my-school`, {
+        headers: { Authorization: `Bearer ${authService.getToken()}` }
+      });
+      if (!schoolRes.ok) return;
+      const school = await schoolRes.json();
 
       const nameEl = document.getElementById("schoolName");
       const logoEl = document.getElementById("schoolLogo");
       const addressEl = document.getElementById("schoolAddress");
 
-      // 🆕 Activate custom school grading logic if defined
-      if (school.gradingConfig) {
-        if (window.cbcUtils) window.cbcUtils.customGradingConfig = school.gradingConfig;
-      }
+      if (school.gradingConfig) window.cbcUtils.customGradingConfig = school.gradingConfig;
+      if (nameEl) nameEl.textContent = `${school.name}`;
+      if (addressEl) addressEl.textContent = school.address || "";
 
-      if (nameEl) nameEl.textContent = `${school.name} — Class Analysis`;
-      if (addressEl && school.address) addressEl.textContent = school.address;
-
-      // ===== LOGO RESOLUTION (FIXED) =====
+      // Logo Resolution
       if (logoEl && school.logo) {
-        logoEl.crossOrigin = "anonymous";
         const BACKEND_URL = config.api.baseURL.replace('/api', '');
-
-        // Detect logo format: file path (legacy), HTTP URL, or base64 (new)
-        if (school.logo.startsWith('/') || school.logo.includes('uploads/')) {
-          // Legacy file path - use with backend URL
-          let logoPath = school.logo.trim();
-          logoPath = logoPath.replace(/^\/+/, "");
-          if (!logoPath.startsWith("uploads/")) {
-            logoPath = `uploads/${logoPath}`;
-          }
-          logoEl.src = `${BACKEND_URL}/${logoPath}?t=${Date.now()}`;
-        } else if (school.logo.startsWith('http')) {
-          // Absolute HTTP URL
-          logoEl.src = school.logo;
+        if (school.logo.startsWith('http')) logoEl.src = school.logo;
+        else if (school.logo.startsWith('/') || school.logo.includes('uploads/')) {
+          logoEl.src = `${BACKEND_URL}/${school.logo.replace(/^\/+/, "")}`;
         } else {
-          // New base64 format - convert to data URL
-          const mimeType = school.logoMimeType || 'image/png';
-          logoEl.src = `data:${mimeType};base64,${school.logo}`;
+          logoEl.src = `data:${school.logoMimeType || 'image/png'};base64,${school.logo}`;
         }
-
-        logoEl.alt = "School Logo";
         logoEl.classList.remove("hidden");
       }
-
     } catch (err) {
-      console.error("Profile load error:", err);
-      localStorage.clear();
+      console.error("Initialization Error:", err);
       showNotAllowed();
     }
   }
 
-  // ✅ CALL ONCE
-  fetchUserAndAllocations();
+  // Start sequential init
+  await initializeAnalysisDashboard(currentUser);
 
-  // ===== INITIALIZE FILTERS =====
-  // Set year filter to current year
-  const currentYear = new Date().getFullYear();
-  if (yearFilter) {
-    yearFilter.value = currentYear.toString();
-  }
-
-   async function getFilteredMarks(page = null, limit = null, search = "", streamOverride = null) {
-    if (!user?.classGrade) return [];
+  let currentFilteredData = null; // 🆕 Store filtered data for chart re-rendering
+  let currentIsSeniorSchool = false; // 🆕 Store senior school status for chart re-rendering
+  async function getFilteredMarks(page = null, limit = null, search = "", streamOverride = null, assessmentOverride = null, termOverride = null) {
+    if (!currentUser?.classGrade) return [];
 
     // Build filter values - always send term and assessment (use "all" if not selected)
-    const termValue = termFilter?.value || "all";
-    const yearValue = yearFilter?.value ? Number(yearFilter.value) : currentYear;
-    const assessmentValue = assessmentFilter?.value || "all";
+    const termValue = termOverride || termFilter?.value || "all";
+    const yearValue = yearFilter?.value ? Number(yearFilter.value) : new Date().getFullYear();
+    const assessmentValue = assessmentOverride || assessmentFilter?.value || "all";
 
     const params = new URLSearchParams({ 
-      grade: user.classGrade,
+      grade: currentUser.classGrade,
       term: termValue,
       year: yearValue,
       assessment: assessmentValue
@@ -281,9 +338,9 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     // 🆕 Handle stream filter based on selection
     const streamMode = streamOverride || streamFilterSelect?.value;
-    if (streamMode === "assigned" && user.assignedStream) {
+    if (streamMode === "assigned" && currentUser.assignedStream) {
       // "My Stream Only" - filter by the teacher's assigned stream
-      params.append("stream", user.assignedStream);
+      params.append("stream", currentUser.assignedStream);
     } else {
       // "All Leaners (Whole Class)" - fetch all students in the grade regardless of stream
       params.append("stream", "");
@@ -300,8 +357,8 @@ document.addEventListener("DOMContentLoaded", async () => {
       const res = await fetch(`${API_BASE}/marks/by-grade?${params}`, {
         headers: { Authorization: `Bearer ${token}` }
       });
-      if (res.status === 403) {
-        showNotAllowed();
+      if (res.status === 401 || res.status === 403) {
+        authService.redirectToLogin();
         return [];
       }
       if (!res.ok) throw new Error("Failed to fetch marks");
@@ -315,7 +372,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       const normalized = Array.isArray(rawData) ? rawData.map(m => ({
         admissionNo: m.admissionNo,
         studentName: m.studentName || "Unnamed",
-        grade: m.grade || user.classGrade,
+        grade: m.grade || currentUser.classGrade,
         stream: m.stream || null,
         term: Number(m.term) || 0,
         year: Number(m.year) || 0,
@@ -442,8 +499,6 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     const streamDiscrepancies = calculateStreamDiscrepancies(streamExpectedSubjectsMap, allSubjectsInGrade);
     const sortedSubjects = Array.from(subjectsSet).sort();
-    const assessment = assessmentFilter?.value || "all";
-    const isAllAssessments = assessment === "all";
 
     // Pass 2: Detect Absences/Missing Components
     Object.values(students).forEach(s => {
@@ -468,7 +523,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     });
 
     // Pass 3: Identify Entirely Ungraded Learners
-    const targetStream = (selectedStreamMode === "assigned") ? user.assignedStream : null;
+    const targetStream = (selectedStreamMode === "assigned") ? currentUser.assignedStream : null;
     let filteredRoster = roster;
     if (targetStream) filteredRoster = roster.filter(r => r.stream === targetStream);
 
@@ -565,9 +620,56 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
 
   // ===== CALCULATE SENIOR SCHOOL STATS (Component-Based) =====
-  function calculateSeniorSchoolStats(filtered, roster = [], selectedStreamMode = "all") {
+  function calculateSeniorSchoolStats(filtered, roster = [], selectedStreamMode = "all", allTermRaw = null, prevTermRaw = null) {
     if (!filtered.length && !roster.length) {
       return { studentArray: [], groupedByAssessment: {}, subjects: [], classMean: 0, records: 0, topSubject: '-', lowSubject: '-', subjectMeans: {}, missingExamsList: [], streamDiscrepancies: [] };
+    }
+
+    const assessment = assessmentFilter?.value || "all";
+    const isAllAssessments = assessment === "all";
+
+    // 🆕 Determine Baseline for Progress
+    const prevSubjectMeans = {};
+    const prevStudentMeans = {};
+    let prevBaselineData = null;
+
+    if (assessment !== "all" && allTermRaw) {
+        const currentId = parseInt(assessment);
+        const predecessorId = [...new Set(allTermRaw.map(m => parseInt(m.assessment)))]
+            .filter(id => id < currentId)
+            .sort((a,b) => b - a)[0];
+        prevBaselineData = predecessorId ? allTermRaw.filter(m => parseInt(m.assessment) === predecessorId) : prevTermRaw;
+    } else {
+        prevBaselineData = prevTermRaw;
+    }
+
+    if (prevBaselineData && Array.isArray(prevBaselineData)) {
+        const pMap = {};
+        prevBaselineData.forEach(m => {
+            if (!pMap[m.admissionNo]) pMap[m.admissionNo] = { subjects: {}, hasAbsence: false };
+            (m.subjects || []).forEach(sub => {
+                const name = sub.course || sub.subject;
+                if (!name || name === 'null') return;
+                const score = window.cbcUtils.calculateFinalScore(sub.continuousAssessment, sub.projectWork, sub.endTermExam);
+                if (score === "X" || score === null) pMap[m.admissionNo].hasAbsence = true;
+                pMap[m.admissionNo].subjects[name] = score;
+            });
+        });
+        const pSubTotals = {}, pSubCounts = {};
+        Object.entries(pMap).forEach(([adm, s]) => {
+            if (s.hasAbsence) return;
+            const valid = Object.values(s.subjects).filter(v => v !== null && v !== "X").map(Number);
+            if (valid.length) {
+                prevStudentMeans[adm] = valid.reduce((a,b)=>a+b,0) / valid.length;
+                Object.entries(s.subjects).forEach(([n, v]) => {
+                    if (v !== null && v !== "X") {
+                        pSubTotals[n] = (pSubTotals[n] || 0) + Number(v);
+                        pSubCounts[n] = (pSubCounts[n] || 0) + 1;
+                    }
+                });
+            }
+        });
+        Object.keys(pSubCounts).forEach(n => prevSubjectMeans[n] = pSubTotals[n] / pSubCounts[n]);
     }
   
     const streamExpectedSubjectsMap = {};
@@ -636,8 +738,6 @@ document.addEventListener("DOMContentLoaded", async () => {
   
     const streamDiscrepancies = calculateStreamDiscrepancies(streamExpectedSubjectsMap, allSubjectsInGrade);
     const sortedSubjects = Array.from(subjectsSet).sort();
-    const assessment = assessmentFilter?.value || "all";
-    const isAllAssessments = assessment === "all";
 
     // Pass 2: Absences
     Object.values(students).forEach(s => {
@@ -659,7 +759,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     });
 
     // Pass 3: Ungraded
-    const targetStream = (selectedStreamMode === "assigned") ? user.assignedStream : null;
+    const targetStream = (selectedStreamMode === "assigned") ? currentUser.assignedStream : null;
     let filteredRoster = roster;
     if (targetStream) filteredRoster = roster.filter(r => r.stream === targetStream);
 
@@ -691,7 +791,10 @@ document.addEventListener("DOMContentLoaded", async () => {
       const totalPoints = scores.reduce((sum, score) => sum + window.cbcUtils.getPoints(score, s.grade), 0);
       const avgPoints = scores.length ? totalPoints / scores.length : 0;
       
-      return { ...s, total, mean, totalPoints, avgPoints };
+      const pMean = prevStudentMeans[s.admissionNo];
+      const progress = (pMean !== undefined && pMean > 0) ? (mean - pMean) : null;
+
+      return { ...s, total, mean, totalPoints, avgPoints, progress };
     });
   
     // 3. Group by Assessment and Rank within groups
@@ -743,7 +846,8 @@ document.addEventListener("DOMContentLoaded", async () => {
       topSubject,
       lowSubject,
       missingExamsList: Object.values(missingExamsMap).sort((a,b) => a.name.localeCompare(b.name)),
-      streamDiscrepancies
+      streamDiscrepancies,
+      prevSubjectMeans
     };
   }
 
@@ -759,7 +863,8 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   // ===== RENDER TABLES =====
   function renderRankingTable(stats) {
-    if (!stats.studentArray.length) { rankingTableWrap.innerHTML = "<div class='small'>No ranking data found.</div>"; return; }
+    if (!classRankingPane) return; // 🆕 Ensure pane exists
+    if (!stats.studentArray.length) { classRankingPane.innerHTML = "<div class='small'>No ranking data found.</div>"; return; }
     let html = "";
     Object.keys(stats.groupedByAssessment).forEach(assessmentKey => {
       const arr = stats.groupedByAssessment[assessmentKey];
@@ -824,41 +929,13 @@ document.addEventListener("DOMContentLoaded", async () => {
       html += `<td style="text-align: center; padding: 8px;">${(groupAvgPointsSum / groupCount).toFixed(2)}</td>`;
       html += `<td style="text-align: center; padding: 8px; color: #1a237e;">${window.cbcUtils.getSubdivision(groupMeanSum / groupCount, arr[0]?.grade)}</td>`;
       html += `</tr></tfoot></table>`;
-
-// ===== TIE-AWARE TOP & LOW STUDENTS =====
-const highestPoints = arr.length ? arr[0].totalPoints : 0;
-const lowestPoints = arr.length ? arr[arr.length - 1].totalPoints : 0;
-
-const tiedTop = arr.filter(s => s.totalPoints === highestPoints);
-const tiedLow = arr.filter(s => s.totalPoints === lowestPoints);
-
-// Format names
-const topNames = tiedTop.map(s => `${s.name} (${s.total} marks, Avg: ${s.mean.toFixed(1)}%)`).join("; ");
-const lowNames = tiedLow.map(s => `${s.name} (${s.total} marks, Avg: ${s.mean.toFixed(1)}%)`).join("; ");
-
-// Class mean for AI
-const classAvgPoints = arr.reduce((a, s) => a + s.avgPoints, 0) / arr.length;
-const aiFeedback = generateAIFeedback(classAvgPoints);
-
-// ===== OUTPUT =====
-html += `
-  <div class="ai-feedback">
-    🏆 <strong>Top ${tiedTop.length > 1 ? "Students (Tied)" : "Student"}:</strong><br>
-    ${topNames}<br><br>
-
-    ⚠️ <strong>Lowest ${tiedLow.length > 1 ? "Students (Tied)" : "Student"}:</strong><br>
-    ${lowNames}<br><br>
-
-    <strong>AI Feedback:</strong><br>
-    ${aiFeedback}
-  </div>
-`;
     });
-    rankingTableWrap.innerHTML = html;
+    classRankingPane.innerHTML = html; // 🆕 Render directly into pane
   }
 
   function renderSubjectMeansTable(stats) {
-    if (!stats.subjects.length) { subjectTableWrap.innerHTML = "<div class='small'>No subject means found.</div>"; return; }
+    if (!subjectAnalysisPane) return; // 🆕 Ensure pane exists
+    if (!stats.subjects.length) { subjectAnalysisPane.innerHTML = "<div class='small'>No subject means found.</div>"; return; }
     let html = `<table style="border-collapse: collapse; width: 100%; border:1px solid #000;">
       <thead><tr>`;
     stats.subjects.forEach(sub => html += `<th>${sub}</th>`);
@@ -873,18 +950,16 @@ html += `
     const btn = document.querySelector("#editContainer").previousElementSibling?.querySelector("button[class*='primary-btn']") || generateBtn.nextElementSibling;
     
     if (assessmentFilter && assessmentFilter.value === "") {
-      alert("Please select an assessment before loading learners for editing.");
+      window.showToast("Please select an assessment before loading learners for editing.", "error");
       return;
     }
-
-    if(btn) { btn.disabled = true; btn.textContent = "Loading..."; }
+    
+    window.spinner?.show(btn, "Loading...");
     
     try {
       // Hide analysis view, show edit view
-      rankingTableWrap.style.display = 'none';
-      subjectTableWrap.style.display = 'none';
-      const chartEl = document.getElementById("classTrendChart");
-      if (chartEl && chartEl.parentElement) chartEl.parentElement.style.display = 'none'; // Hide chart container
+      if (analysisTabsContainer) analysisTabsContainer.style.display = 'none';
+      
       editContainer.style.display = 'block';
 
       const gradeNum = parseInt(gradeFilter?.value) || 0;
@@ -921,13 +996,10 @@ html += `
 
       // Fix Close Button CSP Issue & Restore View
       document.getElementById("closeEditorBtn")?.addEventListener("click", () => {
-        document.getElementById('editContainer').style.display='none';
+        document.getElementById('editContainer').style.display = 'none';
         document.getElementById('editContainer').innerHTML = ""; // Clear content to free memory
-        document.getElementById('rankingTableWrap').style.display='block';
-        document.getElementById('subjectTableWrap').style.display='block';
-        // Show chart again
-        const chartEl = document.getElementById("classTrendChart");
-        if (chartEl && chartEl.parentElement) chartEl.parentElement.style.display = 'block'; 
+        // 🆕 Show the tab content area again
+        if (analysisTabsContainer) analysisTabsContainer.style.display = 'block';
       });
 
       // 4. Fetch & Render Table Function
@@ -1133,7 +1205,7 @@ html += `
       console.error(err);
       alert("Error loading learners for editing.");
     } finally {
-      if(btn) { btn.disabled = false; btn.textContent = "Load Learners (Edit)"; }
+      window.spinner?.hide(btn);
     }
   }
 
@@ -1145,21 +1217,32 @@ html += `
     }
 
     console.log("[Analysis] Generate Report clicked");
-    generateBtn.textContent = "Generating...";
-    generateBtn.disabled = true;
+    window.spinner?.show(generateBtn, "Generating...");
+
 
     try {
-      const [filtered, rosterResponse] = await Promise.all([
-        getFilteredMarks(),
-        fetch(`${API_BASE}/enrollments/class/${user.classGrade}?limit=1000`, { headers: { Authorization: `Bearer ${window.authService?.getToken()}` } }).then(r => r.json())
+      const [allTermRaw, rosterResponse] = await Promise.all([
+        getFilteredMarks(null, null, "", null, "all"),
+        fetch(`${API_BASE}/enrollments/class/${currentUser.classGrade}?limit=1000`, { headers: { Authorization: `Bearer ${window.authService?.getToken()}` } }).then(r => r.json())
       ]);
       
+      const assessVal = assessmentFilter?.value || "all";
+      const termVal = termFilter?.value || "all";
+      
+      const filtered = assessVal === "all" ? allTermRaw : allTermRaw.filter(m => String(m.assessment) === assessVal);
+
+      let prevTermRaw = null;
+      if (termVal !== "all" && parseInt(termVal) > 1) {
+          prevTermRaw = await getFilteredMarks(null, null, "", null, "all", (parseInt(termVal) - 1).toString());
+      }
+
       const roster = rosterResponse.students || (Array.isArray(rosterResponse) ? rosterResponse : []);
-      console.log("[Analysis] Filtered marks count:", filtered.length);
+      const streamMode = streamFilterSelect?.value;
 
       if (filtered.length === 0) {
         console.warn("[Analysis] No marks found for the selected filters");
         rankingTableWrap.innerHTML = "<div class='small'>No ranking data found.</div>";
+        currentFilteredData = [];
         subjectTableWrap.innerHTML = "<div class='small'>No subject means found.</div>";
         classMeanEl.textContent = "-";
         topMeanEl.textContent = "-";
@@ -1171,29 +1254,33 @@ html += `
       } else {
         const gradeNum = parseInt(gradeFilter?.value) || 0;
         const isSeniorSchool = gradeNum >= 10 && gradeNum <= 12;
+        
+        currentFilteredData = filtered;
+        currentIsSeniorSchool = isSeniorSchool;
 
         if (!isSeniorSchool) {
-          const stats = calculateStats(filtered, roster, streamFilterSelect?.value);
+          const stats = calculateStats(filtered, roster, streamMode, allTermRaw, prevTermRaw);
           renderRankingTable(stats);
           renderSubjectMeansTable(stats);
           classMeanEl.textContent = stats.classMean.toFixed(2);
-          topMeanEl.textContent = stats.topMean.toFixed(2);
-          lowMeanEl.textContent = stats.lowMean.toFixed(2);
-          topSubjectEl.textContent = stats.topSubject;
-          lowSubjectEl.textContent = stats.lowSubject;
+
+          const passCount = stats.studentArray.filter(s => s.mean >= 50).length;
+          const passRate = stats.studentArray.length > 0 ? (passCount / stats.studentArray.length) * 100 : 0;
+          if (passRateEl) passRateEl.textContent = passRate.toFixed(1) + "%";
+
           recordsCountEl.textContent = stats.records;
           renderTrendChartWithData(filtered, false);
           renderMissingExamsTable(stats.missingExamsList, stats.streamDiscrepancies);
         } else {
-          const stats = calculateSeniorSchoolStats(filtered, roster, streamFilterSelect?.value);
+          const stats = calculateSeniorSchoolStats(filtered, roster, streamMode, allTermRaw, prevTermRaw);
           renderSeniorSchoolAnalysis(stats);
           renderSubjectMeansTable(stats);
           classMeanEl.textContent = stats.classMean.toFixed(2);
-          topMeanEl.textContent = stats.records > 0 ? Math.max(...stats.studentArray.map(s => s.mean)).toFixed(2) : "-";
-          lowMeanEl.textContent = stats.records > 0 ? Math.min(...stats.studentArray.map(s => s.mean)).toFixed(2) : "-";
           
-          topSubjectEl.textContent = stats.topSubject;
-          lowSubjectEl.textContent = stats.lowSubject;
+          const passCount = stats.studentArray.filter(s => s.mean >= 50).length;
+          const passRate = stats.studentArray.length > 0 ? (passCount / stats.studentArray.length) * 100 : 0;
+          if (passRateEl) passRateEl.textContent = passRate.toFixed(1) + "%";
+
           recordsCountEl.textContent = stats.records;
           renderTrendChartWithData(filtered, true);
           renderMissingExamsTable(stats.missingExamsList, stats.streamDiscrepancies);
@@ -1203,8 +1290,7 @@ html += `
       console.error("[Analysis] Error in generateReport:", err);
       alert("Error generating report: " + err.message);
     } finally {
-      generateBtn.textContent = "Generate Report";
-      generateBtn.disabled = false;
+     window.spinner?.hide(generateBtn);
     }
   }
 
@@ -1261,6 +1347,14 @@ html += `
         const subLevel = window.cbcUtils.getSubdivision(s.mean, s.grade);
         const mainLevel = window.cbcUtils.getPerformanceLevel(s.mean, s.grade);
         const bg = s.rank % 2 === 0 ? "#f9f9f9" : "#fff";
+
+        let progressHtml = '<span style="color:#94a3b8; font-size:0.7rem;">N/A</span>';
+        if (s.progress !== null) {
+            const diff = s.progress;
+            if (diff > 0.1) progressHtml = `<span style="color:#10b981; font-weight:700;">+${diff.toFixed(1)}</span>`;
+            else if (diff < -0.1) progressHtml = `<span style="color:#ef4444; font-weight:700;">${diff.toFixed(1)}</span>`;
+            else progressHtml = `<span style="color:#3498db; font-size:0.8rem;">-</span>`;
+        }
         
         html += `<tr style='background:${bg};'>`;
         html += `<td style='border:1px solid #ddd;padding:8px;'>${s.rank}</td>`;
@@ -1274,6 +1368,7 @@ html += `
           html += `<td style='border:1px solid #ddd;padding:8px;text-align:center;'>${display}</td>`;
         });
         
+        html += `<td style='border:1px solid #ddd;padding:8px;text-align:center;'>${progressHtml}</td>`;
         html += `<td style='border:1px solid #ddd;padding:8px;text-align:center;'><strong>${s.totalPoints}</strong></td>`;
         html += `<td style='border:1px solid #ddd;padding:8px;'>${subLevel} (${window.cbcUtils.getPerformanceLabel(mainLevel)})</td>`;
         html += "</tr>";
@@ -1302,22 +1397,19 @@ html += `
         const subCount = group.filter(s => s.subjects[sub] !== undefined).length || 1;
         html += `<td style="border:1px solid #ddd;padding:8px;text-align:center;">${(subSum / subCount).toFixed(1)}</td>`;
       });
+      html += `<td style='border:1px solid #ddd;padding:8px;'></td>`;
       html += `<td style="border:1px solid #ddd;padding:8px;text-align:center;">${(groupTotalPoints / groupCount).toFixed(1)}</td>`;
       html += `<td style="border:1px solid #ddd;padding:8px;text-align:center; color: #1a237e;">${window.cbcUtils.getSubdivision(groupMeanSum / groupCount, group[0]?.grade)}</td>`;
       html += `</tr></tfoot></table>`;
     });
     
-    rankingTableWrap.innerHTML = html;
+   subjectAnalysisPane.innerHTML = html; // 🆕 Render directly into pane
   
   }
  // subjectTableWrap is now populated by renderSubjectMeansTable
   function renderMissingExamsTable(missingList, streamDiscrepancies = []) {
-    if (!missingExamsTableWrap) {
-      missingExamsTableWrap = document.createElement("div");
-      missingExamsTableWrap.id = "missingExamsTableWrap";
-      missingExamsTableWrap.className = "card";
-      subjectTableWrap.parentNode.insertBefore(missingExamsTableWrap, subjectTableWrap.nextSibling);
-    }
+    if (!missingExamsTableWrap) return; // 🆕 Ensure the static element exists
+    
 
     if (missingList.length === 0 && streamDiscrepancies.length === 0) {
       missingExamsTableWrap.innerHTML = `
@@ -1359,7 +1451,7 @@ html += `
     missingExamsTableWrap.innerHTML = html;
   }
 
-  // ===== EXPORT PDF =====
+// ===== EXPORT PDF =====
 async function exportPdf() {
   try {
     const filtered = await getFilteredMarks();
@@ -1383,7 +1475,7 @@ async function exportPdf() {
 
     doc.setFontSize(11);
     doc.setFont("helvetica", "normal");
-    const subheader = `Grade: ${user.classGrade || "-"} | Term: ${termFilter.value || "-"} | Year: ${yearFilter.value || "-"} | Assessment: ${assessmentLabel}`;
+    const subheader = `Grade: ${currentUser.classGrade || "-"} | Term: ${termFilter.value || "-"} | Year: ${yearFilter.value || "-"} | Assessment: ${assessmentLabel}`;
     doc.text(subheader, pageWidth / 2, 65, { align: "center" });
 
     let yPos = 90;
@@ -1519,13 +1611,13 @@ async function exportPdf() {
 
       // Teacher info only on the last page
       if (i === totalPages) {
-        const teacherName = localStorage.getItem("teacherName") || user?.name || "Teacher";
+        const teacherName = currentUser?.name || "Teacher";
         const dateGenerated = new Date().toLocaleString();
         doc.text(`${teacherName} | Date: ${dateGenerated}`, 40, pageHeight - 20);
       }
     }
 
-    doc.save(`Class_Report_Grade_${user.classGrade || "-"}.pdf`);
+    doc.save(`Class_Report_Grade_${currentUser.classGrade || "-"}.pdf`);
 
   } catch (err) {
     console.error("PDF export error:", err);
@@ -1535,8 +1627,7 @@ async function exportPdf() {
 
   // ===== TREND CHART =====
   function renderTrendChartWithData(filtered, isSeniorSchool = false) {
-    const chartCanvas = document.getElementById("classTrendChart");
-    const chartContainer = chartCanvas?.parentElement;
+    const chartCanvas = document.getElementById("classTrendChart"); // This is inside trendChartPane
 
     if (typeof Chart === 'undefined') {
       const script = document.createElement('script');
@@ -1548,13 +1639,10 @@ async function exportPdf() {
 
     // If no data or canvas, hide container and destroy old chart
     if (!chartCanvas || !filtered.length) {
-      if (chartContainer) chartContainer.style.display = 'none';
       if (window.trendChart) window.trendChart.destroy();
       return;
     }
-
-    // If we have data, ensure container is visible before rendering
-    if (chartContainer) chartContainer.style.display = 'block';
+    
     const ctx = chartCanvas.getContext("2d");
     if (!ctx) return;
 
@@ -1572,16 +1660,33 @@ async function exportPdf() {
 
     const classMeans = sortedKeys.map(key => {
       const group = assessmentData[key];
-      const studentAverages = group.students.map(stu => {
-        if (isSeniorSchool) {
-          const finalScores = stu.subjects.map(s => s.finalScore).filter(score => score !== null && score !== undefined);
-          return finalScores.length ? finalScores.reduce((sum, score) => sum + score, 0) / finalScores.length : 0;
-        } else {
-          const scores = stu.subjects.map(s => (s.score === null || s.score === "X") ? 0 : Number(s.score));
-          return scores.length ? scores.reduce((sum, score) => sum + score, 0) / scores.length : 0;
-        }
+
+      // 🆕 Apply Clean Student Baseline: Only include students with NO absences in this specific assessment point
+      const cleanStudents = group.students.filter(stu => {
+        const subjects = stu.subjects || [];
+        if (subjects.length === 0) return false;
+        
+        return subjects.every(sub => {
+          if (isSeniorSchool) {
+            const fs = window.cbcUtils.calculateFinalScore(sub.continuousAssessment, sub.projectWork, sub.endTermExam);
+            return fs !== null && fs !== "X";
+          }
+          const val = sub.score;
+          return val !== null && val !== undefined && !isNaN(val);
+        });
       });
-      return studentAverages.length ? (studentAverages.reduce((x, y) => x + y, 0) / studentAverages.length) : 0;
+
+      const studentAverages = cleanStudents.map(stu => {
+        const scores = stu.subjects.map(sub => {
+          return isSeniorSchool 
+            ? window.cbcUtils.calculateFinalScore(sub.continuousAssessment, sub.projectWork, sub.endTermExam)
+            : sub.score;
+        }).filter(v => v !== null && v !== "X" && !isNaN(v)).map(Number);
+        
+        return scores.length ? (scores.reduce((a, b) => a + b, 0) / scores.length) : 0;
+      });
+
+      return studentAverages.length ? (studentAverages.reduce((sum, avg) => sum + avg, 0) / studentAverages.length) : 0;
     });
 
     const labels = sortedKeys.map(key => {

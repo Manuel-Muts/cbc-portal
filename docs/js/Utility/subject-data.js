@@ -1,11 +1,16 @@
 window.SUBJECT_DATA = window.SUBJECT_DATA || {};
 
 window.SUBJECT_DATA.gradeSubjects = {
-  "PP1-PP2": [
-    "Language Activities",
-    "Mathematical Activities",
-    "Environmental Activities",
-    "Psychomotor Activities",
+  "PG-PP2": [
+    "Language",
+    "Numberwork",
+    "Environmental",
+    "Psychomotor",
+    "Literacy",
+    "Kswahili",
+    "English",
+    "Mathematics",
+    "Creative Arts",
     "Christian Religious Studies (CRE)"
   ],
   "1-3": [
@@ -164,7 +169,11 @@ window.SUBJECT_DATA.subjectCategories = {
   core: [
     "Mathematics",
     "English",
-    "Kiswahili"
+    "Kiswahili",
+    "Numberwork",
+    "Psychomotor",
+    "Literacy"
+   
   ],
   technical: [
     "Integrated Science",

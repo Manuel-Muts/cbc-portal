@@ -145,6 +145,10 @@ export const updateEnrollment = async (req, res) => {
     const normalizeGrade = (g) => {
       if (!g) return null;
       const str = String(g).trim();
+      // 🆕 Support Early Childhood grades (PP1, PP2, PG)
+      if (str.toUpperCase().startsWith("PP") || str.toUpperCase() === "PG") {
+        return str.toUpperCase();
+      }
       const match = str.match(/\d+/); // Extract only the numeric part
       if (match) {
         return `Grade ${match[0]}`;
@@ -321,19 +325,19 @@ export const getStudentsByClass = async (req, res) => {
     }
 
     // 🚀 FIX: Update regex to support numeric streams (e.g. Grade 2 2) and handle mandatory spacing
-    const classRegex = /^(?:Grade\s+)?(PP\d|\d+)(?:\s+)?([A-Z0-9]+)?$/i;
+    const classRegex = /^(?:Grade\s+)?(PP\d|PG|\d+)(?:\s+)?([A-Z0-9]+)?$/i;
     const match = classLabel.match(classRegex);
     
     if (!match) {
       return res.status(400).json({ message: "Invalid class label format" });
     }
 
-    const extractedGrade = match[1]; // This will be "PP1", "PP2", "1", "5", etc.
+    const extractedGrade = match[1]; // This will be "PP1", "PP2", "PG", "1", "5", etc.
     const extractedStream = match[2] || null; // This will be "W", "A", or null
 
-    // Normalize the grade for the query to match database storage ("PP1" or "Grade X")
+    // Normalize the grade for the query to match database storage ("PP1", "PP2", "PG" or "Grade X")
     let queryGrade;
-    if (extractedGrade.toUpperCase().startsWith("PP")) {
+    if (extractedGrade.toUpperCase().startsWith("PP") || extractedGrade.toUpperCase() === "PG") {
       queryGrade = extractedGrade.toUpperCase(); // Keep "PP1", "PP2" as is
     } else {
       queryGrade = `Grade ${extractedGrade}`; // Prepend "Grade " for numeric grades
@@ -408,6 +412,10 @@ export const getUniqueStreams = async (req, res) => {
     const normalizeQueryGrade = (g) => {
       if (!g) return null;
       let value = String(g).trim();
+      // 🆕 Support Early Childhood grades in unique stream filters
+      if (value.toUpperCase().startsWith("PP") || value.toUpperCase() === "PG") {
+        return value.toUpperCase();
+      }
       const numeric = value.match(/\d+/);
       if (numeric) return `Grade ${numeric[0]}`;
       return value;

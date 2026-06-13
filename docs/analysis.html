@@ -1,172 +1,206 @@
-<!--ANALYSIS.HTML(CLASSTEACHERS)-->
 <!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>CLASS ANALYSIS</title>
+
   <link rel="stylesheet" href="css/analysis.css" />
-  <link rel="stylesheet" href="css/announcements.css">
-  <link rel="icon" type="image/png" href="/images/favicon.png"/> 
+  <link rel="stylesheet" href="css/Utility/announcements.css">
+  <link rel="icon" type="image/png" href="/images/favicon.png"/>
+
   <style>
-    .ai-feedback {
-      background: #f8f9fa;
-      padding: 10px;
-      border-left: 4px solid #007bff;
-      margin-top: 15px;
-      font-size: 0.9rem;
-      border-radius: 5px;
-    }
-    .highlight-box {
-      background: #eef6ff;
-      padding: 10px;
+    /* Tabs */
+    .analysis-tabs-container {
+      margin-top: 20px;
+      background: #fff;
       border-radius: 8px;
-      margin-top: 10px;
+      box-shadow: 0 4px 6px rgba(0,0,0,0.05);
     }
-    .highlight-box strong {
-      color: #004a99;
+
+    .tab-buttons {
+      display: flex;
+      border-bottom: 1px solid #e2e8f0;
+      padding: 0 15px;
+      background: #f8fafc;
+      border-top-left-radius: 8px;
+      border-top-right-radius: 8px;
     }
-    .spacer {
-      margin: 8px 0;
+
+    .tab-btn {
+      padding: 12px 20px;
+      border: none;
+      background: transparent;
+      cursor: pointer;
+      font-size: 0.9rem;
+      font-weight: 600;
+      color: #64748b;
+      border-bottom: 3px solid transparent;
+      transition: all 0.2s ease;
+    }
+
+    .tab-btn:hover {
+      color: #2563eb;
+    }
+
+    .tab-btn.active {
+      color: #2563eb;
+      border-bottom-color: #2563eb;
+    }
+
+    .tab-content-area {
+      padding: 20px;
+    }
+
+    .tab-pane {
+      display: none;
+    }
+
+    .tab-pane.active {
+      display: block;
+    }
+
+    /* Stats */
+    .stats-summary {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+      margin-top: 15px;
+    }
+
+    .stat-card {
+      background: #f8fafc;
+      padding: 10px;
+      border-radius: 6px;
+      text-align: center;
     }
   </style>
 </head>
+
 <body>
-  <div class="container">
-    <header>
-          <div id="schoolHeader" class="school-header">
-          <img id="schoolLogo" class="school-logo hidden" alt="School Logo" />
-          <div>
-            <h1 id="schoolName">Class Analysis (Ranking & Subject Performance)</h1>
-            <div id="schoolAddress" class="school-address"></div>
-          </div>
-        </div>
+<div class="container">
 
-      <div class="toolbar">
-  <button id="exportPdf" class="btn small">Export PDF</button>
-  <button id="refreshBtn" class="btn small">Refresh</button>
-  <button id="logoutBtn" class="btn danger small">Logout</button>
-</div>
-
-    </header>
-
-    <div id="teacherInfo" class="teacher-info"></div>
-
-    <div id="classStreamInfo" class="card" style="background: #f0f8ff; border-left: 4px solid #2196F3; margin-bottom: 15px;">
-      <strong>Grade Stream:</strong> <span id="streamDisplay">Loading...</span>
-    </div>
-
-    <div id="notAllowed" class="card muted-center hidden">
-      <div class="small">Only class teachers may view class analysis.</div>
-    </div>
-
-    <div id="analysisWrap" class="hidden">
-      <div class="card">
-        <div class="analysis-controls">
-          <div class="control-block">
-            <label for="gradeFilter">Grade (Your Class):</label>
-            <select id="gradeFilter" class="small" disabled>
-              <option value="">Loading...</option>
-            </select>
-          </div>
-
-          <div class="control-block">
-            <label for="streamFilterSelect">Stream (if applicable):</label>
-            <select id="streamFilterSelect" class="small">
-            <option value="assigned">My Stream Only</option>
-            <!-- <option value="">All Streams</option> -->
-            </select>
-          </div>
-
-          <div class="control-block">
-            <label for="termFilter">Select Term:</label>
-            <select id="termFilter" class="small">
-              <option value="">All Terms</option>
-              <option value="1">Term 1</option>
-              <option value="2">Term 2</option>
-              <option value="3">Term 3</option>
-            </select>
-          </div>
-
-          <div class="control-block">
-            <label for="yearFilter">Select Year:</label>
-            <input type="number" id="yearFilter" class="small" min="2025" max="2090" />
-          </div>
-
-          <div class="control-block">
-            <label for="assessmentFilter">Assessment:</label>
-            <select id="assessmentFilter" class="small">
-
-            </select>
-          </div>
-        </div>
-
-          <button id="generateReport" class="btn primary">Generate Report</button>
-        </div>
-
-        <div class="grid">
-          <div>
-            <div class="card" id="rankingCard">
-              <h3>Class Ranking</h3>
-              <div id="rankingTableWrap"></div>
-            </div>
-
-            <div class="card" id="subjectCard">
-              <h3>Subject Performance (Means)</h3>
-              <div id="subjectTableWrap"></div>
-            </div>
-
-            <div class="card hidden" id="detailsCard">
-              <h3>Learners Details</h3>
-              <div id="detailsTableWrap"></div>
-            </div>
-          </div>
-
-          <aside>
-            <div class="card">
-              <h4>Quick Stats</h4>
-              <div class="small">Class average: <strong id="classMean">-</strong></div>
-              <div class="small">Highest mean: <strong id="topMean">-</strong></div>
-              <div class="small">Lowest mean: <strong id="lowMean">-</strong></div>
-              <div class="spacer"></div>
-              <div class="small">Top subject: <strong id="topSubject">-</strong></div>
-              <div class="small">Weakest subject: <strong id="lowSubject">-</strong></div>
-              <div class="spacer"></div>
-              <div class="small">Records analysed: <strong id="recordsCount">0</strong></div>
-              <div class="highlight-box">
-            
-              </div>
-            </div>
-          </aside>
-        </div>
+  <header>
+    <div id="schoolHeader" class="school-header">
+      <img id="schoolLogo" class="school-logo hidden" alt="School Logo" />
+      <div>
+        <h1 id="schoolName">Class Analysis (Ranking & Subject Performance)</h1>
+        <div id="schoolAddress" class="school-address"></div>
       </div>
     </div>
+
+    <div class="toolbar">
+      <button id="exportPdf" class="btn small">Export PDF</button>
+      <button id="refreshBtn" class="btn small">Refresh</button>
+      <button id="logoutBtn" class="btn danger small">Logout</button>
+    </div>
+  </header>
+
+  <div id="teacherInfo" class="teacher-info"></div>
+
+  <div id="classStreamInfo" class="card" style="background:#f0f8ff;border-left:4px solid #2196F3;margin-bottom:15px;">
+    <strong>Grade Stream:</strong> <span id="streamDisplay">Loading...</span>
   </div>
 
-  <div class="card">
-    <h4>Class Mean Trend (Across Assessments)</h4>
-    <canvas id="classTrendChart" height="120"></canvas>
+  <div id="notAllowed" class="card muted-center hidden">
+    <div class="small">Only class teachers may view class analysis.</div>
   </div>
 
-  <!-- Libraries (CDN) - Correct order for PDF export -->
-  <!-- html2canvas must come BEFORE jspdf when using doc.html() -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+  <div id="analysisWrap" class="card">
 
-  <!-- jsPDF (UMD build) -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <!-- FILTERS -->
+    <div class="filter-grid">
 
-  <!-- jsPDF AutoTable (after jsPDF) -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.28/jspdf.plugin.autotable.min.js"></script>
+      <div class="form-group">
+        <label for="gradeFilter">Grade</label>
+        <select id="gradeFilter" class="form-control"></select>
+      </div>
 
-  <!-- Chart.js -->
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+      <div class="form-group">
+        <label for="termFilter">Term</label>
+        <select id="termFilter" class="form-control"></select>
+      </div>
 
-  <!-- Your script -->
-  <script src="js/config.js"></script>
-  <script src="js/auth-service.js"></script>
-  <script src="js/announcements.js"></script>
-  <script src="js/analysis.js"></script>
-  <script src="js/ui.js"></script>
-  <script src="js/cbc-utils.js"></script>
+      <div class="form-group">
+        <label for="yearFilter">Year</label>
+        <select id="yearFilter" class="form-control"></select>
+      </div>
+
+      <div class="form-group" id="streamFilterGroup">
+        <label for="streamFilterSelect">Stream</label>
+        <select id="streamFilterSelect" class="form-control">
+          <!--<option value="all">All Learners (Whole Class)</option>-->
+          <option value="assigned">My Stream Only</option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label for="assessmentFilter">Assessment</label>
+        <select id="assessmentFilter" class="form-control"></select>
+      </div>
+
+      <div class="form-group">
+        <button id="generateReport" class="btn primary-btn">Generate Report</button>
+      </div>
+
+    </div>
+
+    <!-- STATS -->
+    <div class="stats-summary">
+      <div class="stat-card"><h4>Class Mean</h4><p id="classMean">-</p></div>
+      <div class="stat-card"><h4>Pass Rate (%)</h4><p id="passRate">-</p></div>
+      <div class="stat-card"><h4>Records</h4><p id="recordsCount">-</p></div>
+    </div>
+
+    <!-- TABS -->
+    <div class="analysis-tabs-container" id="analysisTabsContainer">
+
+      <div class="tab-buttons">
+        <button class="tab-btn active" data-tab="classRankingPane">Class Ranking</button>
+        <button class="tab-btn" data-tab="subjectAnalysisPane">Subject Analysis</button>
+        <button class="tab-btn" data-tab="trendChartPane">Trend Chart</button>
+        <button class="tab-btn" data-tab="missingExamsPane">Missing Exams</button>
+      </div>
+
+      <div class="tab-content-area">
+
+        <div class="tab-pane active" id="classRankingPane">
+          <div id="rankingTableWrap" class="table-responsive"></div>
+        </div>
+
+        <div class="tab-pane" id="subjectAnalysisPane">
+          <div id="subjectTableWrap" class="table-responsive"></div>
+        </div>
+
+        <div class="tab-pane" id="trendChartPane">
+          <canvas id="classTrendChart"></canvas>
+        </div>
+
+        <div class="tab-pane" id="missingExamsPane">
+          <div id="missingExamsTableWrap" class="table-responsive"></div>
+        </div>
+
+      </div>
+    </div>
+
+  </div>
+
+</div>
+
+<!-- LIBRARIES -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.28/jspdf.plugin.autotable.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<!-- YOUR SCRIPTS -->
+<script src="js/config.js"></script>
+<script src="js/auth-service.js"></script>
+<script src="js/Utility/announcements.js"></script>
+<script src="js/analysis.js"></script>
+<script src="js/Utility/spinner.js"></script>
+<script src="js/ui.js"></script>
+<script src="js/Utility/cbc-utils.js"></script>
+
 </body>
 </html>

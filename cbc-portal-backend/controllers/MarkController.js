@@ -18,7 +18,7 @@ const getGradeLevel = (grade) => parseInt(String(grade).replace(/\D/g, ""), 10);
 const isPrimaryGrade = (grade) => {
   if (!grade) return false;
   const normalized = String(grade).trim();
-  if (normalized === "PP1" || normalized === "PP2") return true;
+  if (normalized === "PG" || normalized === "PP1" || normalized === "PP2") return true;
   const match = normalized.match(/\d+/);
   if (match) {
     const num = parseInt(match[0]);
@@ -678,11 +678,15 @@ export const getMarksByGrade = async (req, res) => {
     const gradeStr = String(grade).trim();
     const numericPart = gradeStr.match(/\d+/)?.[0];
     const normalizedGrades = [gradeStr];
-    if (numericPart) {
-      normalizedGrades.push(numericPart);
-      normalizedGrades.push(`Grade ${numericPart}`);
-    }
 
+    // If it's an early childhood grade (PG, PP1, PP2), we only query for that exact string.
+    // Otherwise, we also include numeric and "Grade X" variants for robustness.
+    if (!gradeStr.toUpperCase().startsWith("PP") && gradeStr.toUpperCase() !== "PG") {
+      if (numericPart) {
+        normalizedGrades.push(numericPart);
+        normalizedGrades.push(`Grade ${numericPart}`);
+      }
+    }
     const { term, year, assessment, subject, page, limit, search } = req.query;
 
     // ---------------------------

@@ -644,7 +644,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
       console.log("📝 Academic Year:", new Date().getFullYear());
       
-      const res = await fetchWithAuth(`${API_BASE}/enrollments/class/${classLabel}?page=${page}&limit=${STUDENTS_PER_PAGE}`);
+      const res = await fetchWithAuth(`${API_BASE}/enrollments/class/${encodeURIComponent(classLabel)}?page=${page}&limit=${STUDENTS_PER_PAGE}`);
       
       console.log("📨 API Response Status:", res.status);
       
@@ -707,21 +707,34 @@ document.addEventListener("DOMContentLoaded", () => {
     const start = totalCount > 0 ? (currentStudentPage - 1) * STUDENTS_PER_PAGE + 1 : 0;
     const end = Math.min(start + currentBatchSize - 1, totalCount); // Corrected: Calculate end of current batch, capped by totalCount
 
-    const prevLabel = studentsPaginationLoadingButton === 'prev' ? '<span class="spinner"></span>Prev' : 'Prev';
-    const nextLabel = studentsPaginationLoadingButton === 'next' ? '<span class="spinner"></span>Next' : 'Next';
-    const isLoading = !!studentsPaginationLoadingButton;
-
+    // Render buttons without spinner initially
     paginationEl.innerHTML = `
       <div class="pagination-info">
         Showing ${start}-${end} of ${totalCount}
       </div>
       <div class="pagination-actions">
-        <button type="button" id="prevStudentsBtn" class="btn secondary-btn" ${currentStudentPage === 1 || isLoading ? "disabled" : ""}>${prevLabel}</button>
-        <button type="button" id="nextStudentsBtn" class="btn secondary-btn" ${currentStudentPage >= totalPages || isLoading ? "disabled" : ""}>${nextLabel}</button>
+        <button type="button" id="prevStudentsBtn" class="btn secondary-btn">Prev</button>
+        <button type="button" id="nextStudentsBtn" class="btn secondary-btn">Next</button>
       </div>
     `;
 
-    document.getElementById("prevStudentsBtn")?.addEventListener("click", () => {
+    const prevStudentsBtn = document.getElementById("prevStudentsBtn");
+    const nextStudentsBtn = document.getElementById("nextStudentsBtn");
+
+    // Apply spinner and disable state using window.spinner utility
+    if (studentsPaginationLoadingButton === 'prev') {
+      window.spinner?.show(prevStudentsBtn, 'Prev');
+      if (nextStudentsBtn) nextStudentsBtn.disabled = true; // Disable other button too
+    } else if (studentsPaginationLoadingButton === 'next') {
+      window.spinner?.show(nextStudentsBtn, 'Next');
+      if (prevStudentsBtn) prevStudentsBtn.disabled = true; // Disable other button too
+    } else {
+      // If not loading, ensure both are hidden and enabled based on page state
+      if (prevStudentsBtn) { window.spinner?.hide(prevStudentsBtn); prevStudentsBtn.disabled = currentStudentPage === 1; }
+      if (nextStudentsBtn) { window.spinner?.hide(nextStudentsBtn); nextStudentsBtn.disabled = currentStudentPage >= totalPages; }
+    }
+
+    prevStudentsBtn?.addEventListener("click", () => {
       if (currentStudentPage > 1) {
         studentsPaginationLoadingButton = 'prev';
         updateStudentsPaginationControls(currentBatch);
@@ -731,6 +744,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     document.getElementById("nextStudentsBtn")?.addEventListener("click", () => {
       studentsPaginationLoadingButton = 'next';
+      // Re-render controls to show spinner on the clicked button
       updateStudentsPaginationControls(currentBatch);
       loadStudentsWithPage(currentStudentPage + 1);
     });
@@ -1192,8 +1206,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
       if (currentTermLocked) { // Early exit if term is locked
         showToast("Cannot load students for a locked term.", "error");
-        loadStudentsBtn.disabled = false;
-        loadStudentsBtn.innerHTML = "📥 Load Learners";
+       
         return;
       }
 
@@ -1206,13 +1219,11 @@ document.addEventListener("DOMContentLoaded", () => {
 
       isSingleEditMode = false;
 
-      loadStudentsBtn.disabled = true;
-      loadStudentsBtn.innerHTML = '<span class="spinner"></span>Loading...';
+      window.spinner?.show(loadStudentsBtn, 'Loading...');
 
       await loadStudentsWithPage(1); // Load first page on manual click
       
-      loadStudentsBtn.disabled = false;
-      loadStudentsBtn.innerHTML = "📥 Load Learners";
+      window.spinner?.hide(loadStudentsBtn);
     });
   }
 
@@ -1237,7 +1248,7 @@ document.addEventListener("DOMContentLoaded", () => {
       showToast("❌ Failed to load Learners: " + err.message, "error");
     } finally {
       studentsPaginationLoadingButton = null;
-      updateStudentsPaginationControls(students);
+      updateStudentsPaginationControls(students); // Re-render to hide spinner
     }
   }
 
@@ -1359,7 +1370,7 @@ document.addEventListener("DOMContentLoaded", () => {
         return;
       }
 
-    submitAllMarksBtn.innerHTML = '<span class="spinner"></span>Submitting...';
+    window.spinner?.show(submitAllMarksBtn, 'Submitting...');
 
     try {
       let successCount = 0;
@@ -1431,8 +1442,7 @@ document.addEventListener("DOMContentLoaded", () => {
       console.error("Submit marks error:", err);
       showToast(err.message || "Error submitting marks", "error");
     } finally {
-      submitAllMarksBtn.disabled = false;
-      submitAllMarksBtn.innerHTML = originalBtnHTML;
+      window.spinner?.hide(submitAllMarksBtn);
     }
     });
   }
@@ -1859,9 +1869,12 @@ document.addEventListener("DOMContentLoaded", () => {
       const allocationOption = Array.from(subjectAllocationSelect.options).find(opt => {
         const classLabelForOption = opt.dataset.classLabel || '';
         const optSub = normalize(opt.dataset.subject);
-        const gradeNumberInLabel = parseInt(classLabelForOption.match(/\d+/)?.[0], 10);
         
-        if (gradeNumberInLabel !== markGradeNum) return false;
+        // 🆕 Fix: Use normalized grade comparison instead of parsing digits (which fails for PG/PP)
+        const optGradeNorm = window.cbcUtils.normalizeGrade(classLabelForOption);
+        const markGradeNorm = window.cbcUtils.normalizeGrade(mark.grade);
+
+        if (optGradeNorm !== markGradeNorm) return false;
 
         if (isSeniorSchool) {
           return optSub === markCourse || optSub === markSub;

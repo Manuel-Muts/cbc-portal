@@ -10,7 +10,7 @@ import SMSLog from '../models/SMSLog.js';
 // Create a new announcement (Super Admin / Admin only)
 export const createAnnouncement = async (req, res) => {
   try {
-    const { title, message, targetRole, targetPage, expiresAt, sendAsSms, targetGrade, targetStream } = req.body;
+    const { title, message, targetRole, targetPage, expiresAt, sendAsSms, targetGrade, targetStream } = req.body; // 🆕 Add expiresAt
 
     // 🆕 Safeguard: Prevent duplicate broadcast/announcement within 2 minutes
     const lockKey = cacheManager.generateKey(`announcement_lock:${req.user.id}`, { 
@@ -159,7 +159,7 @@ export const createAnnouncement = async (req, res) => {
       targetPage: targetPage || 'all',
       targetGrade: targetGrade || 'all',
       targetStream: targetStream || 'all',
-      expiresAt,
+      expiresAt: expiresAt || null, // 🆕 Save expiresAt
       createdBy: req.user.id,
       // Super Admin can post global announcements (schoolId: null) or to specific schools
       schoolId: (req.user.role === 'super_admin') ? (req.body.schoolId || null) : req.user.schoolId
@@ -239,6 +239,41 @@ export const getActiveAnnouncements = async (req, res) => {
     res.json(announcements);
   } catch (err) {
     res.status(500).json({ message: 'Error fetching announcements' });
+  }
+};
+
+// 🆕 Update an existing announcement
+export const updateAnnouncement = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { title, message, targetRole, targetPage, expiresAt, schoolId, targetGrade, targetStream } = req.body;
+
+    const announcement = await Announcement.findById(id);
+    if (!announcement) return res.status(404).json({ message: 'Announcement not found' });
+
+    // Security: Admins can only edit their own school's announcements
+    if (req.user.role === 'admin' && String(announcement.schoolId) !== String(req.user.schoolId)) {
+      return res.status(403).json({ message: 'Unauthorized to edit this announcement' });
+    }
+
+    // Update fields
+    if (title !== undefined) announcement.title = title;
+    if (message !== undefined) announcement.message = message;
+    if (targetRole !== undefined) announcement.targetRole = targetRole;
+    if (targetPage !== undefined) announcement.targetPage = targetPage;
+    if (expiresAt !== undefined) announcement.expiresAt = expiresAt;
+    if (targetGrade !== undefined) announcement.targetGrade = targetGrade;
+    if (targetStream !== undefined) announcement.targetStream = targetStream;
+    
+    // Only Super Admin can change the target school
+    if (req.user.role === 'super_admin' && schoolId !== undefined) {
+      announcement.schoolId = schoolId || null;
+    }
+
+    await announcement.save();
+    res.json({ message: 'Announcement updated successfully', announcement });
+  } catch (err) {
+    res.status(500).json({ message: 'Error updating announcement', error: err.message });
   }
 };
 

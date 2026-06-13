@@ -471,6 +471,10 @@ setCache(cacheKey, metrics);
               </select>
             </div>
           </div>
+          <div style="margin-top:15px;">
+            <label>Expires At (Optional)</label>
+            <input type="datetime-local" id="annExpiresAt" class="form-control">
+          </div>
 
           <div style="margin-top:20px;">
             <button id="saveAnnBtn" class="primary-btn">Broadcast Now</button>
@@ -483,6 +487,7 @@ setCache(cacheKey, metrics);
     const tableBody = document.getElementById("announcementsTable");
     const modal = document.getElementById("annModal");
     const schoolSelect = document.getElementById("annSchool");
+    let editingAnnId = null; // 🆕 Track editing state
 
     // 🆕 Fetch Africa's Talking Balance
     async function loadSmsProviderBalance() {
@@ -510,8 +515,18 @@ setCache(cacheKey, metrics);
     }
 
     document.getElementById("addAnnBtn").onclick = async () => {
+      editingAnnId = null; // Reset for new announcement
+      document.querySelector("#annModal h3").textContent = "Post New Announcement";
+      document.getElementById("saveAnnBtn").textContent = "Broadcast Now";
+      
+      // Clear fields
+      document.getElementById("annTitle").value = "";
+      document.getElementById("annMessage").value = "";
+      document.getElementById("annExpiresAt").value = "";
+      document.getElementById("annRole").value = "all";
+      document.getElementById("annPage").value = "all";
+
       modal.classList.remove("hidden");
-      // Populate school options when opening modal
       await populateAnnSchools();
     };
     document.getElementById("cancelAnnBtn").onclick = () => modal.classList.add("hidden");
@@ -540,15 +555,37 @@ setCache(cacheKey, metrics);
         message: document.getElementById("annMessage").value.trim(),
         targetRole: document.getElementById("annRole").value,
         targetPage: document.getElementById("annPage").value,
-        schoolId: document.getElementById("annSchool").value || null
+        schoolId: document.getElementById("annSchool").value || null,
+        expiresAt: document.getElementById("annExpiresAt").value || null // 🆕 Add expiresAt
       };
 
       if (!payload.title || !payload.message) return alert("Please fill all fields");
 
-      const res = await authFetch("/announcements", { method: "POST", body: JSON.stringify(payload) });
-      if (res && res.ok) {
-        modal.classList.add("hidden");
-        loadAnnouncements();
+
+      const saveBtn = document.getElementById("saveAnnBtn");
+      window.spinner?.show(saveBtn, editingAnnId ? "Updating..." : "Broadcasting...");
+
+     // 🆕 Determine if we are creating or updating
+      const url = editingAnnId ? `/announcements/${editingAnnId}` : "/announcements";
+      const method = editingAnnId ? "PUT" : "POST";
+       try {
+        const res = await authFetch(url, { method, body: JSON.stringify(payload) });
+        if (res && res.ok) {
+          const isEdit = !!editingAnnId;
+          window.showToast(isEdit ? "Announcement updated successfully!" : "Announcement posted successfully!", "success");
+          modal.classList.add("hidden");
+          loadAnnouncements();
+          
+          // Clear form fields after successful submission
+          if (!isEdit) {
+            document.getElementById("annTitle").value = "";
+            document.getElementById("annMessage").value = "";
+            document.getElementById("annExpiresAt").value = "";
+          }
+          editingAnnId = null;
+        }
+      } finally {
+        window.spinner?.hide(saveBtn);
       }
     };
 
@@ -558,20 +595,62 @@ setCache(cacheKey, metrics);
       if (!res) return;
       const announcements = await res.json();
 
-      tableBody.innerHTML = announcements.length ? "" : '<tr><td colspan="7" style="text-align:center">No announcements found</td></tr>';
+      tableBody.innerHTML = announcements.length ? "" : '<tr><td colspan="8" style="text-align:center">No announcements found</td></tr>'; // 🆕 Update colspan
       
       announcements.forEach(ann => {
         const row = document.createElement("tr");
+        const expiresDate = ann.expiresAt ? new Date(ann.expiresAt) : null;
+        const isExpired = expiresDate && expiresDate < new Date();
+        const statusText = isExpired ? '🔴 Expired' : (ann.isActive ? '✅ Active' : '⚪ Inactive');
+        const statusColor = isExpired ? '#ef4444' : (ann.isActive ? '#10b981' : '#94a3b8');
+
         row.innerHTML = `
           <td><strong>${ann.title}</strong></td>
           <td><span style="font-weight:600; color:#475569;">${ann.schoolId?.name || '🌎 Global (All Schools)'}</span></td>
           <td><span class="status-badge" style="background:#eef2ff; color:#3730a3; padding:2px 8px; border-radius:4px; font-size:0.7rem;">${ann.targetRole}</span></td>
           <td><code>${ann.targetPage}</code></td>
-          <td>${ann.isActive ? '✅ Active' : '⚪ Expired'}</td>
+          <td>${expiresDate ? expiresDate.toLocaleDateString() : 'Never'}</td> <!-- 🆕 New column for expiration date -->
+          <td><span style="color:${statusColor}; font-weight:600;">${statusText}</span></td> <!-- 🆕 Updated status display -->
           <td>${new Date(ann.createdAt).toLocaleDateString()}</td>
-          <td><button class="deleteAnnBtn danger-btn" data-id="${ann._id}" style="padding:4px 8px; font-size:0.7rem;">Remove</button></td>
+          <td style="white-space:nowrap;">
+            <button class="editAnnBtn btn secondary-btn" data-id="${ann._id}" style="padding:4px 8px; font-size:0.7rem;">Edit</button>
+            <button class="deleteAnnBtn danger-btn" data-id="${ann._id}" style="padding:4px 8px; font-size:0.7rem;">Remove</button>
+          </td>
         `;
         tableBody.appendChild(row);
+      });
+
+      // 🆕 Attach Edit Handlers
+      document.querySelectorAll(".editAnnBtn").forEach(btn => {
+        btn.onclick = async () => {
+          const annId = btn.dataset.id;
+          const ann = announcements.find(a => a._id === annId);
+          if (!ann) return;
+
+          editingAnnId = annId;
+          document.querySelector("#annModal h3").textContent = "Edit Announcement";
+          document.getElementById("saveAnnBtn").textContent = "Update Announcement";
+
+          // Fill form
+          document.getElementById("annTitle").value = ann.title || "";
+          document.getElementById("annMessage").value = ann.message || "";
+          document.getElementById("annRole").value = ann.targetRole || "all";
+          document.getElementById("annPage").value = ann.targetPage || "all";
+          
+          // Handle Date conversion for datetime-local input
+          if (ann.expiresAt) {
+            const d = new Date(ann.expiresAt);
+            const localISO = new Date(d.getTime() - (d.getTimezoneOffset() * 60000)).toISOString().slice(0, 16);
+            document.getElementById("annExpiresAt").value = localISO;
+          } else {
+            document.getElementById("annExpiresAt").value = "";
+          }
+
+          await populateAnnSchools();
+          document.getElementById("annSchool").value = ann.schoolId?._id || "";
+          
+          modal.classList.remove("hidden");
+        };
       });
 
       document.querySelectorAll(".deleteAnnBtn").forEach(btn => {
@@ -706,7 +785,7 @@ setCache(cacheKey, metrics);
 
       if (!name || !adminEmail || !address) return alert("Fill all fields");
 
-      window.spinner.show(saveBtn, "Creating...");
+      window.spinner?.show(saveBtn, "Creating...");
       try {
       const formData = new FormData();
       formData.append("name", name);
@@ -732,7 +811,7 @@ setCache(cacheKey, metrics);
         alert(err.msg || "Failed to create school");
       }
       } finally {
-        window.spinner.hide(saveBtn);
+        window.spinner?.hide(saveBtn);
       }
     });
 
@@ -839,9 +918,9 @@ if (nextSchoolsBtn) {
             const address = document.getElementById("editSchoolAddress").value.trim();
             const logoFile = document.getElementById("editSchoolLogo").files[0];
 
-            window.spinner.show(updateBtn, "Updating...");
+            if (!name || !adminEmail || !address) return alert("Fill all fields");
 
-            if (!name || !adminEmail || !address ) return alert("Fill all fields");
+            window.spinner?.show(updateBtn, "Updating...");
 
             const formData = new FormData();
             formData.append("name", name);
@@ -861,7 +940,7 @@ if (nextSchoolsBtn) {
               document.getElementById("editSchoolModal").classList.add("hidden");
               loadSchools(currentSchoolPage);
             } finally {
-              window.spinner.hide(updateBtn);
+              window.spinner?.hide(updateBtn);
             }
           };
         });

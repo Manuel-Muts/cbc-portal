@@ -55,12 +55,12 @@
   // ---------------------------
     const SCHOOL_TYPES = {
         full: {
-            label: "Full School (Grades PP1-12)",
-            gradeOptions: ["PP1", "PP2", "1","2","3","4","5","6","7","8","9","10","11","12"]
+            label: "Full School (Grades PG-12)",
+            gradeOptions: ["PG", "PP1", "PP2", "1","2","3","4","5","6","7","8","9","10","11","12"]
         },
         primary_junior: {
-            label: "Primary + Junior (Grades PP1-9)",
-            gradeOptions: ["PP1", "PP2", "1","2","3","4","5","6","7","8","9"]
+            label: "Primary + Junior (Grades PG-9)",
+            gradeOptions: ["PG", "PP1", "PP2", "1","2","3","4","5","6","7","8","9"]
         },
         senior: {
             label: "Senior School (Grades 10-12)",
@@ -87,7 +87,7 @@
     grades.forEach(g => {
       const opt = document.createElement("option");
       opt.value = g; // Value can be "PP1" or "1"
-      opt.textContent = String(g).toUpperCase().startsWith("PP") ? g : `Grade ${g}`; // Display "PP1" or "Grade 1"
+      opt.textContent = (String(g).toUpperCase().startsWith("PP") || String(g).toUpperCase() === "PG") ? g : `Grade ${g}`; // Display "PG", "PP1" or "Grade 1"
       select.appendChild(opt);
     });
   }
@@ -780,8 +780,8 @@ if (usersNextPageBtn) {
           let gradeDisplay = "N/A";
           if (u.grade) {
             const gStr = String(u.grade).trim();
-            // FIX: If it's a PP grade, display it as is, otherwise prepend "Grade"
-            if (gStr.toUpperCase().startsWith("PP")) {
+            // FIX: If it's a PP or PG grade, display it as is, otherwise prepend "Grade"
+            if (gStr.toUpperCase().startsWith("PP") || gStr.toUpperCase() === "PG") {
               gradeDisplay = gStr;
             } else {
               gradeDisplay = gStr.toLowerCase().startsWith("grade") ? gStr : `Grade ${gStr}`;
@@ -831,8 +831,8 @@ if (usersNextPageBtn) {
     studentGradeFilter.innerHTML = '<option value="all">All Grades</option>';
     grades.forEach(g => {
       const opt = document.createElement("option");
-      opt.value = String(g).toUpperCase().startsWith("PP") ? g : `Grade ${g}`; // Value can be "PP1" or "Grade 1"
-      opt.textContent = String(g).toUpperCase().startsWith("PP") ? g : `Grade ${g}`; // Display "PP1" or "Grade 1"
+      opt.value = (String(g).toUpperCase().startsWith("PP") || String(g).toUpperCase() === "PG") ? g : `Grade ${g}`; // Value can be "PG", "PP1" or "Grade 1"
+      opt.textContent = (String(g).toUpperCase().startsWith("PP") || String(g).toUpperCase() === "PG") ? g : `Grade ${g}`; // Display "PG", "PP1" or "Grade 1"
       studentGradeFilter.appendChild(opt);
     });
     studentGradeFilter.addEventListener("change", () => {
@@ -913,7 +913,7 @@ if (usersNextPageBtn) {
 
           if (rawGradeValue) {
             const gradeString = String(rawGradeValue).trim();
-            if (gradeString.toUpperCase().startsWith("PP")) {
+            if (gradeString.toUpperCase().startsWith("PP") || gradeString.toUpperCase() === "PG") {
               finalGradeOutput = streamValue ? `${gradeString.toUpperCase()} ${streamValue}` : gradeString.toUpperCase();
             } else {
               const gradeNumberMatch = gradeString.match(/\d+/); // Extract numeric part
@@ -965,7 +965,7 @@ if (usersNextPageBtn) {
     csvGradeFilter.innerHTML = '<option value="all">All Grades</option>';
     grades.forEach(g => {
       const opt = document.createElement("option");
-      const isPP = String(g).toUpperCase().startsWith("PP");
+      const isPP = String(g).toUpperCase().startsWith("PP") || String(g).toUpperCase() === "PG";
       opt.value = isPP ? g : `Grade ${g}`;
       opt.textContent = isPP ? g : `Grade ${g}`;
       csvGradeFilter.appendChild(opt);
@@ -1044,7 +1044,7 @@ if (usersNextPageBtn) {
 
           if (rawGradeValue) {
             const gradeString = String(rawGradeValue).trim();
-            if (gradeString.toUpperCase().startsWith("PP")) {
+            if (gradeString.toUpperCase().startsWith("PP") || gradeString.toUpperCase() === "PG") {
               finalGradeOutput = streamValue ? `${gradeString.toUpperCase()} ${streamValue}` : gradeString.toUpperCase();
             } else {
               const gradeNumberMatch = gradeString.match(/\d+/); // Extract numeric part

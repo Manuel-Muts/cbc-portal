@@ -51,11 +51,11 @@ window.spinner = {
   const style = document.createElement('style');
   style.id = 'spinner-utility-styles';
   style.textContent = `
-    .spinner-icon {
+    .spinner-icon, .spinner {
       width: 14px;
       height: 14px;
-      border: 2px solid rgba(255, 255, 255, 0.3);
-      border-top-color: #ee7716;
+      border: 2px solid rgba(0, 0, 0, 0.1) !important;
+      border-top-color: #ee7716 !important;
       border-radius: 50%;
       animation: spinner-spin 0.8s linear infinite;
       display: inline-block;

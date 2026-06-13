@@ -3,6 +3,7 @@ import {
   createAnnouncement, 
   getAllAnnouncements, 
   getActiveAnnouncements, 
+  updateAnnouncement,
   deleteAnnouncement,
   getSMSLogsSummary,
    retryFailedSMS
@@ -44,6 +45,7 @@ router.get('/all', verifyToken, isSuperAdmin, getAllAnnouncements);
 
 // Creation and deletion restricted to Admin and Super Admin
 router.post('/', verifyToken, isAdmin, createAnnouncement);
+router.put('/:id', verifyToken, isAdmin, updateAnnouncement);
 router.delete('/:id', verifyToken, isAdmin, deleteAnnouncement);
 
 router.get('/sms-summary', verifyToken, isAdminOrDean, getSMSLogsSummary);
