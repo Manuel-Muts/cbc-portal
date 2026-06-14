@@ -1321,8 +1321,8 @@
     userProfile = await authService.getUserProfile(["accounts", "admin"]);
     if (!userProfile) return;
     authService.initLogout();
-    
-    await getSchoolInfo();
+    // 🚀 Optimization: Explicitly request only necessary fields for UI identity and configuration.
+    await getSchoolInfo({ fields: 'name,schoolType' });
     populateYearFilters();
     populateGradeFilters();
     setupSidebarNavigation();

@@ -115,7 +115,8 @@
       }
     }
     try {
-      const schoolData = await secureFetch(`${API_BASE}/my-school`);
+      // 🚀 Optimization: Fetch only name and schoolType to avoid loading heavy logo/address data.
+      const schoolData = await secureFetch(`${API_BASE}/my-school?fields=name,schoolType`);
       if (!(schoolInfoCache instanceof Map)) schoolInfoCache = new Map();
       schoolInfoCache.set(cacheKey, { timestamp: Date.now(), data: schoolData });
       return schoolData;
@@ -704,7 +705,8 @@ const displayValue = (String(g).toUpperCase().startsWith("PP") || String(g).toUp
     if (!jsPDF) return showToast("PDF library not loaded.", "error");
     const doc = new jsPDF();
 
-    const school = await getSchoolInfo();
+    // 🚀 Optimization: Only the school name is needed for the receipt header.
+    const school = await getSchoolInfo({ fields: 'name' });
     const schoolName = (school.name || "SCHOOL NAME").toUpperCase();
 
     doc.setFontSize(16);

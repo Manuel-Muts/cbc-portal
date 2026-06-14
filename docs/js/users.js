@@ -1192,7 +1192,8 @@ if (usersNextPageBtn) {
     authService.initLogout();
 
     // Fetch school info to determine grade options for learner registration
-    schoolInfo = await secureFetch(`${API_BASE}/my-school`);
+    // 🚀 Optimization: Request only schoolType to exclude heavy/unneeded data like logo or address.
+    schoolInfo = await secureFetch(`${API_BASE}/my-school?fields=schoolType`);
     if (schoolInfo) {
       populateRegistrationGrades();
     }

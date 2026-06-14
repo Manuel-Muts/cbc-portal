@@ -72,13 +72,13 @@
   const classAllocTable = document.getElementById("classAllocTable");
   const fromAcademicYearInput = document.getElementById("fromAcademicYear");
   const toAcademicYearInput = document.getElementById("toAcademicYear");
-  const previewPromotionBtn = document.getElementById("previewPromotionBtn");
   const archiveMarksBtn = document.getElementById("archiveMarksBtn");
   const confirmPromotionBtn = document.getElementById("confirmPromotionBtn");
   const promotionPreviewBody = document.querySelector("#promotionPreviewTable tbody");
   const studentSearchInput = document.getElementById("studentSearchInput");
   const studentSearchBtn = document.getElementById("studentSearchBtn");
   const promotionSearchInput = document.getElementById("promotionSearchInput"); // 🆕 New search input for promotion
+  const promotionGradeSelect = document.getElementById("promotionGradeSelect"); // 🆕 New grade filter for promotion
   const studentSearchBody = document.getElementById("studentSearchBody");
 
   // 🆕 Bulk Delete Students DOM elements
@@ -91,8 +91,13 @@
   const bulkDeleteYearSelect = document.getElementById("bulkDeleteYearSelect");
 
 
+  let promoData = []; // 🆕 Cache for the current fetched batch
+  const promoOverrides = new Map(); // 🆕 Persist manual changes (Promote -> Repeat)
+  let lastPromoContext = ""; // 🆕 Track year/grade context to know when to clear cache
+
   let promoPage = 1;
-  const promoLimit = 20;
+  // 🚀 Balanced Optimization: Increased to 100 to reduce manual clicks while remaining safe for the server.
+  const promoLimit = 100;
   let promoTotalPages = 1;
   let promoLoading = false;
 
@@ -154,7 +159,9 @@ async function loadSchoolInfo(forceReload = false) {
 
   try {
     const token = authService.getToken();
-    const res = await fetch(`${API_BASE}/my-school`, {
+    // 🚀 Optimization: Explicitly request only necessary fields, excluding heavy logo and unneeded address.
+    const fields = "name,status,allowSignatureUpload,schoolType,smsCredits,headteacherSignatureUrl";
+    const res = await fetch(`${API_BASE}/my-school?fields=${fields}`, {
       headers: { Authorization: `Bearer ${token}` }
     });
 
@@ -180,26 +187,9 @@ async function loadSchoolInfo(forceReload = false) {
 function renderSchoolInfo() {
   if (!schoolInfo) return;
 
-  // Detect logo format and create appropriate URL
-  let logoURL = "";
-  if (schoolInfo.logo) {
-    // Check if logo is a file path (legacy) or base64 (new)
-    if (schoolInfo.logo.startsWith('/') || schoolInfo.logo.includes('uploads/')) {
-      // Legacy file path - use with backend URL
-      logoURL = `${BACKEND_URL}${schoolInfo.logo}?t=${Date.now()}`;
-    } else if (schoolInfo.logo.startsWith('http')) {
-      // Absolute URL
-      logoURL = schoolInfo.logo;
-    } else {
-      // New base64 format - convert to data URL
-      logoURL = `data:${schoolInfo.logoMimeType || 'image/png'};base64,${schoolInfo.logo}`;
-    }
-  }
-
-  // Replace "Admin Portal" branding with School Name and Logo at the top of the sidebar
+  // Replace "Admin Portal" branding with School Name at the top of the sidebar
   if (sidebarBrandLogo) {
     sidebarBrandLogo.innerHTML = `
-      ${logoURL ? `<img src="${logoURL}" alt="Logo" crossorigin="anonymous" style="max-height: 50px; margin-bottom: 8px; display: block; margin-left: auto; margin-right: auto; border-radius: 4px;">` : ""}
       <div class="school-name" style="font-size: 1.25rem; font-weight: 800; color: #fff; text-align: center; line-height: 1.2; text-transform: uppercase;">${schoolInfo.name || "School Name"}</div>
     `;
   }
@@ -209,23 +199,12 @@ function renderSchoolInfo() {
     schoolInfoDisplay.innerHTML = '';
   }
 
-  // Render logo in header
-  if (headerSchoolLogo && logoURL) {
-    headerSchoolLogo.style.display = 'none'; // Hide the logo in the header as requested
-  }
-
   renderAdminSignature();
   applySchoolTypeToGradeSelectors();
 
   // 🆕 Initialize promotion search input
   if (promotionSearchInput) {
     promotionSearchInput.placeholder = "Search by name or admission...";
-  }
-
-  // For PDF export (ensure window.schoolLogoElem is defined in admin.html if needed)
-  const pdfSchoolLogo = document.getElementById("pdfSchoolLogo"); // Assuming an element for PDF logo
-  if (pdfSchoolLogo && logoURL) {
-    pdfSchoolLogo.src = logoURL;
   }
 
   // 🆕 Update SMS Balance display in announcement section
@@ -586,7 +565,8 @@ function attachAdminSignatureLogic() {
   const normalizeGrade = (g) => {
     if (!g) return "";
     const str = String(g).trim();
-    if (str.toUpperCase().startsWith("PP") || str.toUpperCase() === "PG") return str.toUpperCase();
+    let checkStr = str.toUpperCase();
+    if (checkStr.startsWith("PP") || checkStr === "PG" || checkStr.includes("PLAYGROUP")) return checkStr.includes("PLAYGROUP") ? "PG" : checkStr;
     const match = str.match(/\d+/);
     return match ? `Grade ${match[0]}` : g;
   };
@@ -632,6 +612,40 @@ function attachAdminSignatureLogic() {
     });
   };
 
+  const populatePromotionGradeOptions = () => {
+    if (!promotionGradeSelect) return;
+    const schoolType = getSchoolTypeKey();
+    const options = SCHOOL_TYPES[schoolType].gradeOptions;
+
+    promotionGradeSelect.innerHTML = '<option value="all">-- All Grades --</option>';
+    options.forEach(grade => {
+      const opt = document.createElement('option');
+      const val = (String(grade).toUpperCase().startsWith("PP") || String(grade).toUpperCase() === "PG") ? grade : `Grade ${grade}`;
+      opt.value = val;
+      opt.textContent = val;
+      promotionGradeSelect.appendChild(opt);
+    });
+  };
+
+  const populatePromotionYearOptions = () => {
+    if (!fromAcademicYearInput || !toAcademicYearInput) return;
+    const currentYear = new Date().getFullYear();
+    
+    [fromAcademicYearInput, toAcademicYearInput].forEach((select, idx) => {
+      select.innerHTML = '';
+      // Range: from 2 years back to 10 years forward
+      for (let y = currentYear - 2; y <= currentYear + 100; y++) {
+        const opt = document.createElement('option');
+        opt.value = y;
+        opt.textContent = y;
+        // idx 0 = 'from', idx 1 = 'to'
+        if (idx === 0 && y === currentYear) opt.selected = true;
+        if (idx === 1 && y === currentYear + 1) opt.selected = true;
+        select.appendChild(opt);
+      }
+    });
+  };
+
   const resetGradeSelection = () => {
     if (gradesSelect) gradesSelect.innerHTML = '';
     if (gradeRangeSelect) gradeRangeSelect.value = '';
@@ -641,7 +655,9 @@ function attachAdminSignatureLogic() {
     populateGradeRangeOptions();
     populateClassGradeOptions();
     resetGradeSelection();
+    populatePromotionGradeOptions(); // 🆕 Populate for promotion section
     populateBulkDeleteGradeOptions(); // 🆕 Populate for bulk delete modal
+    populatePromotionYearOptions(); // 🆕 Populate year dropdowns for promotion
   };
 
   const getNextGrade = (currentGrade) => {
@@ -676,22 +692,26 @@ function renderPromotionPreview(data = []) {
     const status = s.status || "N/A";
     const disabled = status !== "active";
 
+    // 🆕 Check if there is a manual override for this student
+    const savedAction = promoOverrides.get(s.studentId) || "promote";
+
     const actionSelect = disabled
       ? `<select disabled>
           
            <option>${status.toUpperCase()}</option>
          </select>`
       : `<select class="promotion-action">
-           <option value="promote" selected>Promote</option>
-           <option value="repeat">Repeat</option>
-           <option value="transfer">Transfer</option>
+           <option value="promote" ${savedAction === 'promote' ? 'selected' : ''}>Promote</option>
+           <option value="repeat" ${savedAction === 'repeat' ? 'selected' : ''}>Repeat</option>
+           <option value="transfer" ${savedAction === 'transfer' ? 'selected' : ''}>Transfer</option>
          </select>`;
 
     tr.innerHTML = `
       <td>${s.name}</td>
       <td>${s.admission}</td>
       <td>${s.currentGrade}</td>
-      <td>${s.nextGrade || "Completed"}</td>
+      <td style="color: ${s.nextGrade ? 'inherit' : '#e53e3e'}; font-weight: ${s.nextGrade ? 'normal' : 'bold'};">
+        ${s.nextGrade || "Completed"}</td>
       <td>${actionSelect}</td>
     `;
 
@@ -731,11 +751,6 @@ function setupPromotionProgressBar() {
   promotionProgressPercent = document.getElementById("promotionProgressPercent");
 }
 
-previewPromotionBtn.addEventListener("click", () => {
-    if (promoLoading) return;
-    loadPromotionPreview(1);
-  });
-
    // 🆕 Debounce for promotion search input
   let promotionSearchDebounce;
   promotionSearchInput?.addEventListener("input", () => {
@@ -745,27 +760,79 @@ previewPromotionBtn.addEventListener("click", () => {
     }, 300);
   });
 
+  // 🆕 Reload preview when grade filter changes
+  promotionGradeSelect?.addEventListener("change", () => {
+    loadPromotionPreview(1);
+  });
+
+  // 🆕 Reload preview when years change
+  fromAcademicYearInput?.addEventListener("change", () => {
+    loadPromotionPreview(1);
+  });
+
+  toAcademicYearInput?.addEventListener("change", () => loadPromotionPreview(1));
+
   async function loadPromotionPreview(page = 1) {
   const year = fromAcademicYearInput.value.trim();
-  const search = promotionSearchInput?.value.trim() || ''; // 🆕 Get search term
+  const search = promotionSearchInput?.value.trim().toLowerCase() || ''; // 🆕 Normalize for local search
+  const grade = promotionGradeSelect?.value || 'all'; // 🆕 Get selected grade
+
+  // 🆕 Reset cache/overrides if the Grade or Year context changes
+  const currentContext = `${year}_${grade}`;
+  if (lastPromoContext !== currentContext) {
+    promoData = [];
+    promoOverrides.clear();
+    lastPromoContext = currentContext;
+  }
+
+  // 🆕 1. Local Filtering: filter already fetched learners for speed
+  if (promoData.length > 0 && search) {
+    const filtered = promoData.filter(s => 
+      (s.name || "").toLowerCase().includes(search) || 
+      (s.admission || "").toLowerCase().includes(search)
+    );
+    renderPromotionPreview(filtered);
+    const controls = document.getElementById("promoPaginationControls");
+    if (controls) controls.style.display = "none"; // Hide pagination while filtering
+    return;
+  }
+
+  // 🆕 2. Restore from Cache: show the full batch when search is cleared
+  if (promoData.length > 0 && !search && page === promoPage) {
+    renderPromotionPreview(promoData);
+    const controls = document.getElementById("promoPaginationControls");
+    if (controls) controls.style.display = "flex";
+    return;
+  }
+
   if (!year) {
     showToast("Enter academic year", "error");
     return;
   }
 
-  // Show loading in button and table
+  // Only fetch from server if cache is empty or pagination changed
   promoLoading = true;
-  const originalHTML = previewPromotionBtn.innerHTML;
-  previewPromotionBtn.disabled = true;
-  previewPromotionBtn.innerHTML = '<span class="spinner"></span>Loading...';
-  
   if (promotionPreviewBody) {
     promotionPreviewBody.innerHTML = '<tr><td colspan="5" style="text-align:center"><span class="spinner"></span> Loading...</td></tr>';
   }
 
+  // 🆕 UI UX Improvement: Add "Set All to Promote" helper to the header to reduce manual clicking.
+  const actionHeader = document.querySelector("#promotionPreviewTable thead th:last-child");
+  if (actionHeader && !document.getElementById("promoteAllVisibleBtn")) {
+    const btn = document.createElement("button");
+    btn.id = "promoteAllVisibleBtn";
+    btn.innerHTML = "Set All to Promote";
+    btn.className = "btn secondary-btn";
+    btn.style.cssText = "display: block; margin-top: 5px; font-size: 0.6rem; padding: 2px 4px; background: #ebf8ff; color: #2b6cb0;";
+    btn.onclick = () => {
+      document.querySelectorAll(".promotion-action:not(:disabled)").forEach(sel => sel.value = "promote");
+    };
+    actionHeader.appendChild(btn);
+  }
+
   try {
     const res = await secureFetch(
-      `${API_BASE}/promotions/preview?academicYear=${year}&page=${page}&limit=${promoLimit}&search=${encodeURIComponent(search)}` // 🆕 Pass search term
+      `${API_BASE}/promotions/preview?academicYear=${year}&page=${page}&limit=${promoLimit}&search=${encodeURIComponent(search)}&grade=${encodeURIComponent(grade)}` // 🆕 Pass search and grade
     );
 
     if (res) {
@@ -776,13 +843,12 @@ previewPromotionBtn.addEventListener("click", () => {
       // Exhaustive check for the data array key to ensure learners appear in the table
       const previewData = res.preview || res.results || res.students || res.users || res.learners || res.data || res.docs || (Array.isArray(res) ? res : []);
       
+      promoData = previewData; // 🆕 Cache this batch
       renderPromotionPreview(previewData);
       renderPromotionPagination();
     }
   } finally {
     promoLoading = false;
-    previewPromotionBtn.disabled = false;
-    previewPromotionBtn.innerHTML = originalHTML;
   }
 }
 
@@ -806,11 +872,19 @@ function renderPromotionPagination() {
   const prevBtn = document.getElementById("promoPrevBtn");
   const nextBtn = document.getElementById("promoNextBtn");
 
-  if (prevBtn) prevBtn.onclick = () => {
-    if (!promoLoading && promoPage > 1) loadPromotionPreview(promoPage - 1);
+    if (prevBtn) prevBtn.onclick = async () => {
+    if (!promoLoading && promoPage > 1) {
+      window.spinner?.show(prevBtn, "Prev");
+      await loadPromotionPreview(promoPage - 1);
+      window.spinner?.hide(prevBtn);
+    }
   };
-  if (nextBtn) nextBtn.onclick = () => {
-    if (!promoLoading && promoPage < promoTotalPages) loadPromotionPreview(promoPage + 1);
+  if (nextBtn) nextBtn.onclick = async () => {
+    if (!promoLoading && promoPage < promoTotalPages) {
+      window.spinner?.show(nextBtn, "Next");
+      await loadPromotionPreview(promoPage + 1);
+      window.spinner?.hide(nextBtn);
+    }
   };
 }
 
@@ -818,15 +892,14 @@ confirmPromotionBtn.addEventListener("click", async () => {
   const fromYear = Number(fromAcademicYearInput.value);
   const toYear = Number(toAcademicYearInput.value);
 
+  // 🆕 Use Cached Data + Overrides to build decisions
+  // This ensures filtered-out learners are still promoted correctly
   const decisions = [];
-
-  document.querySelectorAll("#promotionPreviewTable tbody tr").forEach(tr => {
-    const select = tr.querySelector(".promotion-action");
-    if (!select || select.disabled) return;
-
+  promoData.forEach(s => {
+    if (s.status !== 'active') return;
     decisions.push({
-      studentId: tr.dataset.studentId,
-      action: select.value
+      studentId: s.studentId,
+      action: promoOverrides.get(s.studentId) || "promote"
     });
   });
 
@@ -866,6 +939,10 @@ confirmPromotionBtn.addEventListener("click", async () => {
     });
 
     if (res) { // Success path
+      // 🆕 Success! Clear promotion state
+      promoData = [];
+      promoOverrides.clear();
+
       if (promotionProgressBarContainer) {
         promotionProgressBar.style.width = "100%";
         promotionProgressText.textContent = "Batch complete!";
@@ -1197,8 +1274,20 @@ confirmPromotionBtn.addEventListener("click", async () => {
       select.parentNode.insertBefore(wrapper, select.nextSibling);
       wrapper.appendChild(prev); wrapper.appendChild(next); wrapper.appendChild(info);
 
-      prev.onclick = () => { if (teacherListPage > 1) loadTeacherOptions(teacherListPage - 1); };
-      next.onclick = () => { if (teacherListPage < teacherListTotalPages) loadTeacherOptions(teacherListPage + 1); };
+      prev.onclick = async () => { 
+        if (teacherListPage > 1) {
+          window.spinner?.show(prev, "Prev");
+          await loadTeacherOptions(teacherListPage - 1);
+          window.spinner?.hide(prev);
+        } 
+      };
+      next.onclick = async () => { 
+        if (teacherListPage < teacherListTotalPages) {
+          window.spinner?.show(next, "Next");
+          await loadTeacherOptions(teacherListPage + 1);
+          window.spinner?.hide(next);
+        } 
+      };
     });
   }
 
@@ -1367,14 +1456,22 @@ confirmPromotionBtn.addEventListener("click", async () => {
   }
 
   if (classAllocPrevBtn) {
-    classAllocPrevBtn.addEventListener("click", () => {
-      if (classAllocPage > 1) loadClassAllocations(classAllocPage - 1);
+    classAllocPrevBtn.addEventListener("click", async () => {
+      if (classAllocPage > 1) {
+        window.spinner?.show(classAllocPrevBtn, "Previous");
+        await loadClassAllocations(classAllocPage - 1);
+        window.spinner?.hide(classAllocPrevBtn);
+      }
     });
   }
 
   if (classAllocNextBtn) {
-    classAllocNextBtn.addEventListener("click", () => {
-      if (classAllocPage < classAllocTotalPages) loadClassAllocations(classAllocPage + 1);
+    classAllocNextBtn.addEventListener("click", async () => {
+      if (classAllocPage < classAllocTotalPages) {
+        window.spinner?.show(classAllocNextBtn, "Next");
+        await loadClassAllocations(classAllocPage + 1);
+        window.spinner?.hide(classAllocNextBtn);
+      }
     });
   }
 
@@ -1709,11 +1806,24 @@ async function openHistoryModal(studentId) {
         // 🆕 Robust check for both potential naming conventions
         if (targetId === "subjectAllocSection" || targetId === "subjectAllocations") {
           setupSubjectAllocSubTabs();
+          // 🆕 Autofocus teacher search input for Subject Allocation
+          const searchInput = teacherSelect?.previousElementSibling;
+          if (searchInput && searchInput.tagName === 'INPUT') {
+            setTimeout(() => searchInput.focus(), 100);
+          }
         } else if (targetId === "signatureUploadSection") {
           renderAdminSignature(); // Render/re-render signature UI when its tab is active
         } else if (targetId === "termLockManagementSection") {
           populateTermLockYearOptions();
           loadTermLockStatus(); // Load status for default year/term
+        } else if (targetId === "classAllocSection") {
+          // 🆕 Autofocus teacher search input for Class Allocation
+          const searchInput = classTeacherSelect?.previousElementSibling;
+          if (searchInput && searchInput.tagName === 'INPUT') {
+            setTimeout(() => searchInput.focus(), 100);
+          }
+       // } else if (targetId === "promotionSection") {
+          //loadPromotionPreview(1); // 🆕 Automatically load preview when tab is selected
         } else if (targetId === "announcementSection") {
           fetchSmsHistorySummary(); // 🆕 Refresh SMS stats for Admin
         }
@@ -2087,6 +2197,14 @@ studentSearchBody.addEventListener("click", async (e) => {
   }
 });
 
+// 🆕 Event delegation to capture manual action changes
+promotionPreviewBody?.addEventListener("change", (e) => {
+  if (e.target.classList.contains("promotion-action")) {
+    const studentId = e.target.closest("tr").dataset.studentId;
+    promoOverrides.set(studentId, e.target.value);
+  }
+});
+
   // ---------------------------
   // BULK DELETE STUDENTS LOGIC (🆕)
   // ---------------------------
@@ -2135,7 +2253,7 @@ studentSearchBody.addEventListener("click", async (e) => {
     if (!bulkDeleteYearSelect) return;
     const currentYear = new Date().getFullYear();
     bulkDeleteYearSelect.innerHTML = '';
-    for (let y = currentYear - 5; y <= currentYear + 5; y++) { // Range of 10 years
+    for (let y = currentYear - 1; y <= currentYear + 100; y++) { // Range of 10 years
       const opt = document.createElement('option');
       opt.value = y;
       opt.textContent = y;
@@ -2366,14 +2484,22 @@ studentSearchBody.addEventListener("click", async (e) => {
   }
 
   if (subjectAllocPrevBtn) {
-    subjectAllocPrevBtn.addEventListener("click", () => {
-      if (subjectAllocPage > 1) loadSubjectAllocations(subjectAllocPage - 1);
+    subjectAllocPrevBtn.addEventListener("click", async () => {
+      if (subjectAllocPage > 1) {
+        window.spinner?.show(subjectAllocPrevBtn, "Previous");
+        await loadSubjectAllocations(subjectAllocPage - 1);
+        window.spinner?.hide(subjectAllocPrevBtn);
+      }
     });
   }
 
   if (subjectAllocNextBtn) {
-    subjectAllocNextBtn.addEventListener("click", () => {
-      if (subjectAllocPage < subjectAllocTotalPages) loadSubjectAllocations(subjectAllocPage + 1);
+    subjectAllocNextBtn.addEventListener("click", async () => {
+      if (subjectAllocPage < subjectAllocTotalPages) {
+        window.spinner?.show(subjectAllocNextBtn, "Next");
+        await loadSubjectAllocations(subjectAllocPage + 1);
+        window.spinner?.hide(subjectAllocNextBtn);
+      }
     });
   }
 
@@ -2525,13 +2651,6 @@ function exportTableToPDF(tableId, title) {
     doc.setFontSize(14);
     doc.text(school.name || "CBC School", centerX, yPosition, { align: "center" });
     yPosition += 5;
-
-    if (school.address) {
-      doc.setFont("helvetica", "normal");
-      doc.setFontSize(10);
-      doc.text(school.address, centerX, yPosition, { align: "center" });
-      yPosition += 5;
-    }
 
     // Add title
     if (title && title.trim()) {

@@ -466,43 +466,7 @@ document.addEventListener("DOMContentLoaded", () => {
     } else {
       console.warn("⚠️ No subjectAllocations in response");
     }
-    renderAllocations(data);
   }
-
-  // ---------------------------
-  // RENDER ALLOCATIONS (🆕)
-  // ---------------------------
-  function renderAllocations(data) {
-    const container = document.getElementById("allocationsContainer");
-    if (!container) return;
-
-    // Use a sub-container for allocations info to avoid wiping siblings like signature UI
-    let infoWrapper = document.getElementById("allocationsInfoDisplay");
-    if (!infoWrapper) {
-      infoWrapper = document.createElement("div");
-      infoWrapper.id = "allocationsInfoDisplay";
-      infoWrapper.className = "allocation-card";
-      container.prepend(infoWrapper);
-    }
-
-    let html = '<div style="height: 100%;">';
-
-    // Class Teacher Assignment
-    if (data.classTeacherAssignment) {
-      html += `
-        <h4>🏫 Class Teacher Allocation:</h4>
-        <div style="padding: 10px; background: #e3f2fd; border-left: 4px solid #2196F3; border-radius: 4px;">
-          <strong>${data.classTeacherAssignment.classLabel}</strong>
-        </div>
-      `;
-    } else {
-      html += '<p><strong>🏫 Class Teacher Allocation:</strong> None</p>';
-    }
-
-    html += '</div>';
-    infoWrapper.innerHTML = html;
-  }
-
 
   // ---------------------------
   // ASSESSMENT SELECT POPULATE

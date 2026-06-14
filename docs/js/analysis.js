@@ -23,6 +23,8 @@ document.addEventListener("DOMContentLoaded", async () => {
   const classMeanEl = document.getElementById("classMean");
   const passRateEl = document.getElementById("passRate");
   const recordsCountEl = document.getElementById("recordsCount");
+  const statsSummaryGrid = document.querySelector(".stats-grid"); // Assuming this exists from dashboard layout
+  const reportsUI = document.getElementById("reportsGenerationUI");
 
   // 🆕 New DOM elements for tabs
   const analysisTabsContainer = document.getElementById("analysisTabsContainer");
@@ -35,71 +37,6 @@ document.addEventListener("DOMContentLoaded", async () => {
   const subjectAnalysisPane = document.getElementById("subjectAnalysisPane");
   const trendChartPane = document.getElementById("trendChartPane");
 
-  // 🆕 Inject CSS for horizontal filters and improved styling
-  const filterStyle = document.createElement("style");
-  filterStyle.textContent = `
-    .filters-section {
-      background: #fff;
-      padding: 20px;
-      border-radius: 12px;
-      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-      margin-bottom: 20px;
-    }
-    .filters-grid {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 15px;
-      align-items: flex-end;
-    }
-    .filter-item {
-      flex: 1;
-      min-width: 150px;
-      display: flex;
-      flex-direction: column;
-      gap: 6px;
-    }
-    /* 🆕 Fix: Ensure announcement modals remain fixed overlays 
-       instead of being trapped as flex items in the filters grid. */
-    .announcement-overlay {
-      position: fixed !important;
-      top: 0 !important;
-      left: 0 !important;
-      width: 100vw !important;
-      height: 100vh !important;
-      background: rgba(0, 0, 0, 0.5) !important;
-      z-index: 200000 !important;
-      display: flex !important;
-      align-items: center !important;
-      justify-content: center !important;
-    }
-    /* 🆕 Fix: Ensure announcement popups remain fixed and floating 
-       instead of being trapped as flex items in the filters grid. */
-    #announcementContainer, .announcement-popup, .dashboard-announcement {
-      position: fixed !important;
-      top: 85px !important; /* Positioned below header */
-      right: 20px !important;
-      z-index: 100000 !important;
-      max-width: 350px !important;
-    }
-    .filter-item label {
-      font-size: 0.75rem;
-      font-weight: 700;
-      color: #475569;
-      text-transform: uppercase;
-      letter-spacing: 0.025em;
-    }
-    @media (max-width: 768px) {
-      .filters-grid { flex-direction: column; align-items: stretch; }
-      .filter-item { width: 100%; }
-      .filter-item label {
-        font-size: 0.65rem !important;
-        margin-bottom: 2px !important;
-        font-weight: 800 !important;
-      }
-    }
-  `;
-  document.head.appendChild(filterStyle);
-
   // 🆕 Apply classes to existing filter containers
   const filterContainer = document.querySelector('.filter-grid') || document.querySelector('.filters-section');
   if (filterContainer) {
@@ -111,6 +48,52 @@ document.addEventListener("DOMContentLoaded", async () => {
         el.classList.add('filter-item');
       }
     });
+  }
+
+  // 🆕 LEARNER JOURNEY MODAL
+  const journeyModal = document.createElement('div');
+  journeyModal.id = 'learnerJourneyModal';
+  journeyModal.className = 'modal';
+  journeyModal.innerHTML = `
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3 id="journeyLearnerName">Learner Academic Journey</h3>
+        <button id="closeJourneyModal" title="Close Modal">&times;</button>
+      </div>
+      <div id="journeyChartsArea">
+        <div class="journey-chart-card">
+           <h4>Academic Performance Trend</h4>
+           <canvas id="individualTrendChart" height="200"></canvas>
+        </div>
+        <div class="journey-chart-card">
+           <h4>Subject Proficiency Breakdown</h4>
+           <canvas id="individualSubjectChart" height="200"></canvas>
+        </div>
+      </div>
+      <div id="journeyTableArea" class="table-scroll-wrapper"></div>
+    </div>
+  `;
+  document.body.appendChild(journeyModal);
+
+  document.getElementById("closeJourneyModal").onclick = () => journeyModal.classList.remove('visible');
+
+  // 🆕 Proficiency Distribution UI
+  function updateProficiencyDistribution(studentArray, grade) {
+    const distContainer = document.getElementById("proficiencyDistContainer");
+    if (!distContainer) return;
+
+    const levels = { EE: 0, ME: 0, AE: 0, BE: 0 };
+    studentArray.forEach(s => {
+      const lvl = window.cbcUtils.getPerformanceLevel(s.mean, grade);
+      if (levels.hasOwnProperty(lvl)) levels[lvl]++;
+    });
+
+    distContainer.innerHTML = `
+      <div class="dist-pill ee" title="Exceeding Expectations"><span>EE</span> <strong>${levels.EE}</strong></div>
+      <div class="dist-pill me" title="Meeting Expectations"><span>ME</span> <strong>${levels.ME}</strong></div>
+      <div class="dist-pill ae" title="Approaching Expectations"><span>AE</span> <strong>${levels.AE}</strong></div>
+      <div class="dist-pill be" title="Below Expectations"><span>BE</span> <strong>${levels.BE}</strong></div>
+    `;
   }
 
   let missingExamsTableWrap = document.getElementById("missingExamsTableWrap");
@@ -283,7 +266,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
       const teacherInfoEl = document.getElementById("teacherInfo");
       if (teacherInfoEl) {
-        teacherInfoEl.innerHTML = `Class Teacher: <strong>${profile.name || "—"}</strong> | Grade: <strong>${classGrade}</strong>`;
+        teacherInfoEl.innerHTML = `<strong>${profile.name || "—"}</strong> | Grade: <strong>${classGrade}</strong>`;
       }
 
       const streamDisplay = document.getElementById("streamDisplay");
@@ -317,31 +300,15 @@ document.addEventListener("DOMContentLoaded", async () => {
       populateAssessmentFilter();
 
       // Load School Info
-      const schoolRes = await fetch(`${API_BASE}/users/my-school`, {
+      const schoolRes = await fetch(`${API_BASE}/users/my-school?includeLogo=false&fields=name,gradingConfig`, {
         headers: { Authorization: `Bearer ${authService.getToken()}` }
       });
       if (!schoolRes.ok) return;
       const school = await schoolRes.json();
 
       const nameEl = document.getElementById("schoolName");
-      const logoEl = document.getElementById("schoolLogo");
-      const addressEl = document.getElementById("schoolAddress");
-
       if (school.gradingConfig) window.cbcUtils.customGradingConfig = school.gradingConfig;
       if (nameEl) nameEl.textContent = `${school.name}`;
-      if (addressEl) addressEl.textContent = school.address || "";
-
-      // Logo Resolution
-      if (logoEl && school.logo) {
-        const BACKEND_URL = config.api.baseURL.replace('/api', '');
-        if (school.logo.startsWith('http')) logoEl.src = school.logo;
-        else if (school.logo.startsWith('/') || school.logo.includes('uploads/')) {
-          logoEl.src = `${BACKEND_URL}/${school.logo.replace(/^\/+/, "")}`;
-        } else {
-          logoEl.src = `data:${school.logoMimeType || 'image/png'};base64,${school.logo}`;
-        }
-        logoEl.classList.remove("hidden");
-      }
     } catch (err) {
       console.error("Initialization Error:", err);
       showNotAllowed();
@@ -876,13 +843,10 @@ document.addEventListener("DOMContentLoaded", async () => {
       let assessLabel = getAssessmentLabel(assessmentKey);
 
       html += `<h4>Assessment ${assessLabel}</h4>`;
-      html += `<table style="border-collapse: collapse; width: 100%; border:1px solid #000; margin-bottom: 15px;">
-        <thead><tr><th>Rank</th><th>Name</th><th>Assessment</th>`;
+      html += `<table><thead><tr><th>Rank</th><th>Name</th>`;
       stats.subjects.forEach(sub => html += `<th>${sub}</th>`);
-      html += `<th>Total Marks</th><th>Progress</th><th>Total Points</th><th>Avg Points</th><th>Performance Level</th></tr></thead><tbody>`;
+      html += `<th>Total Marks</th><th>Progress</th><th>Total Points</th><th>Avg Points</th><th>Performance Level</th><th class="no-print">Tracking</th></tr></thead><tbody>`;
       arr.forEach(s => { // Use getAssessmentLabel for row as well
-        let assessLabelRow = getAssessmentLabel(s.assessment);
-
         let progressHtml = '<span style="color:#94a3b8; font-size:0.7rem;">N/A</span>';
         if (s.progress !== null) {
             const diff = s.progress;
@@ -891,14 +855,15 @@ document.addEventListener("DOMContentLoaded", async () => {
             else progressHtml = `<span style="color:#3498db; font-size:0.8rem;">-</span>`;
         }
 
-        html += `<tr><td>${s.rank}</td><td>${s.name}</td><td>${assessLabelRow}</td>`;
+        html += `<tr><td>${s.rank}</td><td>${s.name}</td>`;
         stats.subjects.forEach(sub => {
           const score = s.subjects[sub];
           const isAbs = score === undefined || score === null || String(score).trim().toUpperCase() === "X";
           const display = isAbs ? '<span style="color:#ef4444; font-weight:700;">ABS</span>' : score;
           html += `<td>${display}</td>`;
         });
-        html += `<td>${s.total}</td><td style="text-align:center;">${progressHtml}</td><td><strong>${s.totalPoints}</strong></td><td>${s.avgPoints.toFixed(2)}</td><td>${window.cbcUtils.getSubdivision(s.mean, s.grade)}</td></tr>`;
+        html += `<td>${s.total}</td><td style="text-align:center;">${progressHtml}</td><td><strong>${s.totalPoints}</strong></td><td>${s.avgPoints.toFixed(2)}</td><td>${window.cbcUtils.getSubdivision(s.mean, s.grade)}</td>
+        <td class="no-print"><button class="btn secondary-btn view-journey-btn" data-adm="${s.admissionNo}" data-name="${s.name}" style="padding: 2px 6px; font-size: 0.65rem;"><i class="fas fa-chart-line"></i> Journey</button></td></tr>`;
       });
 
       // Calculate Totals and Means for Footer
@@ -911,18 +876,20 @@ document.addEventListener("DOMContentLoaded", async () => {
       html += `</tbody><tfoot style="background-color: #f2f2f2; font-weight: bold; border-top: 2px solid #000;">`;
       
       // TOTAL Row
-      html += `<tr><td colspan="3" style="text-align: right; padding: 8px;">TOTAL:</td>`;
+      html += `<tr><td colspan="2" style="text-align: right; padding: 8px;">TOTAL:</td>`;
       stats.subjects.forEach(sub => {
         const subSum = arr.reduce((acc, s) => acc + (s.subjects[sub] || 0), 0);
         html += `<td style="text-align: center; padding: 8px;">${subSum.toFixed(0)}</td>`;
       });
       html += `<td style="text-align: center; padding: 8px;">${groupTotalMarks.toFixed(0)}</td>`;
+      html += `<td></td>`; // Progress spacer
       html += `<td style="text-align: center; padding: 8px;">${groupTotalPoints}</td>`;
       html += `<td style="text-align: center; padding: 8px;">${groupAvgPointsSum.toFixed(1)}</td>`;
-      html += `<td></td></tr>`;
+      html += `<td></td>`; // Level spacer
+      html += `<td></td></tr>`; // Tracking spacer
 
       // MEAN Row
-      html += `<tr><td colspan="3" style="text-align: right; padding: 8px;">MEAN:</td>`;
+      html += `<tr><td colspan="2" style="text-align: right; padding: 8px;">MEAN:</td>`;
       stats.subjects.forEach(sub => {
         const subSum = arr.reduce((acc, s) => acc + (s.subjects[sub] || 0), 0);
         const subCount = arr.filter(s => s.subjects[sub] !== undefined).length || 1;
@@ -935,13 +902,93 @@ document.addEventListener("DOMContentLoaded", async () => {
       html += `</tr></tfoot></table>`;
     });
     classRankingPane.innerHTML = html; // 🆕 Render directly into pane
+
+    // Attach Journey Listeners
+    classRankingPane.querySelectorAll('.view-journey-btn').forEach(btn => {
+      btn.onclick = () => showLearnerJourney(btn.dataset.adm, btn.dataset.name);
+    });
+  }
+
+  /**
+   * 🆕 Renders a longitudinal journey for a single student
+   */
+  async function showLearnerJourney(admissionNo, studentName) {
+    const grade = gradeFilter?.value;
+    const year = yearFilter?.value;
+    document.getElementById("journeyLearnerName").textContent = `${studentName} (${admissionNo})`;
+    
+    if (!currentFilteredData) {
+        return window.showToast("Please generate a report first to load journey data.", "error");
+    }
+
+    requestAnimationFrame(() => journeyModal.classList.add('visible'));
+    
+    const tableArea = document.getElementById("journeyTableArea");
+    tableArea.innerHTML = '<div style="text-align:center; padding:20px;"><span class="spinner"></span> Loading journey data...</div>';
+
+    try {
+      // Filter currentFilteredData (which has all assessments if assessment='all' was selected)
+      // or fetch fresh for this student
+      // Use loose equality == to handle string/number admission number mismatches
+      let studentHistory = currentFilteredData.filter(m => m.admissionNo == admissionNo);
+      
+      // Sort by Term then Assessment
+      studentHistory.sort((a,b) => (a.term - b.term) || (a.assessment - b.assessment));
+
+      let html = `<table class="marks-table"><thead><tr><th>Term</th><th>Assessment</th>`;
+      const subjects = Array.from(new Set(studentHistory.flatMap(h => h.subjects.map(s => s.subject || s.course)))).sort();
+      subjects.forEach(s => html += `<th>${s}</th>`);
+      html += `<th>Mean</th><th>Level</th></tr></thead><tbody>`;
+
+      const chartLabels = [];
+      const chartData = [];
+
+      studentHistory.forEach(h => {
+        const scoreMap = {};
+        h.subjects.forEach(s => scoreMap[s.subject || s.course] = s.score || s.finalScore);
+        
+        const scores = Object.values(scoreMap).filter(v => v !== null && !isNaN(v));
+        const mean = scores.length ? (scores.reduce((a,b) => a+b, 0) / scores.length).toFixed(1) : 0;
+        const label = `T${h.term} ${getAssessmentLabel(h.assessment)}`;
+        
+        chartLabels.push(label);
+        chartData.push(mean);
+
+        html += `<tr>
+          <td>Term ${h.term}</td>
+          <td>${getAssessmentLabel(h.assessment)}</td>
+          ${subjects.map(s => `<td>${scoreMap[s] || '-'}</td>`).join('')}
+          <td style="font-weight:700;">${mean}%</td>
+          <td>${window.cbcUtils.getSubdivision(mean, h.grade)}</td>
+        </tr>`;
+      });
+
+      html += `</tbody></table>`;
+      tableArea.innerHTML = html;
+
+      // Render mini trend chart in modal
+      renderIndividualTrendChart(chartLabels, chartData);
+
+    } catch (e) {
+      console.error("Learner Journey Error:", e);
+      tableArea.innerHTML = `<p style="color:red; text-align:center;">Failed to load journey.</p>`;
+    }
+  }
+
+  function renderIndividualTrendChart(labels, data) {
+    const ctx = document.getElementById("individualTrendChart").getContext("2d");
+    if (window.indivTrendChartInstance instanceof Chart) window.indivTrendChartInstance.destroy();
+    window.indivTrendChartInstance = new Chart(ctx, {
+      type: 'line',
+      data: { labels, datasets: [{ label: 'Mean Score %', data, borderColor: '#2563eb', tension: 0.3, fill: true, backgroundColor: 'rgba(37,99,235,0.05)' }] },
+      options: { responsive: true, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, max: 100 } } }
+    });
   }
 
   function renderSubjectMeansTable(stats) {
     if (!subjectAnalysisPane) return; // 🆕 Ensure pane exists
     if (!stats.subjects.length) { subjectAnalysisPane.innerHTML = "<div class='small'>No subject means found.</div>"; return; }
-    let html = `<table style="border-collapse: collapse; width: 100%; border:1px solid #000;">
-      <thead><tr>`;
+    let html = `<table><thead><tr>`;
     stats.subjects.forEach(sub => html += `<th>${sub}</th>`);
     html += `</tr></thead><tbody><tr>`;
     stats.subjects.forEach(sub => html += `<td>${Number(stats.subjectMeans[sub]).toFixed(2)}</td>`);
@@ -1255,7 +1302,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         const gradeNum = parseInt(gradeFilter?.value) || 0;
         const isSeniorSchool = gradeNum >= 10 && gradeNum <= 12;
         
-        currentFilteredData = filtered;
+        currentFilteredData = allTermRaw;
         currentIsSeniorSchool = isSeniorSchool;
 
         if (!isSeniorSchool) {
@@ -1263,6 +1310,7 @@ document.addEventListener("DOMContentLoaded", async () => {
           renderRankingTable(stats);
           renderSubjectMeansTable(stats);
           classMeanEl.textContent = stats.classMean.toFixed(2);
+          updateProficiencyDistribution(stats.studentArray, currentUser.classGrade);
 
           const passCount = stats.studentArray.filter(s => s.mean >= 50).length;
           const passRate = stats.studentArray.length > 0 ? (passCount / stats.studentArray.length) * 100 : 0;
@@ -1327,18 +1375,19 @@ document.addEventListener("DOMContentLoaded", async () => {
 
       // Header per assessment
       html += `<h3>📊 CLASS RANKING - ${assessLabel} (By Final Weighted Score)</h3>`;
-      html += "<table style='border-collapse: collapse; width: 100%; border:1px solid #ddd; margin-bottom: 30px;'>";
+      html += "<table>";
       
       // Render headers
-      html += "<thead><tr style='background:#337ab7;color:black;font-weight:bold;'>";
-      html += "<th style='border:1px solid #ddd;padding:8px;'>Rank</th>";
-      html += "<th style='border:1px solid #ddd;padding:8px;'>Admission No</th>";
-      html += "<th style='border:1px solid #ddd;padding:8px;'>Student Name</th>";
+      html += "<thead><tr class='table-header-alt'>";
+      html += "<th>Rank</th>";
+      html += "<th>Admission No</th>";
+      html += "<th>Student Name</th>";
       currentSubjects.forEach(sub => {
-        html += `<th style='border:1px solid #ddd;padding:8px;'>${sub}</th>`;
+        html += `<th>${sub}</th>`;
       });
-      html += "<th style='border:1px solid #ddd;padding:8px;'>Total Points</th>";
-      html += "<th style='border:1px solid #ddd;padding:8px;'>Performance Level</th>";
+      html += "<th>Total Points</th>";
+      html += "<th class='no-print'>Tracking</th>";
+      html += "<th>Performance Level</th>";
       html += "</tr></thead>";
       
       // Render body
@@ -1370,6 +1419,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         
         html += `<td style='border:1px solid #ddd;padding:8px;text-align:center;'>${progressHtml}</td>`;
         html += `<td style='border:1px solid #ddd;padding:8px;text-align:center;'><strong>${s.totalPoints}</strong></td>`;
+        html += `<td class="no-print" style='border:1px solid #ddd;padding:8px;text-align:center;'><button class="btn secondary-btn view-journey-btn" data-adm="${s.admissionNo}" data-name="${s.name}" style="padding: 2px 6px; font-size: 0.65rem;"><i class="fas fa-chart-line"></i> Journey</button></td>`;
         html += `<td style='border:1px solid #ddd;padding:8px;'>${subLevel} (${window.cbcUtils.getPerformanceLabel(mainLevel)})</td>`;
         html += "</tr>";
       });
@@ -1388,6 +1438,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         html += `<td style="border:1px solid #ddd;padding:8px;text-align:center;">${subSum.toFixed(0)}</td>`;
       });
       html += `<td style="border:1px solid #ddd;padding:8px;text-align:center;">${groupTotalPoints}</td>`;
+      html += `<td></td>`; // Tracking spacer
       html += `<td></td></tr>`;
 
       // MEAN Row
@@ -1397,14 +1448,19 @@ document.addEventListener("DOMContentLoaded", async () => {
         const subCount = group.filter(s => s.subjects[sub] !== undefined).length || 1;
         html += `<td style="border:1px solid #ddd;padding:8px;text-align:center;">${(subSum / subCount).toFixed(1)}</td>`;
       });
-      html += `<td style='border:1px solid #ddd;padding:8px;'></td>`;
+      html += `<td></td>`; // Progress spacer
       html += `<td style="border:1px solid #ddd;padding:8px;text-align:center;">${(groupTotalPoints / groupCount).toFixed(1)}</td>`;
+      html += `<td></td>`; // Tracking spacer
       html += `<td style="border:1px solid #ddd;padding:8px;text-align:center; color: #1a237e;">${window.cbcUtils.getSubdivision(groupMeanSum / groupCount, group[0]?.grade)}</td>`;
       html += `</tr></tfoot></table>`;
     });
-    
-   subjectAnalysisPane.innerHTML = html; // 🆕 Render directly into pane
-  
+
+    classRankingPane.innerHTML = html; 
+
+    // Attach Journey Listeners for Senior
+    classRankingPane.querySelectorAll('.view-journey-btn').forEach(btn => {
+      btn.onclick = () => showLearnerJourney(btn.dataset.adm, btn.dataset.name);
+    });
   }
  // subjectTableWrap is now populated by renderSubjectMeansTable
   function renderMissingExamsTable(missingList, streamDiscrepancies = []) {

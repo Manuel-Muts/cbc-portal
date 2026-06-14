@@ -17,20 +17,25 @@ const normalizeGrade = (grade) => {
   if (!grade) return null;
    let str = String(grade).trim();
 
-  // 🆕 Robust PP check: handles "PP1", "pp1", "Grade PP1", "Grade pp1"
   let checkStr = str.toUpperCase();
+
+  // 🆕 Handle Alises for Playgroup to ensure it maps to PG in the progression map
+  if (checkStr === "PLAYGROUP" || checkStr === "PLAY GROUP" || checkStr === "PG") {
+    return "PG";
+  }
+
   if (checkStr.startsWith("GRADE ")) {
     checkStr = checkStr.replace(/^GRADE\s+/i, "").trim();
   }
+  // 🆕 Capture remaining early childhood grades (PP1, PP2)
   if (checkStr.startsWith("PP")) {
-    return checkStr;
+    return checkStr; 
   }
-  
 
   // For other grades, extract the numeric part and prepend "Grade "
   const match = str.match(/\d+/);
   if (match) return `Grade ${match[0]}`;
-  return str; // Fallback for other non-numeric, non-PP strings
+  return checkStr; // Ensure uppercase for all non-numeric grades to match GRADE_ORDER
 };
 
 
@@ -38,6 +43,7 @@ const normalizeGrade = (grade) => {
 // CBC GRADE PROGRESSION MAP
 // ------------------------------------
 const GRADE_ORDER = [
+  "PG",
   "PP1",
   "PP2",
   "Grade 1",
@@ -299,10 +305,13 @@ export const previewPromotion = async (req, res) => {
       return res.status(403).json({ message: "Unauthorized" });
     }
 
-    const { academicYear, page, limit, search } = req.query;
+    const { academicYear, page, limit, search, grade } = req.query;
     if (!academicYear) {
       return res.status(400).json({ message: "Academic year required" });
     }
+
+    // 🆕 Grade Filter Normalization
+    const normalizedFilterGrade = grade && grade !== 'all' ? normalizeGrade(grade) : null;
 
     const pageNum = parseInt(page) || 1;
     const limitNum = parseInt(limit) || 10;
@@ -312,7 +321,8 @@ export const previewPromotion = async (req, res) => {
     const query = {
       schoolId: schoolId,
       academicYear: Number(academicYear),
-      status: "active" // Only active students are eligible for promotion preview
+      status: "active", // Only active students are eligible for promotion preview
+      ...(normalizedFilterGrade ? { grade: normalizedFilterGrade } : {}) // 🆕 Optional class filter
     };
 
     // 🚀 Using aggregation to perform an inner join between Enrollments and Users.
@@ -366,7 +376,10 @@ export const previewPromotion = async (req, res) => {
 
     const preview = enrollments.map(e => ({
       ...e,
-      nextGrade: e.currentGrade === "Grade 9" ? null : getNextGrade(e.currentGrade)
+      nextGrade: (
+        normalizeGrade(e.currentGrade) === "Grade 9" || 
+        normalizeGrade(e.currentGrade) === "Grade 12"
+      ) ? null : getNextGrade(e.currentGrade)
     }));
 
     res.json({ 

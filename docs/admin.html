@@ -340,19 +340,15 @@
         <div class="flex-row">
             <div class="col form-group">
                 <label>From Academic Year</label>
-                <input type="number" id="fromAcademicYear" placeholder="e.g. 2026">
-                
+                <select id="fromAcademicYear" class="form-control"></select>
             </div>
             <div class="col form-group">
                 <label>To Academic Year</label>
-                <input type="number" id="toAcademicYear" placeholder="e.g. 2027">
-            </div>
-            <div class="col form-group" style="display:flex; align-items:flex-end;">
-                <button id="previewPromotionBtn" class="btn secondary-btn">Preview Promotions</button>
-                
+                <select id="toAcademicYear" class="form-control"></select>
             </div>
              <input type="text" id="promotionSearchInput" class="form-control" placeholder="Search by name or admission..." style="margin-top: 10px;">
         </div>
+        <select id="promotionGradeSelect"></select>
         
         <table id="promotionPreviewTable">
             <thead>

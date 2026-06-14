@@ -788,7 +788,7 @@ export const getMyAllocations = async (req, res) => {
     }
 
     const teacher = await User.findById(req.user.id)
-      .select('name allocations assignedClass assignedStream isDean')
+      .select('name allocations isDean')
       .lean();
 
     if (!teacher) {
@@ -805,22 +805,10 @@ export const getMyAllocations = async (req, res) => {
       subjects: Array.isArray(a.subjects) ? a.subjects : []
     }));
 
-    // Include class teacher assignment if applicable
-    const classTeacherInfo = teacher.assignedClass ? {
-      grade: teacher.assignedClass,
-      stream: teacher.assignedStream || null,
-      classLabel: (String(teacher.assignedClass).toUpperCase().startsWith("PP") || String(teacher.assignedClass).toUpperCase().startsWith("PG"))
-        ? (teacher.assignedStream ? `${normalizeGrade(teacher.assignedClass)} ${teacher.assignedStream}` : `${normalizeGrade(teacher.assignedClass)}`)
-        : (teacher.assignedStream 
-          ? `Grade ${teacher.assignedClass} ${teacher.assignedStream}` 
-          : `Grade ${teacher.assignedClass}`)
-    } : null;
-
     res.json({
       name: teacher.name,
       isDean: !!teacher.isDean,
-      subjectAllocations: allocations,
-      classTeacherAssignment: classTeacherInfo
+      subjectAllocations: allocations
     });
   } catch (err) {
     console.error("GetMyAllocations Error:", err);

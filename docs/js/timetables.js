@@ -921,7 +921,8 @@ const TimetableModule = (function() {
 
             if (shouldFetchFromServer) {
                 // Fetch school name and type (excluding logo as requested)
-                const schoolRes = await fetch(`${API_BASE}/users/my-school?includeLogo=false`, { headers });
+                // 🚀 Optimization: Request only name and schoolType.
+                const schoolRes = await fetch(`${API_BASE}/users/my-school?includeLogo=false&fields=name,schoolType`, { headers });
                 if (schoolRes.ok) {
                     const fullSchoolData = await schoolRes.json();
                     schoolInfo = fullSchoolData; // Store full data in module-level variable

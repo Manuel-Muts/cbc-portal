@@ -74,7 +74,7 @@ gradingConfigModal.innerHTML = `
     <p class="text-muted" style="font-size: 0.82rem; margin-bottom: 15px;">Define custom mark ranges, labels (EE, ME, AE, BE), and points for Primary and Secondary grades.</p>
     
     <div class="tab-navigation">
-      <button class="tab-btn active" data-grade-type="primary">Primary Grades (PP1-Grade 6)</button>
+      <button class="tab-btn active" data-grade-type="primary">Primary Grades (PG-Grade 6)</button>
       <button class="tab-btn" data-grade-type="secondary">Secondary Grades (Grade 7-12)</button>
     </div>
 
@@ -834,13 +834,16 @@ function processAnalysisData(allRaw, isSenior, assessment, allPrevRaw = null, ro
   // 🆕 Calculate previous assessment means for progress indicators
   const prevSubjectMeans = {};
   const prevStudentMeans = {};
-  
+
   // 🆕 Improved baseline selection for Intra-Term Tracking (e.g. Mid-Term vs Opener)
   let prevBaselineData = null;
   if (assessment !== "all") {
     const currentId = parseInt(assessment);
+    // 🆕 Identify which assessments the Dean has marked as academic milestones for progress tracking
+    const allowedBaselines = Array.from(document.querySelectorAll('.baseline-check:checked')).map(cb => parseInt(cb.value));
+
     const predecessorAssessId = [...new Set(streamFilteredRaw.map(m => parseInt(m.assessment)))]
-        .filter(id => id < currentId)
+        .filter(id => id < currentId && allowedBaselines.includes(id))
         .sort((a, b) => b - a)[0]; // Get the closest previous ID in this term
 
     if (predecessorAssessId) {
@@ -1379,10 +1382,12 @@ async function downloadRankingAsPDF() {
 
   // OPTIMIZATION: Extract column mapping once to avoid repeated indexOf lookups
   const rawHeaders = Array.from(table.querySelectorAll("thead th")).map(th => th.textContent.trim());
-  const nameIdx = rawHeaders.indexOf("Name");
-  const admIdx = rawHeaders.indexOf("Adm");
+  // 🆕 Support both Primary/Junior ("Name", "Adm") and Senior ("Student Name", "Admission No") labels
+  const nameIdx = rawHeaders.findIndex(h => h.toLowerCase().includes("name"));
+  const admIdx = rawHeaders.findIndex(h => h.toLowerCase().includes("adm"));
   const progressIdx = rawHeaders.indexOf("Progress"); // Index of the progress column
   const levelIdx = rawHeaders.length - 1;
+  const nameLabelForProgress = nameIdx !== -1 ? rawHeaders[nameIdx] : "Name";
 
   // Determine which columns to skip for PDF clarity
   const skipIndices = new Set();
@@ -1450,30 +1455,7 @@ async function downloadRankingAsPDF() {
     showHead: 'everyPage', // Repeat table headers on every page
     showFoot: 'lastPage', // Only show totals/mean at the end of the ranking list
     rowPageBreak: 'avoid', // 🆕 Prevents a single student row from being split across two pages
-    didDrawPage: (data) => {
-      // 🆕 Watermark (School Logo)
-      if (deanProfileData?.schoolLogoBase64) {
-        try {
-          const imgProps = deanProfileData.logoProps || doc.getImageProperties(deanProfileData.schoolLogoBase64);
-          const format = deanProfileData.logoFormat || "PNG";
-          const width = 100; // Size of watermark
-          const height = (imgProps.height * width) / imgProps.width;
-
-          doc.saveGraphicsState();
-          doc.setGState(new doc.GState({ opacity: 0.08 })); // Subtle 8% opacity
-          doc.addImage(deanProfileData.schoolLogoBase64, format, (pageWidth - width) / 2, (pageHeight - height) / 2, width, height, undefined, 'FAST');
-          doc.restoreGraphicsState();
-        } catch (e) {
-          console.warn("Watermark rendering error:", e);
-        }
-      }
-
-      // 🆕 Footer (Date/Time Stamp on every page)
-      doc.setFontSize(8);
-      doc.setTextColor(150);
-      const dateStr = `Printed: ${new Date().toLocaleString()}`;
-      doc.text(dateStr, pageWidth - 14, pageHeight - 7, { align: "right" });
-    },
+   
     margin: { left: 14, right: 14, bottom: 35 }, // 🆕 Leaves space for the signature and footer
     didParseCell: (data) => {
        if (data.section === 'body') {
@@ -1550,7 +1532,7 @@ async function downloadRankingAsPDF() {
 
   const progressData = rows
     .map((row, idx) => ({
-      name: row[headers.indexOf("Name")],
+      name: row[headers.indexOf(nameLabelForProgress)],
       progress: parseFloat(tbodyRows[idx].dataset.progress)
     }))
     .filter(s => !isNaN(s.progress));
@@ -1618,9 +1600,23 @@ async function downloadRankingAsPDF() {
   const totalPages = doc.internal.getNumberOfPages();
   for (let i = 1; i <= totalPages; i++) {
     doc.setPage(i);
+
+    // 🆕 Watermark (School Logo) - Rendered last to ensure it stays on top of table backgrounds
+    if (deanProfileData?.schoolLogoBase64) {
+      try {
+        const imgProps = deanProfileData.logoProps || doc.getImageProperties(deanProfileData.schoolLogoBase64);
+        const format = deanProfileData.logoFormat || "PNG";
+        const width = 100; 
+        const height = (imgProps.height * width) / imgProps.width;
+        doc.saveGraphicsState();
+        doc.setGState(new doc.GState({ opacity: 0.08 }));
+        doc.addImage(deanProfileData.schoolLogoBase64, format, (pageWidth - width) / 2, (pageHeight - height) / 2, width, height, undefined, 'FAST');
+        doc.restoreGraphicsState();
+      } catch (e) { console.warn("Watermark rendering error:", e); }
+    }
+
     doc.setFontSize(8);
-    doc.setTextColor(150, 150, 150); // Professional subtle gray
-    doc.setFont("helvetica", "normal");
+    doc.setTextColor(150);
     doc.text(`Page ${i} of ${totalPages}`, 14, pageHeight - 7);
     const genText = "CompetenceHub Analytics";
     const genTextWidth = doc.getTextWidth(genText);
@@ -1743,16 +1739,6 @@ async function downloadMissingExamsAsPDF() {
     let yPos = 12; // Initial Y position
 
   try {
-    // Header - School Logo & Name
-    if (deanProfileData && deanProfileData.schoolLogoBase64) {
-      const imgProps = deanProfileData.logoProps || doc.getImageProperties(deanProfileData.schoolLogoBase64);
-      const format = deanProfileData.logoFormat || cbcUtils.getImageFormat(deanProfileData.schoolLogoBase64);
-      const imgWidth = 22; 
-      const imgHeight = (imgProps.height * imgWidth) / imgProps.width; // Maintain aspect ratio
-      doc.addImage(deanProfileData.schoolLogoBase64, format, (pageWidth - imgWidth) / 2, 8, imgWidth, imgHeight, undefined, 'FAST');
-      yPos = 8 + imgHeight + 5; // Start text 5mm below logo
-    }
-
     doc.setFontSize(18);
     doc.setFont("helvetica", "bold");
     doc.text(schoolName, pageWidth / 2, yPos, { align: "center" });
@@ -1826,6 +1812,21 @@ async function downloadMissingExamsAsPDF() {
     const totalPages = doc.internal.getNumberOfPages();
     for (let i = 1; i <= totalPages; i++) {
       doc.setPage(i);
+      
+      // 🆕 Watermark (School Logo)
+      if (deanProfileData?.schoolLogoBase64) {
+        try {
+          const imgProps = deanProfileData.logoProps || doc.getImageProperties(deanProfileData.schoolLogoBase64);
+          const format = deanProfileData.logoFormat || "PNG";
+          const width = 100;
+          const height = (imgProps.height * width) / imgProps.width;
+          doc.saveGraphicsState();
+          doc.setGState(new doc.GState({ opacity: 0.08 }));
+          doc.addImage(deanProfileData.schoolLogoBase64, format, (pageWidth - width) / 2, (pageHeight - height) / 2, width, height, undefined, 'FAST');
+          doc.restoreGraphicsState();
+        } catch (e) {}
+      }
+
       doc.setFontSize(8);
       doc.setTextColor(150);
       doc.text(`Page ${i} of ${totalPages}`, 14, pageHeight - 10);
@@ -1871,20 +1872,6 @@ async function downloadSubjectPerformanceAsPDF() {
   let yPos = 15;
 
   try {
-  // Header - School Logo & Name
-  if (deanProfileData && deanProfileData.schoolLogoBase64) {
-    try {
-      // Use pre-calculated properties to avoid expensive re-parsing
-      const imgProps = deanProfileData.logoProps || doc.getImageProperties(deanProfileData.schoolLogoBase64);
-      const format = deanProfileData.logoFormat || cbcUtils.getImageFormat(deanProfileData.schoolLogoBase64);
-      const imgWidth = 25; 
-      const imgHeight = (imgProps.height * imgWidth) / imgProps.width;
-      doc.addImage(deanProfileData.schoolLogoBase64, format, (pageWidth - imgWidth) / 2, yPos - 10, imgWidth, imgHeight, undefined, 'FAST');
-      yPos += imgHeight;
-    } catch (e) {
-      console.warn("Could not embed school logo in PDF:", e);
-    }
-  }
 
   doc.setFontSize(18);
   doc.setFont("helvetica", "bold");
@@ -1930,24 +1917,6 @@ async function downloadSubjectPerformanceAsPDF() {
     showHead: 'everyPage', 
     rowPageBreak: 'avoid', // 🆕 Prevents subject rows from splitting
     margin: { bottom: 35 }, // 🆕 Space for signature
-    didDrawPage: (data) => {
-      // 🆕 Watermark (School Logo)
-      if (deanProfileData?.schoolLogoBase64) {
-        try {
-          const imgProps = deanProfileData.logoProps || doc.getImageProperties(deanProfileData.schoolLogoBase64);
-          const format = deanProfileData.logoFormat || "PNG";
-          const width = 100; // Size of watermark
-          const height = (imgProps.height * width) / imgProps.width;
-
-          doc.saveGraphicsState();
-          doc.setGState(new doc.GState({ opacity: 0.08 })); // Subtle 8% opacity
-          doc.addImage(deanProfileData.schoolLogoBase64, format, (pageWidth - width) / 2, (pageHeight - height) / 2, width, height, undefined, 'FAST');
-          doc.restoreGraphicsState();
-        } catch (e) {
-          console.warn("Watermark rendering error:", e);
-        }
-      }
-    },
     didParseCell: (data) => {
       if (data.section === 'body' && tiedRowIndices.includes(data.row.index)) {
         data.cell.styles.fillColor = [255, 249, 219];
@@ -2468,6 +2437,40 @@ function renderStreamBarChart(raw, isSenior) {
     }
   });
 }
+
+/**
+ * 🆕 Renders multi-select checkboxes to define baseline milestones
+ */
+function renderBaselineCheckboxes() {
+    const filterSection = document.querySelector('.filters-section') || document.querySelector('.filter-grid');
+    if (!filterSection || document.getElementById("baselineCheckboxesWrap")) return;
+
+    const wrap = document.createElement('div');
+    wrap.id = "baselineCheckboxesWrap";
+    wrap.className = "filter-item"; 
+    wrap.style.cssText = "grid-column: 1 / -1; margin-top: 10px; padding: 12px; background: #f8fafc; border-radius: 12px; border: 1px solid #e2e8f0; box-shadow: inset 0 1px 2px rgba(0,0,0,0.02);";
+
+    const mapping = window.ASSESSMENT_MAPPING || {};
+    const defaults = [1, 5, 8]; // IDs for Opener, Midterm, Endterm
+
+    let html = `<label style="display:block; font-size:0.7rem; font-weight:800; color:#64748b; margin-bottom:10px; text-transform:uppercase;">
+                    <i class="fas fa-chart-line" style="color:#3b82f6;"></i> Progress Baseline Milestones (Milestones to compare against):
+                </label>
+                <div style="display:flex; flex-wrap:wrap; gap:18px;">`;
+    
+    Object.entries(mapping).forEach(([id, label]) => {
+        const checked = defaults.includes(parseInt(id)) ? 'checked' : '';
+        html += `
+            <label style="font-size:0.78rem; display:flex; align-items:center; gap:8px; cursor:pointer; color: #1e293b; font-weight: 600;">
+                <input type="checkbox" class="baseline-check" value="${id}" ${checked} style="width: 16px; height: 16px; cursor:pointer;"> ${label}
+            </label>
+        `;
+    });
+    html += `</div>`;
+    wrap.innerHTML = html;
+    filterSection.appendChild(wrap);
+}
+
 function initFilters() {
   const currentYear = new Date().getFullYear(); // Current year for default selection
   if (filterYearEl) {
@@ -2503,6 +2506,9 @@ function initFilters() {
     }
     );
   }
+
+  // 🆕 Initialize Baseline Checkboxes
+  renderBaselineCheckboxes();
 
   // Populate school grades based on school type
   const grades = getGradeOptionsForSchool(); // Use local function for grade options
@@ -2893,23 +2899,6 @@ async function generateBulkReportCards() {
         // to prevent footer grey from leaking into the next page. // Reset color to black
         doc.setTextColor(0, 0, 0);
 
-        // 🆕 Watermark (School Logo)
-        if (deanProfileData?.schoolLogoBase64) {
-            try {
-                const imgProps = deanProfileData.logoProps || doc.getImageProperties(deanProfileData.schoolLogoBase64);
-                const format = deanProfileData.logoFormat || "PNG";
-                const width = 100; // Size of watermark
-                const height = (imgProps.height * width) / imgProps.width;
-
-                doc.saveGraphicsState();
-                doc.setGState(new doc.GState({ opacity: 0.08 })); // Subtle 8% opacity
-                doc.addImage(deanProfileData.schoolLogoBase64, format, (pageWidth - width) / 2, (pageHeight - height) / 2, width, height, undefined, 'FAST');
-                doc.restoreGraphicsState();
-            } catch (e) {
-                console.warn("Bulk Report Watermark rendering error:", e);
-            }
-        }
-
         // 1. Report Header
         let headerY = 8; // Minimised top margin
         const schoolNameText = schoolName;
@@ -3057,6 +3046,23 @@ async function generateBulkReportCards() {
 
         if (headSigB64) { // Embed headteacher signature
             doc.addImage(headSigB64, headSigFmt, pageWidth - 60, signatureY - 10, 25, 8, undefined, 'FAST');
+        }
+
+        // 🆕 Watermark (School Logo) - Rendered last to ensure it stays on top of table backgrounds
+        if (deanProfileData?.schoolLogoBase64) {
+            try {
+                const imgProps = deanProfileData.logoProps || doc.getImageProperties(deanProfileData.schoolLogoBase64);
+                const format = deanProfileData.logoFormat || "PNG";
+                const width = 100; // Size of watermark
+                const height = (imgProps.height * width) / imgProps.width;
+
+                doc.saveGraphicsState();
+                doc.setGState(new doc.GState({ opacity: 0.08 })); // Subtle 8% opacity
+                doc.addImage(deanProfileData.schoolLogoBase64, format, (pageWidth - width) / 2, (pageHeight - height) / 2, width, height, undefined, 'FAST');
+                doc.restoreGraphicsState();
+            } catch (e) {
+                console.warn("Bulk Report Watermark rendering error:", e);
+            }
         }
 
         // Footer branding on every report page
