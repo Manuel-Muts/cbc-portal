@@ -460,8 +460,17 @@ document.addEventListener("DOMContentLoaded", () => {
 
   function processAllocationsData(data) {
     if (data.subjectAllocations) {
-      teacherAllocations = data.subjectAllocations;
-      console.log(`📚 Loaded ${teacherAllocations.length} allocations`);
+      // 🆕 Normalize subjects: Map subdivisions to parent subjects for mark entry
+      teacherAllocations = data.subjectAllocations.map(alloc => {
+        const subjects = alloc.subjects || [];
+        const normalizedSubjects = [...new Set(subjects.map(s => 
+          window.SUBJECT_DATA?.getMarkEntrySubject ? window.SUBJECT_DATA.getMarkEntrySubject(s) : s
+        ))];
+        
+        return { ...alloc, subjects: normalizedSubjects };
+      });
+
+      console.log(`📚 Loaded ${teacherAllocations.length} allocations (Normalized for mark entry)`);
       populateSubjectAllocations(teacherAllocations);
     } else {
       console.warn("⚠️ No subjectAllocations in response");

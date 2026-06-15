@@ -229,6 +229,7 @@ window.SUBJECT_DATA.getDefaultFrequency = function(sub, grade) {
     return 1; // Primary (1-6)
   }
   // Components typically have 1-2 lessons per week
+  if (name === "Creative Arts and Sports") return 0;
   if (name === "Sports C/A(s)") return 2;
   if (name === "Visual Arts C/A(v)") return 1;
   if (name === "Performing Arts C/A(p)") return 2;
@@ -240,6 +241,29 @@ window.SUBJECT_DATA.getDefaultFrequency = function(sub, grade) {
   if (type === "CORE") return 5;
   if (type === "TECHNICAL") return 5;
   return 3;
+};
+
+/**
+ * 🆕 Maps timetable-specific subdivisions to their parent Mark Entry subjects.
+ * Prevents scheduling components from cluttering the marks entry table.
+ */
+window.SUBJECT_DATA.getMarkEntrySubject = function(sub) {
+  const name = (sub || "").trim();
+  
+  // Define subdivisions that should roll up into "Creative Arts and Sports"
+  const creativeArtsSubdivisions = [
+    "Sports C/A(s)",
+    "Visual Arts C/A(v)",
+    "Performing Arts C/A(p)",
+    "Sports and Physical Education",
+    "Physical Health Education"
+  ];
+
+  if (creativeArtsSubdivisions.includes(name) || name.includes("C/A(")) {
+    return "Creative Arts and Sports";
+  }
+
+  return sub;
 };
 
 window.SUBJECT_DATA.getGradeSubjects = function() {

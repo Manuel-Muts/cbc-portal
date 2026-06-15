@@ -7,7 +7,6 @@ document.addEventListener("DOMContentLoaded", async () => {
   const notAllowedEl = document.getElementById("notAllowed");
   const analysisWrap = document.getElementById("analysisWrap");
   const logoutBtn = document.getElementById("logoutBtn");
-  const exportPdfBtn = document.getElementById("exportPdf");
   const refreshBtn = document.getElementById("refreshBtn");
   const generateBtn = document.getElementById("generateReport");
   const applyFiltersBtn = document.getElementById("applyFiltersBtn");
@@ -58,7 +57,10 @@ document.addEventListener("DOMContentLoaded", async () => {
     <div class="modal-content">
       <div class="modal-header">
         <h3 id="journeyLearnerName">Learner Academic Journey</h3>
-        <button id="closeJourneyModal" title="Close Modal">&times;</button>
+        <div style="display:flex; gap:10px; align-items:center;">
+          <button id="printJourneyBtn" class="btn primary-btn small" style="padding: 6px 12px; color: white; font-size: 0.75rem;"><i class="fas fa-file-pdf"></i> Save Report</button>
+          <button id="closeJourneyModal" title="Close Modal">&times;</button>
+        </div>
       </div>
       <div id="journeyChartsArea">
         <div class="journey-chart-card">
@@ -76,6 +78,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   document.body.appendChild(journeyModal);
 
   document.getElementById("closeJourneyModal").onclick = () => journeyModal.classList.remove('visible');
+  document.getElementById("printJourneyBtn").onclick = exportJourneyPdf;
 
   // 🆕 Proficiency Distribution UI
   function updateProficiencyDistribution(studentArray, grade) {
@@ -146,7 +149,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     yearFilter.innerHTML = "";
     
     // 🆕 Sensible range for selection
-    for (let y = currentYear - 5; y <= currentYear + 10; y++) {
+    for (let y = currentYear - 5; y <= currentYear + 100; y++) {
       const opt = document.createElement("option");
       opt.value = y;
       opt.textContent = y;
@@ -196,8 +199,6 @@ document.addEventListener("DOMContentLoaded", async () => {
   refreshBtn?.addEventListener("click", () => window.location.reload());
   generateBtn?.addEventListener("click", generateReport);
   applyFiltersBtn?.addEventListener("click", generateReport);
-  window.authService?.initLogout();
-  exportPdfBtn?.addEventListener("click", exportPdf);
 
   // Create Container for Edit Table
   const editContainer = document.createElement("div");
@@ -267,11 +268,14 @@ document.addEventListener("DOMContentLoaded", async () => {
       const teacherInfoEl = document.getElementById("teacherInfo");
       if (teacherInfoEl) {
         teacherInfoEl.innerHTML = `<strong>${profile.name || "—"}</strong> | Grade: <strong>${classGrade}</strong>`;
+        if (profile.assignedStream) {
+          teacherInfoEl.innerHTML += ` | Stream: <strong>${profile.assignedStream}</strong>`;
+        }
       }
 
       const streamDisplay = document.getElementById("streamDisplay");
       if (streamDisplay) {
-        streamDisplay.textContent = profile.assignedStream || "No Stream";
+        streamDisplay.style.display = "none"; // Hide the separate stream display element
       }
 
       if (streamFilterSelect) {
@@ -551,12 +555,11 @@ document.addEventListener("DOMContentLoaded", async () => {
       const total = scores.reduce((a, b) => a + b, 0);
       const mean = scores.length ? total / scores.length : 0;
       const totalPoints = scores.reduce((sum, score) => sum + window.cbcUtils.getPoints(score, s.grade), 0);
-      const avgPoints = scores.length ? totalPoints / scores.length : 0;
       
       const pMean = prevStudentMeans[s.admissionNo];
       const progress = (pMean !== undefined && pMean > 0) ? (mean - pMean) : null;
       
-      return { ...s, total, mean, totalPoints, avgPoints, progress };
+      return { ...s, total, mean, totalPoints, progress };
     });
 
     const groupedByAssessment = {};
@@ -597,7 +600,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       subjectMeans[sub] = subjectCounts[sub] ? (subjectTotals[sub] / subjectCounts[sub]) : 0; 
     });
 
-    return { studentArray, subjects: sortedSubjects, subjectMeans, classMean, records: studentArray.length, groupedByAssessment, missingExamsList: Object.values(missingExamsMap).sort((a,b) => a.name.localeCompare(b.name)), streamDiscrepancies };
+    return { studentArray, subjects: sortedSubjects, subjectMeans, subjectCounts, prevSubjectMeans, classMean, records: studentArray.length, groupedByAssessment, missingExamsList: Object.values(missingExamsMap).sort((a,b) => a.name.localeCompare(b.name)), streamDiscrepancies };
   }
 
   // ===== CALCULATE SENIOR SCHOOL STATS (Component-Based) =====
@@ -770,12 +773,11 @@ document.addEventListener("DOMContentLoaded", async () => {
       const total = scores.reduce((a, b) => a + b, 0);
       const mean = scores.length ? total / scores.length : 0;
       const totalPoints = scores.reduce((sum, score) => sum + window.cbcUtils.getPoints(score, s.grade), 0);
-      const avgPoints = scores.length ? totalPoints / scores.length : 0;
       
       const pMean = prevStudentMeans[s.admissionNo];
       const progress = (pMean !== undefined && pMean > 0) ? (mean - pMean) : null;
 
-      return { ...s, total, mean, totalPoints, avgPoints, progress };
+      return { ...s, total, mean, totalPoints, progress };
     });
   
     // 3. Group by Assessment and Rank within groups
@@ -816,6 +818,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       classMean,
       records: studentArray.length,
       subjectMeans,
+      subjectCounts,
       missingExamsList: Object.values(missingExamsMap).sort((a,b) => a.name.localeCompare(b.name)),
       streamDiscrepancies,
       prevSubjectMeans
@@ -833,19 +836,56 @@ document.addEventListener("DOMContentLoaded", async () => {
 
 
   // ===== RENDER TABLES =====
+  function syncDualScroll(pane) {
+    const wrappers = pane.querySelectorAll('.table-responsive');
+    wrappers.forEach(wrapper => {
+      const table = wrapper.querySelector('table');
+      const topScroll = wrapper.previousElementSibling;
+      if (!table || !topScroll || !topScroll.classList.contains('top-scroll-wrapper')) return;
+      const topContent = topScroll.querySelector('.top-scroll-content');
+      
+      const update = () => {
+        const tableWidth = table.offsetWidth;
+        const wrapperWidth = wrapper.offsetWidth;
+        topScroll.style.display = tableWidth > wrapperWidth ? "block" : "none";
+        topContent.style.width = tableWidth + "px";
+      };
+      update();
+      topScroll.onscroll = () => { wrapper.scrollLeft = topScroll.scrollLeft; };
+      wrapper.onscroll = () => { topScroll.scrollLeft = wrapper.scrollLeft; };
+      wrapper._syncUpdate = update; // Store for global resize
+    });
+  }
+
   function renderRankingTable(stats) {
     if (!classRankingPane) return; // 🆕 Ensure pane exists
     if (!stats.studentArray.length) { classRankingPane.innerHTML = "<div class='small'>No ranking data found.</div>"; return; }
+    
     let html = "";
+    const searchInputsToAttach = []; // To store IDs and table references for event listeners
+
     Object.keys(stats.groupedByAssessment).forEach(assessmentKey => {
       const arr = stats.groupedByAssessment[assessmentKey];
       if (!arr.length) return;
       let assessLabel = getAssessmentLabel(assessmentKey);
 
+      // Generate unique IDs for search input and clear button for each assessment block
+      const searchInputId = `rankingSearchInput_${assessmentKey}`;
+      const clearBtnId = `clearRankingSearch_${assessmentKey}`;
+      const tableResponsiveId = `tableResponsive_${assessmentKey}`;
+
+      html += `<div style="text-align: right; margin-bottom: 15px;"><button id="exportRankingPdfBtn_${assessmentKey}" class="btn primary-btn">Download Ranking PDF</button></div>`;
+      html += `
+        <div class="ranking-search-toolbar" style="margin-bottom: 10px; position: relative; max-width: 400px;">
+          <input type="text" id="${searchInputId}" placeholder="🔍 Search learner by name or Adm No..." class="form-control" style="width: 100%; padding: 10px; padding-right: 35px; border: 1px solid #cbd5e0; border-radius: 8px; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
+          <button id="${clearBtnId}" title="Clear search" style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%); background: none; border: none; font-size: 1.2rem; color: #94a3b8; cursor: pointer; display: none;">&times;</button>
+        </div>`;
       html += `<h4>Assessment ${assessLabel}</h4>`;
+      html += `<div class="top-scroll-wrapper"><div class="top-scroll-content"></div></div>`;
+      html += `<div class="table-responsive" id="${tableResponsiveId}">`;
       html += `<table><thead><tr><th>Rank</th><th>Name</th>`;
       stats.subjects.forEach(sub => html += `<th>${sub}</th>`);
-      html += `<th>Total Marks</th><th>Progress</th><th>Total Points</th><th>Avg Points</th><th>Performance Level</th><th class="no-print">Tracking</th></tr></thead><tbody>`;
+      html += `<th>Total Marks</th><th>Progress</th><th>Total Points</th><th>Performance Level</th><th class="no-print">Tracking</th></tr></thead><tbody>`;
       arr.forEach(s => { // Use getAssessmentLabel for row as well
         let progressHtml = '<span style="color:#94a3b8; font-size:0.7rem;">N/A</span>';
         if (s.progress !== null) {
@@ -862,14 +902,13 @@ document.addEventListener("DOMContentLoaded", async () => {
           const display = isAbs ? '<span style="color:#ef4444; font-weight:700;">ABS</span>' : score;
           html += `<td>${display}</td>`;
         });
-        html += `<td>${s.total}</td><td style="text-align:center;">${progressHtml}</td><td><strong>${s.totalPoints}</strong></td><td>${s.avgPoints.toFixed(2)}</td><td>${window.cbcUtils.getSubdivision(s.mean, s.grade)}</td>
+        html += `<td>${s.total}</td><td style="text-align:center;">${progressHtml}</td><td><strong>${s.totalPoints}</strong></td><td>${window.cbcUtils.getSubdivision(s.mean, s.grade)}</td>
         <td class="no-print"><button class="btn secondary-btn view-journey-btn" data-adm="${s.admissionNo}" data-name="${s.name}" style="padding: 2px 6px; font-size: 0.65rem;"><i class="fas fa-chart-line"></i> Journey</button></td></tr>`;
       });
 
       // Calculate Totals and Means for Footer
       const groupTotalMarks = arr.reduce((acc, s) => acc + s.total, 0);
       const groupTotalPoints = arr.reduce((acc, s) => acc + s.totalPoints, 0);
-      const groupAvgPointsSum = arr.reduce((acc, s) => acc + s.avgPoints, 0);
       const groupMeanSum = arr.reduce((acc, s) => acc + s.mean, 0);
       const groupCount = arr.length || 1;
 
@@ -884,7 +923,6 @@ document.addEventListener("DOMContentLoaded", async () => {
       html += `<td style="text-align: center; padding: 8px;">${groupTotalMarks.toFixed(0)}</td>`;
       html += `<td></td>`; // Progress spacer
       html += `<td style="text-align: center; padding: 8px;">${groupTotalPoints}</td>`;
-      html += `<td style="text-align: center; padding: 8px;">${groupAvgPointsSum.toFixed(1)}</td>`;
       html += `<td></td>`; // Level spacer
       html += `<td></td></tr>`; // Tracking spacer
 
@@ -896,12 +934,45 @@ document.addEventListener("DOMContentLoaded", async () => {
         html += `<td style="text-align: center; padding: 8px;">${(subSum / subCount).toFixed(1)}</td>`;
       });
       html += `<td style="text-align: center; padding: 8px;">${(groupTotalMarks / groupCount).toFixed(1)}</td>`;
+      html += `<td></td>`; // Progress spacer
       html += `<td style="text-align: center; padding: 8px;">${(groupTotalPoints / groupCount).toFixed(1)}</td>`;
-      html += `<td style="text-align: center; padding: 8px;">${(groupAvgPointsSum / groupCount).toFixed(2)}</td>`;
       html += `<td style="text-align: center; padding: 8px; color: #1a237e;">${window.cbcUtils.getSubdivision(groupMeanSum / groupCount, arr[0]?.grade)}</td>`;
-      html += `</tr></tfoot></table>`;
+      html += `<td></td></tr></tfoot></table></div>`;
     });
     classRankingPane.innerHTML = html; // 🆕 Render directly into pane
+    syncDualScroll(classRankingPane);
+
+    // Attach event listeners for each search bar and PDF button
+    Object.keys(stats.groupedByAssessment).forEach(assessmentKey => {
+      const searchInputId = `rankingSearchInput_${assessmentKey}`;
+      const clearBtnId = `clearRankingSearch_${assessmentKey}`;
+      const tableResponsiveId = `tableResponsive_${assessmentKey}`;
+
+      const rSearchInput = document.getElementById(searchInputId);
+      const rClearBtn = document.getElementById(clearBtnId);
+      const tableResponsiveDiv = document.getElementById(tableResponsiveId);
+
+      if (rSearchInput && rClearBtn && tableResponsiveDiv) {
+        const filterRanking = (val) => {
+          const query = val.toLowerCase().trim();
+          const rows = tableResponsiveDiv.querySelectorAll("tbody tr"); // Filter only within this table's rows
+          rows.forEach(row => {
+            const text = row.textContent.toLowerCase();
+            row.style.display = text.includes(query) ? "" : "none";
+          });
+          rClearBtn.style.display = query ? "block" : "none";
+        };
+
+        rSearchInput.addEventListener("input", (e) => filterRanking(e.target.value));
+        rClearBtn.addEventListener("click", () => {
+          rSearchInput.value = "";
+          filterRanking("");
+        });
+      }
+      document.getElementById(`exportRankingPdfBtn_${assessmentKey}`)?.addEventListener("click", exportPdf);
+    });
+    // Attach event listener to the newly rendered button
+    document.getElementById("exportRankingPdfBtn")?.addEventListener("click", exportPdf);
 
     // Attach Journey Listeners
     classRankingPane.querySelectorAll('.view-journey-btn').forEach(btn => {
@@ -935,10 +1006,10 @@ document.addEventListener("DOMContentLoaded", async () => {
       // Sort by Term then Assessment
       studentHistory.sort((a,b) => (a.term - b.term) || (a.assessment - b.assessment));
 
-      let html = `<table class="marks-table"><thead><tr><th>Term</th><th>Assessment</th>`;
+      let html = `<table class="marks-table"><thead><tr><th>T</th><th>Assess</th>`;
       const subjects = Array.from(new Set(studentHistory.flatMap(h => h.subjects.map(s => s.subject || s.course)))).sort();
       subjects.forEach(s => html += `<th>${s}</th>`);
-      html += `<th>Mean</th><th>Level</th></tr></thead><tbody>`;
+      html += `<th class="col-mean">Mean</th><th>Level</th></tr></thead><tbody>`;
 
       const chartLabels = [];
       const chartData = [];
@@ -955,10 +1026,10 @@ document.addEventListener("DOMContentLoaded", async () => {
         chartData.push(mean);
 
         html += `<tr>
-          <td>Term ${h.term}</td>
+          <td>T${h.term}</td>
           <td>${getAssessmentLabel(h.assessment)}</td>
           ${subjects.map(s => `<td>${scoreMap[s] || '-'}</td>`).join('')}
-          <td style="font-weight:700;">${mean}%</td>
+          <td class="col-mean">${mean}%</td>
           <td>${window.cbcUtils.getSubdivision(mean, h.grade)}</td>
         </tr>`;
       });
@@ -968,6 +1039,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
       // Render mini trend chart in modal
       renderIndividualTrendChart(chartLabels, chartData);
+      renderIndividualSubjectChart(subjects, studentHistory);
 
     } catch (e) {
       console.error("Learner Journey Error:", e);
@@ -985,14 +1057,126 @@ document.addEventListener("DOMContentLoaded", async () => {
     });
   }
 
+  function renderIndividualSubjectChart(subjects, history) {
+    const ctx = document.getElementById("individualSubjectChart").getContext("2d");
+    if (window.indivSubjectChartInstance instanceof Chart) window.indivSubjectChartInstance.destroy();
+
+    const subjectAverages = subjects.map(subName => {
+      let sum = 0, count = 0;
+      history.forEach(h => {
+        const sub = h.subjects.find(s => (s.subject || s.course) === subName);
+        const val = sub ? (sub.score !== undefined && sub.score !== null ? sub.score : sub.finalScore) : null;
+        if (val !== null && val !== undefined && val !== "X" && !isNaN(val)) {
+          sum += Number(val);
+          count++;
+        }
+      });
+      return count > 0 ? (sum / count).toFixed(1) : 0;
+    });
+
+    const backgroundColors = subjectAverages.map(avg => {
+      const val = parseFloat(avg);
+      if (val >= 75) return 'rgba(34, 197, 94, 0.6)'; // Green for >75 (EE)
+      if (val < 40) return 'rgba(239, 68, 68, 0.6)';  // Red for <40 (BE)
+      return 'rgba(59, 130, 246, 0.6)';              // Standard Blue (ME/AE)
+    });
+
+    const borderColors = subjectAverages.map(avg => {
+      const val = parseFloat(avg);
+      if (val >= 75) return '#16a34a';
+      if (val < 40) return '#dc2626';
+      return '#2563eb';
+    });
+
+    window.indivSubjectChartInstance = new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels: subjects,
+        datasets: [{
+          label: 'Avg Score %',
+          data: subjectAverages,
+          backgroundColor: backgroundColors,
+          borderColor: borderColors,
+          borderWidth: 1
+        }]
+      },
+      options: {
+        indexAxis: 'y', // Horizontal bars are better for subject names
+        responsive: true,
+        plugins: { 
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              label: function(context) {
+                const score = context.raw;
+                const grade = (history && history.length > 0) ? history[history.length - 1].grade : null;
+                const perfLevel = window.cbcUtils.getSubdivision(score, grade);
+                return ` Avg: ${score}% (${perfLevel})`;
+              }
+            }
+          }
+        },
+        scales: { x: { beginAtZero: true, max: 100 } }
+      }
+    });
+  }
+
   function renderSubjectMeansTable(stats) {
     if (!subjectAnalysisPane) return; // 🆕 Ensure pane exists
-    if (!stats.subjects.length) { subjectAnalysisPane.innerHTML = "<div class='small'>No subject means found.</div>"; return; }
-    let html = `<table><thead><tr>`;
-    stats.subjects.forEach(sub => html += `<th>${sub}</th>`);
-    html += `</tr></thead><tbody><tr>`;
-    stats.subjects.forEach(sub => html += `<td>${Number(stats.subjectMeans[sub]).toFixed(2)}</td>`);
-    html += `</tr></tbody></table>`;
+    if (!stats.subjects || !stats.subjects.length) { subjectAnalysisPane.innerHTML = "<div class='small'>No subject means found.</div>"; return; }
+
+    // Convert to object list and sort by performance (Mean Score)
+    const subjectList = stats.subjects.map(s => ({
+      name: s,
+      mean: stats.subjectMeans[s] || 0,
+      count: stats.subjectCounts ? (stats.subjectCounts[s] || 0) : 0
+    })).sort((a, b) => b.mean - a.mean);
+
+    // Calculate ranks with tie consideration
+    let prevMean = null, prevRank = 0;
+    subjectList.forEach((s, idx) => {
+      const currentMean = parseFloat(s.mean.toFixed(2));
+      if (currentMean === prevMean) s.rank = prevRank;
+      else { s.rank = idx + 1; prevRank = s.rank; }
+      prevMean = currentMean;
+    });
+
+    const prevMeans = stats.prevSubjectMeans || {};
+
+    let html = `<h3>📊 Subject Performance Analysis</h3>`;
+    html += `<table class="marks-table">
+      <thead>
+        <tr>
+          <th>Rank</th>
+          <th>Subject</th>
+          <th>Mean Score</th>
+          <th>Progress</th>
+          <th>Entries</th>
+        </tr>
+      </thead>
+      <tbody>`;
+
+    subjectList.forEach(s => {
+      let progressHtml = '<span style="color:#94a3b8; font-size:0.7rem;">N/A</span>';
+      const pMean = prevMeans[s.name];
+      if (pMean !== undefined && pMean > 0) {
+        const diff = s.mean - pMean;
+        if (diff > 0.1) progressHtml = `<span style="color:#10b981; font-weight:700;">+${diff.toFixed(1)}</span>`;
+        else if (diff < -0.1) progressHtml = `<span style="color:#ef4444; font-weight:700;">${diff.toFixed(1)}</span>`;
+        else progressHtml = `<span style="color:#3498db; font-size:0.8rem;">-</span>`;
+      }
+
+      html += `
+        <tr>
+          <td>${s.rank}</td>
+          <td style="text-align:left; font-weight:600;">${s.name}</td>
+          <td style="font-weight:700;">${s.mean.toFixed(2)}%</td>
+          <td>${progressHtml}</td>
+          <td>${s.count}</td>
+        </tr>`;
+    });
+
+    html += `</tbody></table>`;
     subjectTableWrap.innerHTML = html;
   }
 
@@ -1353,13 +1537,17 @@ document.addEventListener("DOMContentLoaded", async () => {
     const { groupedByAssessment } = stats;
   
     let html = "";
-
     // Sort assessments
     const assessmentKeys = Object.keys(groupedByAssessment).sort((a, b) => Number(a) - Number(b));
 
     assessmentKeys.forEach(assessmentKey => {
       const group = groupedByAssessment[assessmentKey];
       if (!group.length) return;
+      
+      // Generate unique IDs for search input and clear button for each assessment block
+      const searchInputId = `seniorRankingSearchInput_${assessmentKey}`;
+      const clearBtnId = `clearSeniorRankingSearch_${assessmentKey}`;
+      const tableResponsiveId = `tableResponsive_${assessmentKey}`;
 
       // Determine subjects present in this assessment group
       const currentSubjectsSet = new Set();
@@ -1374,7 +1562,15 @@ document.addEventListener("DOMContentLoaded", async () => {
       assessLabel = getAssessmentLabel(assessmentKey);
 
       // Header per assessment
+      html += `<div style="text-align: right; margin-bottom: 15px;"><button id="exportSeniorRankingPdfBtn_${assessmentKey}" class="btn primary-btn">Export Ranking PDF</button></div>`;
       html += `<h3>📊 CLASS RANKING - ${assessLabel} (By Final Weighted Score)</h3>`;
+      html += `
+        <div class="ranking-search-toolbar" style="margin-bottom: 10px; position: relative; max-width: 400px;">
+          <input type="text" id="${searchInputId}" placeholder="🔍 Search learner by name or Adm No..." class="form-control" style="width: 100%; padding: 10px; padding-right: 35px; border: 1px solid #cbd5e0; border-radius: 8px; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
+          <button id="${clearBtnId}" title="Clear search" style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%); background: none; border: none; font-size: 1.2rem; color: #94a3b8; cursor: pointer; display: none;">&times;</button>
+        </div>`;
+      html += `<div class="top-scroll-wrapper"><div class="top-scroll-content"></div></div>`;
+      html += `<div class="table-responsive" id="${tableResponsiveId}">`;
       html += "<table>";
       
       // Render headers
@@ -1385,6 +1581,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       currentSubjects.forEach(sub => {
         html += `<th>${sub}</th>`;
       });
+      html += "<th>Progress</th>";
       html += "<th>Total Points</th>";
       html += "<th class='no-print'>Tracking</th>";
       html += "<th>Performance Level</th>";
@@ -1437,9 +1634,10 @@ document.addEventListener("DOMContentLoaded", async () => {
         const subSum = group.reduce((acc, s) => acc + (s.subjects[sub] || 0), 0);
         html += `<td style="border:1px solid #ddd;padding:8px;text-align:center;">${subSum.toFixed(0)}</td>`;
       });
+      html += `<td></td>`; // Progress spacer
       html += `<td style="border:1px solid #ddd;padding:8px;text-align:center;">${groupTotalPoints}</td>`;
       html += `<td></td>`; // Tracking spacer
-      html += `<td></td></tr>`;
+      html += `<td></td></tr>`; // Level spacer
 
       // MEAN Row
       html += `<tr><td colspan="3" style="text-align: right; padding: 8px;">MEAN:</td>`;
@@ -1452,10 +1650,41 @@ document.addEventListener("DOMContentLoaded", async () => {
       html += `<td style="border:1px solid #ddd;padding:8px;text-align:center;">${(groupTotalPoints / groupCount).toFixed(1)}</td>`;
       html += `<td></td>`; // Tracking spacer
       html += `<td style="border:1px solid #ddd;padding:8px;text-align:center; color: #1a237e;">${window.cbcUtils.getSubdivision(groupMeanSum / groupCount, group[0]?.grade)}</td>`;
-      html += `</tr></tfoot></table>`;
+      html += `</tr></tfoot></table></div>`;
     });
 
     classRankingPane.innerHTML = html; 
+    syncDualScroll(classRankingPane);
+
+    // Attach event listeners for each search bar and PDF button
+    assessmentKeys.forEach(assessmentKey => {
+      const searchInputId = `seniorRankingSearchInput_${assessmentKey}`;
+      const clearBtnId = `clearSeniorRankingSearch_${assessmentKey}`;
+      const tableResponsiveId = `tableResponsive_${assessmentKey}`;
+
+      const sSearchInput = document.getElementById(searchInputId);
+      const sClearBtn = document.getElementById(clearBtnId);
+      const tableResponsiveDiv = document.getElementById(tableResponsiveId);
+
+      if (sSearchInput && sClearBtn && tableResponsiveDiv) {
+        const filterSeniorRanking = (val) => {
+          const query = val.toLowerCase().trim();
+          const rows = tableResponsiveDiv.querySelectorAll("tbody tr");
+          rows.forEach(row => {
+            const text = row.textContent.toLowerCase();
+            row.style.display = text.includes(query) ? "" : "none";
+          });
+          sClearBtn.style.display = query ? "block" : "none";
+        };
+
+        sSearchInput.addEventListener("input", (e) => filterSeniorRanking(e.target.value));
+        sClearBtn.addEventListener("click", () => {
+          sSearchInput.value = "";
+          filterSeniorRanking("");
+        });
+      }
+      document.getElementById(`exportSeniorRankingPdfBtn_${assessmentKey}`)?.addEventListener("click", exportPdf);
+    });
 
     // Attach Journey Listeners for Senior
     classRankingPane.querySelectorAll('.view-journey-btn').forEach(btn => {
@@ -1507,6 +1736,62 @@ document.addEventListener("DOMContentLoaded", async () => {
     missingExamsTableWrap.innerHTML = html;
   }
 
+   // ===== EXPORT JOURNEY PDF =====
+  async function exportJourneyPdf() {
+    const btn = document.getElementById("printJourneyBtn");
+    const originalText = btn.innerHTML;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Preparing...';
+    btn.disabled = true;
+
+    try {
+      const { jsPDF } = window.jspdf;
+      const doc = new jsPDF("p", "pt", "a4");
+      const pageWidth = doc.internal.pageSize.getWidth();
+      const pageHeight = doc.internal.pageSize.getHeight();
+      
+      const learnerName = document.getElementById("journeyLearnerName").textContent;
+      
+      // Header Section
+      doc.setFontSize(18);
+      doc.setTextColor(30, 58, 138); 
+      doc.text("LEARNER ACADEMIC JOURNEY", pageWidth / 2, 50, { align: "center" });
+      
+      doc.setFontSize(12);
+      doc.setTextColor(100);
+      doc.text(learnerName, pageWidth / 2, 70, { align: "center" });
+      
+      // Capture Charts Area (Trend + Subject Breakdown)
+      const chartsArea = document.getElementById("journeyChartsArea");
+      const canvas = await html2canvas(chartsArea, { scale: 2 });
+      const imgData = canvas.toDataURL("image/png");
+      const imgWidth = pageWidth - 80;
+      const imgHeight = (canvas.height * imgWidth) / canvas.width;
+      
+      doc.addImage(imgData, 'PNG', 40, 90, imgWidth, imgHeight);
+      
+      // Capture Journey Table
+      const table = document.querySelector("#journeyTableArea table");
+      if (table) {
+        doc.autoTable({
+          html: table,
+          startY: 110 + imgHeight,
+          theme: 'grid',
+          headStyles: { fillColor: [30, 58, 138], textColor: 255 },
+          styles: { fontSize: 8, cellPadding: 5 },
+          margin: { left: 40, right: 40 }
+        });
+      }
+      
+      doc.save(`Journey_${learnerName.replace(/[^a-z0-9]/gi, '_')}.pdf`);
+    } catch (err) {
+      console.error("PDF Export failed", err);
+      alert("Failed to generate PDF report.");
+    } finally {
+      btn.innerHTML = originalText;
+      btn.disabled = false;
+    }
+  }
+  
 // ===== EXPORT PDF =====
 async function exportPdf() {
   try {
@@ -1558,21 +1843,23 @@ async function exportPdf() {
 
       let head, body, foot;
     if (isSeniorSchool) {
-        head = [["Rank", "Name", ...currentSubjects, "Points", "Level"]];
+        head = [["Rank", "Adm No", "Name", ...currentSubjects, "Progress", "Points", "Level"]];
         body = arr.map(s => [
           s.rank ?? "-",
+          s.admissionNo,
           s.name,
           ...currentSubjects.map(sub => {
             const score = s.subjects[sub];
             const isAbs = score === undefined || score === null || String(score).trim().toUpperCase() === "X";
             return isAbs ? "ABS" : score.toFixed(1);
           }),
+          s.progress !== null ? (s.progress > 0 ? "+" : "") + s.progress.toFixed(1) : "N/A",
           s.totalPoints ?? "-",
           window.cbcUtils.getSubdivision(s.mean, s.grade)
         ]);
         
-        const totalRow = ["", "TOTAL:"];
-        const meanRow = ["", "MEAN:"];
+        const totalRow = ["", "", "TOTAL:"];
+        const meanRow = ["", "", "MEAN:"];
         currentSubjects.forEach(sub => {
           const sSum = arr.reduce((acc, s) => acc + (s.subjects[sub] || 0), 0);
           const sCnt = arr.filter(s => s.subjects[sub] !== undefined).length || 1;
@@ -1581,11 +1868,11 @@ async function exportPdf() {
         });
         const gPoints = arr.reduce((acc, s) => acc + (s.totalPoints || 0), 0);
         const gMean = arr.reduce((acc, s) => acc + (s.mean || 0), 0) / (arr.length || 1);
-        totalRow.push(gPoints.toFixed(0), "");
-        meanRow.push((gPoints / (arr.length || 1)).toFixed(1), window.cbcUtils.getSubdivision(gMean, arr[0]?.grade));
+        totalRow.push("", gPoints.toFixed(0), "");
+        meanRow.push("", (gPoints / (arr.length || 1)).toFixed(1), window.cbcUtils.getSubdivision(gMean, arr[0]?.grade));
         foot = [totalRow, meanRow];
     } else {
-        head = [["Rank", "Student", ...subjects, "Total Marks", "Total Points", "Avg Points", "Performance Level"]];
+        head = [["Rank", "Student", ...subjects, "Total Marks", "Progress", "Total Points", "Performance Level"]];
         body = arr.map(s => [
           s.rank ?? "-",
           s.name || "Unnamed",
@@ -1595,14 +1882,13 @@ async function exportPdf() {
             return isAbs ? "ABS" : score;
           }),
           s.total ?? 0,
+          s.progress !== null ? (s.progress > 0 ? "+" : "") + s.progress.toFixed(1) : "N/A",
           s.totalPoints ?? 0,
-          s.avgPoints.toFixed(2),
           window.cbcUtils.getSubdivision(s.mean, s.grade)
         ]);
 
         const fTotalMarks = arr.reduce((acc, s) => acc + s.total, 0);
         const fTotalPoints = arr.reduce((acc, s) => acc + s.totalPoints, 0);
-        const fAvgPoints = arr.reduce((acc, s) => acc + s.avgPoints, 0);
         const fMeanSum = arr.reduce((acc, s) => acc + s.mean, 0);
         const fCount = arr.length || 1;
 
@@ -1614,8 +1900,8 @@ async function exportPdf() {
           totalRow.push(sSum.toFixed(0));
           meanRow.push((sSum / sCnt).toFixed(1));
         });
-        totalRow.push(fTotalMarks.toFixed(0), fTotalPoints, fAvgPoints.toFixed(1), "");
-        meanRow.push((fTotalMarks / fCount).toFixed(1), (fTotalPoints / fCount).toFixed(1), (fAvgPoints / fCount).toFixed(2), window.cbcUtils.getSubdivision(fMeanSum / fCount, arr[0]?.grade));
+        totalRow.push(fTotalMarks.toFixed(0), "", fTotalPoints, "");
+        meanRow.push((fTotalMarks / fCount).toFixed(1), "", (fTotalPoints / fCount).toFixed(1), window.cbcUtils.getSubdivision(fMeanSum / fCount, arr[0]?.grade));
         foot = [totalRow, meanRow];
       }
 
@@ -1639,10 +1925,18 @@ async function exportPdf() {
     doc.setFontSize(12);
     doc.setFont("helvetica", "bold");
     doc.text("SUBJECT MEANS SUMMARY", 40, yPos);
+
+    // Create a sorted subject list for PDF, mirroring renderSubjectMeansTable
+    const subjectList = (stats.subjects || []).map(s => ({
+      name: s,
+      mean: stats.subjectMeans[s] || 0,
+      count: stats.subjectCounts ? (stats.subjectCounts[s] || 0) : 0
+    })).sort((a, b) => b.mean - a.mean);
+
     doc.autoTable({
        startY: yPos + 10,
-       head: [["Subject", "Mean Score"]],
-       body: subjects.map(sub => [sub.charAt(0).toUpperCase() + sub.slice(1), stats.subjectMeans[sub]?.toFixed(2) || "0.00"]),
+       head: [["Subject", "Mean Score", "Entries"]],
+       body: subjectList.map(s => [s.name, s.mean.toFixed(2), s.count]),
        theme: 'grid',
        styles: { fontSize: 9, lineWidth: 0.1, lineColor: [0, 0, 0] },
        headStyles: { fillColor: [33, 150, 243] },
@@ -1782,4 +2076,13 @@ async function exportPdf() {
       }
     });
   }
+
+  // Global resize listener for synced tables
+  window.addEventListener('resize', () => {
+    document.querySelectorAll('.table-responsive').forEach(el => {
+      if (el._syncUpdate) el._syncUpdate();
+    });
+  });
+
+  window.authService?.initLogout(); // Re-add logout init here as it was removed with exportPdfBtn
 });

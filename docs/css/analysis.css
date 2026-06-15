@@ -321,6 +321,32 @@ th {
   .toolbar .btn { padding: 6px 10px; font-size: 0.8rem; }
 }
 
+/* Mobile Filters Two-Column Grid */
+@media (max-width: 640px) {
+    .filter-grid, .filters-grid {
+        display: grid !important;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 12px;
+        padding: 15px;
+    }
+
+    .filter-grid .form-group, .filter-item {
+        min-width: 0 !important;
+        flex: none !important;
+        margin-bottom: 5px;
+    }
+
+    .filter-item label {
+        margin-bottom: 4px; /* Save vertical space */
+    }
+
+    /* Ensure the Generate Report button spans both columns at the bottom */
+    .filter-grid .form-group:last-child, .filter-item:last-child {
+        grid-column: span 2;
+        margin-top: 10px;
+    }
+}
+
 /* Learner Journey Modal Overlay */
 #learnerJourneyModal {
     position: fixed;
@@ -433,6 +459,27 @@ th {
 #journeyTableArea .marks-table {
     border-radius: 12px;
     overflow: hidden;
+    font-size: 0.7rem !important;
+    line-height: 1.1;
+}
+
+#journeyTableArea .marks-table th,
+#journeyTableArea .marks-table td {
+    padding: 4px 6px !important;
+    white-space: nowrap;
+}
+
+#journeyTableArea .marks-table th {
+    background: var(--slate-100);
+    font-size: 0.6rem;
+}
+
+#journeyTableArea .marks-table .col-mean {
+    background-color: #f0f7ff !important; /* Light blue tint to highlight the column */
+    font-weight: 800;
+    color: var(--primary-light);
+    border-left: 1px solid var(--slate-200);
+    border-right: 1px solid var(--slate-200);
 }
 
 /* Mobile adjustments */
@@ -442,10 +489,108 @@ th {
     }
     
     #learnerJourneyModal .modal-content {
-        padding: 20px;
+        padding: 15px;
+        width: 98%;
     }
     
     #learnerJourneyModal h3 {
         font-size: 1.2rem;
     }
+}
+
+/* Layout & Header */
+header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 15px 25px;
+    background: #2b6cb0;
+    color: white;
+    border-radius: 10px;
+    margin-bottom: 20px;
+    box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+}
+header h1 { font-size: 1.25rem; margin: 0; font-weight: 700; letter-spacing: 0.5px; }
+.toolbar { display: flex; gap: 10px; }
+
+/* Analysis Tabs Navigation */
+.analysis-tabs-container {
+    margin-top: 20px;
+    background: #fff;
+    border-radius: 8px;
+    box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+}
+.tab-buttons {
+    display: flex;
+    border-bottom: 1px solid #e2e8f0;
+    padding: 0 15px;
+    background: #f8fafc;
+    border-top-left-radius: 8px;
+    border-top-right-radius: 8px;
+}
+.tab-btn {
+    padding: 12px 20px;
+    border: none;
+    background: transparent;
+    cursor: pointer;
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: #64748b;
+    border-bottom: 3px solid transparent;
+    transition: all 0.2s ease;
+}
+.tab-btn:hover { color: #2563eb; }
+.tab-btn.active {
+    color: #2563eb;
+    border-bottom-color: #2563eb;
+}
+.tab-content-area { padding: 20px; }
+.tab-pane { display: none; }
+.tab-pane.active { display: block; }
+
+/* Stats Summary Grid */
+.stats-summary {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px;
+    margin-top: 15px;
+}
+.stat-card {
+    background: #f8fafc;
+    padding: 10px;
+    border-radius: 6px;
+    text-align: center;
+}
+
+/* Responsive Table & Dual Scroll System */
+.table-responsive {
+    width: 100% !important;
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch;
+    margin-bottom: 1.5rem;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    background: white;
+}
+.top-scroll-wrapper {
+    width: 100%;
+    overflow-x: auto;
+    overflow-y: hidden;
+    height: 14px;
+    margin-bottom: 2px;
+    display: none;
+}
+.top-scroll-content { height: 14px; }
+
+/* Sticky Header Logic */
+.table-responsive table thead th {
+    position: sticky;
+    top: 0;
+    background-color: #f8fafc;
+    z-index: 10;
+    border-bottom: 1px solid #e2e8f0;
+}
+.table-responsive table thead tr.table-header-alt th {
+    background-color: #2b6cb0;
+    color: white;
 }
