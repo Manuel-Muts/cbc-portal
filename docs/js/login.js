@@ -37,10 +37,9 @@ document.addEventListener("DOMContentLoaded", function () {
     
     const wrapper = document.createElement("div");
     wrapper.className = "password-input-wrapper";
-    field.parentNode.insertBefore(wrapper, field);
+    if (field.parentNode) field.parentNode.insertBefore(wrapper, field);
     wrapper.appendChild(field);
     wrapper.appendChild(icon);
-
     icon.addEventListener("click", () => {
       const isPass = field.type === "password";
       field.type = isPass ? "text" : "password";
@@ -154,6 +153,7 @@ document.addEventListener("DOMContentLoaded", function () {
       show(admissionField); show(admissionLabel);
       admissionField.type = "password"; // Hide password by default
       if (loginToggle) {
+        if (admissionField.parentNode) admissionField.parentNode.style.display = "block";
         loginToggle.style.display = "block";
         loginToggle.className = "fas fa-eye toggle-password-icon"; 
       }
@@ -163,7 +163,12 @@ document.addEventListener("DOMContentLoaded", function () {
       hide(firstnameField); hide(firstnameLabel);
       hide(emailField); hide(emailLabel);
       hide(admissionField); hide(admissionLabel);
-      if (loginToggle) loginToggle.style.display = "none";
+      if (loginToggle) {
+        loginToggle.style.display = "none";
+        if (admissionField.parentNode && admissionField.parentNode.classList.contains('password-input-wrapper')) {
+          admissionField.parentNode.style.display = "none";
+        }
+      }
     }
   }
 

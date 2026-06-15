@@ -9,6 +9,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   const logoutBtn = document.getElementById("logoutBtn");
   const refreshBtn = document.getElementById("refreshBtn");
   const generateBtn = document.getElementById("generateReport");
+  const atRiskTabBtn = document.getElementById("atRiskTabBtn");
   const applyFiltersBtn = document.getElementById("applyFiltersBtn");
 
   const gradeFilter = document.getElementById("gradeFilter");
@@ -31,6 +32,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   const subjectAnalysisTabBtn = document.getElementById("subjectAnalysisTabBtn");
   const trendChartTabBtn = document.getElementById("trendChartTabBtn");
   const missingExamsTabBtn = document.getElementById("missingExamsTabBtn");
+  const atRiskMonitorTabBtn = document.getElementById("atRiskMonitorTabBtn");
 
   const classRankingPane = document.getElementById("classRankingPane");
   const subjectAnalysisPane = document.getElementById("subjectAnalysisPane");
@@ -214,7 +216,129 @@ document.addEventListener("DOMContentLoaded", async () => {
    * 🆕 Function to set up tab navigation
    */
   function setupAnalysisTabs() {
-    const tabButtons = document.querySelectorAll(".analysis-tabs-container .tab-btn");
+    const tabsContainer = document.getElementById("analysisTabsContainer");
+    const panesContainer = tabsContainer?.querySelector(".tab-content") || tabsContainer;
+
+    if (!tabsContainer || !panesContainer) return;
+
+    // 🆕 Inject Tab "Vibe" Styles for a modern academic dashboard feel
+    if (!document.getElementById('analysisTabVibeStyles')) {
+      const style = document.createElement('style');
+      style.id = 'analysisTabVibeStyles';
+      style.textContent = `
+        .analysis-tabs-container { border-bottom: 2px solid #f1f5f9; padding-bottom: 12px; margin-top: 15px; display: flex; flex-wrap: wrap; gap: 8px; }
+        .tab-btn { 
+          display: inline-flex; align-items: center; gap: 10px; padding: 10px 18px; 
+          border-radius: 12px; font-weight: 800; font-size: 0.8rem; border: 2px solid transparent;
+          transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); background: #f8fafc; color: #64748b; cursor: pointer;
+        }
+        .tab-btn:hover { transform: translateY(-3px); box-shadow: 0 10px 15px -3px rgba(0,0,0,0.08); background: #ffffff; color: #1e293b; }
+        
+        /* Specific Vibe Colors for Active Tabs */
+        .tab-btn.active[data-tab="classRankingPane"] { background: #eff6ff; color: #2563eb; border-color: #bfdbfe; }
+        .tab-btn.active[data-tab="subjectAnalysisPane"] { background: #ecfdf5; color: #059669; border-color: #a7f3d0; }
+        .tab-btn.active[data-tab="trendChartPane"] { background: #f5f3ff; color: #7c3aed; border-color: #ddd6fe; }
+        .tab-btn.active[data-tab="missingExamsPane"] { background: #fffbeb; color: #d97706; border-color: #fef3c7; }
+        .tab-btn.active[data-tab="atRiskPane"] { background: #fff1f2; color: #e11d48; border-color: #fecdd3; }
+        
+        .tab-btn i { font-size: 1rem; }
+        .tab-btn.active i { transform: scale(1.1); transition: transform 0.3s ease; }
+      `;
+      document.head.appendChild(style);
+    }
+
+    // Inject CSS for compactness of tables
+    if (!document.getElementById('analysisTableCompactStyles')) {
+      const style = document.createElement("style");
+      style.id = 'analysisTableCompactStyles';
+      style.textContent = `
+        .analysis-tabs-container .marks-table th,
+        .analysis-tabs-container .marks-table td {
+          padding: 6px 8px !important; /* Reduced padding */
+          font-size: 0.8rem !important; /* Slightly smaller font */
+        }
+        .analysis-tabs-container .marks-table th {
+          font-size: 0.7rem !important; /* Even smaller for headers */
+          text-transform: uppercase;
+          letter-spacing: 0.025em;
+          font-weight: 700;
+          color: #475569;
+          background-color: #f8fafc;
+        }
+        .analysis-tabs-container .marks-table td {
+          color: #1e293b;
+        }
+        .analysis-tabs-container .marks-table .view-journey-btn {
+          padding: 2px 4px !important;
+          font-size: 0.6rem !important;
+        }
+        .analysis-tabs-container .marks-table .ranking-search-toolbar {
+          max-width: 300px; /* Make search bar more compact */
+        }
+        .analysis-tabs-container .marks-table .ranking-search-toolbar input {
+          padding: 6px 10px !important;
+          font-size: 0.75rem !important;
+        }
+        .analysis-tabs-container .marks-table .ranking-search-toolbar button {
+          font-size: 1rem !important;
+          right: 5px !important;
+        }
+        /* Specific adjustments for subject table */
+        #subjectTableWrap .marks-table th,
+        #subjectTableWrap .marks-table td {
+          text-align: center; /* Center align for numerical data */
+        }
+        #subjectTableWrap .marks-table th:first-child,
+        #subjectTableWrap .marks-table td:first-child {
+          text-align: left; /* Left align for subject name */
+        }
+        /* Missing exams table */
+        #missingExamsTableWrap .marks-table th,
+        #missingExamsTableWrap .marks-table td {
+          padding: 6px 8px !important;
+          font-size: 0.8rem !important;
+        }
+        #missingExamsTableWrap .marks-table th {
+          font-size: 0.7rem !important;
+        }
+        #missingExamsTableWrap .marks-table span.status-badge {
+          font-size: 0.65rem !important;
+          padding: 2px 5px !important;
+        }
+      `;
+      document.head.appendChild(style);
+    }
+
+    // 🆕 Dynamically inject At-Risk Monitor Tab if missing
+    if (!document.getElementById("atRiskMonitorTabBtn")) {
+      const btn = document.createElement('button');
+      btn.id = "atRiskMonitorTabBtn";
+      btn.className = "tab-btn";
+      btn.dataset.tab = "atRiskPane";
+      btn.innerHTML = `<i class="fas fa-shield-alt"></i> At-Risk Monitor <span id="atRiskBadge" class="status-badge" style="display:none; background:#ef4444; color:white; margin-left:5px; font-size:0.6rem; min-width:18px;">0</span>`;
+
+      const existingBtn = document.getElementById("missingExamsTabBtn");
+      if (existingBtn) existingBtn.after(btn);
+      else tabsContainer.prepend(btn);
+
+      const pane = document.createElement('div');
+      pane.id = "atRiskPane";
+      pane.className = "tab-pane";
+      pane.innerHTML = `<div style="text-align:center; padding:20px; color:#94a3b8;">Generate a report to load risk analysis.</div>`;
+      panesContainer.appendChild(pane);
+    }
+
+    // 🆕 Decorate existing buttons with icons and specific Vibes
+    const decorate = (id, icon, text) => {
+      const el = document.getElementById(id);
+      if (el && !el.querySelector('i')) el.innerHTML = `<i class="fas ${icon}"></i> ${text}`;
+    };
+    decorate("classRankingTabBtn", "fa-award", "Leaderboard");
+    decorate("subjectAnalysisTabBtn", "fa-brain", "Performance Map");
+    decorate("trendChartTabBtn", "fa-chart-line", "Growth Trends");
+    decorate("missingExamsTabBtn", "fa-search-minus", "Audit & Absences");
+
+    const tabButtons = tabsContainer.querySelectorAll(".tab-btn");
     const tabPanes = document.querySelectorAll(".analysis-tabs-container .tab-pane");
 
     tabButtons.forEach(button => {
@@ -868,7 +992,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       const arr = stats.groupedByAssessment[assessmentKey];
       if (!arr.length) return;
       let assessLabel = getAssessmentLabel(assessmentKey);
-
+      
       // Generate unique IDs for search input and clear button for each assessment block
       const searchInputId = `rankingSearchInput_${assessmentKey}`;
       const clearBtnId = `clearRankingSearch_${assessmentKey}`;
@@ -883,9 +1007,9 @@ document.addEventListener("DOMContentLoaded", async () => {
       html += `<h4>Assessment ${assessLabel}</h4>`;
       html += `<div class="top-scroll-wrapper"><div class="top-scroll-content"></div></div>`;
       html += `<div class="table-responsive" id="${tableResponsiveId}">`;
-      html += `<table><thead><tr><th>Rank</th><th>Name</th>`;
-      stats.subjects.forEach(sub => html += `<th>${sub}</th>`);
-      html += `<th>Total Marks</th><th>Progress</th><th>Total Points</th><th>Performance Level</th><th class="no-print">Tracking</th></tr></thead><tbody>`;
+      html += `<table><thead><tr><th>Rank</th><th>Name</th>`; // Removed inline styles, now handled by CSS
+      stats.subjects.forEach(sub => html += `<th>${sub}</th>`); // Removed inline styles, now handled by CSS
+      html += `<th>Total Marks</th><th>Progress</th><th>Total Points</th><th>Level</th><th class="no-print">Track</th></tr></thead><tbody>`; // Abbreviated headers
       arr.forEach(s => { // Use getAssessmentLabel for row as well
         let progressHtml = '<span style="color:#94a3b8; font-size:0.7rem;">N/A</span>';
         if (s.progress !== null) {
@@ -894,16 +1018,16 @@ document.addEventListener("DOMContentLoaded", async () => {
             else if (diff < -0.1) progressHtml = `<span style="color:#ef4444; font-weight:700;">${diff.toFixed(1)}</span>`;
             else progressHtml = `<span style="color:#3498db; font-size:0.8rem;">-</span>`;
         }
-
-        html += `<tr><td>${s.rank}</td><td>${s.name}</td>`;
+        
+        html += `<tr><td>${s.rank}</td><td>${s.name}</td>`; // Removed inline styles, now handled by CSS
         stats.subjects.forEach(sub => {
           const score = s.subjects[sub];
           const isAbs = score === undefined || score === null || String(score).trim().toUpperCase() === "X";
           const display = isAbs ? '<span style="color:#ef4444; font-weight:700;">ABS</span>' : score;
-          html += `<td>${display}</td>`;
+          html += `<td style="text-align:center;">${display}</td>`; // Center align scores
         });
-        html += `<td>${s.total}</td><td style="text-align:center;">${progressHtml}</td><td><strong>${s.totalPoints}</strong></td><td>${window.cbcUtils.getSubdivision(s.mean, s.grade)}</td>
-        <td class="no-print"><button class="btn secondary-btn view-journey-btn" data-adm="${s.admissionNo}" data-name="${s.name}" style="padding: 2px 6px; font-size: 0.65rem;"><i class="fas fa-chart-line"></i> Journey</button></td></tr>`;
+        html += `<td style="text-align:center;">${s.total}</td><td style="text-align:center;">${progressHtml}</td><td style="text-align:center;"><strong>${s.totalPoints}</strong></td><td style="text-align:center;">${window.cbcUtils.getSubdivision(s.mean, s.grade)}</td>
+        <td class="no-print" style="text-align:center;"><button class="btn secondary-btn view-journey-btn" data-adm="${s.admissionNo}" data-name="${s.name}"><i class="fas fa-chart-line"></i></button></td></tr>`; // Icon-only button
       });
 
       // Calculate Totals and Means for Footer
@@ -915,28 +1039,28 @@ document.addEventListener("DOMContentLoaded", async () => {
       html += `</tbody><tfoot style="background-color: #f2f2f2; font-weight: bold; border-top: 2px solid #000;">`;
       
       // TOTAL Row
-      html += `<tr><td colspan="2" style="text-align: right; padding: 8px;">TOTAL:</td>`;
+      html += `<tr><td colspan="2" style="text-align: right;">TOTAL:</td>`;
       stats.subjects.forEach(sub => {
         const subSum = arr.reduce((acc, s) => acc + (s.subjects[sub] || 0), 0);
-        html += `<td style="text-align: center; padding: 8px;">${subSum.toFixed(0)}</td>`;
+        html += `<td style="text-align: center;">${subSum.toFixed(0)}</td>`;
       });
-      html += `<td style="text-align: center; padding: 8px;">${groupTotalMarks.toFixed(0)}</td>`;
+      html += `<td style="text-align: center;">${groupTotalMarks.toFixed(0)}</td>`;
       html += `<td></td>`; // Progress spacer
-      html += `<td style="text-align: center; padding: 8px;">${groupTotalPoints}</td>`;
+      html += `<td style="text-align: center;">${groupTotalPoints}</td>`;
       html += `<td></td>`; // Level spacer
       html += `<td></td></tr>`; // Tracking spacer
 
       // MEAN Row
-      html += `<tr><td colspan="2" style="text-align: right; padding: 8px;">MEAN:</td>`;
+      html += `<tr><td colspan="2" style="text-align: right;">MEAN:</td>`;
       stats.subjects.forEach(sub => {
         const subSum = arr.reduce((acc, s) => acc + (s.subjects[sub] || 0), 0);
         const subCount = arr.filter(s => s.subjects[sub] !== undefined).length || 1;
-        html += `<td style="text-align: center; padding: 8px;">${(subSum / subCount).toFixed(1)}</td>`;
+        html += `<td style="text-align: center;">${(subSum / subCount).toFixed(1)}</td>`;
       });
-      html += `<td style="text-align: center; padding: 8px;">${(groupTotalMarks / groupCount).toFixed(1)}</td>`;
+      html += `<td style="text-align: center;">${(groupTotalMarks / groupCount).toFixed(1)}</td>`;
       html += `<td></td>`; // Progress spacer
-      html += `<td style="text-align: center; padding: 8px;">${(groupTotalPoints / groupCount).toFixed(1)}</td>`;
-      html += `<td style="text-align: center; padding: 8px; color: #1a237e;">${window.cbcUtils.getSubdivision(groupMeanSum / groupCount, arr[0]?.grade)}</td>`;
+      html += `<td style="text-align: center;">${(groupTotalPoints / groupCount).toFixed(1)}</td>`;
+      html += `<td style="text-align: center; color: #1a237e;">${window.cbcUtils.getSubdivision(groupMeanSum / groupCount, arr[0]?.grade)}</td>`;
       html += `<td></td></tr></tfoot></table></div>`;
     });
     classRankingPane.innerHTML = html; // 🆕 Render directly into pane
@@ -1008,7 +1132,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
       let html = `<table class="marks-table"><thead><tr><th>T</th><th>Assess</th>`;
       const subjects = Array.from(new Set(studentHistory.flatMap(h => h.subjects.map(s => s.subject || s.course)))).sort();
-      subjects.forEach(s => html += `<th>${s}</th>`);
+      subjects.forEach(s => html += `<th>${window.cbcUtils.getAbbreviatedSubjectName(s)}</th>`);
       html += `<th class="col-mean">Mean</th><th>Level</th></tr></thead><tbody>`;
 
       const chartLabels = [];
@@ -1056,6 +1180,9 @@ document.addEventListener("DOMContentLoaded", async () => {
       options: { responsive: true, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, max: 100 } } }
     });
   }
+
+  // 🆕 Expose to window for external modules like at-risk-monitor.js
+  window.showLearnerJourney = showLearnerJourney;
 
   function renderIndividualSubjectChart(subjects, history) {
     const ctx = document.getElementById("individualSubjectChart").getContext("2d");
@@ -1144,7 +1271,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     const prevMeans = stats.prevSubjectMeans || {};
 
     let html = `<h3>📊 Subject Performance Analysis</h3>`;
-    html += `<table class="marks-table">
+    html += `<table class="marks-table" id="subjectAnalysisTable">
       <thead>
         <tr>
           <th>Rank</th>
@@ -1169,8 +1296,8 @@ document.addEventListener("DOMContentLoaded", async () => {
       html += `
         <tr>
           <td>${s.rank}</td>
-          <td style="text-align:left; font-weight:600;">${s.name}</td>
-          <td style="font-weight:700;">${s.mean.toFixed(2)}%</td>
+          <td style="text-align:left;">${s.name}</td>
+          <td>${s.mean.toFixed(2)}%</td>
           <td>${progressHtml}</td>
           <td>${s.count}</td>
         </tr>`;
@@ -1503,6 +1630,15 @@ document.addEventListener("DOMContentLoaded", async () => {
           recordsCountEl.textContent = stats.records;
           renderTrendChartWithData(filtered, false);
           renderMissingExamsTable(stats.missingExamsList, stats.streamDiscrepancies);
+          
+          // 🆕 Initialize At-Risk Monitor
+          if (window.AtRiskMonitor) {
+            const insights = window.AtRiskMonitor.analyze(stats.studentArray, stats.subjects, currentUser.classGrade);
+            window.AtRiskMonitor.render('atRiskPane', insights);
+            const badge = document.getElementById('atRiskBadge');
+            if (badge) { badge.textContent = insights.critical.length; badge.style.display = insights.critical.length > 0 ? 'inline-block' : 'none'; }
+          }
+
         } else {
           const stats = calculateSeniorSchoolStats(filtered, roster, streamMode, allTermRaw, prevTermRaw);
           renderSeniorSchoolAnalysis(stats);
@@ -1516,6 +1652,14 @@ document.addEventListener("DOMContentLoaded", async () => {
           recordsCountEl.textContent = stats.records;
           renderTrendChartWithData(filtered, true);
           renderMissingExamsTable(stats.missingExamsList, stats.streamDiscrepancies);
+          
+          // 🆕 Initialize At-Risk Monitor (Senior)
+          if (window.AtRiskMonitor) {
+            const insights = window.AtRiskMonitor.analyze(stats.studentArray, stats.subjects, currentUser.classGrade);
+            window.AtRiskMonitor.render('atRiskPane', insights);
+            const badge = document.getElementById('atRiskBadge');
+            if (badge) { badge.textContent = insights.critical.length; badge.style.display = insights.critical.length > 0 ? 'inline-block' : 'none'; }
+          }
         }
       }
     } catch (err) {
@@ -1604,20 +1748,20 @@ document.addEventListener("DOMContentLoaded", async () => {
         
         html += `<tr style='background:${bg};'>`;
         html += `<td style='border:1px solid #ddd;padding:8px;'>${s.rank}</td>`;
-        html += `<td style='border:1px solid #ddd;padding:8px;'>${s.admissionNo}</td>`;
-        html += `<td style='border:1px solid #ddd;padding:8px;'>${s.name}</td>`;
+        html += `<td style='border:1px solid #ddd;padding:8px;'>${s.admissionNo}</td>`; // Removed inline styles, now handled by CSS
+        html += `<td style='border:1px solid #ddd;padding:8px;'>${s.name}</td>`; // Removed inline styles, now handled by CSS
         
         currentSubjects.forEach(sub => {
           const score = s.subjects[sub];
           const isAbs = score === undefined || score === null || String(score).trim().toUpperCase() === "X";
           const display = isAbs ? '<span style="color:#ef4444; font-weight:700;">ABS</span>' : score.toFixed(1);
-          html += `<td style='border:1px solid #ddd;padding:8px;text-align:center;'>${display}</td>`;
+          html += `<td style='border:1px solid #ddd;padding:8px;text-align:center;'>${display}</td>`; // Center align scores
         });
         
-        html += `<td style='border:1px solid #ddd;padding:8px;text-align:center;'>${progressHtml}</td>`;
-        html += `<td style='border:1px solid #ddd;padding:8px;text-align:center;'><strong>${s.totalPoints}</strong></td>`;
-        html += `<td class="no-print" style='border:1px solid #ddd;padding:8px;text-align:center;'><button class="btn secondary-btn view-journey-btn" data-adm="${s.admissionNo}" data-name="${s.name}" style="padding: 2px 6px; font-size: 0.65rem;"><i class="fas fa-chart-line"></i> Journey</button></td>`;
-        html += `<td style='border:1px solid #ddd;padding:8px;'>${subLevel} (${window.cbcUtils.getPerformanceLabel(mainLevel)})</td>`;
+        html += `<td style='border:1px solid #ddd;padding:8px;text-align:center;'>${progressHtml}</td>`; // Removed inline styles, now handled by CSS
+        html += `<td style='border:1px solid #ddd;padding:8px;text-align:center;'><strong>${s.totalPoints}</strong></td>`; // Removed inline styles, now handled by CSS
+        html += `<td class="no-print" style='border:1px solid #ddd;padding:8px;text-align:center;'><button class="btn secondary-btn view-journey-btn" data-adm="${s.admissionNo}" data-name="${s.name}"><i class="fas fa-chart-line"></i></button></td>`; // Icon-only button
+        html += `<td style='border:1px solid #ddd;padding:8px;text-align:center;'>${subLevel}</td>`; // Center align level, removed full label
         html += "</tr>";
       });
 
@@ -1625,31 +1769,31 @@ document.addEventListener("DOMContentLoaded", async () => {
       const groupTotalPoints = group.reduce((acc, s) => acc + s.totalPoints, 0);
       const groupMeanSum = group.reduce((acc, s) => acc + s.mean, 0);
       const groupCount = group.length || 1;
-
+      
       html += `</tbody><tfoot style="background-color: #f2f2f2; font-weight: bold; border-top: 2px solid #337ab7;">`;
       
       // TOTAL Row
-      html += `<tr><td colspan="3" style="text-align: right; padding: 8px;">TOTAL:</td>`;
+      html += `<tr><td colspan="3" style="text-align: right;">TOTAL:</td>`;
       currentSubjects.forEach(sub => {
         const subSum = group.reduce((acc, s) => acc + (s.subjects[sub] || 0), 0);
-        html += `<td style="border:1px solid #ddd;padding:8px;text-align:center;">${subSum.toFixed(0)}</td>`;
+        html += `<td style="text-align:center;">${subSum.toFixed(0)}</td>`;
       });
       html += `<td></td>`; // Progress spacer
-      html += `<td style="border:1px solid #ddd;padding:8px;text-align:center;">${groupTotalPoints}</td>`;
+      html += `<td style="text-align:center;">${groupTotalPoints}</td>`;
       html += `<td></td>`; // Tracking spacer
       html += `<td></td></tr>`; // Level spacer
 
       // MEAN Row
-      html += `<tr><td colspan="3" style="text-align: right; padding: 8px;">MEAN:</td>`;
+      html += `<tr><td colspan="3" style="text-align: right;">MEAN:</td>`;
       currentSubjects.forEach(sub => {
         const subSum = group.reduce((acc, s) => acc + (s.subjects[sub] || 0), 0);
         const subCount = group.filter(s => s.subjects[sub] !== undefined).length || 1;
-        html += `<td style="border:1px solid #ddd;padding:8px;text-align:center;">${(subSum / subCount).toFixed(1)}</td>`;
+        html += `<td style="text-align:center;">${(subSum / subCount).toFixed(1)}</td>`;
       });
       html += `<td></td>`; // Progress spacer
-      html += `<td style="border:1px solid #ddd;padding:8px;text-align:center;">${(groupTotalPoints / groupCount).toFixed(1)}</td>`;
+      html += `<td style="text-align:center;">${(groupTotalPoints / groupCount).toFixed(1)}</td>`;
       html += `<td></td>`; // Tracking spacer
-      html += `<td style="border:1px solid #ddd;padding:8px;text-align:center; color: #1a237e;">${window.cbcUtils.getSubdivision(groupMeanSum / groupCount, group[0]?.grade)}</td>`;
+      html += `<td style="border:1px solid #ddd;padding:8px;text-align:center; color: #1a237e;">${window.cbcUtils.getSubdivision(groupMeanSum / groupCount, group[0]?.grade)}</td>`; // Removed inline styles, now handled by CSS
       html += `</tr></tfoot></table></div>`;
     });
 
@@ -1782,6 +1926,22 @@ document.addEventListener("DOMContentLoaded", async () => {
         });
       }
       
+      // Add footer to every page
+      const totalPages = doc.internal.getNumberOfPages();
+      const printedDate = new Date().toLocaleString();
+      const footerText = "CompetenceHub Analytics";
+      const footerTextWidth = doc.getTextWidth(footerText);
+      const pageHeightForFooter = doc.internal.pageSize.getHeight();
+
+      for (let i = 1; i <= totalPages; i++) {
+        doc.setPage(i);
+        doc.setFontSize(8);
+        doc.setTextColor(150); // Subtle gray color for footer text
+        doc.text(`Printed: ${printedDate}`, 40, pageHeightForFooter - 20);
+        doc.text(footerText, (pageWidth / 2) - (footerTextWidth / 2), pageHeightForFooter - 20);
+        doc.text(`Page ${i} of ${totalPages}`, pageWidth - 40, pageHeightForFooter - 20, { align: "right" });
+      }
+
       doc.save(`Journey_${learnerName.replace(/[^a-z0-9]/gi, '_')}.pdf`);
     } catch (err) {
       console.error("PDF Export failed", err);
@@ -1988,7 +2148,7 @@ async function exportPdf() {
     }
 
     // If no data or canvas, hide container and destroy old chart
-    if (!chartCanvas || !filtered.length) {
+    if (!chartCanvas || !filtered || filtered.length === 0) {
       if (window.trendChart) window.trendChart.destroy();
       return;
     }
@@ -2083,6 +2243,11 @@ async function exportPdf() {
       if (el._syncUpdate) el._syncUpdate();
     });
   });
+
+  // 🆕 Load Module Script
+  const script = document.createElement('script');
+  script.src = 'js/classteacher/at-risk-monitor.js';
+  document.head.appendChild(script);
 
   window.authService?.initLogout(); // Re-add logout init here as it was removed with exportPdfBtn
 });

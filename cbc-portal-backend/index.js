@@ -48,17 +48,19 @@ app.set('trust proxy', 1);
 app.use(express.json());
 app.use(cookieParser());
 app.use(helmet({
+  crossOriginEmbedderPolicy: false, // 🔓 Disable COEP to allow external CDNs like FontAwesome/cdnjs
+  crossOriginOpenerPolicy: { policy: "same-origin-allow-popups" }, // 💳 Essential for payment gateway popups (IntaSend/3D Secure)
   contentSecurityPolicy: {
     directives: {
       defaultSrc: ["'self'"],
       scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'", "https://cdnjs.cloudflare.com", "https://cdn.jsdelivr.net", "https://kit.fontawesome.com", "https://ka-f.fontawesome.com"],
-      styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com", "https://fonts.gstatic.com", "https://cdnjs.cloudflare.com", "https://kit.fontawesome.com", "https://ka-f.fontawesome.com"],
+      styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com", "https://fonts.gstatic.com", "https://cdnjs.cloudflare.com", "https://cdn.jsdelivr.net", "https://kit.fontawesome.com", "https://ka-f.fontawesome.com"],
       imgSrc: ["'self'", "data:", "https:", "http://localhost:*", "http://127.0.0.1:*"],
       connectSrc: ["'self'", "http://localhost:*", "http://127.0.0.1:*", "https:"],
-      fontSrc: ["'self'", "data:", "https:", "https://fonts.gstatic.com", "https://cdnjs.cloudflare.com"],
+      fontSrc: ["'self'", "data:", "https:", "https://fonts.gstatic.com", "https://cdnjs.cloudflare.com", "https://cdn.jsdelivr.net"],
       objectSrc: ["'none'"],
       mediaSrc: ["'self'"],
-      frameSrc: ["'self'"]
+      frameSrc: ["'self'", "https:"] // 🔒 Allow external frames for payment authorization and security checks
     }
   }
 }));

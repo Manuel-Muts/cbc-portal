@@ -289,6 +289,8 @@ document.addEventListener("DOMContentLoaded", () => {
     const t = newPasswordInput.type === "password" ? "text" : "password";
     newPasswordInput.type = t;
     togglePwdBtn.textContent = t === "text" ? "Hide" : "Show";
+    // 🆕 Also toggle a visual class if available
+    togglePwdBtn.classList.toggle("active", t === "text");
   });
 
   // -------------------------

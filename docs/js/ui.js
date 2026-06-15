@@ -177,8 +177,41 @@ if (overlay) {
       font-weight: bold;
       border-top: 2px solid #cbd5e0;
     }
+
+    /* 🔐 Password Toggle Styles - Injected for Production Stability */
+    .password-input-wrapper {
+      position: relative !important;
+      width: 100% !important;
+      display: block !important;
+    }
+    .toggle-password-icon {
+      position: absolute !important;
+      right: 12px !important;
+      top: 50% !important;
+      transform: translateY(-50%) !important;
+      cursor: pointer !important;
+      color: #64748b !important;
+      z-index: 20 !important;
+      font-size: 1.1rem !important;
+      transition: color 0.2s ease;
+      background: transparent !important;
+      border: none !important;
+      padding: 0 !important;
+      line-height: 1 !important;
+    }
+    .toggle-password-icon:hover {
+      color: #1e293b !important;
+    }
   `;
   document.head.appendChild(style);
+
+  // 🆕 Ensure FontAwesome is available for the eye icon in production
+  if (!document.querySelector('link[href*="font-awesome"]') && !document.querySelector('script[src*="font-awesome"]')) {
+    const fa = document.createElement('link');
+    fa.rel = 'stylesheet';
+    fa.href = 'https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css';
+    document.head.appendChild(fa);
+  }
 })();
 // docs/js/ui-utils.js
 

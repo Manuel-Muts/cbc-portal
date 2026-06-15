@@ -11,8 +11,9 @@ const AnnouncementSystem = (() => {
         if (!token || token === "null" || token === "undefined") return;
 
         // 🆕 Optimization: Learners receive info via parent SMS; skip dashboard fetching.
+        const userKey = window.config?.auth?.userKey || 'user';
         try {
-            const user = JSON.parse(localStorage.getItem('loggedInUser') || '{}');
+            const user = JSON.parse(localStorage.getItem(userKey) || '{}');
             if (user.role === 'student' || user.role === 'learner') {
                 return;
             }
@@ -32,19 +33,21 @@ const AnnouncementSystem = (() => {
             
             // Get only the filename from the path (e.g., "admin.html")
             const fullPath = window.location.pathname.toLowerCase();
-            const fileName = fullPath.split('/').pop() || 'index.html';
-            // Normalize for clean URLs (e.g., "/dean" becomes "dean")
-            const cleanPath = fileName.replace(/\.html$/, '');
+            // Normalize for clean URLs (e.g., "/dean-dashboard.html" becomes "dean-dashboard")
+            // We strip both leading/trailing slashes and the extension
+            const cleanPath = fullPath.replace(/^\/|\/$/g, '').replace(/\.html$/, '') || 'index';
 
             console.log(`📢 Route Check: Path is "${cleanPath}"`);
 
             announcements.forEach(ann => {
-                console.log(`🔍 Checking announcement "${ann.title}" against target: ${ann.targetPage}`);
-                const target = ann.targetPage.toLowerCase().replace(/\.html$/, '');
+                // Normalize the target page from the DB for comparison
+                const target = ann.targetPage.toLowerCase().replace(/^\/|\/$/g, '').replace(/\.html$/, '');
+                console.log(`🔍 Checking announcement "${ann.title}" against target: "${target}" (Original: "${ann.targetPage}")`);
                 
                 // Stricter matching to avoid admin/super-admin collision
                 const isExactMatch = (cleanPath === target);
-                const isPartialMatch = (cleanPath.includes(target) && target !== 'admin'); // Allow partials except for 'admin'
+                // Bidirectional check allows "dean" to match "dean-dashboard" and vice versa
+                const isPartialMatch = (target !== '' && target !== 'all' && (cleanPath.includes(target) || target.includes(cleanPath)) && target !== 'admin' && cleanPath !== 'admin'); 
                 const isTargetPage = ann.targetPage === 'all' || isExactMatch || isPartialMatch;
                 
                 if (!isTargetPage) console.log(`⏭️ Skipping: Path "${cleanPath}" does not match target "${target}"`);
