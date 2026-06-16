@@ -915,9 +915,7 @@ confirmPromotionBtn.addEventListener("click", async () => {
 
   if (!ok) return;
 
-  const originalHTML = confirmPromotionBtn.innerHTML;
-  confirmPromotionBtn.disabled = true;
-  confirmPromotionBtn.innerHTML = '<span class="spinner"></span>Processing...';
+  window.spinner?.show(confirmPromotionBtn, "Processing...");
 
   // Show promotion progress bar
   if (promotionProgressBarContainer) {
@@ -974,8 +972,7 @@ confirmPromotionBtn.addEventListener("click", async () => {
     }
     showToast(err.message || "Promotion failed unexpectedly", "error");
   } finally {
-    confirmPromotionBtn.disabled = false;
-    confirmPromotionBtn.innerHTML = originalHTML;
+    window.spinner?.hide(confirmPromotionBtn);
   }
 });
 
@@ -1588,9 +1585,7 @@ function openEditProfileModal(userToEdit) {
   if (cancelProfileBtn) cancelProfileBtn.onclick = () => modal.remove();
 
   if (saveProfileBtn) saveProfileBtn.onclick = async () => {
-    const originalHTML = saveProfileBtn.innerHTML;
-    saveProfileBtn.disabled = true;
-    saveProfileBtn.innerHTML = `${createSpinner(14).outerHTML} Saving...`;
+    window.spinner?.show(saveProfileBtn, "Saving...");
 
     const payload = {
       name: document.getElementById("editProfileName").value.trim(),
@@ -1623,8 +1618,7 @@ function openEditProfileModal(userToEdit) {
       console.error("Profile update error:", err);
       showToast(err.message || "Failed to update profile", "error");
     } finally {
-      saveProfileBtn.disabled = false;
-      saveProfileBtn.innerHTML = originalHTML;
+      window.spinner?.hide(saveProfileBtn);
     }
   };
 }
@@ -1919,8 +1913,7 @@ async function saveTermLockStatus() {
     return;
   }
 
-  saveTermLockBtn.disabled = true;
-  saveTermLockBtn.innerHTML = '<span class="spinner"></span> Saving...';
+  window.spinner?.show(saveTermLockBtn, "Saving...");
 
   try {
     const res = await secureFetch(`${API_BASE}/settings/term-lock`, {
@@ -1936,8 +1929,7 @@ async function saveTermLockStatus() {
     console.error("Error saving term lock status:", err);
     showToast("Failed to save term lock status: " + err.message, "error");
   } finally {
-    saveTermLockBtn.disabled = false;
-    saveTermLockBtn.innerHTML = "Save Lock Status";
+    window.spinner?.hide(saveTermLockBtn);
   }
 }
 
@@ -1984,33 +1976,27 @@ saveTermLockBtn?.addEventListener("click", saveTermLockStatus);
   if (subjectAllocForm) {
     subjectAllocForm.addEventListener("submit", async (e) => {
       e.preventDefault();
+
+      const teacherId = teacherSelect?.value || "";
+      const grades = gradesSelect ? Array.from(gradesSelect.selectedOptions).map(opt => opt.value) : [];
+      const grade = grades.length > 0 ? grades[0] : "";
+      const subjects = subjectsSelect ? Array.from(subjectsSelect.selectedOptions).map(opt => opt.value) : [];
+
+      if (!teacherId) return showToast("Please select a teacher.", "error");
+      if (!grade) return showToast("Please select a Grade.", "error");
+      if (subjects.length === 0) return showToast("Please select at least one subject.", "error");
+
+      const ok = await showConfirm({
+        title: "Confirm Subject Allocation",
+        message: "Are you sure you want to assign these subjects to the selected teacher?"
+      });
+      if (!ok) return;
+
       const submitBtn = subjectAllocForm.querySelector("button[type='submit']");
-      if (submitBtn) { submitBtn.disabled = true; submitBtn.appendChild(createSpinner(12)); }
+      window.spinner?.show(submitBtn, "Saving...");
 
-     const teacherId = teacherSelect?.value || "";
-      if (!teacherId) {
-        showToast("Please select a teacher for the subject allocation.", "error");
-        if (submitBtn) { submitBtn.disabled = false; Array.from(submitBtn.querySelectorAll(".spinner")).forEach(n => n.remove()); }
-        return;
-      }
-
-const gradeRange = gradeRangeSelect?.value || "";
-const grades = gradesSelect ? Array.from(gradesSelect.selectedOptions).map(opt => opt.value) : [];
-const grade = grades.length > 0 ? grades[0] : ""; // ✅ fix here
-const stream = (streamInput && streamInput.value !== "") ? streamInput.value : null; 
-const subjects = subjectsSelect ? Array.from(subjectsSelect.selectedOptions).map(opt => opt.value) : [];
-
-  // 🆕 Validation: Ensure grade and at least one subject are selected
-      if (!grade) {
-        showToast("Please select a specific Grade.", "error");
-        if (submitBtn) { submitBtn.disabled = false; Array.from(submitBtn.querySelectorAll(".spinner")).forEach(n => n.remove()); }
-        return;
-      }
-      if (subjects.length === 0) {
-        showToast("Please select at least one subject to allocate.", "error");
-        if (submitBtn) { submitBtn.disabled = false; Array.from(submitBtn.querySelectorAll(".spinner")).forEach(n => n.remove()); }
-        return;
-      }
+      const gradeRange = gradeRangeSelect?.value || "";
+      const stream = (streamInput && streamInput.value !== "") ? streamInput.value : null; 
       
       const res = await secureFetch(`${API_BASE}/users/subjects/assign`, {
         method: 'POST',
@@ -2019,7 +2005,7 @@ const subjects = subjectsSelect ? Array.from(subjectsSelect.selectedOptions).map
 
       if (res) { await loadSubjectAllocations(1, SUBJECT_ALLOC_LIMIT, true); showToast("Subject allocation saved successfully!", "success"); }
 
-      if (submitBtn) { submitBtn.disabled = false; Array.from(submitBtn.querySelectorAll(".spinner")).forEach(n => n.remove()); }
+      window.spinner?.hide(submitBtn);
     });
   }
 
@@ -2028,24 +2014,22 @@ const subjects = subjectsSelect ? Array.from(subjectsSelect.selectedOptions).map
   if (classAllocForm) {
   classAllocForm.addEventListener("submit", async (e) => {
     e.preventDefault();
-    const submitBtn = classAllocForm.querySelector("button[type='submit']");
-    if (submitBtn) { submitBtn.disabled = true; submitBtn.appendChild(createSpinner(12)); }
 
     const teacherId = classTeacherSelect?.value || "";
-    if (!teacherId) {
-      showToast("Please select a teacher for the class teacher allocation.", "error");
-      if (submitBtn) { submitBtn.disabled = false; Array.from(submitBtn.querySelectorAll(".spinner")).forEach(n => n.remove()); }
-      return;
-    }
-
     const assignedClass = classGradeSelect?.value || "";
     const assignedStream = (classStreamInput && classStreamInput.value !== "") ? classStreamInput.value : null;
 
-    if (!assignedClass) {
-      showToast("Please select a Grade for the class teacher allocation.", "error");
-      if (submitBtn) { submitBtn.disabled = false; Array.from(submitBtn.querySelectorAll(".spinner")).forEach(n => n.remove()); }
-      return;
-    }
+    if (!teacherId) return showToast("Please select a teacher.", "error");
+    if (!assignedClass) return showToast("Please select a Grade.", "error");
+
+    const ok = await showConfirm({
+      title: "Assign Class Teacher",
+      message: `Are you sure you want to assign this teacher to Class: ${assignedClass}${assignedStream ? ' ' + assignedStream : ''}?`
+    });
+    if (!ok) return;
+
+    const submitBtn = classAllocForm.querySelector("button[type='submit']");
+    window.spinner?.show(submitBtn, "Saving...");
 
     const res = await secureFetch(`${API_BASE}/users/classes/assign-teacher`, {
       method: 'POST',
@@ -2057,7 +2041,7 @@ const subjects = subjectsSelect ? Array.from(subjectsSelect.selectedOptions).map
       showToast("Class allocation saved successfully!", "success");
     }
 
-    if (submitBtn) { submitBtn.disabled = false; Array.from(submitBtn.querySelectorAll(".spinner")).forEach(n => n.remove()); }
+    window.spinner?.hide(submitBtn);
   });
 }
 
@@ -2067,6 +2051,8 @@ const subjects = subjectsSelect ? Array.from(subjectsSelect.selectedOptions).map
 
   subjectAllocTableBody?.addEventListener("click", async (e) => {
   const btn = e.target.closest("button");
+  if (!btn || btn.disabled) return;
+
   if (btn && btn.classList.contains("btn-edit-profile")) {
     const userToEdit = {
       id: btn.dataset.id,
@@ -2083,6 +2069,9 @@ const subjects = subjectsSelect ? Array.from(subjectsSelect.selectedOptions).map
     const grade = btn.dataset.grade; // 👈 capture grade from dataset
     const stream = (btn.dataset.stream && btn.dataset.stream.trim() !== '') ? btn.dataset.stream.trim() : null;
     const gradeLabel = stream ? `Grade ${grade}${stream}` : `Grade ${grade}`;
+
+        btn.disabled = true;
+        window.spinner?.show(btn, "Loading...");
 
     try {
        // 1. Fetch current subjects for this specific allocation (optimized: fetch only this teacher)
@@ -2109,7 +2098,7 @@ const subjects = subjectsSelect ? Array.from(subjectsSelect.selectedOptions).map
           </p>
           <div style="max-height: 280px; overflow-y: auto; border: 1px solid #e2e8f0; border-radius: 12px; margin-bottom: 25px; background: #ffffff; box-shadow: inset 0 2px 4px rgba(0,0,0,0.02);">
             ${alloc.subjects.map(sub => `
-              <div style="display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; border-bottom: 1px solid #f1f5f9; transition: background 0.2s;" onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background='transparent'">
+              <div class="subject-row" style="display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; border-bottom: 1px solid #f1f5f9; transition: background 0.2s;">
                 <label for="chk_${sub}" style="font-size: 0.95rem; cursor: pointer; flex: 1; font-weight: 500; color: #334155;">${sub}</label>
                 <input type="checkbox" class="sub-remove-check" value="${sub}" id="chk_${sub}" style="width: 18px; height: 18px; cursor: pointer; accent-color: #ef4444;">
               </div>
@@ -2123,6 +2112,12 @@ const subjects = subjectsSelect ? Array.from(subjectsSelect.selectedOptions).map
       `;
       document.body.appendChild(modal);
 
+      // Add hover effects via JS to comply with CSP
+      modal.querySelectorAll('.subject-row').forEach(row => {
+        row.addEventListener('mouseenter', () => { row.style.background = '#f8fafc'; });
+        row.addEventListener('mouseleave', () => { row.style.background = 'transparent'; });
+      });
+
       modal.querySelector("#cancelSubRemove").onclick = () => modal.remove();
       modal.querySelector("#confirmSubRemove").onclick = async () => {
         const selected = Array.from(modal.querySelectorAll(".sub-remove-check:checked")).map(c => c.value);
@@ -2132,8 +2127,7 @@ const subjects = subjectsSelect ? Array.from(subjectsSelect.selectedOptions).map
         }
 
         const confirmBtn = modal.querySelector("#confirmSubRemove");
-        confirmBtn.disabled = true;
-        confirmBtn.innerHTML = '<span class="spinner"></span> Removing...';
+        window.spinner?.show(confirmBtn, "Removing...");
 
         try {
           const result = await secureFetch(`${API_BASE}/users/subjects/remove`, {
@@ -2148,24 +2142,30 @@ const subjects = subjectsSelect ? Array.from(subjectsSelect.selectedOptions).map
           }
         } catch (err) {
           showToast(err.message, "error");
-          confirmBtn.disabled = false;
-          confirmBtn.innerHTML = "Remove Selected";
+          window.spinner?.hide(confirmBtn);
         }
       };
 
     } catch (err) {
       console.error("[ERROR] Remove allocation error:", err);
       showToast("Error removing allocation: " + (err.message || "Unknown error"), "error");
+       } finally {
+      window.spinner?.hide(btn);
+      btn.disabled = false;
     }
   }
 });
 //remove class allocation handler
   classAllocTableBody?.addEventListener("click", async (e) => {
-    if (e.target.dataset.action === "remove-class") {
-      const teacherId = e.target.dataset.id;
+    const btn = e.target.closest("button");
+    if (btn && btn.dataset.action === "remove-class") {
+      if (btn.disabled) return;
+      const teacherId = btn.dataset.id;
       const ok = await showConfirm({ message: "Remove this class allocation?" });
       if (!ok) return;
       
+      btn.disabled = true;
+      window.spinner?.show(btn, "Removing...");
       try {
         const result = await secureFetch(`${API_BASE}/users/classes/remove`, { 
           method: "POST",
@@ -2179,6 +2179,9 @@ const subjects = subjectsSelect ? Array.from(subjectsSelect.selectedOptions).map
       } catch (err) {
         console.error("Remove class allocation error:", err);
         showToast("Error removing class allocation", "error");
+    } finally {
+      window.spinner?.hide(btn);
+      btn.disabled = false;
       }
     }
   });
@@ -2189,9 +2192,7 @@ studentSearchBody.addEventListener("click", async (e) => {
   const btn = e.target;
   if (!btn.classList.contains("btn-edit")) return;
 
-  const originalHTML = btn.innerHTML;
-  btn.disabled = true;
-  btn.innerHTML = `${createSpinner(14).outerHTML} Loading...`;
+  window.spinner?.show(btn, "Loading...");
 
   try {
     const tr = btn.closest("tr");
@@ -2210,8 +2211,7 @@ studentSearchBody.addEventListener("click", async (e) => {
     console.error("Edit fetch error:", err);
     showToast(err.message || "Failed to fetch student data", "error");
   } finally {
-    btn.disabled = false;
-    btn.innerHTML = originalHTML;
+    window.spinner?.hide(btn);
   }
 });
 
@@ -2222,9 +2222,7 @@ studentSearchBody.addEventListener("click", async (e) => {
   const btn = e.target;
   if (!btn.classList.contains("btn-history")) return;
 
-  const originalHTML = btn.innerHTML;
-  btn.disabled = true;
-  btn.innerHTML = `${createSpinner(14).outerHTML} Loading...`;
+  window.spinner?.show(btn, "Loading...");
 
   try {
     const tr = btn.closest("tr");
@@ -2240,8 +2238,7 @@ studentSearchBody.addEventListener("click", async (e) => {
     console.error("History fetch error:", err);
     showToast(err.message || "Failed to load history", "error");
   } finally {
-    btn.disabled = false;
-    btn.innerHTML = originalHTML;
+    window.spinner?.hide(btn);
   }
 });
 
@@ -2371,8 +2368,7 @@ promotionPreviewBody?.addEventListener("change", (e) => {
       return;
     }
 
-    confirmBulkDeleteBtn.disabled = true;
-    confirmBulkDeleteBtn.innerHTML = '<span class="spinner"></span> Deleting...';
+    window.spinner?.show(confirmBulkDeleteBtn, "Deleting...");
 
     try {
       const res = await secureFetch(`${API_BASE}/users/bulk-delete-students`, {
@@ -2403,8 +2399,7 @@ promotionPreviewBody?.addEventListener("change", (e) => {
         bulkDeleteModal.classList.remove("hidden");
       }
     } finally {
-      confirmBulkDeleteBtn.disabled = false;
-      confirmBulkDeleteBtn.innerHTML = "Confirm Deletion";
+      window.spinner?.hide(confirmBulkDeleteBtn);
     }
   });
 
@@ -2445,9 +2440,7 @@ studentSearchBody.addEventListener("click", async (e) => {
   const btn = e.target;
   if (!btn.classList.contains("btn-edit-profile")) return;
 
-  const originalHTML = btn.innerHTML;
-  btn.disabled = true;
-  btn.innerHTML = `${createSpinner(14).outerHTML} Loading...`;
+  window.spinner?.show(btn, "Loading...");
 
   try {
     const tr = btn.closest("tr");
@@ -2466,8 +2459,7 @@ studentSearchBody.addEventListener("click", async (e) => {
     console.error("Edit profile error:", err);
     showToast(err.message || "Failed to open profile editor", "error");
   } finally {
-    btn.disabled = false;
-    btn.innerHTML = originalHTML;
+    window.spinner?.hide(btn);
   }
 });
 
@@ -2895,9 +2887,7 @@ studentSearchBtn.addEventListener("click", async () => {
     return;
   }
 
-  const originalHTML = studentSearchBtn.innerHTML;
-  studentSearchBtn.disabled = true;
-  studentSearchBtn.innerHTML = '<span class="spinner"></span>Searching...';
+  window.spinner?.show(studentSearchBtn, "Searching...");
 
   try {
     const res = await secureFetch(
@@ -2939,7 +2929,7 @@ studentSearchBtn.addEventListener("click", async () => {
     });
   } finally {
     studentSearchBtn.disabled = false;
-    studentSearchBtn.innerHTML = originalHTML;
+    window.spinner?.hide(studentSearchBtn);
   }
 });
 

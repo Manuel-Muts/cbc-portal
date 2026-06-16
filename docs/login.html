@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Login</title>
   <link rel="stylesheet" href="css/style.css" />
+  <link rel="stylesheet" href="css/login.css" />
    <link rel="icon" type="image/png" href="/images/favicon.png"/> 
 </head>
 <body class="login-body">
@@ -38,6 +39,13 @@
       <label for="admission" id="admissionLabel">Password</label>
       <input type="password" id="admission" name="admission" placeholder="Enter your password" required>
       
+      <div class="form-group" style="margin-top: 15px; display: flex; align-items: center;">
+        <input type="checkbox" id="keepLoggedIn" name="keepLoggedIn" style="width: auto; margin-right: 8px;">
+        <label for="keepLoggedIn" style="margin-bottom: 0; font-weight: normal; color: #555;">Keep me logged in</label>
+      </div>
+
+      <br>
+
       <button type="submit" class="btn" >Login</button><br><br>
 
       <p style="margin-top:10px; text-align: center;">
@@ -64,6 +72,7 @@
 
 <script src="https://competence-hub.onrender.com/js/xlsx.full.min.js"></script>
   <script src="js/config.js"></script>
+  <script src="js/Utility/spinner.js"></script>
   <script src="js/login.js"></script>
   <script>
     // Logic to handle auto-selecting role from URL parameters

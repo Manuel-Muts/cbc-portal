@@ -15,6 +15,7 @@ document.addEventListener("DOMContentLoaded", function () {
   const emailField = document.getElementById("email");
   const emailLabel = document.getElementById("emailLabel");
   const passwordField = admissionField;
+  const keepLoggedInCheckbox = document.getElementById("keepLoggedIn");
 
   // Subtle Parallax Effect for Login Background
   document.addEventListener("mousemove", (e) => {
@@ -224,10 +225,12 @@ document.addEventListener("DOMContentLoaded", function () {
     console.log("Payload sending to backend:", payload);
 
     // Get the submit button and show loading state
+    // Add expiresIn to payload based on "Keep me logged in" checkbox
+    if (keepLoggedInCheckbox && keepLoggedInCheckbox.checked) {
+      payload.expiresIn = config.auth.expiresInLong;
+    }
     const submitBtn = loginForm.querySelector('button[type="submit"]');
-    const originalText = submitBtn.textContent;
-    submitBtn.disabled = true;
-    submitBtn.innerHTML = '<span class="spinner"></span>Logging in...';
+    window.spinner?.show(submitBtn, "Logging in...");
 
     try {
       // Login and fetch user + token + schoolId
@@ -247,8 +250,7 @@ document.addEventListener("DOMContentLoaded", function () {
       // Open password change modal if required
       if ((["teacher", "classteacher", "admin", "accounts"].includes(selectedRole)) && data.user.passwordMustChange) {
         openChangePasswordModal();
-        submitBtn.disabled = false;
-        submitBtn.textContent = originalText;
+        window.spinner?.hide(submitBtn);
         return;
       }
 
@@ -262,8 +264,7 @@ document.addEventListener("DOMContentLoaded", function () {
       console.error(err);
       alert(err.message);
       // Reset button on error
-      submitBtn.disabled = false;
-      submitBtn.textContent = originalText;
+      window.spinner?.hide(submitBtn);
     }
   }
 
@@ -302,9 +303,7 @@ document.addEventListener("DOMContentLoaded", function () {
     if (!token) return alert("Session token missing. Please try logging in again.");
 
     const submitBtn = changePasswordForm.querySelector("button[type='submit']");
-    const originalText = submitBtn.textContent;
-    submitBtn.disabled = true;
-    submitBtn.innerHTML = '<span class="spinner"></span>Updating...';
+    window.spinner?.show(submitBtn, "Updating...");
 
     try {
       // Include schoolId automatically
@@ -329,8 +328,7 @@ document.addEventListener("DOMContentLoaded", function () {
       console.error("Change password error:", err);
       alert(err.message);
       // Reset button on error
-      submitBtn.disabled = false;
-      submitBtn.textContent = originalText;
+      window.spinner?.hide(submitBtn);
     }
   });
 

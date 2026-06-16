@@ -82,7 +82,8 @@ const sharedConfig = {
   auth: {
     tokenKey: 'authToken',
     userKey: 'user',
-    expiresIn: 24, // hours
+    expiresIn: 24,  // Default token expiration in hours (e.g., 24 hours)
+    expiresInLong: 7 * 24   // Extended token expiration for "Keep me logged in" (e.g., 7 days)
   },
 
   // ===========================
