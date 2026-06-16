@@ -105,7 +105,7 @@ const authService = {
                     throw new Error("Unauthorized Session or API Error");
                 }
 
-                const user = await res.json();
+                const user = await res.json();     console.log("DEBUG: authService.getUserProfile fetched user from API:", user);
 
                 // School suspension check
                 if (
@@ -213,4 +213,3 @@ const authService = {
 };
 
 window.authService = authService;
-

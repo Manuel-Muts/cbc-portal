@@ -14,7 +14,8 @@ import {
   getPaginatedMarksByGrade,
   broadcastResultsSMS,
   bulkDeleteMarks,
-  getSMSLogsSummary
+  getSMSLogsSummary,
+  getSubmittedSubjectStats
 } from "../controllers/MarkController.js";
 
 import VerifyToken from "../middleware/verifyToken.js";
@@ -60,10 +61,15 @@ router.get("/student", VerifyToken, isStudent, getStudentMarks);
 router.get("/class", VerifyToken, isStudent, getClassMarks);
 
 /**
+ * @route   GET /api/marks/submission-stats-all
+ * @desc    Get school-wide subject submission statistics for Dean's Audit
+ * @access  Private (Dean only)
  * @route   POST /api/marks/broadcast-sms
  * @desc    Aggregate and send student results to parents via SMS
  * @access  Private (Dean only)
  */
+router.get("/submission-stats-all", VerifyToken, isDean, getSubmittedSubjectStats);
+
 router.post("/broadcast-sms", VerifyToken, isDean, broadcastResultsSMS);
 
 router.get("/sms-summary", VerifyToken, isDean, getSMSLogsSummary);

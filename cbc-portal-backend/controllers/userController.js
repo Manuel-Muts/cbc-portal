@@ -729,6 +729,10 @@ export const getSubjectAllocations = async (req, res) => {
       query.schoolId = req.user.schoolId;
     }
 
+    if (req.query.teacherId) {
+      query._id = req.query.teacherId;
+    }
+
     if (unassignedOnly) {
       query.$or = [
         { allocations: { $size: 0 } },
@@ -1002,7 +1006,7 @@ export const removeSubjectAllocation = async (req, res) => {
       return res.status(403).json({ message: 'Only admins can remove subject allocations' });
     }
 
-    const { teacherId, grade, stream } = req.body; // 🆕 Accept stream parameter
+    const { teacherId, grade, stream, subjects } = req.body; // 🆕 Accept subjects array
     if (!teacherId || !grade) return res.status(400).json({ message: 'teacherId and grade required' });
 
     const teacher = await User.findById(teacherId);
@@ -1012,21 +1016,31 @@ export const removeSubjectAllocation = async (req, res) => {
       return res.status(403).json({ message: 'You can only remove allocations for teachers in your school' });
     }
 
-    console.log(`[DEBUG] Removing allocation - Teacher: ${teacher.name}, Grade: ${grade} (type: ${typeof grade}), Stream: ${stream} (type: ${typeof stream})`);
-    console.log(`[DEBUG] Current allocations:`, JSON.stringify(teacher.allocations, null, 2));
+    // Find the specific allocation matching grade and stream
+    const allocation = (teacher.allocations || []).find(a => 
+      String(a.grade) == String(grade) && (a.stream || null) === (stream || null)
+    );
 
-    // 🆕 Filter by both grade and stream - use == for comparison to handle string/number conversion
-    const originalLength = (teacher.allocations || []).length;
-    teacher.allocations = (teacher.allocations || []).filter(a => {
-      const match = String(a.grade) == String(grade) && (a.stream || null) === (stream || null);
-      console.log(`[DEBUG] Checking allocation - grade: ${a.grade}, stream: ${a.stream || 'null'} - Match: ${match}`);
-      return !match;
-    });
-    const newLength = teacher.allocations.length;
+    const originalLength = teacher.allocations.length;
+    if (!allocation) {
+      return res.status(404).json({ message: 'Allocation not found for this grade/stream' });
+    }
 
-    console.log(`[DEBUG] Allocations removed: ${originalLength - newLength}, Before: ${originalLength}, After: ${newLength}`);
+    if (Array.isArray(subjects) && subjects.length > 0) {
+      // Selective removal: Keep subjects NOT in the removal list
+      allocation.subjects = allocation.subjects.filter(s => !subjects.includes(s));
+      
+      // If no subjects left in this allocation, remove the entire entry
+      if (allocation.subjects.length === 0) {
+        teacher.allocations = teacher.allocations.filter(a => a !== allocation);
+      }
+    } else {
+      // Fallback/Legacy: Remove the entire allocation entry if no specific subjects provided
+      teacher.allocations = teacher.allocations.filter(a => a !== allocation);
+    }
 
     teacher.markModified('allocations');
+    const newLength = teacher.allocations.length;
 
     await teacher.save();
     cache.clearByPattern(String(teacher.schoolId)); // Invalidate cache

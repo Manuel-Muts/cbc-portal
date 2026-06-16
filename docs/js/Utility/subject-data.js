@@ -4,7 +4,7 @@ window.SUBJECT_DATA.gradeSubjects = {
   "PG-PP2": [
     "Language",
     "Numberwork",
-    "Environmental",
+    "Environmental Activities",
     "Psychomotor",
     "Literacy",
     "Kswahili",

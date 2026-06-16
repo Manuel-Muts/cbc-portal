@@ -1106,7 +1106,18 @@ confirmPromotionBtn.addEventListener("click", async () => {
     if (!subjectAllocTableBody) return;
     const frag = document.createDocumentFragment();
 
+    // Deduplicate data by ID to prevent double-listing in case of API or state anomalies
+    const uniqueData = [];
+    const seenIds = new Set();
     data.forEach(item => {
+      if (item && item._id && !seenIds.has(item._id)) {
+        uniqueData.push(item);
+        seenIds.add(item._id);
+      }
+    });
+
+    // Sort uniqueData by teacher name (optional, but good for consistency)
+    uniqueData.sort((a, b) => a.name.localeCompare(b.name)).forEach(item => {
       const allocations = Array.isArray(item.allocations) ? item.allocations : [];
 
       if (allocations.length === 0) {
@@ -1124,7 +1135,14 @@ confirmPromotionBtn.addEventListener("click", async () => {
         `;
         frag.appendChild(tr);
       } else {
-        allocations.forEach((alloc, index) => {
+        // 🆕 Sort allocations for this teacher by Grade Order (PG -> Grade 12)
+        const sortedAllocations = [...allocations].sort((a, b) => {
+          const indexA = GRADE_ORDER.indexOf(normalizeGrade(String(a.grade)));
+          const indexB = GRADE_ORDER.indexOf(normalizeGrade(String(b.grade)));
+          return (indexA === -1 ? 99 : indexA) - (indexB === -1 ? 99 : indexB);
+        });
+
+        sortedAllocations.forEach((alloc, index) => {
           const normalized = normalizeGrade(alloc.grade);
           const isPP = normalized.toUpperCase().startsWith("PP") || normalized.toUpperCase() === "PG";
           const gradeLabel = isPP ? (alloc.stream ? `${alloc.grade}${alloc.stream}` : alloc.grade) : (alloc.stream ? `Grade ${alloc.grade}${alloc.stream}` : `Grade ${alloc.grade}`);
@@ -1392,17 +1410,6 @@ confirmPromotionBtn.addEventListener("click", async () => {
     }
   }
 
-   function updateSubjectAllocPaginationControls() {
-    if (subjectAllocPageInfo) {
-      subjectAllocPageInfo.textContent = `Page ${subjectAllocPage} of ${subjectAllocTotalPages}`;
-    }
-    if (subjectAllocPrevBtn) {
-      subjectAllocPrevBtn.disabled = subjectAllocPage <= 1 || subjectAllocTableBody.dataset.loading === "true";
-    }
-    if (subjectAllocNextBtn) {
-      subjectAllocNextBtn.disabled = subjectAllocPage >= subjectAllocTotalPages || subjectAllocTableBody.dataset.loading === "true";
-    }
-  }
   async function loadClassAllocations(page = classAllocPage, limit = CLASS_ALLOC_LIMIT, force = false) {
     if (!classAllocTableBody) return;
     if (classAllocTableBody.dataset.loading === "true") return;
@@ -2074,37 +2081,78 @@ const subjects = subjectsSelect ? Array.from(subjectsSelect.selectedOptions).map
   if (btn && btn.dataset.action === "remove-subjects") {
     const teacherId = btn.dataset.id;
     const grade = btn.dataset.grade; // 👈 capture grade from dataset
-    let stream = btn.dataset.stream; // 🆕 capture stream from dataset
-    
-    // Convert empty string or whitespace to null for proper backend matching
-    stream = (stream && stream.trim() && stream.trim() !== '') ? stream.trim() : null;
-    
-    console.log(`[DEBUG] Remove Subject - teacherId: ${teacherId}, grade: ${grade}, stream: ${stream}`);
-    
+    const stream = (btn.dataset.stream && btn.dataset.stream.trim() !== '') ? btn.dataset.stream.trim() : null;
     const gradeLabel = stream ? `Grade ${grade}${stream}` : `Grade ${grade}`;
-    const ok = await showConfirm({ message: `Remove allocation for ${gradeLabel}?` });
-    if (!ok) return;
 
     try {
-      console.log(`[DEBUG] Sending remove request with:`, { teacherId, grade, stream });
+       // 1. Fetch current subjects for this specific allocation (optimized: fetch only this teacher)
+      const res = await secureFetch(`${API_BASE}/users/subjects/allocations?teacherId=${teacherId}`);
+      // The response.data will now contain only one teacher object (or an empty array if not found)
+      const teacher = res.data && res.data.length > 0 ? res.data[0] : null;
       
-      const result = await secureFetch(`${API_BASE}/users/subjects/remove`, {
-        method: "POST",
-        body: JSON.stringify({ teacherId, grade, stream })
-      });
-      
-      console.log(`[DEBUG] Remove result:`, result);
-      
-      if (result) {
-        // Wait a moment for backend to process
-        await new Promise(r => setTimeout(r, 800));
-        
-        // Reload all allocations to refresh the table
-        await loadSubjectAllocations(1, SUBJECT_ALLOC_LIMIT, true);
-        showToast(`Subject allocation for ${gradeLabel} removed successfully`, "success");
-      } else {
-        showToast("Failed to remove allocation - please check browser console", "error");
+      const alloc = teacher?.allocations.find(a => a.grade === grade && (a.stream || null) === stream);
+
+      if (!alloc || !alloc.subjects || alloc.subjects.length === 0) {
+        showToast("No subjects found for this allocation", "error");
+        return;
       }
+
+      // 2. Create and show selection modal
+      const modal = document.createElement("div");
+      modal.className = "confirm-overlay visible";
+      modal.style.zIndex = "10005";
+      modal.innerHTML = `
+        <div class="confirm-box" style="max-width: 420px; text-align: left; border-radius: 16px; padding: 25px;">
+          <h3 style="margin-top:0; color: #1e293b; font-size: 1.25rem; display: flex; align-items: center; gap: 10px;"><i class="fas fa-book-open" style="color: #2563eb;"></i> Manage Subjects</h3>
+          <p style="font-size: 0.875rem; color: #64748b; margin-bottom: 20px; line-height: 1.5;">
+            Select subjects to remove from <strong>${teacher.name}</strong> for <strong>${gradeLabel}</strong>.
+          </p>
+          <div style="max-height: 280px; overflow-y: auto; border: 1px solid #e2e8f0; border-radius: 12px; margin-bottom: 25px; background: #ffffff; box-shadow: inset 0 2px 4px rgba(0,0,0,0.02);">
+            ${alloc.subjects.map(sub => `
+              <div style="display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; border-bottom: 1px solid #f1f5f9; transition: background 0.2s;" onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background='transparent'">
+                <label for="chk_${sub}" style="font-size: 0.95rem; cursor: pointer; flex: 1; font-weight: 500; color: #334155;">${sub}</label>
+                <input type="checkbox" class="sub-remove-check" value="${sub}" id="chk_${sub}" style="width: 18px; height: 18px; cursor: pointer; accent-color: #ef4444;">
+              </div>
+            `).join('')}
+          </div>
+          <div style="display: flex; gap: 10px;">
+            <button id="cancelSubRemove" class="btn secondary-btn" style="flex: 1;">Cancel</button>
+            <button id="confirmSubRemove" class="btn danger-btn" style="flex: 1;">Remove Selected</button>
+          </div>
+        </div>
+      `;
+      document.body.appendChild(modal);
+
+      modal.querySelector("#cancelSubRemove").onclick = () => modal.remove();
+      modal.querySelector("#confirmSubRemove").onclick = async () => {
+        const selected = Array.from(modal.querySelectorAll(".sub-remove-check:checked")).map(c => c.value);
+        if (selected.length === 0) {
+          showToast("Please select at least one subject", "info");
+          return;
+        }
+
+        const confirmBtn = modal.querySelector("#confirmSubRemove");
+        confirmBtn.disabled = true;
+        confirmBtn.innerHTML = '<span class="spinner"></span> Removing...';
+
+        try {
+          const result = await secureFetch(`${API_BASE}/users/subjects/remove`, {
+            method: "POST",
+            body: JSON.stringify({ teacherId, grade, stream, subjects: selected })
+          });
+
+          if (result) {
+            modal.remove();
+            await loadSubjectAllocations(1, SUBJECT_ALLOC_LIMIT, true);
+            showToast(`Successfully updated subjects for ${gradeLabel}`, "success");
+          }
+        } catch (err) {
+          showToast(err.message, "error");
+          confirmBtn.disabled = false;
+          confirmBtn.innerHTML = "Remove Selected";
+        }
+      };
+
     } catch (err) {
       console.error("[ERROR] Remove allocation error:", err);
       showToast("Error removing allocation: " + (err.message || "Unknown error"), "error");
@@ -2470,18 +2518,6 @@ studentSearchBody.addEventListener("click", async (e) => {
   // ---------------------------
   if (subjectSearchInput) subjectSearchInput.addEventListener("input", function () { const q = this.value.toLowerCase(); document.querySelectorAll("#subjectAllocTable tbody tr").forEach(r => r.style.display = r.textContent.toLowerCase().includes(q) ? "" : "none"); });
   if (classSearchInput) classSearchInput.addEventListener("input", function () { const q = this.value.toLowerCase(); document.querySelectorAll("#classAllocTable tbody tr").forEach(r => r.style.display = r.textContent.toLowerCase().includes(q) ? "" : "none"); });
-
-  function updateSubjectAllocPaginationControls() {
-    if (subjectAllocPageInfo) {
-      subjectAllocPageInfo.textContent = `Page ${subjectAllocPage} of ${subjectAllocTotalPages}`;
-    }
-    if (subjectAllocPrevBtn) {
-      subjectAllocPrevBtn.disabled = subjectAllocPage <= 1 || subjectAllocTableBody.dataset.loading === "true";
-    }
-    if (subjectAllocNextBtn) {
-      subjectAllocNextBtn.disabled = subjectAllocPage >= subjectAllocTotalPages || subjectAllocTableBody.dataset.loading === "true";
-    }
-  }
 
   if (subjectAllocPrevBtn) {
     subjectAllocPrevBtn.addEventListener("click", async () => {

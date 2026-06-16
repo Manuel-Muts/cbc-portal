@@ -342,7 +342,7 @@ header #logoutBtn {
 }
 
 .filters-section {
-    margin-bottom: 15px; /* Reduced margin */
+    margin-bottom: 10px; /* Reduced margin */
     padding: 15px; /* Reduced padding */
     background: #f9fafb;
     border-radius: 12px;
@@ -516,6 +516,11 @@ header #logoutBtn {
 .status-card-sidebar p:last-child { font-size: 0.75rem; color: #718096; line-height: 1.3; }
 
 .main-content-area { flex: 1; min-width: 0; } /* min-width 0 prevents chart overflow issues */
+
+/* 🆕 Ensure Submitted Subjects filters sit tight to the top when global filters are hidden */
+#submittedSubjectsTab {
+    padding-top: 5px;
+}
 .tab-pane { display: none; }
 .tab-pane.active { display: block; animation: tabFadeIn 0.3s ease-out; }
 @keyframes tabFadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
@@ -543,4 +548,52 @@ header #logoutBtn {
 @media (max-width: 992px) {
     .dashboard-layout { flex-direction: column; }
     .status-card-sidebar { display: none; }
+}
+
+.audit-card{
+    background:#fff;
+    border:1px solid #e2e8f0;
+    border-radius:12px;
+    padding:20px;
+}
+
+.audit-header{
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    margin-bottom:20px;
+}
+
+.audit-header h3{
+    margin:0;
+    color:#1e293b;
+    font-weight:700;
+}
+
+.table-responsive{
+    overflow-x:auto;
+}
+
+.subjects-container{
+    display:flex;
+    flex-wrap:wrap;
+    gap:6px;
+}
+
+.subject-chip{
+    background:#eff6ff;
+    color:#1d4ed8;
+    border:1px solid #bfdbfe;
+    padding:4px 8px;
+    border-radius:20px;
+    font-size:12px;
+    font-weight:600;
+}
+
+.marks-table th{
+    background:#f8fafc;
+}
+
+.marks-table td{
+    vertical-align:top;
 }

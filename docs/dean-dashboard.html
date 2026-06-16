@@ -77,11 +77,12 @@
         <li data-tab="schoolRankingsTab">
         <a href="#"><i class="fas fa-trophy"></i> School Rankings</a>
        </li>
-
-        <li data-tab="analyticsTab"><a href="#"><i class="fas fa-chart-line"></i> Analytics</a></li>
+               <li data-tab="submittedSubjectsTab"><a href="#"><i class="fas fa-list-alt"></i> Submitted Subjects</a></li>
         <li data-tab="missingExamsTab"><a href="#"><i class="fas fa-user-times"></i> Missing Exams</a></li>
         <li data-tab="learnersReportsTab"><a href="#"><i class="fas fa-file-invoice"></i> Learners Reports</a></li>
+                <li data-tab="analyticsTab"><a href="#"><i class="fas fa-chart-line"></i> Trend Chart</a></li>
         <li data-tab="timetableTab"><a href="#"><i class="fas fa-calendar-alt"></i> Timetable Module</a></li>
+
         <!--<li data-tab="smsResultsTab"><a href="#"><i class="fas fa-paper-plane"></i> SMS Results</a></li>-->
         <li><button id="configureGradingBtn" class="btn secondary-btn" style="width:100%; text-align:left; margin-top: 10px;"><i class="fas fa-cogs"></i> Configure Grading</button></li>
         <!-- Configure Grading button will be added dynamically by dean.js -->
@@ -154,7 +155,7 @@
           <!-- Overview Tab: Performance Stats & Subject Means -->
           <div id="overviewTab" class="tab-pane active">
             <div class="summary-section">
-              <h3 id="summarySectionTitle" style="display: none;"></h3> <!-- This element will be updated by JavaScript -->
+              <h3 id="summarySectionTitle" style="display: none;"></h3>
               <div class="summary-cards stats-grid">
                 <div class="stat-card stat-mean"><h4>Class Mean</h4><p id="classMean">-</p></div>
                 <div class="stat-card stat-top" title="Mean Score >= 41%"><h4>Pass Rate</h4><p id="passRate">-</p></div>
@@ -211,6 +212,58 @@
               <div id="missingExamsTableWrap"></div>
             </div>
           </div>
+
+          <!-- Submitted Subjects Tab Pane -->
+<div id="submittedSubjectsTab" class="tab-pane">
+    <!-- Module Specific Filters -->
+    <div class="filters-section module-filters" style="background: #ffffff; border-bottom: 2px solid #e2e8f0; margin-bottom: 20px; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
+            <h3 style="margin:0; color: #2d3748;"><i class="fas fa-clipboard-list" style="color: #3182ce;"></i> Subject Submission Audit</h3>
+        </div>
+        
+        <div class="filter-grid">
+            <div class="filter-group">
+            
+            </div>
+            <div class="filter-group">
+                <label for="ssTermFilter">TERM</label>
+                <select id="ssTermFilter" class="form-control">
+                    <option value="1">Term 1</option>
+                    <option value="2">Term 2</option>
+                    <option value="3">Term 3</option>
+                </select>
+            </div>
+
+            <div class="filter-group">
+                <label for="ssAssessmentFilter">ASSESSMENT</label>
+                <select id="ssAssessmentFilter" class="form-control">
+                    <option value="">-- Select Assessment --</option>
+                </select>
+            </div>
+
+            <div class="filter-group">
+                <label for="ssYearFilter">YEAR</label>
+                <select id="ssYearFilter" class="form-control"></select>
+            </div>
+
+            <div class="filter-group">
+                <button id="loadSubmittedSubjectsBtn" class="btn primary-btn" style="width: 100%; height: 38px; margin-top: 10px; background: #3182ce;">
+                    <i class="fas fa-sync-alt"></i> Audit Submissions
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Results Area -->
+    <div id="submittedSubjectsTableWrap" class="dashboard-card" style="min-height: 300px; background: #fff; border-radius: 12px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);">
+        <div class="empty-state" style="text-align: center; padding: 60px 20px; color: #a0aec0;">
+            <i class="fas fa-search" style="font-size: 3rem; margin-bottom: 15px; opacity: 0.2;"></i>
+            <h4>Ready to Audit</h4>
+            <p>Select the filters above and click "Audit Submissions" to see which subjects have entered marks.</p>
+        </div>
+    </div>
+</div>
+
 
           <!-- Timetable Tab -->
           <div id="timetableTab" class="tab-pane">
@@ -327,6 +380,7 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
   <script src="js/Utility/subject-data.js"></script>
+  <script src="js/dean/submittedSubjectsModule.js"></script>
   <script src="js/timetables.js"></script>
   <script src="js/dean.js"></script>
 </body>

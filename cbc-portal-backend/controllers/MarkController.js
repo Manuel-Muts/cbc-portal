@@ -1243,3 +1243,97 @@ export const getSchoolWideRankings = async (req, res) => {
     res.status(500).json({ message: "Failed to generate school-wide ranking report." });
   }
 };
+
+export const getSubmittedSubjectStats = async (req, res) => {
+  try {
+    const { grade, term, year, assessment, stream, scope } = req.query;
+    const schoolId = req.user.schoolId;
+
+    if (!schoolId) {
+      return res.status(401).json({ message: "School context missing" });
+    }
+    
+    // Generate a unique cache key based on all query parameters and schoolId
+    const cacheKey = cache.generateKey(`submitted_subjects_stats:${schoolId}`, {
+      grade, term, year, assessment, stream, scope
+    });
+
+    // Check cache first
+    const cachedStats = cache.get(cacheKey);
+    if (cachedStats) return res.json(cachedStats);
+
+    // 🆕 Normalize Grade for robust matching (identical logic to other Mark endpoints)
+    let normalizedGrades = [];
+    if (scope !== 'school' && grade) { // Only normalize if a specific grade is requested
+      const gradeStr = String(grade).trim();
+      const numericPart = gradeStr.match(/\d+/)?.[0];
+      normalizedGrades = [gradeStr.toUpperCase()]; // Ensure consistency for direct matches
+      if (!gradeStr.toUpperCase().startsWith("PP") && gradeStr.toUpperCase() !== "PG") {
+        if (numericPart) {
+          normalizedGrades.push(numericPart);
+          normalizedGrades.push(`Grade ${numericPart}`);
+        }
+      }
+    }
+
+
+    // 1. Build the match filter
+    const match = {
+      schoolId: new mongoose.Types.ObjectId(schoolId),
+      term: Number(term), // Use Number() here for explicit conversion
+      year: Number(year)
+    };
+
+    // Add optional filters
+    if (stream && stream !== 'all') match.stream = stream;
+    if (assessment && assessment !== 'all') match.assessment = Number(assessment);
+    
+    // If not 'school' scope, add the grade filter
+    if (scope !== 'school' && normalizedGrades.length > 0) {
+      match.grade = { $in: [...new Set(normalizedGrades)] };
+    }
+    
+    const stats = await Mark.aggregate([
+      // Step 1: Filter to the specific class context
+      { $match: match },
+      
+      // Step 2: Filter out documents without valid scores (ignore nulls/absent)
+      { 
+        $match: {
+          $or: [
+            { "score": { $ne: null } },
+            { "finalScore": { $ne: null } },
+            { "endTermExam": { $ne: null } }
+          ]
+        }
+      },
+      
+      // Step 3: Group by subject name (supporting both Junior and Senior fields)
+     {
+  $group: {
+    _id: {
+      grade: "$grade",
+      stream: "$stream",
+      subject: { $ifNull: ["$course", "$subject"] }
+    }
+  }
+},
+{
+  $project: {
+    _id: 0,
+    grade: "$_id.grade",
+    stream: "$_id.stream",
+    subject: "$_id.subject"
+  }
+},
+{ $sort: { grade: 1, stream: 1, subject: 1 } }
+    ]);
+
+    // Cache the result for 5 minutes (300 seconds)
+    cache.set(cacheKey, stats, 300);
+
+    res.json(stats);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};

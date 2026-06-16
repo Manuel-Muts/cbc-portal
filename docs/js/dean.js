@@ -15,7 +15,6 @@ const printReportBtn = document.getElementById("printReportBtn");
 const printSubjectReportBtn = document.getElementById("printSubjectReportBtn");
 const printMissingReportBtn = document.getElementById("printMissingReportBtn"); // 🆕 Print button for missing exams
 
-
 const analysisSection = document.getElementById("analysisSection");
 const classMeanEl = document.getElementById("classMean");
 const topLearnerEl = document.getElementById("topLearner");
@@ -292,11 +291,36 @@ document.getElementById('saveGradingConfigBtn').onclick = async () => {
 // Initial render of active panel
 document.getElementById('primaryGradingPanel').classList.remove('hidden');
 
+// 🆕 Ensure cbcUtils namespace exists before any properties are attached
+window.cbcUtils = window.cbcUtils || {};
+
+// 🆕 Provide school type resolution for modules
+window.cbcUtils.getSchoolTypeKey = () => window.schoolInfo?.schoolType || 'full';
+
+// 🆕 Private school type configuration for grade options
+const DEAN_SCHOOL_TYPES = {
+  full: { gradeOptions: ["PG", "PP1", "PP2", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12"] },
+  primary_junior: { gradeOptions: ["PG", "PP1", "PP2", "1", "2", "3", "4", "5", "6", "7", "8", "9"] },
+  senior: { gradeOptions: ["10", "11", "12"] },
+  early_years: { gradeOptions: ["PG", "PP1", "PP2"] }
+};
+
 function getGradeOptionsForSchool() {
-  const schoolType = window.cbcUtils.getSchoolTypeKey();
-  const gradeOptions = window.cbcUtils.SCHOOL_TYPES[schoolType].gradeOptions;
-  return gradeOptions.map(g => (String(g).toUpperCase().startsWith("PP") || String(g).toUpperCase() === "PG") ? g : `Grade ${g}`);
+  try {
+    const schoolType = window.cbcUtils?.getSchoolTypeKey() || 'full';
+    const typeConfig = DEAN_SCHOOL_TYPES[schoolType] || DEAN_SCHOOL_TYPES.full;
+    const mappedGrades = typeConfig.gradeOptions.map(g => (String(g).toUpperCase().startsWith("PP") || String(g).toUpperCase() === "PG") ? g : `Grade ${g}`);
+    console.log("DEBUG: getGradeOptionsForSchool returning:", mappedGrades);
+    return mappedGrades;
+  } catch (e) {
+    console.error("Error generating grade options:", e);
+    return [];
+  }
 }
+
+// 🆕 Export helper for use in external modules like SubmittedSubjectsModule
+window.cbcUtils.getGradeOptionsForSchool = getGradeOptionsForSchool;
+
 function getStudentRemark(score) {
   if (score === null || score === undefined || isNaN(score)) return "N/A";
   if (score >= 75) return "Excellent";
@@ -375,6 +399,13 @@ function setupTabs() {
         // This resolves issues where tabs might not appear if generateReport hasn't been clicked.
         if (analysisSection) analysisSection.style.display = "block";
         
+        // 🆕 Toggle global Dean filters and analysis stats: Hidden for Submitted Subjects (uses its own)
+        const globalFilters = document.querySelector('.filters-section');
+        const summaryCards = document.querySelector('.stats-grid');
+        const isSubmittedTab = target === "submittedSubjectsTab";
+        if (globalFilters) globalFilters.style.display = isSubmittedTab ? "none" : "block";
+        if (summaryCards) summaryCards.style.display = isSubmittedTab ? "none" : "grid";
+
         // Always charts when analytics tab is clicked to fix canvas layout issues
         if (target === "analyticsTab") {
            setTimeout(updateDashboardChart, 50);
@@ -389,6 +420,27 @@ function setupTabs() {
                console.warn("analysisSection not found for timetable tab.");
            }
            window.TimetableModule.init();
+        }
+
+        // 🆕 Initialize SubmittedSubjectsModule when its tab is opened (Check for both possible names)
+        if (target === "submittedSubjectsTab") {
+           // 🆕 Check for the module and retry with an increased delay to handle race conditions
+           const checkAndInit = () => {
+              const ssModule = window.SubmittedSubjectsModule || window.submittedSubjectsModule;
+              if (ssModule && typeof ssModule.init === 'function') {
+                  ssModule.init();
+                  return true;
+              }
+              return false;
+           };
+
+           if (!checkAndInit()) {
+           setTimeout(() => {
+                if (!checkAndInit()) {
+                    console.warn("⚠️ SubmittedSubjectsModule not found on window object. Verify the script tag in your HTML.");
+                }
+             }, 150); // Increased delay for slower network loads or script execution
+           }
         }
 
         // 🆕 Refresh SMS Balance when SMS results tab is opened
@@ -1847,31 +1899,30 @@ async function downloadSubjectPerformanceAsPDF() {
   const table = subjectTableWrap.querySelector("table");
   if (!table || !window.jspdf) return;
 
+  const btn = printSubjectReportBtn;
   if (window.spinner) {
-    window.spinner.show(printSubjectReportBtn, "Generating PDF...");
+    window.spinner.show(btn, "Generating PDF...");
   }
 
   // Allow UI to render spinner before heavy PDF task blocks the thread
-  await new Promise(resolve => setTimeout(resolve, 100));
-
-  const schoolName = deanProfileData?.schoolName || "SCHOOL NAME";
-
-  const { jsPDF } = window.jspdf;
-  const doc = new jsPDF({ orientation: 'landscape' });
-  const pageWidth = doc.internal.pageSize.getWidth();
-  const pageHeight = doc.internal.pageSize.getHeight();
-
-  const grade = filterGradeEl.value;
-  const termVal = filterTermEl.value;
-  const termLabel = termVal === "all" ? "Full Year" : `Term ${termVal}`;
-  const year = filterYearEl.value;
-  const assessLabel = filterAssessmentEl.options[filterAssessmentEl.selectedIndex]?.text || "Report";
-  const selectedStream = filterStreamEl?.value || "all";
-  const streamInfo = selectedStream !== "all" ? ` | Stream: ${selectedStream}` : "";
-
-  let yPos = 15;
+  await new Promise(resolve => setTimeout(resolve, 50));
 
   try {
+    const schoolName = deanProfileData?.schoolName || "SCHOOL NAME";
+    const jsPDFClass = (window.jspdf && window.jspdf.jsPDF) ? window.jspdf.jsPDF : window.jsPDF;
+    const doc = new jsPDFClass({ orientation: 'landscape' });
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.getHeight();
+
+    const grade = filterGradeEl.value;
+    const termVal = filterTermEl.value;
+    const termLabel = termVal === "all" ? "Full Year" : `Term ${termVal}`;
+    const year = filterYearEl.value;
+    const assessLabel = filterAssessmentEl.options[filterAssessmentEl.selectedIndex]?.text || "Report";
+    const selectedStream = filterStreamEl?.value || "all";
+    const streamInfo = selectedStream !== "all" ? ` | Stream: ${selectedStream}` : "";
+
+    let yPos = 15;
 
   doc.setFontSize(18);
   doc.setFont("helvetica", "bold");
@@ -1882,7 +1933,8 @@ async function downloadSubjectPerformanceAsPDF() {
   doc.text(`${year} | ${termLabel} | ${assessLabel}${streamInfo}`, pageWidth / 2, yPos, { align: "center" });
 
   doc.setFontSize(14);
-  doc.text(`Subject Performance Analysis: ${grade}${selectedStream !== "all" ? ' - Stream ' + selectedStream : ''}`, 14, yPos + 10);
+  doc.setFont("helvetica", "bold");
+  doc.text(`Subject Performance Analysis: ${grade}${selectedStream !== "all" ? ' - Stream ' + selectedStream : ''}`, 14, yPos + 9);
 
   const rawHeaders = Array.from(table.querySelectorAll("thead th")).map(th => th.textContent.trim());
   const progressIdx = rawHeaders.indexOf("Progress");
@@ -1908,7 +1960,7 @@ async function downloadSubjectPerformanceAsPDF() {
   });
 
   doc.autoTable({ 
-    startY: yPos + 15, 
+    startY: yPos + 14, 
     head: [headers], 
     body: rows, 
     theme: 'grid', // Use 'grid' theme for borders
@@ -1927,36 +1979,52 @@ async function downloadSubjectPerformanceAsPDF() {
   // --- DRAW SIGNATURE ON THE LAST PAGE ---
   doc.setPage(doc.internal.getNumberOfPages());
   
-  // Safety: check for overlap
-  let footerY = pageHeight - 20; // 🆕 Use cbcUtils.getImageFormat
+  let footerY = pageHeight - 25;
   if (doc.lastAutoTable.finalY > footerY - 5) {
     doc.addPage();
-    footerY = pageHeight - 20; // 🆕 Use cbcUtils.getImageFormat
+    footerY = pageHeight - 25;
   }
 
+  if (deanProfileData && deanProfileData.signatureBase64) {
     try {
       const sigFormat = deanProfileData.sigFormat || cbcUtils.getImageFormat(deanProfileData.signatureBase64);
-      doc.addImage(deanProfileData.signatureBase64, sigFormat, pageWidth - 54, footerY + 1, 40, 8, undefined, 'FAST');
+      doc.addImage(deanProfileData.signatureBase64, sigFormat, pageWidth - 54, footerY - 8, 40, 8, undefined, 'FAST');
     } catch (e) { // Catch error if signature is invalid
       console.warn("Could not embed Dean signature in PDF:", e);
     }
-  doc.setFontSize(9);
-  const dateStr = `Printed: ${new Date().toLocaleString()}`;
-  doc.text(dateStr, pageWidth - 14, footerY, { align: "right" });
-  doc.text("__________________________", pageWidth - 14, footerY + 10, { align: "right" });
-  doc.text("Dean's Signature", pageWidth - 14, footerY + 15, { align: "right" });
+  }
 
-  // --- ADD PAGE NUMBERS & SYSTEM FOOTER TO ALL PAGES ---
+  doc.setFontSize(9);
+  doc.setTextColor(0);
+  doc.text("__________________________", pageWidth - 14, footerY, { align: "right" });
+  doc.text("Dean's Signature", pageWidth - 14, footerY + 5, { align: "right" });
+
+  // --- ADD PAGE NUMBERS, WATERMARK & SYSTEM FOOTER TO ALL PAGES ---
   const totalPagesCount = doc.internal.getNumberOfPages();
   for (let i = 1; i <= totalPagesCount; i++) {
     doc.setPage(i);
+
+    // 🆕 Watermark (School Logo)
+    if (deanProfileData?.schoolLogoBase64) {
+      try {
+        const imgProps = deanProfileData.logoProps || doc.getImageProperties(deanProfileData.schoolLogoBase64);
+        const format = deanProfileData.logoFormat || "PNG";
+        const width = 100; 
+        const height = (imgProps.height * width) / imgProps.width;
+        doc.saveGraphicsState();
+        doc.setGState(new doc.GState({ opacity: 0.08 }));
+        doc.addImage(deanProfileData.schoolLogoBase64, format, (pageWidth - width) / 2, (pageHeight - height) / 2, width, height, undefined, 'FAST');
+        doc.restoreGraphicsState();
+      } catch (e) { console.warn("Watermark rendering error:", e); }
+    }
+
     doc.setFontSize(8);
-    doc.setTextColor(150, 150, 150); // Professional subtle gray
+    doc.setTextColor(150); 
     doc.setFont("helvetica", "normal");
-    doc.text(`Page ${i} of ${totalPagesCount}`, 14, pageHeight - 7);
+    doc.text(`Page ${i} of ${totalPagesCount}`, 14, pageHeight - 10);
     const genText = "CompetenceHub Analytics";
-    const genTextWidth = doc.getTextWidth(genText);
-    doc.text(genText, (pageWidth / 2) - (genTextWidth / 2), pageHeight - 7);
+    doc.text(genText, pageWidth / 2, pageHeight - 10, { align: "center" });
+    doc.text(`Printed: ${new Date().toLocaleString()}`, pageWidth - 14, pageHeight - 10, { align: "right" });
   }
 
   const streamSuffix = selectedStream !== "all" ? `_S${selectedStream}` : "";
@@ -1967,7 +2035,7 @@ async function downloadSubjectPerformanceAsPDF() {
     console.error("Subject PDF Export Error:", err);
   } finally {
     if (window.spinner) {
-      window.spinner.hide(printSubjectReportBtn);
+      window.spinner.hide(btn);
     }
   }
 }
@@ -2487,11 +2555,13 @@ function initFilters() {
 
   // Populate Terms
   if (filterTermEl) {
+    const currentMonth = new Date().getMonth() + 1; // 1-12
+    const currentTerm = currentMonth <= 4 ? "1" : currentMonth <= 8 ? "2" : "3";
     filterTermEl.innerHTML = `
       <option value="all">All Terms</option>
-      <option value="1">Term 1</option>
-      <option value="2">Term 2</option>
-      <option value="3">Term 3</option>
+      <option value="1" ${currentTerm === "1" ? 'selected' : ''}>Term 1</option>
+      <option value="2" ${currentTerm === "2" ? 'selected' : ''}>Term 2</option>
+      <option value="3" ${currentTerm === "3" ? 'selected' : ''}>Term 3</option>
     `;
   }
 
@@ -2587,6 +2657,9 @@ async function loadDeanProfile() {
       if (overlay) overlay.remove();
       return;
     }
+
+    console.log("DEBUG: Dean Profile Data after authService.getUserProfile:", deanProfileData);
+    console.log("DEBUG: Is Dean flag at redirection check:", deanProfileData.isDean);
 
     if (!deanProfileData.isDean) {
       alert("Only Deans can access this page.");
@@ -2760,6 +2833,7 @@ async function loadDeanProfile() {
             }, 100);
         } // Initialize TimetableModule
     }
+
 
     // 🆕 Gracefully remove overlay once everything is ready
     setTimeout(() => {
