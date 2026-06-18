@@ -190,6 +190,126 @@ h1{
     transform: translateY(0);
 }
 
+/* --- Custom Styling for Founder's Card --- */
+.founder-card-custom {
+    background: linear-gradient(145deg, #f0f4f8, #e0e7ed); /* Subtle gradient background */
+    border: 1px solid rgba(255, 255, 255, 0.6); /* Lighter border */
+    box-shadow: 0 15px 35px rgba(0, 0, 0, 0.15), 0 5px 15px rgba(0, 0, 0, 0.08); /* More pronounced shadow */
+    padding: 40px; /* Increased padding */
+    margin-bottom: 50px; /* More space below the card */
+    text-align: center; /* Center content within the card */
+}
+
+.founder-profile {
+    display: flex;
+    flex-direction: column; /* Stack photo and details vertically on small screens */
+    align-items: center;
+    gap: 30px; /* Spacing between photo and details */
+}
+
+.founder-photo {
+    width: 200px; /* Slightly larger for prominence */
+    height: 200px;
+    border-radius: 50%; /* Perfectly round */
+    object-fit: cover; /* Ensures image covers area without distortion */
+    border: 6px solid #ffffff; /* Thicker white border for a "card" effect */
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.2); /* Deeper shadow for the photo itself */
+    transition: transform 0.3s ease-in-out;
+}
+
+.founder-photo:hover {
+    transform: scale(1.05) rotate(2deg); /* Subtle hover effect */
+}
+
+.founder-details {
+    text-align: center; /* Center text within details block */
+    max-width: 700px; /* Constrain width for readability */
+}
+
+.founder-details h2 {
+    font-size: 2.0rem; /* Larger font for name */
+    color: #1a202c; /* Darker, more impactful color */
+    margin-bottom: 10px;
+    font-weight: 800;
+    letter-spacing: -0.03em;
+}
+
+.founder-title {
+    font-size: 1.0rem;
+    color: #4a5568; /* Muted color for title */
+    font-style: italic;
+    margin-bottom: 25px;
+}
+
+.founder-bio {
+    font-size: 1.05rem;
+    color: #2d3748;
+    line-height: 1.8;
+    margin-bottom: 30px;
+}
+
+.founder-quote {
+    font-size: 1.3rem;
+    font-style: italic;
+    color: #2b6cb0; /* Highlight color for quote */
+    border-left: 5px solid #2b6cb0; /* Decorative left border */
+    padding-left: 20px;
+    margin: 30px auto 0; /* Center and space out */
+    max-width: 600px;
+    line-height: 1.6;
+}
+
+/* Responsive adjustments for founder section */
+@media (min-width: 850px) {
+    .founder-profile {
+        flex-direction: row; /* Side-by-side on larger screens */
+        text-align: left;
+        align-items: flex-start; /* Align items to the top */
+    }
+    .founder-details {
+        text-align: left; /* Align text left when side-by-side */
+    }
+    .founder-quote {
+        margin-left: 0; /* Align quote left */
+        margin-right: auto;
+    }
+}
+
+/* --- Enhancements for Credits Section --- */
+.credits-section {
+    background: linear-gradient(145deg, #e2e8f0, #d6e0e8); /* Different subtle gradient */
+    border: 1px solid rgba(255, 255, 255, 0.7);
+    box-shadow: 0 10px 20px rgba(0, 0, 0, 0.1);
+    padding: 35px;
+    margin-top: 40px; /* Space from previous section */
+}
+
+.credits-section h2 {
+    color: #1e293b;
+    font-size: 2rem;
+    margin-bottom: 15px;
+}
+
+.credits-section p {
+    color: #475569;
+    font-size: 1rem;
+    margin-bottom: 25px;
+}
+
+.tech-tags span {
+    background: #dbeafe; /* Lighter blue background */
+    color: #1e40af; /* Darker blue text */
+    font-weight: 700;
+    padding: 8px 16px;
+    border-radius: 25px;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+    transition: background 0.3s ease, transform 0.2s ease;
+}
+
+.tech-tags span:hover {
+    background: #bfdbfe;
+    transform: translateY(-2px);
+}
 /* Responsive Fix */
 @media (max-width: 850px) {
     .split-section, .split-section.reverse {

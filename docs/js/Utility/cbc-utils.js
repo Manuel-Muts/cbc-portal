@@ -332,8 +332,6 @@ window.cbcUtils = {
             "History & Citizenship": "H&C",
             "Political Studies": "PS",
             "Kenya Sign Language": "KSL",
-            "Literature in English": "Lit Eng",
-            "Fasihi ya Kiswahili": "Fasihi K",
             "Indigenous Language": "IL",
             "Hindu Religious Education": "HRE",
             "Islamic Religious Education": "IRE",
@@ -355,6 +353,8 @@ window.cbcUtils = {
             "PPI": "PPI",
             "PP1": "PP1",
             "PP2": "PP2",
+            "PG": "PG",
+            "PE": "PE",
            
         };
 
