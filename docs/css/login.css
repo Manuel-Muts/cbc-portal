@@ -226,3 +226,15 @@ footer {
   position: relative;
   z-index: 10;
 }
+
+@media (max-width: 768px) {
+  .login-container {
+    margin-top: 60px; /* Space from the top of the screen */
+    margin-bottom: 30px; /* Space between form and footer */
+  }
+
+  footer {
+    margin-top: 0; /* Remove auto margin to place it directly after the container */
+    padding: 15px 20px; /* Slightly reduced padding for mobile */
+  }
+}

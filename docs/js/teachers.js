@@ -8,20 +8,6 @@ document.addEventListener("DOMContentLoaded", () => {
   console.log("🔧 Teachers.js loading...");
   console.log("📦 Window.config available:", !!window.config);
   
-  // --- Clean URL Enforcement ---
-  // If the URL ends with .html, redirect to the clean URL
-  const currentPath = window.location.pathname;
-  if (currentPath.endsWith('.html')) {
-      const cleanPath = currentPath.replace(/\.html$/, '');
-      const dashboardMappings = {
-          '/teacher-dashboard': '/teacher',
-      };
-      
-      const finalPath = dashboardMappings[cleanPath] || cleanPath;
-      window.location.replace(finalPath + window.location.search + window.location.hash);
-      return;
-  }
-
   const API_BASE = config.api.baseURL;
 
   let allMarksEntered = new Map(); // Stores marks for all students in the current context across pages

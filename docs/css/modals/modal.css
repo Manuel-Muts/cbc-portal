@@ -178,6 +178,54 @@ header {
   to { transform: scale(1); opacity: 1; }
 }
 
+/* --- Dropdown Menu for Navigation --- */
+.dropdown {
+  position: relative;
+  display: inline-block;
+}
+
+.dropdown .dropbtn {
+  /* Inherit existing nav link styles */
+  padding: 8px 16px; /* Adjust padding to match other nav links */
+  text-decoration: none;
+  font-weight: 600;
+  font-size: 0.85rem;
+  color: black !important; /* Ensure visibility against header background */
+  transition: all 0.3s ease;
+  display: flex; /* Allow icon to sit next to text */
+  align-items: center;
+  gap: 5px; /* Space between text and icon */
+}
+
+.dropdown .dropbtn:hover {
+  color: #2563eb !important; /* Highlight on hover */
+}
+
+.dropdown-content {
+  display: none;
+  position: absolute;
+  background-color: #f9f9f9;
+  min-width: 160px;
+  box-shadow: 0px 8px 16px 0px rgba(0,0,0,0.2);
+  z-index: 1001; /* Ensure it's above other content */
+  border-radius: 8px;
+  overflow: hidden; /* For rounded corners */
+}
+
+.dropdown-content a {
+  color: black;
+  padding: 12px 16px;
+  text-decoration: none;
+  display: block;
+  text-align: left;
+}
+
+.dropdown-content a:hover {background-color: #f1f1f1;}
+
+.dropdown:hover .dropdown-content {
+  display: block;
+}
+
 /* SPINNER FOR LOGIN BUTTONS IN MODALS */
 @keyframes spin {
   0% { transform: rotate(0deg); }

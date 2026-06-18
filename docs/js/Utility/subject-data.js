@@ -17,6 +17,7 @@ window.SUBJECT_DATA.gradeSubjects = {
     "Mathematics",
     "Kiswahili",
     "English",
+    "ILA",
     "Environmental Activities",
     "Social Studies",
     "Christian Religious Studies (CRE)",

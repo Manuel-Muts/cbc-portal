@@ -18,21 +18,40 @@
     </header>
 
     <main class="about-container">
-        <!-- Mission Section -->
-        <section class="glass-card mission-section">
-            <div class="icon-circle"><i class="fas fa-rocket"></i></div>
-            <h2>Our Mission</h2>
-            <p>To provide a robust, secure, and intuitive digital ecosystem for <strong>Competency-Based Education (CBE)</strong>.
-                 We empower educators with real-time analytics and streamlined marks management, 
-                 ensuring every learner's progress is tracked with precision.</p>
+        <!-- Split Section: About the System (Scroll Reveal) -->
+        <section id="system-info" class="split-section system-bg reveal">
+            <div class="info-content">
+                <div class="icon-circle"><i class="fas fa-rocket"></i></div>
+                <h2>About the System</h2>
+                <p>To provide a robust, secure, and intuitive digital ecosystem for <strong>Competency-Based Education (CBE)</strong>.
+                     We empower educators with real-time analytics and streamlined marks management, 
+                     ensuring every learner's progress is tracked with precision.</p>
+                <p>CompetenceHub is designed to be the central nervous system of modern educational institutions, offering seamless integration of academic, administrative, and financial processes.</p>
+            </div>
+            <div class="info-image">
+                <img src="https://images.unsplash.com/photo-1460925895917-afdab827c52f?auto=format&fit=crop&w=800&q=80" alt="Modern Analytics Dashboard">
+            </div>
+        </section>
+
+        <!-- Split Section: Our Vision (Scroll Reveal) -->
+        <section id="our-vision" class="split-section vision-bg reverse reveal">
+            <div class="info-content">
+                <div class="icon-circle"><i class="fas fa-eye"></i></div>
+                <h2>Our Vision</h2>
+                <p>To be the leading educational technology partner for CBE institutions globally, fostering a future where every learner has access to personalized learning experiences and every educator is equipped with the tools to inspire excellence.</p>
+                <p>We envision a world where administrative burdens are minimized, data-driven decisions are the norm, and the focus remains firmly on learner success.</p>
+            </div>
+            <div class="info-image">
+                <img src="https://images.unsplash.com/photo-1509062522246-3755977927d7?auto=format&fit=crop&w=800&q=80" alt="Future of Education">
+            </div>
         </section>
 
         <!-- Features Grid -->
-        <section class="features-grid">
+        <section class="features-grid reveal">
             <div class="glass-card feature">
                 <i class="fas fa-chart-line"></i>
                 <h3>Advanced Analytics</h3>
-                <p>Comprehensive Dean reports with trend lines, subject performance analysis, and student progress tracking.</p>
+                <p>Comprehensive Dean reports with trend lines, subject performance analysis, and learner progress tracking.</p>
             </div>
             <div class="glass-card feature">
                 <i class="fas fa-user-shield"></i>
@@ -52,7 +71,7 @@
         </section>
 
         <!-- Credits & Tech -->
-        <section class="glass-card credits-section">
+        <section class="glass-card credits-section reveal">
             <h2>System Development</h2>
             <p>Developed and Maintained by <strong>Muts Tech</strong>.</p>
             <div class="tech-tags">
@@ -64,7 +83,7 @@
         </section>
 
         <!-- Version Info -->
-        <div class="version-info">
+        <div class="version-info reveal">
             <p>System Version: <strong id="systemVersion">...</strong></p>
             <p>&copy; 2026 Muts Tech · All Rights Reserved</p>
         </div>
@@ -73,16 +92,30 @@
     <script src="js/config.js"></script>
     <script>
         // Optional: Simple scroll animation
-        document.addEventListener('DOMContentLoaded', () => {
-            const cards = document.querySelectorAll('.glass-card');
-            cards.forEach((card, index) => {
-                setTimeout(() => card.style.opacity = '1', index * 100);
-            });
-
+        document.addEventListener('DOMContentLoaded', () => {           
             // Dynamically set the version from centralized config
             if (window.config && window.config.app) {
                 document.getElementById('systemVersion').textContent = `v${window.config.app.version}-Stable`;
             }
+
+            // NEW: Scroll-triggered fade-in effect
+            const revealElements = document.querySelectorAll('.reveal');
+
+            const revealOnScroll = () => {
+                for (let i = 0; i < revealElements.length; i++) {
+                    const windowHeight = window.innerHeight;
+                    const elementTop = revealElements[i].getBoundingClientRect().top;
+                    const elementVisible = 150; // Adjust this value to control when the element becomes visible
+
+                    if (elementTop < windowHeight - elementVisible) {
+                        revealElements[i].classList.add('active');
+                    }
+                }
+            };
+
+            window.addEventListener('scroll', revealOnScroll);
+            // Trigger once on load to reveal elements already in view
+            revealOnScroll();
         });
     </script>
 </body>

@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>The Founder | Emmanuel Mutegi</title>
+    <link rel="stylesheet" href="css/about.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+</head>
+<body>
+
+    <header class="about-header">
+        <div class="header-content">
+            <a href="javascript:history.back()" class="back-btn"><i class="fas fa-arrow-left"></i> Back</a>
+            <h1>The Visionary</h1>
+            <div class="spacer"></div>
+        </div>
+    </header>
+
+    <main class="about-container">
+        <!-- Founder Profile Section -->
+        <section class="glass-card founder-section" style="opacity: 1;">
+            <div class="founder-profile">
+                <img src="https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=300&q=80" alt="Emmanuel Mutegi - Founder & CEO" class="founder-photo">
+                <div class="founder-details">
+                    <h2>Emmanuel Mutegi</h2>
+                    <p class="founder-title">Founder & CEO, Muts Tech</p>
+                    <p class="founder-bio">Emmanuel Mutegi is the visionary behind CompetenceHub, driven by a passion for transforming education through technology. With a background in software engineering and a deep understanding of educational challenges, Emmanuel founded Muts Tech to build innovative solutions that empower schools, teachers, and learners in the digital age.</p>
+                    <p class="founder-quote">"Education is the most powerful weapon which you can use to change the world."</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- Engineering Excellence Section -->
+        <section class="glass-card credits-section" style="opacity: 1;">
+            <h2>About Muts Tech</h2>
+            <p>Driving digital transformation through engineering excellence and a commitment to academic integrity.</p>
+            <div class="tech-tags">
+                <span><i class="fas fa-code"></i> Robust Architecture</span>
+                <span><i class="fas fa-lightbulb"></i> Educational Innovation</span>
+                <span><i class="fas fa-shield-alt"></i> Security First</span>
+            </div>
+        </section>
+
+        <div class="version-info">
+            <p>&copy; 2026 Muts Tech · Secure CBE Education Platform</p>
+        </div>
+    </main>
+
+    <script src="js/config.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const cards = document.querySelectorAll('.glass-card');
+            cards.forEach((card, index) => {
+                setTimeout(() => card.style.opacity = '1', index * 100);
+            });
+        });
+    </script>
+</body>
+</html>

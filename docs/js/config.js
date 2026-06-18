@@ -100,6 +100,7 @@ const sharedConfig = {
     users: '/users',
     superAdmin: '/super-admin',
     super_admin: '/super-admin',
+    founder: '/founder',
   },
 
   // ===========================
@@ -182,6 +183,24 @@ if (config.app.debug) {
   console.log(`[CONFIG] Hostname: ${window.location.hostname}`);
   console.log(`[CONFIG] API Base URL: ${config.api.baseURL}`);
 }
+
+// ===========================
+// CLEAN URL ENFORCEMENT
+// ===========================
+// Automatically redirect .html requests to clean URLs (e.g., /founder.html -> /founder)
+(function enforceCleanURLs() {
+  const currentPath = window.location.pathname;
+  if (currentPath.endsWith('.html')) {
+    const cleanPath = currentPath.replace(/\.html$/, '');
+    const pathMappings = {
+      '/teacher-dashboard': '/teacher',
+      '/student-dashboard': '/student',
+      '/dean-dashboard': '/dean',
+    };
+    const finalPath = pathMappings[cleanPath] || cleanPath;
+    window.location.replace(finalPath + window.location.search + window.location.hash);
+  }
+})();
 
 // Make config globally available for browser environment
 window.config = config;

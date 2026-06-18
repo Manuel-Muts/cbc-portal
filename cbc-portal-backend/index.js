@@ -166,6 +166,8 @@ const pathMap = {
   '/performance': 'performance.html',
   '/student-accounts': 'student-accounts.html',
   '/about': 'about.html',
+  '/contact': 'contact.html',
+  '/founder': 'founder.html', // ✅ New route for founder page
 
   // ✅ STANDARDIZED ROUTE (IMPORTANT)
   '/study-materials': 'studentstudymaterial.html',
@@ -194,7 +196,7 @@ app.use((req, res) => {
   }
 
   // Normalize path
-  let requestedPath = req.path.split('?')[0].toLowerCase();
+  let requestedPath = req.path.toLowerCase();
 
   // Remove trailing slash
   if (requestedPath.length > 1 && requestedPath.endsWith('/')) {
@@ -221,8 +223,6 @@ app.use((req, res) => {
     }
   });
 });
-// Serve static files (CSS, JS, images, etc.) - AFTER SPA routes
-app.use(express.static(frontendPath));
 
 // -------------------------
 // DATABASE CONNECTION
