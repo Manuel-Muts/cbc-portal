@@ -129,16 +129,26 @@ document.addEventListener("DOMContentLoaded", function () {
     if (!admissionField) return;
 
     const show = (el) => { 
+      if (!el) return;
       el.style.display = "block"; 
-      el.required = true;
+      if (['INPUT', 'SELECT', 'TEXTAREA'].includes(el.tagName)) el.required = true;
+      // Ensure parent form-group or wrapper is also shown
+      if (el.parentElement && (el.parentElement.classList.contains('form-group') || el.parentElement.classList.contains('password-input-wrapper'))) {
+        el.parentElement.style.display = "block";
+      }
       // Trigger the fade-in animation
       el.classList.remove("field-fade-in");
       void el.offsetWidth; // Force reflow to restart animation
       el.classList.add("field-fade-in");
     };
     const hide = (el) => { 
-      el.style.display = "none"; 
-      el.required = false;
+      if (!el) return;
+      el.style.display = "none";
+      if (['INPUT', 'SELECT', 'TEXTAREA'].includes(el.tagName)) el.required = false;
+      // Hide parent form-group if it's a specific toggleable field
+      if (el.parentElement && el.parentElement.classList.contains('form-group') && (el.id === 'firstname' || el.id === 'email')) {
+        el.parentElement.style.display = "none";
+      }
       el.classList.remove("field-fade-in");
     };
 
@@ -146,6 +156,7 @@ document.addEventListener("DOMContentLoaded", function () {
       show(firstnameField); show(firstnameLabel);
       show(admissionField); show(admissionLabel);
       admissionField.type = "text"; // Show admission number as plain text
+      if (admissionField.parentNode) admissionField.parentNode.style.display = "block";
       if (loginToggle) loginToggle.style.display = "none";
       admissionLabel.textContent = "Admission Number";
       hide(emailField); hide(emailLabel);
@@ -154,7 +165,6 @@ document.addEventListener("DOMContentLoaded", function () {
       show(admissionField); show(admissionLabel);
       admissionField.type = "password"; // Hide password by default
       if (loginToggle) {
-        if (admissionField.parentNode) admissionField.parentNode.style.display = "block";
         loginToggle.style.display = "block";
         loginToggle.className = "fas fa-eye toggle-password-icon"; 
       }

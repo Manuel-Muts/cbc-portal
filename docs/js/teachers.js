@@ -518,6 +518,8 @@ document.addEventListener("DOMContentLoaded", () => {
     opt.dataset.subjectIndex = 0;
     opt.dataset.classLabel = alloc.classLabel;
     opt.dataset.subject = subject;
+    opt.dataset.grade = alloc.grade; // 🆕 Add grade to dataset
+    opt.dataset.stream = alloc.stream || ''; // 🆕 Add stream to dataset
 
     subjectAllocationSelect.appendChild(opt);
   }
@@ -533,6 +535,8 @@ document.addEventListener("DOMContentLoaded", () => {
       opt.dataset.subjectIndex = subjectIndex;
       opt.dataset.classLabel = alloc.classLabel;
       opt.dataset.subject = subject;
+      opt.dataset.grade = alloc.grade; // 🆕 Add grade to dataset
+      opt.dataset.stream = alloc.stream || ''; // 🆕 Add stream to dataset
 
       subjectAllocationSelect.appendChild(opt);
     });
@@ -1840,14 +1844,16 @@ document.addEventListener("DOMContentLoaded", () => {
 
       // 1. Find the correct allocation in the dropdown by normalizing subject/course names and grade
       const allocationOption = Array.from(subjectAllocationSelect.options).find(opt => {
-        const classLabelForOption = opt.dataset.classLabel || '';
+        const optGradeNorm = window.cbcUtils.normalizeGrade(opt.dataset.grade); // 🆕 Use dataset.grade for comparison
+        const optStream = opt.dataset.stream || ''; // 🆕 Use dataset.stream for comparison
         const optSub = normalize(opt.dataset.subject);
         
         // 🆕 Fix: Use normalized grade comparison instead of parsing digits (which fails for PG/PP)
-        const optGradeNorm = window.cbcUtils.normalizeGrade(classLabelForOption);
         const markGradeNorm = window.cbcUtils.normalizeGrade(mark.grade);
+        const markStream = mark.stream || ''; // 🆕 Mark object should have stream
 
         if (optGradeNorm !== markGradeNorm) return false;
+        if (optStream !== markStream) return false; // 🆕 Compare streams too
 
         if (isSeniorSchool) {
           return optSub === markCourse || optSub === markSub;

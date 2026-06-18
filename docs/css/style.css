@@ -1,3 +1,6 @@
+/* 
+style css for the login page and other components
+ */
 /* Reset */
 :root {
   --primary: #2563eb;     /* modern blue */
@@ -15,70 +18,6 @@
   padding: 0;
   box-sizing: border-box;
   font-family: "Poppins", sans-serif;
-}
-
-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 15px 5%;
-  background: #ffffff !important;
-  position: sticky;
-  top: 0;
-  width: 100%;
-  z-index: 1000;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-}
-
-
-
-/* Navigation */
-.role-nav ul {
-  display: flex;
-  list-style: none;
-  gap: 10px;
-}
-
-.role-link {
-  text-decoration: none;
-  font-weight: 600;
-  font-size: 0.85rem;
-  padding: 8px 16px;
-  border-radius: 6px;
-  color: white !important;
-  transition: transform 0.2s, opacity 0.2s;
-}
-
-.role-link:hover {
-  transform: translateY(-2px);
-  opacity: 0.9;
-}
-
-/* Classic Role Colors */
-.role-link.learner { background-color: #10b981; }      /* Green */
-.role-link.teacher { background-color: #3b82f6; }      /* Blue */
-.role-link.classteacher { background-color: #8b5cf6; } /* Purple */
-.role-link.accounts { background-color: #f59e0b; }     /* Orange */
-.role-link.admin { background-color: #ef4444; }        /* Red */
-
-.contact-link {
-  text-decoration: none;
-  color: #2563eb !important;
-  font-weight: 600;
-  padding: 8px 20px;
-  border: 2px solid #2563eb;
-  border-radius: 8px;
-  transition: all 0.3s;
-}
-
-.contact-link:hover {
-  background: #2563eb;
-  color: #ffffff !important;
-}
-
-.menu-toggle {
-  color: #2563eb;
-  font-size: 26px;
 }
 
 /* Mobile Responsive Updates */
@@ -107,140 +46,12 @@ header {
   }
 }
 
-/* Body */
 body {
   background-color: var(--bg);
   color: var(--text);
   display: flex;
   flex-direction: column;
   min-height: 100vh;
-}
-
-.login-body::before {
-  content: "";
-  position: absolute;
-  top: -10%;
-  left: -10%;
-  width: 120%;
-  height: 120%;
-  background: linear-gradient(rgba(245, 247, 251, 0.7), rgba(219, 234, 254, 0.7)), 
-              url("https://images.unsplash.com/photo-1460925895917-afdab827c52f?auto=format&fit=crop&w=1920&q=80");
-  background-size: cover;
-  background-position: center;
-  transform: translate(var(--parallax-x, 0), var(--parallax-y, 0)) rotate(-3deg);
-  transition: transform 0.1s ease-out;
-  z-index: -1;
-}
-.login-container {
-  background: #ffffff;
-  padding: 40px 30px;
-  border-radius: 12px;
-  width: 90%;
-  max-width: 400px;
-  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.15), 0 5px 15px rgba(0, 0, 0, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.8);
-  margin: auto;
-  backdrop-filter: blur(8px);
-  animation: loginFadeIn 0.8s ease-out forwards;
-}
-
-/* Login form entrance animation */
-@keyframes loginFadeIn {
-  from {
-    opacity: 0;
-    transform: translateY(20px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-/* Fix footer positioning and width on login page */
-.login-body footer {
-  display: none !important;
-}
-
-.login-container h2 {
-  text-align: center;
-  margin-bottom: 25px;
-  color: #004aad;
-}
-
-/* Animation for dynamic fields */
-.field-fade-in {
-  animation: fieldFadeIn 0.4s ease-out forwards;
-}
-
-@keyframes fieldFadeIn {
-  from {
-    opacity: 0;
-    transform: translateY(10px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-.login-form .form-group {
-  margin-bottom: 20px;
-  width: 100%;
-}
-
-.login-form label {
-  display: block;
-  margin-bottom: 8px;
-  font-weight: 600;
-  font-size: 0.9rem;
-  color: #374151;
-}
-
-.login-form input,
-.login-form select {
-  width: 100%;
-  padding: 12px;
-  border: 1px solid #d1d5db;
-  border-radius: 8px;
-  font-size: 1rem;
-  background-color: #f9fafb;
-  transition: all 0.2s ease;
-  box-sizing: border-box;
-}
-
-.login-form input:focus,
-.login-form select:focus {
-  outline: none;
-  border-color: #2563eb;
-  background-color: #ffffff;
-  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
-}
-
-.login-form button {
-  width: 100%;
-  background: #2563eb;
-  color: #fff;
-  padding: 10px;
-  border: none;
-  border-radius: 6px;
-  font-weight: bold;
-  cursor: pointer;
-  transition: 0.3s;
-}
-
-.support {
-  text-align: center;
-  margin-top: 10px;
-  font-size: 0.9em;
-}
-
-.support a {
-  color: #004aad;
-  text-decoration: none;
-}
-
-.support a:hover {
-  text-decoration: underline;
 }
 
 /* Mobile Responsive */
@@ -272,83 +83,7 @@ body {
   .hero p {
     font-size: 1em;
   }
-
-  /* Signup Page */
-  .login-container {
-    width: 95%;
-    padding: 30px 20px;
-  }
 }
-/* Marks Form */
-.marks-section {
-  background: #fff;
-  padding: 25px;
-  border-radius: 10px;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-  margin-bottom: 30px;
-}
-
-.marks-section h2 {
-  margin-bottom: 20px;
-  color: #004aad;
-}
-
-.form-group {
-  margin-bottom: 15px;
-}
-
-.form-group label {
-  display: block;
-  font-weight: 500;
-  margin-bottom: 5px;
-}
-
-.form-group input,
-.form-group select {
-  width: 100%;
-  padding: 10px;
-  border-radius: 6px;
-  border: 1px solid #ccc;
-}
-
-.marks-section button {
-  background: #004aad;
-  color: white;
-  border: none;
-  padding: 10px 20px;
-  border-radius: 6px;
-  cursor: pointer;
-  transition: 0.3s;
-}
-
-/* Desktop styles for marks controls */
-.marks-controls {
-  display: flex;
-  gap: 15px;
-  align-items: flex-end;
-}
-
-.marks-section button:hover {
-  background: #003580;
-}
-
-/* Marks Input Grid (Desktop) */
-.marks-input-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr 1fr 1fr;
-  gap: 5px;
-}
-
-/* Marks Entry Input Fields */
-.marks-entry-input {
-  padding: 8px;
-  border: 1px solid #ccc;
-  border-radius: 6px;
-  font-size: 0.9rem;
-  box-sizing: border-box;
-  width: 100%;
-}
-
 /* Responsive */
 @media (max-width: 768px) {
   .sidebar {
@@ -447,12 +182,6 @@ body {
   .sync-report-btn, #submitAllMarksBtn, #loadStudentsBtn {
     width: 100%;
   }
-  #marksEntryTable td::before {
-    content: attr(data-label);
-    float: left;
-    font-weight: bold;
-    color: #555;
-  }
 
   
   /* Specific tweak for Marks cell which contains the grid */
@@ -467,7 +196,7 @@ body {
     margin-bottom: 5px;
   }
 }
-/* updated log in part that includes admin and class teacher */
+/* Helper text is generic, keep it here or move to ui.css */
 .helper-text {
   display: block;
   font-size: 0.8rem;
@@ -475,148 +204,4 @@ body {
   margin-top: 0.25rem;
   margin-bottom: 1rem;
   line-height: 1.4;
-}
-
-/* Modal background overlay */
-.modal {
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  background: rgba(0,0,0,0.6); /* semi-transparent black */
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 1000;
-}
-
-/* Hide modal by default */
-.modal.hidden {
-  display: none;
-}
-
-/* Modal box */
-.modal-content {
-  background: #fff;
-  padding: 2rem;
-  border-radius: 8px;
-  width: 90%;
-  max-width: 400px;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.3);
-  text-align: center;
-  animation: fadeIn 0.3s ease-in-out;
-}
-
-.modal-content button:active {
-  transform: scale(0.98);
-  transition: transform 0.1s;
-}
-
-/* Heading */
-.modal-content h3 {
-  margin-bottom: 1rem;
-  font-size: 1.2rem;
-  color: #333;
-}
-
-/* Form inputs */
-#changePasswordForm input {
-  width: 100%;
-  padding: 0.6rem;
-  margin: 0.5rem 0;
-  border: 1px solid #ccc;
-  border-radius: 4px;
-}
-
-/* Submit button */
-#changePasswordForm button {
-  width: 100%;
-  padding: 0.7rem;
-  background: #0078d7; /* Microsoft blue */
-  color: #fff;
-  border: none;
-  border-radius: 4px;
-  font-weight: bold;
-  cursor: pointer;
-  transition: background 0.2s ease-in-out;
-}
-
-#changePasswordForm button:hover {
-  background: #005a9e;
-}
-
-/* Fade-in animation */
-@keyframes fadeIn {
-  from { opacity: 0; transform: scale(0.95); }
-  to { opacity: 1; transform: scale(1); }
-}
-/* Close button inside modal */
-.close-btn {
-  position: absolute;
-  top: 10px;
-  right: 15px;
-  font-size: 1.5rem;
-  font-weight: bold;
-  color: #666;
-  cursor: pointer;
-  transition: color 0.2s ease-in-out;
-}
-
-.close-btn:hover {
-  color: #000;
-}
-/* SPINNER FOR LOGIN BUTTON */
-@keyframes spin {
-  0% { transform: rotate(0deg); }
-  100% { transform: rotate(360deg); }
-}
-
-.spinner {
-  display: inline-block;
-  width: 16px;
-  height: 16px;
-  border: 2px solid rgba(0, 74, 173, 0.3);
-  border-top: 2px solid #004aad;
-  border-radius: 50%;
-  animation: spin 0.8s linear infinite;
-  margin-right: 8px;
-  vertical-align: middle;
-}
-
-.btn:disabled {
-  opacity: 0.7;
-  cursor: not-allowed;
-}
-
-.logo-container {
-  text-align: center;
-  margin-bottom: 15px;
-}
-
-.login-logo {
-  width: 90px;
-  height: 90px;
-  object-fit: contain;
-  display: block;
-  margin: 0 auto;
-  animation: popIn 0.6s ease;
-}
-
-.brand-name {
-  font-size: 18px;
-  font-weight: 600;
-  color: #004aad;
-  margin-top: 5px;
-}
-
-@keyframes popIn {
-  from {
-    transform: scale(0.7);
-    opacity: 0;
-  }
-  to {
-    transform: scale(1);
-    opacity: 1;
-  }
 }

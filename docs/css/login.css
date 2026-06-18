@@ -1,165 +1,228 @@
-/* login.css - Professional Glassmorphism Theme */
+/* login.css - Consolidated styles for login components and forms */
+
+.hidden {
+  display: none !important;
+}
 
 .login-body {
-    background: linear-gradient(rgba(15, 23, 42, 0.8), rgba(15, 23, 42, 0.8)), 
-                url('https://images.unsplash.com/photo-1523050335392-93851179ae09?q=80&w=2070&auto=format&fit=crop') !important;
-    background-size: cover !important;
-    background-position: calc(50% + var(--parallax-x, 0px)) calc(50% + var(--parallax-y, 0px)) !important;
-    background-attachment: fixed !important;
-    min-height: 100vh;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    margin: 0 !important;
-    font-family: 'Inter', -apple-system, sans-serif;
-    transition: background-position 0.1s ease-out;
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  margin: 0;
+  overflow-x: hidden;
 }
 
-.login-card {
-    max-width: 440px;
-    width: 92%;
-    background: rgba(255, 255, 255, 0.92) !important;
-    backdrop-filter: blur(15px);
-    -webkit-backdrop-filter: blur(15px);
-    border-radius: 28px !important;
-    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5) !important;
-    border: 1px solid rgba(255, 255, 255, 0.3) !important;
-    padding: 45px 40px !important;
-    box-sizing: border-box;
-    text-align: center;
+.login-body::before {
+  content: "";
+  position: absolute;
+  top: -10%;
+  left: -10%;
+  width: 120%;
+  height: 120%;
+  background: linear-gradient(rgba(245, 247, 251, 0.7), rgba(219, 234, 254, 0.7)), 
+              url("https://images.unsplash.com/photo-1460925895917-afdab827c52f?auto=format&fit=crop&w=1920&q=80");
+  background-size: cover;
+  background-position: center;
+  transform: translate(var(--parallax-x, 0), var(--parallax-y, 0));
+  transition: transform 0.1s ease-out;
+  z-index: -1;
 }
 
-.login-card h2 {
-    color: #1e3a8a;
-    font-size: 1.8rem;
-    font-weight: 800;
-    margin-bottom: 8px;
-    letter-spacing: -0.025em;
+.login-container {
+  background: #ffffff;
+  padding: 40px 30px;
+  border-radius: 12px;
+  width: 90%;
+  max-width: 350px;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.15), 0 5px 15px rgba(0, 0, 0, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.8);
+  margin: auto;
+  backdrop-filter: blur(8px);
+  animation: loginFadeIn 0.8s ease-out forwards;
 }
 
-.login-card p.subtitle {
-    color: #475569;
-    font-size: 0.9rem;
-    margin-bottom: 30px;
-    font-weight: 500;
+.login-container h2 {
+  text-align: center;
+  margin-bottom: 25px;
+  color: #004aad;
 }
 
-.login-form .form-group {
-    text-align: left;
-    margin-bottom: 18px;
+.logo-container {
+  text-align: center;
+  margin-bottom: 15px;
+}
+
+.login-logo {
+  width: 100px;
+  height: 90px;
+  object-fit: contain;
+  display: block;
+  margin: 0 auto;
+  animation: popIn 0.6s ease;
+}
+
+.brand-name {
+  font-size: 18px;
+  font-weight: 600;
+  color: #004aad;
+  margin-top: 5px;
+}
+
+/* --- Unified Form Elements Logic --- */
+.login-form .form-group,
+.modal-content .form-group { /* Keep for login.html's change password modal */
+  margin-bottom: 20px;
+  width: 100%;
 }
 
 .login-form label {
-    display: block;
-    font-size: 0.75rem;
-    font-weight: 700;
-    color: #64748b;
-    text-transform: uppercase;
-    margin-bottom: 6px;
-    padding-left: 4px;
-    letter-spacing: 0.05em;
+  text-align: center;
+  display: block;
+  margin-bottom: 8px;
+  font-weight: 600;
+  font-size: 0.9rem;
+  color: #374151;
 }
 
-.login-form input, .login-form select {
-    width: 100%;
-    padding: 12px 16px;
-    border-radius: 12px;
-    border: 1.5px solid #e2e8f0;
-    background: #f8fafc;
-    font-size: 1rem;
-    color: #1e293b;
-    transition: all 0.2s ease;
-    box-sizing: border-box;
+.login-form input,
+.login-form select {
+  width: 100%;
+  padding: 12px;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  font-size: 1rem;
+  background-color: #f9fafb;
+  transition: all 0.2s ease;
+  box-sizing: border-box;
 }
 
-.login-form input:focus, .login-form select:focus {
-    outline: none;
-    border-color: #2563eb;
-    background: #ffffff;
-    box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.1);
+.login-form input:focus,
+.login-form select:focus {
+  outline: none;
+  border-color: #2563eb;
+  background-color: #ffffff;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
 }
 
-.login-form button[type="submit"] {
-    width: 100%;
-    padding: 14px;
-    background: #2563eb;
-    color: white;
-    border: none;
-    border-radius: 14px;
-    font-size: 1rem;
-    font-weight: 700;
-    cursor: pointer;
-    margin-top: 10px;
-    box-shadow: 0 10px 15px -3px rgba(37, 99, 235, 0.3);
-    transition: all 0.2s ease;
+.login-form button {
+  width: 100%;
+  background: #2563eb;
+  color: #fff;
+  padding: 12px;
+  border: none;
+  border-radius: 6px;
+  font-weight: bold;
+  cursor: pointer;
+  transition: 0.3s;
 }
 
-.login-form button[type="submit"]:hover {
-    background: #1d4ed8;
-    transform: translateY(-1px);
-    box-shadow: 0 20px 25px -5px rgba(37, 99, 235, 0.4);
-}
-
-/* Animation for field switching */
-@keyframes fieldFadeIn {
-    from { opacity: 0; transform: translateY(8px); }
-    to { opacity: 1; transform: translateY(0); }
-}
-
-.field-fade-in {
-    animation: fieldFadeIn 0.3s ease-out forwards;
-}
-
-.login-footer { color: rgba(255,255,255,0.6); margin-top: 30px; font-size: 0.8rem; }
-
-/* Password Toggle Icon Styling */
+/* --- Password Toggle Visibility Logic --- */
 .password-input-wrapper {
-    position: relative;
-    width: 100%;
+  position: relative !important;
+  width: 100% !important;
+  display: block !important;
 }
 
 .toggle-password-icon {
-    position: absolute;
-    right: 16px;
-    top: 50%;
-    transform: translateY(-50%);
-    cursor: pointer;
-    color: #64748b;
-    z-index: 10;
-    font-size: 0.95rem;
-    transition: color 0.2s;
+  position: absolute !important;
+  right: 12px !important;
+  top: 50% !important;
+  transform: translateY(-50%) !important;
+  cursor: pointer !important;
+  color: #64748b !important;
+  z-index: 20 !important;
+  font-size: 1.1rem !important;
+  transition: color 0.2s ease;
+  background: transparent !important;
+  border: none !important;
+  padding: 0 !important;
+  line-height: 1 !important;
 }
 
 .toggle-password-icon:hover {
-    color: #2563eb;
+  color: #1e293b !important;
 }
 
-/* Password Strength Meter Styling */
-.pw-strength-meter {
-    margin-top: 8px;
-    margin-bottom: 15px;
+.login-footer-links {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 20px;
+  font-size: 0.85rem;
 }
 
-.pw-strength-bar-bg {
-    height: 4px;
-    background: #e2e8f0;
-    border-radius: 2px;
-    overflow: hidden;
+@media (max-width: 480px) {
+  .login-container {
+    padding: 30px 20px;
+    width: 92%;
+  }
+
+  .login-footer-links {
+    flex-direction: column;
+    gap: 12px;
+  }
 }
 
-.pw-strength-bar {
-    height: 100%;
-    width: 0;
-    transition: all 0.3s ease;
+#forgotPassword {
+  color: #6b7280; /* Subtle gray */
+  text-decoration: none;
+  transition: all 0.3s ease;
 }
 
-.pw-strength-text {
-    font-size: 0.7rem;
-    font-weight: 700;
-    color: #64748b;
-    margin-top: 4px;
-    text-align: right;
-    text-transform: uppercase;
-    letter-spacing: 0.025em;
+#forgotPassword:hover {
+  color: #111827;
+  text-decoration: underline;
+}
+
+#backToHome {
+  color: #2563eb; /* Prominent blue */
+  font-weight: 600;
+  text-decoration: none;
+  transition: all 0.3s ease;
+  display: inline-block;
+}
+
+#backToHome:hover {
+  color: #1e40af;
+  transform: translateY(-2px);
+  text-decoration: underline;
+}
+
+/* --- Animations --- */
+@keyframes loginFadeIn {
+  from { opacity: 0; transform: translateY(20px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes popIn {
+  from { transform: scale(0.7); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
+}
+
+/* Animation for dynamic fields used in login.js */
+.field-fade-in {
+  animation: fieldFadeIn 0.4s ease-out forwards;
+}
+
+@keyframes fieldFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* --- Footer Positioning --- */
+footer {
+  width: 100%;
+  text-align: center;
+  padding: 20px;
+  margin-top: auto;
+  color: #4b5563;
+  font-size: 0.85rem;
+  position: relative;
+  z-index: 10;
 }

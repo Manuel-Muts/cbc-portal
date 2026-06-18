@@ -6,25 +6,8 @@
   <title>COMPETENCEHUB</title>
   <link rel="stylesheet" href="css/style.css" />
   <link rel="stylesheet" href="css/ui.css" />
-  <link rel="icon" type="image/png" href="/images/favicon.png"/> 
-  <style>
-    /* Enhanced Header Navigation Effects */
-    #navMenu li a {
-      display: inline-block;
-      font-size: 1.1rem;
-      font-weight: 600;
-      color: inherit;
-      text-decoration: none;
-      transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
-      padding: 5px 10px;
-    }
-
-    #navMenu li a:hover {
-      transform: scale(1.2) translateY(-2px);
-      color: #2b6cb0; /* Matches portal branding blue */
-      text-shadow: 0 4px 12px rgba(43, 108, 176, 0.15);
-    }
-  </style>
+  <link rel="stylesheet" href="css/modals/modal.css" />
+  <link rel="icon" type="image/png" href="/images/favicon.png"/>
 </head>
 
 <body>
@@ -193,7 +176,7 @@ and real-time academic insights tailored for modern institutions.
 </footer>
 
 <!-- SUPER ADMIN LOGIN MODAL -->
-<div id="superAdminModal" class="modal">
+<div id="superAdminModal" class="modal hidden">
   <div class="modal-content">
     <span class="close">&times;</span>
     <h2>Login</h2>
@@ -211,64 +194,6 @@ and real-time academic insights tailored for modern institutions.
   </div>
 </div>
 
-<!-- MODAL STYLE -->
-<style>
-.modal {
-  position: fixed;
-  top:0; left:0; width:100%; height:100%;
-  background: rgba(0,0,0,0.55);
-  display: flex; justify-content: center; align-items: center;
-  opacity: 0; pointer-events: none;
-  transition: opacity .3s ease-in-out;
-  z-index: 1000;
-}
-
-/* SHOW */
-.modal.show { opacity: 1; pointer-events: auto; }
-
-/* CONTENT */
-.modal-content {
-  background: #fff;
-  padding: 25px;
-  width: 330px;
-  border-radius: 12px;
-  box-shadow: 0px 4px 20px rgba(0,0,0,0.3);
-  position: relative;
-  transform: translateY(-40px);
-  transition: transform .35s ease;
-}
-.modal.show .modal-content { transform: translateY(0); }
-
-/* CLOSE BUTTON */
-.close {
-  position: absolute; top: 12px; right: 15px;
-  cursor: pointer; font-size: 20px; color: #333;
-}
-
-/* FORM */
-label { margin-top: 10px; font-weight: 600; display: block; }
-input {
-  width: 100%; padding: 10px;
-  border-radius: 6px; margin-top: 5px;
-  border: 1px solid #ccc; font-size: 15px;
-}
-.btn-submit {
-  width: 100%; margin-top: 15px; padding: 10px;
-  background: #0066ff; color: #fff;
-  border: none; border-radius: 6px;
-  cursor: pointer; font-size: 16px;
-  transition: background 0.3s ease;
-}
-.btn-submit:hover { background: #004dc1; }
-.btn-submit:disabled { 
-  background: #4a90e2; 
-  cursor: not-allowed; 
-  opacity: 0.7;
-}
-
-#saLoginError { color: red; margin-top: 10px; text-align: center; font-size: 14px; }
-</style>
-
 <!-- MODAL SCRIPT -->
 <script src="js/config.js"></script>
 <script>
@@ -279,9 +204,9 @@ document.addEventListener("DOMContentLoaded", () => {
   const form = document.getElementById("superAdminLoginForm");
   const errorDiv = document.getElementById("saLoginError");
 
-  const openModal = () => modal.classList.add("show");
-  const closeModal = () => { 
-    modal.classList.remove("show"); 
+  const openModal = () => modal.classList.remove("hidden");
+  const closeModal = () => {
+    modal.classList.add("hidden"); 
     errorDiv.textContent = ""; 
     form.reset(); 
   };
