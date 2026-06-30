@@ -10,6 +10,67 @@ import cache from "../utils/cacheManager.js";
 import sendSMS, { countSMSSegments } from "../utils/sendSMS.js";
 import SMSLog from "../models/SMSLog.js";
 
+// 🆕 Senior School Subject Definitions (Duplicated from frontend for backend validation)
+const SENIOR_COMPULSORY_SUBJECTS = [
+  "English",
+  "Kiswahili",
+  "Mathematics",
+  "PE",
+  "ICT",
+  "CSL"
+];
+
+const SENIOR_SCHOOL_PATHWAYS = {
+  STEM: [
+    "Biology", "Chemistry", "Physics", "Business Studies", "Computer Studies",
+    "Environmental Science", "Engineering Technology", "Applied Sciences",
+    "Electricity", "Aviation", "Agriculture", "Marine and Fisheries",
+    "Building and Construction", "Woodwork", "Metalwork", "Power Mechanics",
+    "General Science", "Home Science", "Media Technology"
+  ],
+  "Social Sciences": [
+    "History & Citizenship","History", "Geography", "Business Studies", "Political Studies",
+    "Christian Religious Studies (CRE)", "Kenya Sign Language", "Literature",
+    "Fasihi", "Indigenous Language", "Hindu Religious Education", "French",
+    "German", "Islamic Religious Education"
+  ],
+  "Arts & Sports Science": [
+    "French", "Hindu Religious Education", "Computer Studies", "Literature",
+    "Islamic Religious Education", "German", "Fasihi", "Kiswahili",
+    "History & Citizenship", "Geography", "Biology", "General Science",
+    "Fine Art", "Film & Media Studies", "Fashion & Design", "Music and Dance",
+    "Theatre and Film", "Sports and Recreation"
+  ]
+};
+
+const getElectiveSubjectsForPathway = (pathway) => {
+  const pathwaySubjects = SENIOR_SCHOOL_PATHWAYS[pathway];
+  if (!pathwaySubjects) return [];
+  
+  const compulsoryLower = SENIOR_COMPULSORY_SUBJECTS.map(s => s.toLowerCase());
+  
+  return pathwaySubjects.filter(sub => !compulsoryLower.includes(sub.toLowerCase()));
+};
+
+const validateSeniorElectiveSelection = (studentPathway, allSubmittedCourses) => {
+  const errors = [];
+  if (!studentPathway) {
+    errors.push("Student pathway is not defined.");
+    return errors;
+  }
+  const compulsorySubjectsLower = SENIOR_COMPULSORY_SUBJECTS.map(s => s.toLowerCase());
+  const pathwayElectivesLower = getElectiveSubjectsForPathway(studentPathway).map(s => s.toLowerCase());
+  const submittedElectives = new Set(allSubmittedCourses.filter(course => pathwayElectivesLower.includes(course.toLowerCase())));
+  const submittedOther = new Set(allSubmittedCourses.filter(course => !compulsorySubjectsLower.includes(course.toLowerCase()) && !pathwayElectivesLower.includes(course.toLowerCase())));
+  if (submittedElectives.size !== 3) {
+    errors.push(`Learner must select exactly 3 elective subjects from their pathway. Currently selected: ${submittedElectives.size}`);
+  }
+  if (submittedOther.size > 0) {
+    errors.push(`Some subjects are not part of the compulsory list or the '${studentPathway}' pathway: ${Array.from(submittedOther).join(', ')}`);
+  }
+  return errors;
+};
+
 // ---------------------------
 // 🆕 Helper to extract numeric grade
 const getGradeLevel = (grade) => parseInt(String(grade).replace(/\D/g, ""), 10);
@@ -433,6 +494,56 @@ export const bulkAddUpdateMarks = async (req, res) => {
     const cachedContext = { studentMap, enrollmentMap, lockChecked: true, existingMarksMap, gradingConfig: school?.gradingConfig };
     const ops = [];
     const errors = [];
+
+    // 🆕 Group marks by student and assessment for Senior School elective validation
+    const seniorMarksByStudentAssessment = new Map(); // Key: `${studentId}_${assessment}`, Value: { pathway: string, courses: Set<string>, markData: Array<object> }
+
+    for (const markData of marksArray) {
+        const gradeNum = getGradeLevel(markData.grade);
+        const isSeniorSchool = gradeNum >= 10 && gradeNum <= 12;
+
+        if (isSeniorSchool) {
+            const studentId = markData.studentId || (cachedContext.studentMap.get(markData.admissionNo)?._id);
+            if (!studentId) {
+                errors.push({ mark: markData, message: `Student ID not found for admission ${markData.admissionNo}` });
+                continue;
+            }
+            const key = `${studentId}_${markData.assessment}`;
+            if (!seniorMarksByStudentAssessment.has(key)) {
+                seniorMarksByStudentAssessment.set(key, {
+                    pathway: markData.pathway,
+                    courses: new Set(),
+                    allMarkData: [] // Store all mark data for this group
+                });
+            }
+            const studentAssessmentGroup = seniorMarksByStudentAssessment.get(key);
+            if (markData.course) {
+                studentAssessmentGroup.courses.add(markData.course);
+            }
+            studentAssessmentGroup.allMarkData.push(markData);
+        }
+    }
+
+    // Perform Senior School elective validation
+    for (const [key, group] of seniorMarksByStudentAssessment.entries()) {
+        const sampleMark = group.allMarkData[0]; // Use a sample mark for error message context
+        const electiveValidationErrors = validateSeniorElectiveSelection(group.pathway, Array.from(group.courses));
+        if (electiveValidationErrors.length > 0) {
+            electiveValidationErrors.forEach(err => {
+                errors.push({ mark: sampleMark, message: `Learner ${sampleMark.studentName} (${sampleMark.admissionNo}): ${err}` });
+            });
+        }
+    }
+
+    // If there are any errors from elective validation, return early
+    if (errors.length > 0) {
+        return res.status(400).json({
+            message: "Validation failed for some marks.",
+            successCount: 0,
+            failureCount: errors.length,
+            errors: errors
+        });
+    }
 
     for (const markData of marksArray) {
       try {
@@ -1170,7 +1281,7 @@ export const getSchoolWideRankings = async (req, res) => {
     }
 
     const pageNum = Math.max(1, parseInt(page, 10));
-    const limitNum = Math.min(100, Math.max(1, parseInt(limit, 10)));
+    const limitNum = Math.min(1000, Math.max(1, parseInt(limit, 10) || 100));
     const skip = (pageNum - 1) * limitNum;
 
     // 🚀 NEW: Server-side caching for rankings

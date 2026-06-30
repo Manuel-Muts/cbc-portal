@@ -276,7 +276,7 @@ document.getElementById('saveGradingConfigBtn').onclick = async () => {
 
       // 🆕 Instantly update dashboard metrics with new custom scales
       if (currentAnalysisRawData) {
-        processAnalysisData(currentAnalysisRawData, currentIsSenior, filterAssessmentEl.value, currentPrevRawData, currentRoster);
+        processAnalysisData(currentAnalysisRawData, currentIsSenior, filterAssessmentEl.value, currentPrevRawData, currentRoster, currentElectiveAssignments);
       }
     }
   } catch (err) {
@@ -480,7 +480,7 @@ async function generateReport() {
     console.log("✅ Using cached analytics for Grade: " + grade);
     analysisSection.style.display = "block";
     currentPrevRawData = cached.prevTermData;
-    processAnalysisData(cached.rawData, cached.isSenior, assessment, cached.prevTermData, cached.roster);
+    processAnalysisData(cached.rawData, cached.isSenior, assessment, cached.prevTermData, cached.roster, cached.electiveAssignments || []);
 
     // 🆕 Update Reports Tab UI
     const reportsUI = document.getElementById("reportsGenerationUI");
@@ -495,10 +495,11 @@ async function generateReport() {
   
   try {
     // 🚀 Fetch marks and the full class roster in parallel
-    const [marksData, rosterResponse] = await Promise.all([
+    const [marksData, rosterResponse, electiveAssignmentsResponse] = await Promise.all([
       // 🆕 Fetch all assessments for the term to allow intra-term progress comparison
       fetchWithAuth(`${API_BASE}/marks/by-grade?${new URLSearchParams({ grade, term, year, assessment: 'all' })}`),
-      fetchWithAuth(`${API_BASE}/enrollments/class/${encodeURIComponent(grade)}?limit=1000`)
+      fetchWithAuth(`${API_BASE}/enrollments/class/${encodeURIComponent(grade)}?limit=1000`),
+      fetchWithAuth(`${API_BASE}/electives/assignments`)
     ]);
 
     if (!marksData || marksData.length === 0) {
@@ -508,7 +509,9 @@ async function generateReport() {
     }
 
     const roster = rosterResponse.students || (Array.isArray(rosterResponse) ? rosterResponse : []);
+    const electiveAssignments = Array.isArray(electiveAssignmentsResponse) ? electiveAssignmentsResponse : (electiveAssignmentsResponse?.data || electiveAssignmentsResponse?.assignments || []);
     currentRoster = roster; // 🆕 Cache roster for local re-analysis
+    currentElectiveAssignments = electiveAssignments;
     
     let prevTermData = null;
     const termNum = parseInt(term);
@@ -537,10 +540,11 @@ async function generateReport() {
       rawData: marksData,
       isSenior: isSenior,
       prevTermData: prevTermData,
-      roster: roster
+      roster: roster,
+      electiveAssignments: electiveAssignments
     });
 
-    processAnalysisData(marksData, isSenior, assessment, prevTermData, roster);
+    processAnalysisData(marksData, isSenior, assessment, prevTermData, roster, electiveAssignments);
   } catch (err) {
     if (err.message.includes("No marks found")) {
       analysisSection.style.display = "none";
@@ -560,6 +564,73 @@ async function generateReport() {
  * 🆕 GENERATE SCHOOL-WIDE RANKINGS
  * Fetches top performers across all grades from the backend.
  */
+function normalizeSchoolRankingGrade(grade) {
+  return String(window.cbcUtils?.normalizeGrade?.(grade) || String(grade || "").trim() || "").trim();
+}
+
+function getSchoolRankingPhaseKey(grade) {
+  const normalizedGrade = normalizeSchoolRankingGrade(grade).toUpperCase();
+  if (["PG", "PP1", "PP2"].includes(normalizedGrade)) return "early-years";
+
+  const gradeMatch = String(normalizeSchoolRankingGrade(grade)).match(/\d+/);
+  const gradeNum = gradeMatch ? Number(gradeMatch[0]) : null;
+
+  if (gradeNum !== null) {
+    if (gradeNum >= 1 && gradeNum <= 3) return "lower-primary";
+    if (gradeNum >= 4 && gradeNum <= 6) return "upper-primary";
+    if (gradeNum >= 7 && gradeNum <= 9) return "junior-school";
+  }
+
+  return null;
+}
+
+function getSchoolRankingSections(rankings = []) {
+  const sections = [
+    {
+      key: "early-years",
+      title: "PG-PP2 Rankings (Top 10)",
+      grades: new Set(["PG", "PP1", "PP2"]),
+    },
+    {
+      key: "lower-primary",
+      title: "Grade 1-3 Rankings (Top 10)",
+      grades: new Set(["1", "2", "3"]),
+    },
+    {
+      key: "upper-primary",
+      title: "Grade 4-6 Rankings (Top 10)",
+      grades: new Set(["4", "5", "6"]),
+    },
+    {
+      key: "junior-school",
+      title: "Junior School 7-9 Rankings (Top 10)",
+      grades: new Set(["7", "8", "9"]),
+    },
+  ];
+
+  return sections.map((section) => {
+    const rows = (rankings || [])
+      .filter((item) => getSchoolRankingPhaseKey(item?.grade) === section.key)
+      .map((item) => ({
+        ...item,
+        meanScore: Number(item?.meanScore) || 0,
+        totalPoints: item?.scores ? item.scores.reduce((sum, score) => sum + (window.cbcUtils?.getPoints?.(score, item.grade) || 0), 0) : 0,
+        level: window.cbcUtils?.getSubdivision?.(Number(item?.meanScore) || 0, item?.grade) || "-",
+      }))
+      .sort((a, b) => {
+        if (b.meanScore !== a.meanScore) return b.meanScore - a.meanScore;
+        return String(a.studentName || "").localeCompare(String(b.studentName || ""));
+      })
+      .slice(0, 10)
+      .map((row, index) => ({ ...row, localRank: index + 1 }));
+
+    return {
+      ...section,
+      rows,
+    };
+  }).filter((section) => section.rows.length > 0);
+}
+
 async function generateSchoolWideReport() {
   const term = filterTermEl.value;
   const assessment = filterAssessmentEl.value;
@@ -580,7 +651,7 @@ async function generateSchoolWideReport() {
   schoolRankingsTableWrap.innerHTML = '<div style="text-align:center; padding:40px;"><span class="spinner"></span> Analyzing school-wide performance...</div>';
 
   try {
-    const res = await fetchWithAuth(`${API_BASE}/marks/school-wide-rankings?${new URLSearchParams({ term, year, assessment, limit: 100 })}`);
+    const res = await fetchWithAuth(`${API_BASE}/marks/school-wide-rankings?${new URLSearchParams({ term, year, assessment, limit: 1000 })}`);
     
     if (!res || !res.rankings || res.rankings.length === 0) {
       schoolRankingsTableWrap.innerHTML = '<div class="empty-state">No rankings available for this period.</div>';
@@ -594,42 +665,94 @@ async function generateSchoolWideReport() {
   }
 }
 
+function buildSchoolRankingSummarySections(sections = []) {
+  const phaseDefinitions = [
+    { key: "early-years", title: "PG-PP2 Counts" },
+    { key: "lower-primary", title: "Grade 1-3 Counts" },
+    { key: "upper-primary", title: "Grade 4-6 Counts" },
+    { key: "junior-school", title: "Junior 7-9 Counts" },
+  ];
+
+  return phaseDefinitions.map((phase) => {
+    const section = sections.find((item) => item.key === phase.key);
+    const summaryMap = new Map();
+
+    (section?.rows || []).forEach((row) => {
+      const grade = normalizeSchoolRankingGrade(row?.grade) || "Unassigned";
+      const stream = String(row?.stream || "").trim() || "Unassigned";
+      const key = `${grade}::${stream}`;
+
+      if (!summaryMap.has(key)) {
+        summaryMap.set(key, { grade, stream, count: 0 });
+      }
+
+      summaryMap.get(key).count += 1;
+    });
+
+    const rows = Array.from(summaryMap.values()).sort((a, b) => {
+      const gradeA = normalizeSchoolRankingGrade(a.grade);
+      const gradeB = normalizeSchoolRankingGrade(b.grade);
+      const orderA = window.cbcUtils?.GRADE_ORDER?.indexOf(gradeA) ?? -1;
+      const orderB = window.cbcUtils?.GRADE_ORDER?.indexOf(gradeB) ?? -1;
+      if (orderA !== -1 && orderB !== -1 && orderA !== orderB) return orderA - orderB;
+      const numA = window.cbcUtils?.getGradeNum?.(gradeA) || 0;
+      const numB = window.cbcUtils?.getGradeNum?.(gradeB) || 0;
+      if (numA !== numB) return numA - numB;
+      return a.stream.localeCompare(b.stream);
+    });
+
+    return {
+      title: phase.title,
+      rows: rows.length > 0 ? rows : [{ grade: "No data", stream: "-", count: 0 }],
+    };
+  });
+}
+
 function renderSchoolWideRankingsTable(rankings) {
+  const sections = getSchoolRankingSections(rankings);
+
   let html = `
     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px; margin-top: 20px; padding-top: 10px; border-top: 1px solid #e2e8f0;">
-      <h4 style="margin:0; color:#1e293b;">Top 100 Performers (School-Wide)</h4>
+      <div>
+        <h4 style="margin:0; color:#1e293b;">School Phase Rankings</h4>
+        <p style="margin:6px 0 0; color:#64748b; font-size:0.9rem;">Top 10 learners from each school phase for the selected period, displayed together for easy comparison.</p>
+      </div>
       <button id="printSchoolRankingsBtn" class="btn secondary-btn"><i class="fas fa-file-pdf"></i> Download Rankings PDF</button>
     </div>
-    <table class="marks-table">
-      <thead>
-        <tr>
-          <th>Rank</th>
-          <th>Name</th>
-          <th>Grade</th>
-          <th>Mean Score</th>
-          <th>Points</th>
-          <th>Level</th>
-          <th>Subjects</th>
-        </tr>
-      </thead>
-      <tbody>
-        ${rankings.map(r => {
-          const totalPoints = r.scores ? r.scores.reduce((sum, s) => sum + window.cbcUtils.getPoints(s, r.grade), 0) : 0;
-          const level = window.cbcUtils.getSubdivision(r.meanScore, r.grade);
-          return `
-          <tr>
-            <td style="font-weight:800; color:#2563eb;">#${r.rank}</td>
-            <td><strong>${r.studentName}</strong></td>
-            <td><span class="status-badge" style="background:#eef2ff; color:#3730a3;">${r.grade} ${r.stream || ''}</span></td>
-            <td style="font-weight:700;">${r.meanScore.toFixed(2)}%</td>
-            <td style="font-weight:600; color:#0f172a;">${totalPoints}</td>
-            <td><span class="status-badge" style="background:#f1f5f9; color:#475569; font-weight:700;">${level}</span></td>
-            <td>${r.totalSubjects}</td>
-          </tr>
-        `;}).join('')}
-      </tbody>
-    </table>
   `;
+
+  html += `
+    <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(280px, 1fr)); gap:16px; align-items:start;">
+      ${sections.map((section) => `
+        <div style="background:#fff; border:1px solid #e2e8f0; border-radius:12px; padding:14px; box-shadow:0 1px 3px rgba(15,23,42,0.06);">
+          <h5 style="margin:0 0 8px; color:#0f172a;">${section.title}</h5>
+          <div style="overflow:auto; border:1px solid #e2e8f0; border-radius:10px;">
+            <table class="marks-table" style="width:100%; border-collapse:collapse; min-width:260px;">
+              <thead>
+                <tr>
+                  <th>Rank</th>
+                  <th>Name</th>
+                  <th>Grade</th>
+                  <th>Mean</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${section.rows.map((row) => `
+                  <tr>
+                    <td style="font-weight:800; color:#2563eb;">#${row.localRank}</td>
+                    <td><strong>${row.studentName}</strong></td>
+                    <td><span class="status-badge" style="background:#eef2ff; color:#3730a3;">${row.grade} ${row.stream || ''}</span></td>
+                    <td style="font-weight:700;">${Number(row.meanScore || 0).toFixed(2)}%</td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      `).join('')}
+    </div>
+  `;
+
   schoolRankingsTableWrap.innerHTML = html;
 
   document.getElementById("printSchoolRankingsBtn")?.addEventListener("click", () => downloadSchoolWideRankingAsPDF(rankings));
@@ -649,140 +772,159 @@ async function downloadSchoolWideRankingAsPDF(rankings) {
   await new Promise(resolve => setTimeout(resolve, 100));
 
   try {
-  const doc = new jsPDFClass();
-  const pageWidth = doc.internal.pageSize.getWidth();
-  const schoolName = (schoolInfo?.name || "SCHOOL NAME").toUpperCase();
-  
-  doc.setFontSize(18);
-  doc.setFont("helvetica", "bold");
-  doc.text(schoolName, pageWidth / 2, 20, { align: "center" });
-  
-  doc.setFontSize(14);
-  doc.text("SCHOOL-WIDE RANKING REPORT", pageWidth / 2, 30, { align: "center" });
-  
-  doc.setFontSize(10);
-  doc.setFont("helvetica", "normal");
-  const term = filterTermEl.value;
-  const year = filterYearEl.value;
-  const assess = filterAssessmentEl.options[filterAssessmentEl.selectedIndex].text;
-  doc.text(`${year} | Term ${term} | ${assess}`, pageWidth / 2, 38, { align: "center" });
+    const doc = new jsPDFClass();
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const schoolName = (schoolInfo?.name || "SCHOOL NAME").toUpperCase();
+    const sections = getSchoolRankingSections(rankings);
 
-  doc.setFontSize(12);
-  doc.setFont("helvetica", "bold");
-  doc.text("TOP 100 LEARNERS", 14, 46);
+    const drawSchoolRankingWatermark = () => {
+      if (!deanProfileData?.schoolLogoBase64) return;
+      try {
+        const imgProps = deanProfileData.logoProps || doc.getImageProperties(deanProfileData.schoolLogoBase64);
+        const format = deanProfileData.logoFormat || "PNG";
+        const pageHeight = doc.internal.pageSize.getHeight();
+        const width = 80;
+        const height = (imgProps.height * width) / imgProps.width;
 
-  const headers = [["Rank", "Student Name", "Grade", "Mean Score", "Points", "Level"]];
-  const data = rankings.map(r => {
-    const totalPoints = r.scores ? r.scores.reduce((sum, s) => sum + window.cbcUtils.getPoints(s, r.grade), 0) : 0;
-    const level = window.cbcUtils.getSubdivision(r.meanScore, r.grade);
-    return [
-      `#${r.rank}`,
-      r.studentName,
-      `${r.grade} ${r.stream || ''}`,
-      `${r.meanScore.toFixed(2)}%`,
-      totalPoints,
-      level
-    ];
-  });
+        doc.saveGraphicsState();
+        doc.setGState(new doc.GState({ opacity: 0.035 }));
+        doc.addImage(deanProfileData.schoolLogoBase64, format, (pageWidth - width) / 2, (pageHeight - height) / 2, width, height, undefined, 'FAST');
+        doc.restoreGraphicsState();
+      } catch (e) { console.warn("Watermark rendering error:", e); }
+    };
+    
+    doc.setFontSize(18);
+    doc.setFont("helvetica", "bold");
+    doc.text(schoolName, pageWidth / 2, 20, { align: "center" });
+    
+    doc.setFontSize(14);
+    doc.text("SCHOOL PHASE RANKINGS", pageWidth / 2, 30, { align: "center" });
+    
+    doc.setFontSize(10);
+    doc.setFont("helvetica", "normal");
+    const term = filterTermEl.value;
+    const year = filterYearEl.value;
+    const assess = filterAssessmentEl.options[filterAssessmentEl.selectedIndex].text;
+    doc.text(`${year} | Term ${term} | ${assess}`, pageWidth / 2, 38, { align: "center" });
 
-  doc.autoTable({
-    startY: 50,
-    head: headers,
-    body: data,
-    theme: 'grid',
-    rowPageBreak: 'avoid',
-    headStyles: { fillColor: [30, 41, 59] },
-    didDrawPage: (data) => {
-      // 1. Watermark (School Logo)
-      if (deanProfileData?.schoolLogoBase64) {
-        try {
-          const imgProps = deanProfileData.logoProps || doc.getImageProperties(deanProfileData.schoolLogoBase64);
-          const format = deanProfileData.logoFormat || "PNG";
-          const pageHeight = doc.internal.pageSize.getHeight();
-          const width = 100; // Size of watermark
-          const height = (imgProps.height * width) / imgProps.width;
+    let yPos = 48;
 
-          doc.saveGraphicsState();
-          doc.setGState(new doc.GState({ opacity: 0.08 })); // Subtle 8% opacity
-          doc.addImage(deanProfileData.schoolLogoBase64, format, (pageWidth - width) / 2, (pageHeight - height) / 2, width, height, undefined, 'FAST');
-          doc.restoreGraphicsState();
-        } catch (e) { console.warn("Watermark rendering error:", e); }
+    sections.forEach((section, index) => {
+      if (index > 0 && yPos > 180) {
+        doc.addPage();
+        yPos = 20;
       }
 
-      // 2. Footer (System Branding)
-      const pageHeight = doc.internal.pageSize.getHeight();
-      doc.setFontSize(8);
-      doc.setTextColor(150);
-      doc.text("CompetenceHub Analytics", pageWidth / 2, pageHeight - 10, { align: "center" });
-      doc.text(`Page ${data.pageNumber}`, pageWidth - 20, pageHeight - 10, { align: "right" });
+      doc.setFontSize(12);
+      doc.setFont("helvetica", "bold");
+      doc.text(section.title, 14, yPos);
+      yPos += 6;
+
+      const headers = [["Rank", "Student Name", "Grade", "Mean Score", "Points", "Level"]];
+      const data = section.rows.map((row) => [
+        `#${row.localRank}`,
+        row.studentName,
+        `${row.grade} ${row.stream || ''}`,
+        `${Number(row.meanScore || 0).toFixed(2)}%`,
+        row.totalPoints,
+        row.level,
+      ]);
+
+      doc.autoTable({
+        startY: yPos,
+        head: headers,
+        body: data,
+        theme: 'grid',
+        rowPageBreak: 'avoid',
+        headStyles: { fillColor: [30, 41, 59] },
+        styles: { fontSize: 8 },
+        didDrawPage: (data) => {
+          drawSchoolRankingWatermark();
+
+          const pageHeight = doc.internal.pageSize.getHeight();
+          doc.setFontSize(8);
+          doc.setTextColor(150);
+          doc.text("CompetenceHub Analytics", pageWidth / 2, pageHeight - 10, { align: "center" });
+          doc.text(`Page ${data.pageNumber}`, pageWidth - 20, pageHeight - 10, { align: "right" });
+        }
+      });
+
+      yPos = doc.lastAutoTable.finalY + 12;
+    });
+
+    const summarySections = buildSchoolRankingSummarySections(sections);
+    if (summarySections.length > 0) {
+      if (yPos > 160) {
+        doc.addPage();
+        yPos = 20;
+      }
+
+      doc.setFontSize(12);
+      doc.setFont("helvetica", "bold");
+      doc.text("COUNT SUMMARY", 14, yPos);
+      yPos += 8;
+
+      const summaryTableWidth = 82;
+      const summaryColumns = [
+        { x: 14 },
+        { x: 14 + summaryTableWidth + 10 },
+      ];
+      const summaryRows = [
+        [summarySections[0], summarySections[1]],
+        [summarySections[2], summarySections[3]],
+      ];
+
+      const drawSummaryPageDecor = (data) => {
+        drawSchoolRankingWatermark();
+
+        const pageHeight = doc.internal.pageSize.getHeight();
+        doc.setFontSize(8);
+        doc.setTextColor(150);
+        doc.text("CompetenceHub Analytics", pageWidth / 2, pageHeight - 10, { align: "center" });
+        doc.text(`Page ${data.pageNumber}`, pageWidth - 20, pageHeight - 10, { align: "right" });
+      };
+
+      const drawSummaryTable = (summarySection, columnX, tableStartY) => {
+        doc.setFontSize(8);
+        doc.setFont("helvetica", "bold");
+        doc.setTextColor(0);
+        doc.text(summarySection.title, columnX, tableStartY);
+
+        doc.autoTable({
+          startY: tableStartY + 4,
+          margin: { left: columnX },
+          head: [["Grade", "Count"]],
+          body: summarySection.rows.map((row) => {
+            const streamLabel = row.stream && row.stream !== "Unassigned" ? ` ${row.stream}` : "";
+            return [`${row.grade}${streamLabel}`, row.count];
+          }),
+          theme: "grid",
+          rowPageBreak: "avoid",
+          tableWidth: summaryTableWidth,
+          headStyles: { fillColor: [30, 41, 59], fontSize: 7 },
+          styles: { fontSize: 7, cellPadding: 1.5 },
+          didDrawPage: drawSummaryPageDecor,
+        });
+
+        return doc.lastAutoTable.finalY;
+      };
+
+      summaryRows.forEach((rowPair) => {
+        const rowStartY = yPos + 4;
+        let rowBottomY = rowStartY;
+
+        rowPair.forEach((summarySection, columnIndex) => {
+          if (!summarySection) return;
+          const columnX = summaryColumns[columnIndex]?.x ?? summaryColumns[0].x;
+          const tableBottomY = drawSummaryTable(summarySection, columnX, rowStartY);
+          rowBottomY = Math.max(rowBottomY, tableBottomY);
+        });
+
+        yPos = rowBottomY + 10;
+      });
     }
-  });
 
-  // --- SUMMARY SECTION ---
-  let summaryTitleY = doc.lastAutoTable.finalY + 12;
-  const pageHeight = doc.internal.pageSize.getHeight();
-  
-  // Check if summary fits on current page (approx 85mm height needed for new section), else add new page
-  if (summaryTitleY > pageHeight - 90) {
-    doc.addPage();
-    summaryTitleY = 25;
-  }
-
-  // 1. Calculate Summary Data for all 3 tables
-  const gradeCounts = {};
-  const primaryLevels = { EE: 0, ME: 0, AE: 0, BE: 0 };
-  const secondaryLevels = { EE1: 0, EE2: 0, ME1: 0, ME2: 0, AE1: 0, AE2: 0, BE1: 0, BE2: 0 };
-
-  rankings.forEach(r => {
-    const gradeStreamKey = r.stream ? `${r.grade} ${r.stream}` : r.grade;
-    gradeCounts[gradeStreamKey] = (gradeCounts[gradeStreamKey] || 0) + 1;
-    const lvl = window.cbcUtils.getSubdivision(r.meanScore, r.grade);
-    if (primaryLevels.hasOwnProperty(lvl)) primaryLevels[lvl]++;
-    else if (secondaryLevels.hasOwnProperty(lvl)) secondaryLevels[lvl]++;
-  });
-
-  // 2. Render 3 Side-by-Side Tables
-  doc.setFontSize(12);
-  doc.setFont("helvetica", "bold");
-  doc.text("RANKING SUMMARY", 14, summaryTitleY);
-
-  // Table 1: Grade Distribution (Left)
-  doc.autoTable({
-    startY: summaryTitleY + 8,
-    head: [['Grade/Stream', 'Count']],
-    body: Object.entries(gradeCounts).sort((a, b) => b[1] - a[1]).map(([g, c]) => [g, c]),
-    theme: 'grid',
-    headStyles: { fillColor: [71, 85, 105] },
-    styles: { fontSize: 8 },
-    tableWidth: 55,
-    margin: { left: 14 }
-  });
-
-  // Table 2: Primary Levels (Middle)
-  doc.autoTable({
-    startY: summaryTitleY + 8,
-    head: [['Primary Levels', 'Count']],
-    body: Object.entries(primaryLevels).map(([l, c]) => [l, c]),
-    theme: 'grid',
-    headStyles: { fillColor: [37, 99, 235] },
-    styles: { fontSize: 8 },
-    tableWidth: 55,
-    margin: { left: 75 }
-  });
-
-  // Table 3: Secondary Levels (Right)
-  doc.autoTable({
-    startY: summaryTitleY + 8,
-    head: [['Secondary Levels', 'Count']],
-    body: Object.entries(secondaryLevels).map(([l, c]) => [l, c]),
-    theme: 'grid',
-    headStyles: { fillColor: [124, 58, 237] },
-    styles: { fontSize: 8 },
-    tableWidth: 55,
-    margin: { left: 136 }
-  });
-
-  doc.save(`School_Rankings_${year}_T${term}.pdf`);
+    doc.save(`School_Phase_Rankings_${year}_T${term}.pdf`);
   } finally {
     if (window.spinner) {
       window.spinner.hide(btn);
@@ -790,7 +932,58 @@ async function downloadSchoolWideRankingAsPDF(rankings) {
   }
 }
 
-function processAnalysisData(allRaw, isSenior, assessment, allPrevRaw = null, roster = []) {
+function normalizeSubjectName(subjectName) {
+  return String(subjectName || "").trim().toLowerCase();
+}
+
+function buildSeniorSubjectEligibilityMap(roster = [], electiveAssignments = []) {
+  const eligibilityMap = new Map();
+  const compulsorySubjects = (window.SUBJECT_DATA?.seniorCompulsorySubjects || []).map((subject) => String(subject).trim()).filter(Boolean);
+
+  roster.forEach((student) => {
+    const admission = String(student?.admissionNo || student?.admission || "").trim();
+    const learnerId = String(student?._id || student?.id || student?.studentId || "").trim();
+    const grade = student?.grade;
+    const isSenior = window.cbcUtils?.isSeniorGrade?.(grade) || false;
+
+    const eligibleSubjects = new Set(compulsorySubjects);
+
+    if (isSenior) {
+      const assignmentsForStudent = electiveAssignments.filter((assignment) => {
+        const assignmentLearnerId = String(assignment?.learnerId?._id || assignment?.learnerId || assignment?.learner?.id || assignment?.learner?._id || "").trim();
+        const assignmentAdmission = String(assignment?.learnerId?.admission || assignment?.admissionNo || "").trim();
+
+        return (learnerId && assignmentLearnerId && assignmentLearnerId === learnerId) ||
+          (admission && assignmentAdmission && assignmentAdmission === admission);
+      });
+
+      assignmentsForStudent.forEach((assignment) => {
+        const subjects = Array.isArray(assignment?.subjects) ? assignment.subjects : [];
+        subjects.forEach((subject) => {
+          const subjectName = String(subject || "").trim();
+          if (subjectName) eligibleSubjects.add(subjectName);
+        });
+      });
+    }
+
+    if (admission) eligibilityMap.set(admission, eligibleSubjects);
+    if (learnerId) eligibilityMap.set(learnerId, eligibleSubjects);
+  });
+
+  return eligibilityMap;
+}
+
+function isSubjectEligibleForStudent(studentKey, subjectName, isSenior, eligibilityMap) {
+  if (!isSenior) return true;
+  if (!subjectName) return false;
+
+  const eligibility = eligibilityMap.get(String(studentKey));
+  if (!eligibility || eligibility.size === 0) return true;
+
+  return Array.from(eligibility).some((item) => normalizeSubjectName(item) === normalizeSubjectName(subjectName));
+}
+
+function processAnalysisData(allRaw, isSenior, assessment, allPrevRaw = null, roster = [], electiveAssignments = []) {
   if (!allRaw || !allRaw.length) return;
   let streamsSet = new Set(); // Use let for reassignment
 
@@ -878,6 +1071,7 @@ function processAnalysisData(allRaw, isSenior, assessment, allPrevRaw = null, ro
   const subjectCounts = {};
   const subjectTermStats = {}; // To track T1, T2, T3 means for trend line
   const missingExamsMap = {}; // 🆕 Use a map to group missed subjects by student/assessment
+  const subjectEligibilityMap = buildSeniorSubjectEligibilityMap(roster, electiveAssignments);
 
   // Store current state for re-rendering
   currentAnalysisRawData = allRaw; // Store the unfiltered raw data
@@ -918,6 +1112,7 @@ function processAnalysisData(allRaw, isSenior, assessment, allPrevRaw = null, ro
       m.subjects.forEach(sub => {
         const subName = isSenior ? sub.course : sub.subject;
         if (!subName) return;
+        if (!isSubjectEligibleForStudent(studentKey, subName, isSenior, subjectEligibilityMap)) return;
 
         const isX = (v) => v === null || v === undefined || String(v).trim() === "" || (typeof v === 'string' && v.trim().toUpperCase() === "X");
         let isAbsent = isSenior 
@@ -1018,6 +1213,7 @@ function processAnalysisData(allRaw, isSenior, assessment, allPrevRaw = null, ro
     m.subjects.forEach(sub => { // Iterate over subjects
       const subName = isSenior ? sub.course : sub.subject;
       if (!subName) return;
+      if (!isSubjectEligibleForStudent(m.admissionNo, subName, isSenior, subjectEligibilityMap)) return;
       
       // Robust missing/absent detection (catches null, undefined, empty, or "X")
       const isX = (v) => v === null || v === undefined || String(v).trim() === "" || (typeof v === 'string' && v.trim().toUpperCase() === "X");
@@ -1059,7 +1255,10 @@ function processAnalysisData(allRaw, isSenior, assessment, allPrevRaw = null, ro
   Object.values(studentsMap).forEach(s => {
     let subjectsToValidateAgainst = [];
 
-    if (selectedStream === "all") {
+    if (isSenior) {
+      const eligibility = subjectEligibilityMap.get(String(s.adm)) || subjectEligibilityMap.get(String(s.adm || ""));
+      subjectsToValidateAgainst = eligibility ? Array.from(eligibility) : [];
+    } else if (selectedStream === "all") {
       // When viewing all streams, validate against subjects expected for the student's *own* stream
       subjectsToValidateAgainst = streamExpectedSubjectsMap[s.stream || "Unassigned"] || [];
     } 
@@ -1115,6 +1314,7 @@ function processAnalysisData(allRaw, isSenior, assessment, allPrevRaw = null, ro
       m.subjects.forEach(sub => {
         const subName = isSenior ? sub.course : sub.subject;
         if (!subName) return;
+        if (!isSubjectEligibleForStudent(m.admissionNo, subName, isSenior, subjectEligibilityMap)) return;
 
         const score = isSenior ? window.cbcUtils.calculateFinalScore(sub.continuousAssessment, sub.projectWork, sub.endTermExam) : sub.score;
         const scoreStr = String(score).trim().toUpperCase();

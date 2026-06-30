@@ -19,9 +19,9 @@
 
   <nav>
     <ul id="navMenu">
-      <li class="dropdown">
-        <a href="javascript:void(0)" class="dropbtn">About</i></a>
-        <div class="dropdown-content">
+      <li class="dropdown" id="aboutDropdown">
+        <a href="#" class="dropbtn" id="aboutDropdownToggle" aria-haspopup="true" aria-expanded="false">About</a>
+        <div class="dropdown-content" id="aboutDropdownMenu">
           <a href="/about">System & Vision</a>
           <a href="/founder">The Founder</a>
         </div>
@@ -210,6 +210,32 @@ document.addEventListener("DOMContentLoaded", () => {
   const closeBtn = modal.querySelector(".close");
   const form = document.getElementById("superAdminLoginForm");
   const errorDiv = document.getElementById("saLoginError");
+  const aboutDropdown = document.getElementById("aboutDropdown");
+  const aboutDropdownToggle = document.getElementById("aboutDropdownToggle");
+  const aboutDropdownMenu = document.getElementById("aboutDropdownMenu");
+
+  if (aboutDropdown && aboutDropdownToggle && aboutDropdownMenu) {
+    const setAboutDropdownOpen = (isOpen) => {
+      aboutDropdown.classList.toggle("open", isOpen);
+      aboutDropdownToggle.setAttribute("aria-expanded", String(isOpen));
+    };
+
+    aboutDropdownToggle.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      setAboutDropdownOpen(!aboutDropdown.classList.contains("open"));
+    });
+
+    aboutDropdownMenu.addEventListener("click", () => {
+      setAboutDropdownOpen(false);
+    });
+
+    document.addEventListener("click", (event) => {
+      if (!aboutDropdown.contains(event.target)) {
+        setAboutDropdownOpen(false);
+      }
+    });
+  }
 
   const openModal = () => modal.classList.remove("hidden");
   const closeModal = () => {

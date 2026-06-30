@@ -26,7 +26,9 @@ import expenseRoutes from './routes/expenseRoutes.js'; // 🆕
 import settingsRoutes from './routes/settingsRoutes.js'; // New import
 import timetableRoutes from './routes/timetableRoutes.js';
 import announcementRoutes from './routes/announcementRoutes.js'; 
-
+import electiveRoutes from "./routes/electiveRoutes.js";
+import subjectRoutes from "./routes/subjectRoutes.js";
+import studentRoutes from "./routes/studentRoutes.js";
 dotenv.config();
 
 // Resolve __dirname
@@ -143,6 +145,9 @@ app.use('/api/expenses', expenseRoutes); // 🆕
 app.use('/api/settings', settingsRoutes); // New route
 app.use('/api/timetables', timetableRoutes); 
 app.use('/api/announcements', announcementRoutes);
+app.use("/api/electives", electiveRoutes);
+app.use("/api/subjects", subjectRoutes);
+app.use("/api/learners", studentRoutes);
 // app.use("/api/payments", paymentsRoutes); // Removed: payments handled in userRoutes
 
 

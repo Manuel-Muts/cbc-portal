@@ -26,10 +26,12 @@
             <li data-section="searchSection">Learner Search</li>
             <li data-section="promotionSection">Learner Promotion</li>
             <li><a href="/users">👥 User Management</a></li> 
+            <li data-section="electivesSection">Electives Management</li>
             <li data-section="signatureUploadSection">Digital Signature</li>
             <li data-section="termLockManagementSection">
                 <a href="#">Term Lock Management</a>
             </li>
+            
         </ul>
         
         <button id="refreshBtn" class="refresh-btn">🔄 Refresh</button><br><br>
@@ -109,6 +111,11 @@
         </div>
     </div>
     </div>
+
+    <!-- 6. Electives Management Tab -->
+      <div id="electivesSection" class="tab-section" style="display:none;">
+      <div id="electiveModuleRoot"></div>
+      </div>
 
     <!-- Announcements Tab -->
     <div id="announcementSection" class="tab-section" style="display:none;">
@@ -428,6 +435,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.28/jspdf.plugin.autotable.min.js"></script>
 <script src="js/Utility/spinner.js"></script>
 <script src="js/ui.js"></script>
+<script src="js/admin/electives-admin.js"></script>
 <script src="js/Utility/subject-data.js"></script>
 <script src="js/admin.js"></script>
 

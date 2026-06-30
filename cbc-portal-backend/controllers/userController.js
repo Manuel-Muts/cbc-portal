@@ -80,7 +80,7 @@ export const registerUser = async (req, res) => {
     // roles that MUST belong to a school
     const rolesNeedingSchool = ["admin", "accounts","teacher", "student", "parent", "classteacher"];
 
-    const { name, email, role, admission, schoolId, grade, academicYear, stream, contact } = req.body;
+    const { name, email, role, admission, schoolId, grade, academicYear, stream, contact, pathway } = req.body;
     const formattedContact = formatContact(contact);
 
     if (!name || !role)
@@ -168,6 +168,7 @@ export const registerUser = async (req, res) => {
         if (formattedContact) existingStudent.contact = formattedContact;
         if (name) existingStudent.name = name;
         if (grade) existingStudent.grade = normalizeGrade(grade);
+        if (pathway) existingStudent.pathway = pathway;
 
         // 🆕 Sync Enrollment record for the current academic year to ensure class list consistency
         const currentYear = academicYear || new Date().getFullYear();
@@ -179,6 +180,7 @@ export const registerUser = async (req, res) => {
         if (enrollment) {
             if (grade) enrollment.grade = normalizeGrade(grade);
             if (stream) enrollment.stream = stream;
+            if (pathway) enrollment.pathway = pathway;
             enrollment.status = "active"; 
             await enrollment.save();
         } else {
@@ -186,6 +188,7 @@ export const registerUser = async (req, res) => {
                 studentId: existingStudent._id,
                 schoolId: schoolIdToAssign,
                 grade: normalizeGrade(grade),
+                pathway: pathway || null,
                 stream: stream || null,
                 academicYear: currentYear,
                 status: "active"
@@ -223,7 +226,8 @@ export const registerUser = async (req, res) => {
       newUser = new Student({
         ...commonFields,
         admission,
-        grade: normalizeGrade(grade)
+        grade: normalizeGrade(grade),
+        pathway: pathway || null
       });
     } else if (role === "teacher" || role === "classteacher") {
       newUser = new Teacher(commonFields);
@@ -246,6 +250,7 @@ export const registerUser = async (req, res) => {
           studentId: newUser._id,
           schoolId: schoolIdToAssign,
           grade: normalizeGrade(grade),
+          pathway: pathway || null,
           stream: stream || null, // Add stream field (optional)
           academicYear: academicYear || new Date().getFullYear(),
           status: "active"
@@ -1362,7 +1367,7 @@ export const updateUser = async (req, res) => {
     }
 
     // Assign allowed fields
-    let allowed = ["name", "email", "role", "contact"];
+    let allowed = ["name", "email", "role", "contact", "pathway"];
 
     // 🆕 Determine the role we are dealing with (current or newly assigned)
     const effectiveRole = req.body.role || targetUser.role;
@@ -1739,7 +1744,7 @@ export const bulkRegisterUsers = async (req, res) => {
 
     for (const studentData of studentsToProcess) {
       try {
-        const { name, admission, grade, stream, contact } = studentData;
+        const { name, admission, grade, stream, contact, pathway } = studentData;
 
         if (!name || !admission || !grade) {
           throw new Error("Missing required fields (Name, Admission, or Grade)");
@@ -1754,12 +1759,13 @@ export const bulkRegisterUsers = async (req, res) => {
           // Update or create enrollment
           let enrollment = existingEnrollmentMap.get(String(student._id));
           if (enrollment) {
-            await StudentEnrollment.findByIdAndUpdate(enrollment._id, { grade: normalizedGrade, stream, status: "active" });
+            await StudentEnrollment.findByIdAndUpdate(enrollment._id, { grade: normalizedGrade, stream, pathway, status: "active" });
           } else {
             enrollment = await StudentEnrollment.create({
               studentId: student._id,
               schoolId: schoolIdToAssign,
               grade: normalizedGrade,
+              pathway: pathway || null,
               stream,
               academicYear: currentYear,
               status: "active"
@@ -1771,6 +1777,7 @@ export const bulkRegisterUsers = async (req, res) => {
             name,
             contact: formattedContact,
             grade: normalizedGrade,
+            pathway: pathway || null,
             enrollmentId: enrollment._id
           });
           
@@ -1785,6 +1792,7 @@ export const bulkRegisterUsers = async (req, res) => {
             role: "student",
             admission,
             grade: normalizedGrade,
+            pathway: pathway || null,
             contact: formattedContact,
             password: hashedPassword,
             schoolId: schoolIdToAssign,
@@ -1795,6 +1803,7 @@ export const bulkRegisterUsers = async (req, res) => {
             studentId: newStudent._id,
             schoolId: schoolIdToAssign,
             grade: normalizedGrade,
+            pathway: pathway || null,
             stream,
             academicYear: currentYear,
             status: "active"

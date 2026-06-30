@@ -22,25 +22,20 @@ const userSchema = new mongoose.Schema({
   // ------------------------------------
   name: { type: String, required: true },
 
-  firstname: {
-    type: String,
-    default: null, // used by password reset workflow
-  },
-
   role: {
     type: String,
     enum: ["student", "teacher", "accounts", "classteacher", "admin", "super_admin"],
     required: true
   },
 
-  // Each non-super admin user can belong to a school.
+  // Each non-super admin user MUST belong to a school.
   schoolId: { 
     type: mongoose.Schema.Types.ObjectId, 
     ref: "School", 
     default: null,
     required: function() { return this.role !== "super_admin"; } // 🔒 Enforce school assignment
   },
-  schoolName: { type: String, default: null },
+ 
 
  email: {
   type: String,
@@ -72,6 +67,12 @@ const userSchema = new mongoose.Schema({
   classTeacherPassword: { type: String, default: null },
   grade: { type: String, default: null }, // Current grade for students
   passwordMustChange: { type: Boolean, default: false },
+  pathway: {
+    type: String,
+    enum: ['STEM', 'Social Sciences', 'Arts & Sports Science', 'N/A'], // Added enum validation
+    trim: true,
+    // Consider adding an enum here if pathways are fixed (e.g., ['STEM', 'Social Sciences', 'Arts & Sports Science'])
+  },
 
   // ------------------------------------
   // CLASS / SUBJECT ALLOCATION
@@ -135,6 +136,7 @@ userSchema.index({ resetCode: 1 });
 userSchema.index({ resetCodeExpires: 1 });
 userSchema.index({ createdAt: -1 });
 userSchema.index({ schoolId: 1 });
+userSchema.index({ pathway: 1 }); // Optimize pathway-based lookups
 userSchema.index({ grade: 1 }); // Optimize grade-based lookups
 userSchema.index({ schoolId: 1, role: 1 }); // Optimize filtering users by role within a school
 

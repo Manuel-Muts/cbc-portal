@@ -1,3 +1,5 @@
+
+
 (function () {
   const API_BASE = config.api.baseURL;
 
@@ -170,12 +172,12 @@
   // ---------------------------
     const SCHOOL_TYPES = {
         full: {
-            label: "Full School (PP1-12)",
-            gradeOptions: ["PP1", "PP2", "1","2","3","4","5","6","7","8","9","10","11","12"]
+            label: "Full School (PG-12)",
+            gradeOptions: ["PG", "PP1", "PP2", "1","2","3","4","5","6","7","8","9","10","11","12"]
         },
         primary_junior: {
-            label: "Primary + Junior ( PP1-9)",
-            gradeOptions: ["PP1", "PP2", "1","2","3","4","5","6","7","8","9"]
+            label: "Primary + Junior ( PG-9)",
+            gradeOptions: ["PG", "PP1", "PP2", "1","2","3","4","5","6","7","8","9"]
         },
         senior: {
             label: "Senior School (Grades 10-12)",
@@ -1259,8 +1261,9 @@
       selector.innerHTML = isFilter ? '<option value="">All Grades</option>' : '<option value="">-- Select Grade --</option>';
       grades.forEach(g => {
         const option = document.createElement("option");
-        // Correctly handle PP grades: "PP1" remains "PP1", "1" becomes "Grade 1"
-        const displayValue = String(g).toUpperCase().startsWith("PP") ? g : `Grade ${g}`;
+        
+         // Use the normalizeGrade function to normalize the grade
+        const displayValue = (String(g).toUpperCase().startsWith("PP") || String(g).toUpperCase() === "PG") ? g : `Grade ${g}`;
         option.value = displayValue;
         option.textContent = displayValue;
         selector.appendChild(option);

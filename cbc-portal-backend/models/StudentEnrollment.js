@@ -47,6 +47,12 @@ const studentEnrollmentSchema = new mongoose.Schema({
     }
   },
 
+  pathway: {
+    type: String,
+    enum: ['STEM', 'Social Sciences', 'Arts & Sports Science', 'N/A'], // Added enum validation
+    trim: true,
+    // Consider adding an enum here if pathways are fixed
+  },
   term: {
     type: String,
     enum: ["Term 1", "Term 2", "Term 3"],
@@ -87,6 +93,8 @@ studentEnrollmentSchema.index(
   { studentId: 1, academicYear: 1 },
   { unique: true }
 );
+studentEnrollmentSchema.index({ grade: 1, pathway: 1 }); // 🆕 Compound index for grade and pathway
+studentEnrollmentSchema.index({ pathway: 1 }); // Optimize pathway-based lookups
 
 // 🚀 Optimized Index for Promotion Preview & Class Roster lookups
 studentEnrollmentSchema.index({ schoolId: 1, academicYear: 1, grade: 1, stream: 1, status: 1 });

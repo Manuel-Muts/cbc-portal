@@ -31,6 +31,21 @@
     #subjectAllocTable .dean-toggle {
       transform: scale(0.8); /* Smaller toggle */
     }
+    /* 🆕 Fix for bulkDeleteModal CSS conflict */
+    #bulkDeleteModal .modal-content {
+      max-height: 85vh !important; /* Ensure modal content doesn't exceed viewport height */
+      overflow-y: auto !important; /* Enable scrolling for tall content */
+      display: flex !important; /* Use flexbox for internal layout */
+      flex-direction: column !important; /* Stack children vertically */
+    }
+    #bulkDeleteModal .modal-content .confirm-buttons {
+      margin-top: auto !important; /* Push buttons to the bottom */
+      padding-top: 15px !important; /* Add some padding above buttons */
+      border-top: 1px solid #eee !important; /* Separator line */
+      background: white !important; /* Ensure buttons background is white */
+      z-index: 1 !important; /* Ensure buttons are above scrolling content */
+      position: sticky !important; /* Keep buttons visible at the bottom */
+    }
   `;
   document.head.appendChild(compactStyle);
 
@@ -201,6 +216,7 @@ function renderSchoolInfo() {
 
   renderAdminSignature();
   applySchoolTypeToGradeSelectors();
+  applyElectivesSidebarVisibility();
 
   // 🆕 Initialize promotion search input
   if (promotionSearchInput) {
@@ -577,6 +593,30 @@ function attachAdminSignatureLogic() {
     if (rawType.includes('primary') || rawType.includes('junior')) return 'primary_junior';
     if (rawType.includes('senior')) return 'senior';
     return 'full';
+  };
+
+  const supportsElectivesManagement = () => {
+    const schoolType = getSchoolTypeKey();
+    return schoolType === 'senior' || schoolType === 'full';
+  };
+
+  const applyElectivesSidebarVisibility = () => {
+    const navItem = document.querySelector('.menu li[data-section="electivesSection"]');
+    const electivesSection = document.getElementById("electivesSection");
+    const showElectives = supportsElectivesManagement();
+
+    if (navItem) {
+      navItem.style.display = showElectives ? "" : "none";
+    }
+
+    if (!showElectives && electivesSection) {
+      electivesSection.style.display = "none";
+      electivesSection.classList.add("hidden");
+
+      if (navItem?.classList.contains("active")) {
+        document.querySelector('.menu li[data-section="subjectAllocSection"]')?.click();
+      }
+    }
   };
 
   const populateGradeRangeOptions = () => {
@@ -1777,7 +1817,8 @@ async function openHistoryModal(studentId) {
       "searchSection": "Learner Search",
       "promotionSection": "Learner Promotion",
       "signatureUploadSection": "Digital Signature", // New section title
-      "termLockManagementSection": "Term Lock Management" // 🆕 New section title
+      "termLockManagementSection": "Term Lock Management", // 🆕 New section title
+      "electivesSection": "Electives Management" // NEW
     }; 
 
     tabs.forEach(tab => {
@@ -1827,6 +1868,9 @@ async function openHistoryModal(studentId) {
           //loadPromotionPreview(1); // 🆕 Automatically load preview when tab is selected
         } else if (targetId === "announcementSection") {
           fetchSmsHistorySummary(); // 🆕 Refresh SMS stats for Admin
+
+          } else if (targetId === "electivesSection") {
+         window.ElectivesAdmin?.init();
         }
       });
     });
@@ -2602,15 +2646,29 @@ studentSearchBody.addEventListener("click", async (e) => {
         subjectsSelect.innerHTML=""; 
         subjectsSelect.multiple=true;
         
+        // 🆕 Add Compulsory Subjects for Senior School
+        if (selectedRange === "10-12" && window.SUBJECT_DATA && window.SUBJECT_DATA.seniorCompulsorySubjects) {
+          const compulsoryOptgroup = document.createElement("optgroup");
+          compulsoryOptgroup.label = "Compulsory Subjects";
+          window.SUBJECT_DATA.seniorCompulsorySubjects.forEach(subject => {
+            const opt = document.createElement("option");
+            opt.value = subject;
+            opt.textContent = `${subject}`;
+            compulsoryOptgroup.appendChild(opt);
+          });
+          subjectsSelect.appendChild(compulsoryOptgroup);
+        }
+
+
         // For senior school (10-12), show pathways with courses grouped
         if (selectedRange === "10-12") {
           Object.entries(seniorSchoolPathways).forEach(([pathway, courses]) => {
             const optgroup = document.createElement("optgroup");
             optgroup.label = pathway;
-            courses.forEach(course => {
+            courses.forEach(course => { // Display in the order defined in subject-data.js
               const opt = document.createElement("option");
               opt.value = course;
-              opt.textContent = course;
+              opt.textContent = `${course}`; // Display Pathway - Course for clarity
               optgroup.appendChild(opt);
             });
             subjectsSelect.appendChild(optgroup);

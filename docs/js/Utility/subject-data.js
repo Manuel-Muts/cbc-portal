@@ -7,11 +7,12 @@ window.SUBJECT_DATA.gradeSubjects = {
     "Environmental Activities",
     "Psychomotor",
     "Literacy",
-    "Kswahili",
+    "Kiswahili",
+    "Creative Arts",
+    "Christian Religious Studies (CRE)",
     "English",
     "Mathematics",
-    "Creative Arts",
-    "Christian Religious Studies (CRE)"
+   
   ],
   "1-3": [
     "Mathematics",
@@ -45,9 +46,7 @@ window.SUBJECT_DATA.gradeSubjects = {
     "English",
     "Kiswahili",
     "Integrated Science",
-    "Business Studies",
     "Agriculture",
-    "Social Studies",
     "Christian Religious Studies (CRE)",
     "Health Education",
     "Pre-Technical Studies",
@@ -55,7 +54,9 @@ window.SUBJECT_DATA.gradeSubjects = {
     "Creative Arts and Sports",
     "Sports C/A(s)",
     "Visual Arts C/A(v)",
-    "Performing Arts C/A(p)"
+    "Performing Arts C/A(p)",
+     "Business Studies",
+     "Social Studies",
   ],
   "10-12": [
     "Mathematics",
@@ -102,43 +103,55 @@ window.SUBJECT_DATA.gradeSubjects = {
     "Music and Dance",
     "Theatre and Film",
     "Sports and Recreation",
-    "Community service Learning",
+    "Community Service Learning",
+    "Physical Health Education"
   ]
 };
 
+/**
+ * 🆕 Centered Logic for Senior School Compulsory Subjects
+ */
+window.SUBJECT_DATA.seniorCompulsorySubjects = [
+  "English",
+  "Kiswahili",
+  "Mathematics",
+  "PE",
+  "ICT",
+  "CSL"
+];
+
 window.SUBJECT_DATA.seniorSchoolPathways = {
   STEM: [
-    "Mathematics",
-    "Biology",
-    "Chemistry",
     "Physics",
-    "Business Studies",
+    "Chemistry",
+    "Biology",
+    "Agriculture",
     "Computer Studies",
+    "Home Science",
+    "Electricity",
     "Environmental Science",
     "Engineering Technology",
     "Applied Sciences",
-    "Electricity",
     "Aviation",
-    "Agriculture",
     "Marine and Fisheries",
     "Building and Construction",
     "Woodwork",
     "Metalwork",
     "Power Mechanics",
     "General Science",
-    "Home Science",
-    "Media Technology"
+    "Media Technology",
+     "Business Studies",
   ],
   "Social Sciences": [
-    "History & Citizenship",
     "Geography",
-    "Mathematics",
+    "History",
     "Business Studies",
-    "Political Studies",
-    "Christian Religious Studies (CRE)",
-    "Kenya Sign Language",
     "Literature",
     "Fasihi",
+    "Christian Religious Studies (CRE)",
+    "Political Studies",
+    "Kenya Sign Language",
+    "History & Citizenship",
     "Indigenous Language",
     "Hindu Religious Education",
     "French",
@@ -148,7 +161,6 @@ window.SUBJECT_DATA.seniorSchoolPathways = {
   "Arts & Sports Science": [
     "French",
     "Hindu Religious Education",
-    "Mathematics",
     "Computer Studies",
     "Literature",
     "Islamic Religious Education",
@@ -188,7 +200,7 @@ window.SUBJECT_DATA.subjectCategories = {
     "Environmental Activities",
     "Pre-Technical Studies",
     "Computer Studies",
-    "General Science"
+    "ICT",
   ],
   activity: [
     "Sports and Recreation",
@@ -267,6 +279,83 @@ window.SUBJECT_DATA.getMarkEntrySubject = function(sub) {
   }
 
   return sub;
+};
+
+/**
+ * 🆕 Centered helper to determine the pathway for a Senior School subject.
+ * Prioritizes Compulsory subjects as "Core".
+ */
+window.SUBJECT_DATA.getSeniorPathway = function(subjectName) {
+  const sub = (subjectName || "").trim();
+  
+  const isCompulsory = this.seniorCompulsorySubjects.some(s => s.toLowerCase() === sub.toLowerCase());
+  if (isCompulsory) return "Core";
+
+  for (const [pathway, subjects] of Object.entries(this.seniorSchoolPathways)) {
+    if (subjects.some(s => s.toLowerCase() === sub.toLowerCase())) {
+      return pathway;
+    }
+  }
+  return null;
+};
+
+/**
+ * 🆕 Returns a list of subjects that are electives for a given Senior School pathway.
+ * Electives are subjects within the pathway that are NOT in the seniorCompulsorySubjects list.
+ * @param {string} pathway - The name of the Senior School pathway (e.g., "STEM").
+ * @returns {string[]} An array of elective subject names.
+ */
+window.SUBJECT_DATA.getElectiveSubjectsForPathway = function(pathway) {
+  const pathwaySubjects = this.seniorSchoolPathways[pathway];
+  if (!pathwaySubjects) return [];
+  
+  const compulsoryLower = this.seniorCompulsorySubjects.map(s => s.toLowerCase());
+  
+  return pathwaySubjects.filter(sub => !compulsoryLower.includes(sub.toLowerCase()));
+};
+
+/**
+ * 🆕 Validates if a Senior School student's subject selection meets the elective criteria.
+ * - Requires exactly 3 elective subjects.
+ * - All elective subjects must belong to the specified pathway.
+ * @param {string} studentPathway - The student's declared Senior School pathway.
+ * @param {string[]} allSubmittedCourses - An array of all course names submitted for the student in an assessment.
+ * @returns {string[]} An array of error messages, or an empty array if validation passes.
+ */
+window.SUBJECT_DATA.validateSeniorElectiveSelection = function(studentPathway, allSubmittedCourses) {
+  const errors = [];
+  if (!studentPathway) {
+    errors.push("Student pathway is not defined.");
+    return errors;
+  }
+
+  const compulsorySubjectsLower = this.seniorCompulsorySubjects.map(s => s.toLowerCase());
+  const pathwayElectivesLower = this.getElectiveSubjectsForPathway(studentPathway).map(s => s.toLowerCase());
+
+  const submittedCompulsory = new Set();
+  const submittedElectives = new Set();
+  const submittedOther = new Set(); // Subjects not recognized or not in pathway
+
+  allSubmittedCourses.forEach(course => {
+    const courseLower = course.toLowerCase();
+    if (compulsorySubjectsLower.includes(courseLower)) {
+      submittedCompulsory.add(course);
+    } else if (pathwayElectivesLower.includes(courseLower)) {
+      submittedElectives.add(course);
+    } else {
+      submittedOther.add(course);
+    }
+  });
+
+  if (submittedElectives.size !== 3) {
+    errors.push(`Learner must select exactly 3 elective subjects from their pathway. Currently selected: ${submittedElectives.size}`);
+  }
+
+  if (submittedOther.size > 0) {
+    errors.push(`Some subjects are not part of the compulsory list or the '${studentPathway}' pathway: ${Array.from(submittedOther).join(', ')}`);
+  }
+
+  return errors;
 };
 
 window.SUBJECT_DATA.getGradeSubjects = function() {

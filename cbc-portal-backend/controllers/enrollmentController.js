@@ -1,7 +1,10 @@
 //controllers/enrollmentController.js
 import mongoose from "mongoose";
 import StudentEnrollment from "../models/StudentEnrollment.js";
+import LearnerElective from "../models/LearnerElective.js";
 import { User } from "../models/User.js";
+
+const SENIOR_PATHWAYS = ["STEM", "Social Sciences", "Arts & Sports Science"];
 
 const escapeRegex = (text) => {
   return text.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, "\\$&");
@@ -59,7 +62,7 @@ export const adminSearchStudent = async (req, res) => {
     const enrollments = await StudentEnrollment.find({
       studentId: { $in: studentIds }
     })
-      .select("studentId academicYear grade stream status")
+      .select("studentId academicYear grade stream pathway status")
       .sort({ academicYear: -1 })
       .lean();
 
@@ -83,6 +86,7 @@ export const adminSearchStudent = async (req, res) => {
         academicYear: e?.academicYear || null,
         grade: e?.grade || null,
         stream: e?.stream || null,
+        pathway: e?.pathway || null,
         status: e?.status || "not-enrolled"
       };
     });
@@ -126,7 +130,7 @@ export const getEnrollmentById = async (req, res) => {
 export const updateEnrollment = async (req, res) => {
   try {
     const { id } = req.params;
-    const { academicYear, grade, stream, status } = req.body;
+    const { academicYear, grade, stream, pathway, status } = req.body;
 
     if (!mongoose.Types.ObjectId.isValid(id)) {
       return res.status(400).json({ message: "Invalid enrollment ID" });
@@ -161,6 +165,7 @@ export const updateEnrollment = async (req, res) => {
     enrollment.academicYear = academicYear ?? enrollment.academicYear;
     enrollment.grade = grade ? normalizeGrade(grade) : enrollment.grade;
     enrollment.stream = stream ?? enrollment.stream; // Update stream field
+    enrollment.pathway = pathway ?? enrollment.pathway;
     enrollment.status = status ?? enrollment.status;
 
     await enrollment.save();
@@ -310,6 +315,7 @@ export const cleanOrphanedEnrollments = async (req, res) => {
 export const getStudentsByClass = async (req, res) => {
   try {
     const { classLabel } = req.params;
+    const { pathway, electiveSubject } = req.query;
     
     if (!classLabel) {
       return res.status(400).json({ message: "classLabel is required" });
@@ -356,6 +362,38 @@ export const getStudentsByClass = async (req, res) => {
       query.stream = extractedStream;
     }
 
+    if (pathway && SENIOR_PATHWAYS.includes(String(pathway).trim())) {
+      query.pathway = String(pathway).trim();
+    }
+
+    if (electiveSubject && String(electiveSubject).trim()) {
+      const subjectPattern = new RegExp(`^${escapeRegex(String(electiveSubject).trim())}$`, "i");
+      const electiveQuery = {
+        schoolId,
+        subjects: subjectPattern,
+      };
+
+      if (queryGrade) {
+        electiveQuery.$or = [
+          { grade: queryGrade },
+          { grade: extractedGrade },
+          { grade: { $regex: new RegExp(`\\b${escapeRegex(extractedGrade)}\\b`, "i") } },
+        ];
+      }
+
+      const learnerIds = await LearnerElective.distinct("learnerId", electiveQuery);
+      if (!learnerIds.length) {
+        return res.json({
+          students: [],
+          total: 0,
+          totalPages: 0,
+          currentPage: page,
+        });
+      }
+
+      query.studentId = { $in: learnerIds };
+    }
+
     // 🚀 Performance Optimization: Use countDocuments directly on the roster index.
     // This avoids an expensive join and leverages the compound index prefix.
     const total = await StudentEnrollment.countDocuments(query);
@@ -381,7 +419,8 @@ export const getStudentsByClass = async (req, res) => {
           name: "$student.name",
           admissionNo: "$student.admission",
           grade: "$grade",
-          stream: "$stream"
+          stream: "$stream",
+          pathway: "$pathway"
         }
       }
     ];

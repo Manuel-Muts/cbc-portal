@@ -2,9 +2,6 @@
 (function () {
   const API_BASE = config.api.baseURL;
 
-  // Inject CSS to reduce row height in the users table
-  // The compactUsersStyle is now defined in ui.js for global consistency.
-  // This file will only contain specific overrides if necessary.
 
   // DOM Elements
   const registerForm = document.getElementById("registerForm");
@@ -182,11 +179,16 @@
       const admField = document.getElementById("userAdmission")?.parentElement;
       const gradeField = document.getElementById("studentGrade")?.parentElement;
       const streamField = document.getElementById("studentStream")?.parentElement;
+      const pathwayField = document.getElementById("studentPathway")?.parentElement;
       const contactField = document.getElementById("studentContact")?.parentElement;
 
       if (admField) admField.style.display = isStudent ? "block" : "none";
       if (gradeField) gradeField.style.display = isStudent ? "block" : "none";
       if (streamField) streamField.style.display = isStudent ? "block" : "none";
+      if (pathwayField) {
+        const isSenior = isStudent && window.cbcUtils.isSeniorGrade(document.getElementById("studentGrade")?.value);
+        pathwayField.style.display = isSenior ? "block" : "none";
+      }
       if (contactField) contactField.style.display = (isStudent || isTeacher) ? "block" : "none";
 
       // 🆕 Update contact field label based on role
@@ -203,6 +205,17 @@
     });
   }
 
+  // 🆕 Add listener for grade selection to toggle pathway visibility
+  const studentGradeSelect = document.getElementById("studentGrade");
+  if (studentGradeSelect) {
+    studentGradeSelect.addEventListener("change", () => {
+      const pathwayField = document.getElementById("studentPathway")?.parentElement;
+      if (pathwayField) {
+        pathwayField.style.display = window.cbcUtils.isSeniorGrade(studentGradeSelect.value) ? "block" : "none";
+      }
+    });
+  }
+
   // ---------------------------
   // USERS TABLE LOGIC
   // ---------------------------
@@ -212,16 +225,21 @@
     const table = document.querySelector("#usersTable");
     const thead = table.querySelector("thead tr");
     const isStudentView = currentRoleTab === "student";
-    const colCount = isStudentView ? 6 : 4;
 
-    // 🆕 Dynamically Update Headers
+    // Determine if Pathway column should be shown based on school type
+    const schoolType = getSchoolTypeKey();
+    const showPathwayColumn = isStudentView && (schoolType === 'senior' || schoolType === 'full');
+    const colCount = isStudentView ? (showPathwayColumn ? 7 : 6) : 4;
+
+    // Dynamically Update Headers
     if (isStudentView) {
       thead.innerHTML = `
         <th>Name</th>
-        <th>Role</th>
-        <th>Admission</th>
-        <th>Grade</th>
-        <th>Parent's Contact</th>
+        <th style="width: 80px;">Role</th>
+        <th style="width: 100px;">Admission</th>
+        <th style="width: 100px;">Grade</th>
+        ${showPathwayColumn ? '<th>Pathway</th>' : ''}
+        <th>Contact</th>
         <th>Action</th>
       `;
     } else {
@@ -281,8 +299,9 @@
         tr.innerHTML = `
           <td>${u.name}</td>
           <td>${u.role}</td>
-          <td>${u.admission || u.admissionNo || ""}</td>
-          <td>${gradeDisplay}</td>
+          <td class="users-table-compact-col">${u.admission || u.admissionNo || ""}</td>
+          <td class="users-table-compact-col">${gradeDisplay}</td>
+          ${showPathwayColumn ? `<td>${u.pathway || ""}</td>` : ''}
           <td>${u.contact || ""}</td>
           <td class="action-cell">
             <button data-id="${u._id}" class="btn danger-btn delete-user-btn" style="padding: 2px 6px; font-size: 11px;">🗑️ Delete</button>
@@ -483,6 +502,7 @@ if (usersNextPageBtn) {
       const admission = document.getElementById("userAdmission").value.trim();
       const grade = document.getElementById("studentGrade").value;
       const stream = document.getElementById("studentStream").value.trim();
+      const pathway = document.getElementById("studentPathway")?.value || null;
       const contact = document.getElementById("studentContact").value.trim();
 
       // Validation
@@ -493,6 +513,11 @@ if (usersNextPageBtn) {
       }
       if (role === "student" && (!admission || !grade)) {
         showFeedback(registerFeedback, "Admission and Grade required for students", "error");
+        submitBtn.disabled = false; submitBtn.textContent = originalText;
+        return;
+      }
+      if (role === "student" && window.cbcUtils.isSeniorGrade(grade) && !pathway) {
+        showFeedback(registerFeedback, "Pathway is required for Senior School learners", "error");
         submitBtn.disabled = false; submitBtn.textContent = originalText;
         return;
       }
@@ -508,6 +533,7 @@ if (usersNextPageBtn) {
       if (role === "student") {
         body.admission = admission;
         body.grade = grade;
+        if (pathway) body.pathway = pathway;
         if (stream) body.stream = stream;
       } else {
         body.email = email;
