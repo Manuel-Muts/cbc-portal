@@ -13,7 +13,7 @@ const markSchema = new mongoose.Schema({
   year: { type: Number, required: true },
 
   // For Senior School (Grades 10-12): pathway + course instead of subject
-  pathway: { type: String, enum: ["STEM", "Social Sciences", "Arts & Sports Science"], default: null },
+  pathway: { type: String, enum: ["Core", "STEM", "Social Sciences", "Arts & Sports Science"], default: null },
   course: { type: String, default: null }, // Learning area within pathway
 
   // For Junior School (Grades 1-9): traditional subject

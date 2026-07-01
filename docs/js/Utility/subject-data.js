@@ -70,7 +70,7 @@ window.SUBJECT_DATA.gradeSubjects = {
     "Geography",
     "History & Citizenship",
     "Geography",
-     "Christian Religious Education",
+    "Christian Religious Education",
     "Business Studies",
     "Computer Science",
     "Computer Studies",
@@ -262,6 +262,46 @@ window.SUBJECT_DATA.getDefaultFrequency = function(sub, grade) {
  * 🆕 Maps timetable-specific subdivisions to their parent Mark Entry subjects.
  * Prevents scheduling components from cluttering the marks entry table.
  */
+window.SUBJECT_DATA.normalizeSeniorSubjectName = function(subject) {
+  const name = String(subject || "").trim();
+  const normalized = name.toLowerCase();
+  const aliases = {
+    "bio": "Biology",
+    "bio b/s": "Biology",
+    "biology": "Biology",
+    "geo": "Geography",
+    "geography": "Geography",
+    "hist": "History",
+    "history": "History",
+    "chem": "Chemistry",
+    "chemistry": "Chemistry",
+    "cs": "Computer Studies",
+    "computer studies": "Computer Studies",
+    "community service learning": "CSL",
+    "csl": "CSL",
+    "business": "Business Studies",
+    "business studies": "Business Studies",
+    "cre": "Christian Religious Studies",
+    "christian religious education": "Christian Religious Studies",
+    "history & citizenship": "History & Citizenship",
+    "history and citizenship": "History & Citizenship",
+    "english": "English",
+    "english language": "English",
+    "math": "Mathematics",
+    "maths": "Mathematics",
+    "mathematics": "Mathematics",
+    "kiswahili": "Kiswahili",
+    "kiswahili language": "Kiswahili",
+    "physical education": "PE",
+    "phys ed": "PE",
+    "pe": "PE",
+    "ict": "ICT",
+    "information communication technology": "ICT",
+    "information and communication technology": "ICT"
+  };
+  return aliases[normalized] || name;
+};
+
 window.SUBJECT_DATA.getMarkEntrySubject = function(sub) {
   const name = (sub || "").trim();
   
@@ -278,7 +318,7 @@ window.SUBJECT_DATA.getMarkEntrySubject = function(sub) {
     return "Creative Arts and Sports";
   }
 
-  return sub;
+  return this.normalizeSeniorSubjectName(name);
 };
 
 /**
@@ -286,7 +326,7 @@ window.SUBJECT_DATA.getMarkEntrySubject = function(sub) {
  * Prioritizes Compulsory subjects as "Core".
  */
 window.SUBJECT_DATA.getSeniorPathway = function(subjectName) {
-  const sub = (subjectName || "").trim();
+  const sub = this.normalizeSeniorSubjectName(subjectName);
   
   const isCompulsory = this.seniorCompulsorySubjects.some(s => s.toLowerCase() === sub.toLowerCase());
   if (isCompulsory) return "Core";
@@ -310,8 +350,9 @@ window.SUBJECT_DATA.getElectiveSubjectsForPathway = function(pathway) {
   if (!pathwaySubjects) return [];
   
   const compulsoryLower = this.seniorCompulsorySubjects.map(s => s.toLowerCase());
+  const normalizedSubjects = pathwaySubjects.map(sub => this.normalizeSeniorSubjectName(sub));
   
-  return pathwaySubjects.filter(sub => !compulsoryLower.includes(sub.toLowerCase()));
+  return normalizedSubjects.filter(sub => !compulsoryLower.includes(sub.toLowerCase()));
 };
 
 /**
@@ -328,33 +369,17 @@ window.SUBJECT_DATA.validateSeniorElectiveSelection = function(studentPathway, a
     errors.push("Student pathway is not defined.");
     return errors;
   }
-
   const compulsorySubjectsLower = this.seniorCompulsorySubjects.map(s => s.toLowerCase());
   const pathwayElectivesLower = this.getElectiveSubjectsForPathway(studentPathway).map(s => s.toLowerCase());
-
-  const submittedCompulsory = new Set();
-  const submittedElectives = new Set();
-  const submittedOther = new Set(); // Subjects not recognized or not in pathway
-
-  allSubmittedCourses.forEach(course => {
-    const courseLower = course.toLowerCase();
-    if (compulsorySubjectsLower.includes(courseLower)) {
-      submittedCompulsory.add(course);
-    } else if (pathwayElectivesLower.includes(courseLower)) {
-      submittedElectives.add(course);
-    } else {
-      submittedOther.add(course);
-    }
-  });
-
+  const submittedCourses = (allSubmittedCourses || []).map(course => this.normalizeSeniorSubjectName(course));
+  const submittedElectives = new Set(submittedCourses.filter(course => pathwayElectivesLower.includes(course.toLowerCase())));
+  const submittedOther = new Set(submittedCourses.filter(course => !compulsorySubjectsLower.includes(course.toLowerCase()) && !pathwayElectivesLower.includes(course.toLowerCase())));
   if (submittedElectives.size !== 3) {
     errors.push(`Learner must select exactly 3 elective subjects from their pathway. Currently selected: ${submittedElectives.size}`);
   }
-
   if (submittedOther.size > 0) {
     errors.push(`Some subjects are not part of the compulsory list or the '${studentPathway}' pathway: ${Array.from(submittedOther).join(', ')}`);
   }
-
   return errors;
 };
 

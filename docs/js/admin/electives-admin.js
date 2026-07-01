@@ -69,127 +69,49 @@
     return document.getElementById(ROOT_ID);
   }
 
+  function isSeniorGradeValue(grade) {
+    const normalized = String(grade || "").trim();
+    const match = normalized.match(/(\d+)/);
+    const gradeNum = match ? Number(match[1]) : null;
+    return [10, 11, 12].includes(gradeNum);
+  }
+
   function renderLayout() {
     const root = getRoot();
     if (!root) return;
- root.innerHTML = `
-     <div class="card" style="padding:12px;margin-bottom:12px;">
-      <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">
-        <h3 style="margin-top:0;">Electives Management</h3>
-        <div>
-          <button id="addElectiveSubjectBtn" class="btn primary-btn">Add Subject</button>
-          <button id="addElectiveSetBtn" class="btn primary-btn">Add Set</button>
-        </div>
-      </div>
-      <div style="margin-top:12px;">
-        <table class="table table-compact table-striped" style="width:100%;">
-          <thead>
-            <tr>
-              <th>Subject</th>
-              <th>Set</th>
-              <th>Assign</th>
-            </tr>
-          </thead>
-          <tbody id="electiveSubjectsTableBody"></tbody>
-        </table>
-      </div>
-    </div>
 
-    <div class="card" style="padding:12px;margin-bottom:12px;">
-      <h3 style="margin-top:0;">Elective Sets</h3>
-      <table class="table table-compact table-striped" style="width:100%;">
-        <thead>
-          <tr>
-            <th>Name</th>
-            <th>Subjects</th>
-            <th>Assign</th>
-          </tr>
-        </thead>
-        <tbody id="electiveSetsTableBody"></tbody>
-      </table>
-    </div>
-
-    <div class="card" style="padding:12px;margin-bottom:12px;">
-      <h3 style="margin-top:0;">Learners</h3>
-      <table class="table table-compact table-striped" style="width:100%;">
-        <thead>
-          <tr>
-            <th>Name</th>
-            <th>Admission</th>
-            <th>Electives</th>
-          </tr>
-        </thead>
-        <tbody id="learnersTableBody"></tbody>
-      </table>
-    </div>
-  `;
     root.innerHTML = `
-           <div class="card" style="padding:12px;margin-bottom:12px;">
+      <div class="card" style="padding:12px;margin-bottom:12px;">
         <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">
           <div>
             <h3 style="margin:0;">Electives</h3>
-            <p style="margin:4px 0 0;color:#64748b;font-size:0.85rem;">Manage sets & assignments</p>
+            <p style="margin:4px 0 0;color:#64748b;font-size:0.85rem;">Assign elective sets to senior learners</p>
           </div>
-          <button id="refreshElectivesBtn" class="btn secondary-btn">Refresh</button>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;">
+            <button id="refreshElectivesBtn" class="btn secondary-btn">Refresh</button>
+            <button id="openElectiveSetsModalBtn" class="btn primary-btn">Manage Elective Sets</button>
+          </div>
         </div>
       </div>
 
-      <!-- CREATE SET -->
-      <div class="card" style="padding:12px;margin-bottom:12px;">
-        <h4 style="margin:0 0 10px;">Create Set</h4>
-
-        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;">
-          <input id="electiveSetName" class="form-control" placeholder="Set name">
-          <select id="electiveGrade" class="form-control">
-            <option value="">Grade</option>
-            <option>Grade 10</option>
-            <option>Grade 11</option>
-            <option>Grade 12</option>
-          </select>
-          <input id="electiveMaxSubjects" type="number" value="3" class="form-control">
-          <select id="electiveSetStatus" class="form-control">
-            <option value="active">Active</option>
-            <option value="inactive">Inactive</option>
-          </select>
-        </div>
-
-        <div id="electiveSubjectChecks"
-          style="margin-top:10px;display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:6px;
-          max-height:180px;overflow:auto;padding:8px;border:1px solid #eee;border-radius:8px;background:#fafafa;">
-          <div style="color:#94a3b8;">Loading...</div>
-        </div>
-
-        <div style="margin-top:10px;text-align:right;">
-          <button id="saveElectiveSetBtn" class="btn primary-btn">Save</button>
-        </div>
-      </div>
-
-      <!-- ASSIGN -->
       <div class="card" style="padding:12px;margin-bottom:12px;">
         <h4 style="margin:0 0 10px;">Assign</h4>
-
-        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;align-items:end;">
-          <select id="electiveAssignGrade" class="form-control">
-            <option value="">All Grades</option>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr auto;gap:10px;align-items:end;">
+          <select id="electiveAssignGrade" class="form-control" style="min-width:160px;">
+            <option value="">-- Select Grade --</option>
             <option>Grade 10</option>
             <option>Grade 11</option>
             <option>Grade 12</option>
           </select>
-
-          <input id="electiveSearchLearner" class="form-control" placeholder="Search learner">
-
-          <select id="electiveSetSelect" class="form-control"></select>
-
-          <button id="bulkAssignBtn" class="btn secondary-btn">Bulk</button>
+          <input id="electiveSearchLearner" class="form-control" placeholder="Search learner" disabled style="min-width:180px;">
+          <select id="electiveSetSelect" class="form-control" style="min-width:180px;"></select>
+          <button id="bulkAssignBtn" class="btn secondary-btn" style="padding:10px 18px;">Bulk</button>
         </div>
-
         <div id="electiveLearnerList" style="margin-top:10px;"></div>
       </div>
 
-      <!-- TABLE -->
       <div class="card" style="padding:12px;">
         <h4 style="margin:0 0 10px;">Assignments</h4>
-
         <div style="overflow:auto;">
           <table class="table table-compact table-striped" style="width:100%;border-collapse:collapse;font-size:0.8rem;">
             <thead>
@@ -208,6 +130,64 @@
         </div>
       </div>
 
+      <div id="electiveSetsModal" class="confirm-overlay" style="display:none;">
+        <div class="confirm-box" style="max-width:960px; width:calc(100% - 40px); text-align:left; max-height:calc(100vh - 60px); overflow:auto; padding:24px; border-radius:22px; box-shadow:0 32px 80px rgba(15, 23, 42, 0.18);">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap; margin-bottom:16px;">
+            <div style="flex:1 1 300px; min-width:0;">
+              <h3 style="margin:0; font-size:1.35rem;">Manage Elective Sets</h3>
+              <p style="margin:8px 0 0;color:#475569;font-size:0.95rem; line-height:1.5;">Create, review and delete elective sets for senior grades from one modal.</p>
+            </div>
+            <button id="modalCloseElectiveSetsBtn" class="btn secondary-btn" style="white-space:nowrap; padding:10px 16px;">Close</button>
+          </div>
+
+          <div style="display:grid;grid-template-columns:1fr;gap:18px;">
+            <div style="padding:18px; border:1px solid #e2e8f0; border-radius:16px; background:#ffffff; box-shadow: inset 0 0 0 1px rgba(226,232,240,0.45);">
+              <h4 style="margin:0 0 14px; font-size:1.05rem;">Create Set</h4>
+              <div style="display:grid;grid-template-columns:1fr;gap:12px;">
+                <input id="electiveSetName" class="form-control" placeholder="Set name">
+                <select id="electiveGrade" class="form-control">
+                  <option value="">Grade</option>
+                  <option>Grade 10</option>
+                  <option>Grade 11</option>
+                  <option>Grade 12</option>
+                </select>
+                <input id="electiveMaxSubjects" type="number" value="3" class="form-control">
+                <select id="electiveSetStatus" class="form-control">
+                  <option value="active">Active</option>
+                  <option value="inactive">Inactive</option>
+                </select>
+              </div>
+              <div id="electiveSubjectChecks" style="margin-top:14px;display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;max-height:260px;overflow:auto;padding:12px;border:1px solid #e2e8f0;border-radius:14px;background:#f8fafc;">
+                <div style="color:#64748b;">Loading...</div>
+              </div>
+              <div style="margin-top:16px; text-align:right;">
+                <button id="saveElectiveSetBtn" class="btn primary-btn" style="padding:10px 18px;">Save</button>
+              </div>
+            </div>
+
+            <div style="padding:18px; border:1px solid #e2e8f0; border-radius:16px; background:#ffffff; box-shadow: inset 0 0 0 1px rgba(226,232,240,0.45);">
+              <h4 style="margin:0 0 14px; font-size:1.05rem;">Elective Sets</h4>
+              <div style="overflow:auto; max-height:420px;">
+                <table class="table table-compact table-striped" style="width:100%;border-collapse:collapse;font-size:0.85rem;">
+                  <thead>
+                    <tr style="background:#f8fafc;">
+                      <th style="padding:10px 8px; text-align:left;">Name</th>
+                      <th style="padding:10px 8px; text-align:left;">Grade</th>
+                      <th style="padding:10px 8px; text-align:left;">Subjects</th>
+                      <th style="padding:10px 8px; text-align:center;">Max</th>
+                      <th style="padding:10px 8px; text-align:center;">Status</th>
+                      <th style="padding:10px 8px; text-align:center;">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody id="electiveSetsTableBody">
+                    <tr><td colspan="6" style="padding:14px; color:#64748b; text-align:center;">Loading sets...</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
     `;
 
     bindEvents();
@@ -222,6 +202,7 @@
 
     document.getElementById("electiveAssignGrade")?.addEventListener("change", async (e) => {
       state.selectedGrade = e.target.value;
+      updateLearnerSearchState();
       await loadLearners();
     });
 
@@ -237,7 +218,36 @@
     }
 
     document.getElementById("saveElectiveSetBtn")?.addEventListener("click", saveElectiveSet);
+    document.getElementById("openElectiveSetsModalBtn")?.addEventListener("click", openElectiveSetsModal);
+    document.getElementById("modalCloseElectiveSetsBtn")?.addEventListener("click", closeElectiveSetsModal);
     document.getElementById("bulkAssignBtn")?.addEventListener("click", bulkAssignToSelectedLearners);
+
+    const electiveSetsModal = document.getElementById("electiveSetsModal");
+    if (electiveSetsModal) {
+      electiveSetsModal.addEventListener("click", (event) => {
+        if (event.target === electiveSetsModal) {
+          closeElectiveSetsModal();
+        }
+      });
+
+      document.addEventListener("keydown", (event) => {
+        if (event.key === "Escape" && electiveSetsModal.classList.contains("visible")) {
+          closeElectiveSetsModal();
+        }
+      });
+    }
+
+    document.getElementById("electiveSetsTableBody")?.addEventListener("click", async (e) => {
+      const btn = e.target.closest("button");
+      if (!btn) return;
+
+      const action = btn.dataset.action;
+      const setId = btn.dataset.setId;
+
+      if (action === "delete-set") {
+        await deleteElectiveSetById(setId);
+      }
+    });
 
     document.getElementById("electiveLearnerList")?.addEventListener("click", async (e) => {
       const btn = e.target.closest("[data-action]");
@@ -273,6 +283,22 @@
         await openLearnerAssignmentModal(learnerId);
       }
     });
+  }
+
+  function openElectiveSetsModal() {
+    const modal = document.getElementById("electiveSetsModal");
+    if (!modal) return;
+    modal.style.display = "flex";
+    modal.classList.add("visible");
+    document.body.classList.add("modal-open");
+  }
+
+  function closeElectiveSetsModal() {
+    const modal = document.getElementById("electiveSetsModal");
+    if (!modal) return;
+    modal.classList.remove("visible");
+    modal.style.display = "none";
+    document.body.classList.remove("modal-open");
   }
 
   async function loadElectiveSubjects() {
@@ -336,9 +362,47 @@
         opt.textContent = `${set.name} (${gradeLabel})`;
         setSelect.appendChild(opt);
       });
+
+      const setsTableBody = document.getElementById("electiveSetsTableBody");
+      if (setsTableBody) {
+        setsTableBody.innerHTML = sets.length
+          ? sets.map((set) => {
+              const subjects = Array.isArray(set.subjects) ? set.subjects.join(", ") : "";
+              return `
+                <tr>
+                  <td style="padding:6px;">${escapeHtml(set.name)}</td>
+                  <td style="padding:6px;">${escapeHtml(set.grade || "-")}</td>
+                  <td style="padding:6px;">${escapeHtml(subjects)}</td>
+                  <td style="padding:6px;">${escapeHtml(String(set.maxSubjects || 3))}</td>
+                  <td style="padding:6px;">${escapeHtml(set.status || "active")}</td>
+                  <td style="padding:6px; white-space:nowrap;">
+                    <button class="btn secondary-btn" data-action="delete-set" data-set-id="${escapeHtml(set._id || set.id)}">Delete</button>
+                  </td>
+                </tr>
+              `;
+            }).join("")
+          : `<tr><td colspan="6" style="padding:12px; color:#94a3b8;">No elective sets available.</td></tr>`;
+      }
     } catch (err) {
       console.error("Load elective sets error:", err);
       setSelect.innerHTML = `<option value="">-- Failed to load sets --</option>`;
+    }
+  }
+
+  function updateLearnerSearchState() {
+    const searchInput = document.getElementById("electiveSearchLearner");
+    if (!searchInput) return;
+
+    if (state.selectedGrade) {
+      searchInput.disabled = false;
+      if (!searchInput.value) {
+        searchInput.placeholder = "Search learner";
+      }
+    } else {
+      searchInput.disabled = true;
+      searchInput.value = "";
+      state.searchTerm = "";
+      searchInput.placeholder = "Select a grade first";
     }
   }
 
@@ -349,30 +413,38 @@
     const grade = state.selectedGrade || "";
     const search = state.searchTerm || "";
 
+    updateLearnerSearchState();
+
+    if (!grade) {
+      state.learners = [];
+      container.innerHTML = `<div style="color:#64748b;">Select a grade to load senior learners.</div>`;
+      return;
+    }
+
     container.innerHTML = `<div style="color:#94a3b8;">Loading learners...</div>`;
 
     try {
       // Adjust this endpoint to match your learner API
-      let url = `${API_BASE}/learners?limit=100`;
-      if (grade) url += `&grade=${encodeURIComponent(grade)}`;
+      let url = `${API_BASE}/learners?limit=100&grade=${encodeURIComponent(grade)}`;
       if (search) url += `&search=${encodeURIComponent(search)}`;
 
       const res = await apiFetch(url);
       const learners = Array.isArray(res) ? res : res?.data || res?.learners || [];
-      state.learners = learners;
+      const seniorLearners = learners.filter((learner) => isSeniorGradeValue(learner.grade));
+      state.learners = seniorLearners;
 
-      if (!learners.length) {
-        container.innerHTML = `<div style="color:#94a3b8;">No learners found.</div>`;
+      if (!seniorLearners.length) {
+        container.innerHTML = `<div style="color:#94a3b8;">No senior learners found for ${escapeHtml(grade)}.</div>`;
         return;
       }
 
       container.innerHTML = `
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
-          <div style="font-size:0.85rem; color:#64748b;">${learners.length} learner(s) found</div>
+          <div style="font-size:0.85rem; color:#64748b;">${seniorLearners.length} learner(s) found</div>
           <div style="font-size:0.8rem; color:#94a3b8;">Tick learners to bulk assign</div>
         </div>
         <div style="max-height:360px; overflow:auto; border:1px solid #e2e8f0; border-radius:10px;">
-          ${learners.map(renderLearnerRow).join("")}
+          ${seniorLearners.map(renderLearnerRow).join("")}
         </div>
       `;
     } catch (err) {
@@ -471,6 +543,39 @@
       console.error("Load assignments error:", err);
       tbody.innerHTML = `<tr><td colspan="5" style="padding:12px; color:#ef4444;">Failed to load assignments: ${escapeHtml(err.message)}</td></tr>`;
     }
+  }
+
+  async function deleteElectiveSetById(setId) {
+    if (!setId) {
+      return window.showToast?.("Invalid elective set selected", "error");
+    }
+
+    const ok = await window.showConfirm?.({
+      title: "Delete Elective Set",
+      message: "Are you sure you want to delete this elective set? This will also remove related assignments.",
+    });
+
+    if (!ok) return;
+
+    try {
+      const res = await apiFetch(`${API_BASE}/electives/sets/${encodeURIComponent(setId)}`, {
+        method: "DELETE",
+      });
+
+      window.showToast?.(res?.message || "Elective set deleted successfully", "success");
+      await refreshAll();
+    } catch (err) {
+      console.error("Delete elective set error:", err);
+      window.showToast?.(err.message || "Failed to delete elective set", "error");
+    }
+  }
+
+  async function deleteSelectedElectiveSet() {
+    const setId = document.getElementById("electiveSetSelect")?.value || "";
+    if (!setId) {
+      return window.showToast?.("Please select a set to delete", "error");
+    }
+    await deleteElectiveSetById(setId);
   }
 
   async function saveElectiveSet() {

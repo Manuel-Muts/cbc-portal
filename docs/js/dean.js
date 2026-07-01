@@ -936,9 +936,24 @@ function normalizeSubjectName(subjectName) {
   return String(subjectName || "").trim().toLowerCase();
 }
 
+function isExcludedSeniorSubject(subjectName) {
+  const normalized = normalizeSubjectName(subjectName);
+  const excluded = new Set([
+    "pe",
+    "physical education",
+    "phys ed",
+    "sports and physical education",
+    "physical health education"
+  ]);
+  return excluded.has(normalized);
+}
+
 function buildSeniorSubjectEligibilityMap(roster = [], electiveAssignments = []) {
   const eligibilityMap = new Map();
-  const compulsorySubjects = (window.SUBJECT_DATA?.seniorCompulsorySubjects || []).map((subject) => String(subject).trim()).filter(Boolean);
+  const compulsorySubjects = (window.SUBJECT_DATA?.seniorCompulsorySubjects || [])
+    .map((subject) => String(subject).trim())
+    .filter(Boolean)
+    .filter((subject) => !isExcludedSeniorSubject(subject));
 
   roster.forEach((student) => {
     const admission = String(student?.admissionNo || student?.admission || "").trim();
@@ -961,7 +976,7 @@ function buildSeniorSubjectEligibilityMap(roster = [], electiveAssignments = [])
         const subjects = Array.isArray(assignment?.subjects) ? assignment.subjects : [];
         subjects.forEach((subject) => {
           const subjectName = String(subject || "").trim();
-          if (subjectName) eligibleSubjects.add(subjectName);
+          if (subjectName && !isExcludedSeniorSubject(subjectName)) eligibleSubjects.add(subjectName);
         });
       });
     }
@@ -976,11 +991,132 @@ function buildSeniorSubjectEligibilityMap(roster = [], electiveAssignments = [])
 function isSubjectEligibleForStudent(studentKey, subjectName, isSenior, eligibilityMap) {
   if (!isSenior) return true;
   if (!subjectName) return false;
+  if (isExcludedSeniorSubject(subjectName)) return false;
 
   const eligibility = eligibilityMap.get(String(studentKey));
   if (!eligibility || eligibility.size === 0) return true;
 
   return Array.from(eligibility).some((item) => normalizeSubjectName(item) === normalizeSubjectName(subjectName));
+}
+
+/**
+ * 🆕 Orders subjects by grade level for consistent PDF/report layout
+ * @param {string[]} subjects - Array of subject names
+ * @param {string} grade - Grade level (e.g., "Grade 7", "Grade 4", "PP2")
+ * @returns {string[]} Subjects ordered by grade-specific sequence with proper formatting
+ */
+function getSubjectOrderForGrade(subjects, grade) {
+  // 🆕 Helper to format subject names: Title Case (each word capitalized) and preserve abbreviations like ILA
+  const formatSubjectName = (s) => {
+    const str = String(s || "").trim();
+    if (!str) return str;
+    
+    // Check if it's an abbreviation (2-4 uppercase letters) - preserve as is
+    if (/^[A-Z]{2,4}$/.test(str)) {
+      return str; // Keep abbreviations like "ILA", "PG", "PP1", "PP2" as is
+    }
+    
+    // Title Case: capitalize first letter of each word, rest lowercase
+    // BUT keep "and" entirely lowercase
+    // AND handle hyphenated words (e.g., "PRE-TECHNICAL" -> "Pre-Technical")
+    return str
+      .split(' ')
+      .map((word, idx, arr) => {
+        const lowerWord = word.toLowerCase();
+        // Keep "and" lowercase
+        if (lowerWord === 'and') {
+          return 'and';
+        }
+        // Handle hyphenated words: capitalize each part separately
+        if (word.includes('-')) {
+          return word
+            .split('-')
+            .map(part => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
+            .join('-');
+        }
+        // Capitalize first letter, rest lowercase
+        return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
+      })
+      .join(' ');
+  };
+  
+  const normalizeSubject = (s) => String(s || "").trim().toUpperCase();
+  const normalizedSubjects = subjects.map(normalizeSubject);
+  
+  let gradeOrder = [];
+  
+  // Grade 7-12 (Secondary)
+  if (/Grade\s*(7|8|9|10|11|12)/.test(grade)) {
+    gradeOrder = [
+      "ENGLISH",
+      "KISWAHILI",
+      "MATHEMATICS",
+      "INTEGRATED SCIENCE",
+      "SOCIAL STUDIES",
+      "CHRISTIAN RELIGIOUS EDUCATION",
+      "AGRICULTURE",
+      "PRE-TECHNICAL STUDIES",
+      "CREATIVE ARTS AND SPORTS"
+    ];
+  }
+  // Grade 4-6 (Upper Primary)
+  else if (/Grade\s*(4|5|6)/.test(grade)) {
+    gradeOrder = [
+      "ENGLISH",
+      "KISWAHILI",
+      "MATHEMATICS",
+      "SCIENCE AND TECHNOLOGY",
+      "SOCIAL STUDIES",
+      "CREATIVE ARTS AND SPORTS"
+    ];
+  }
+  // Grade 1-3 (Lower Primary)
+  else if (/Grade\s*(1|2|3)/.test(grade)) {
+    gradeOrder = [
+      "ENGLISH",
+      "KISWAHILI",
+      "MATHEMATICS",
+      "ILA"
+    ];
+  }
+  // PP2 (Pre-Primary 2)
+  else if (/PP2|PRE-PRIMARY\s*2/.test(grade)) {
+    gradeOrder = [
+      "LANGUAGE",
+      "LITERACY",
+      "KISWAHILI",
+      "NUMBERWORK",
+      "PSYCOMOTOR",
+      "ENVIRONMENTAL ACTIVITIES"
+    ];
+  }
+  // PG, PP1 (Pre-Primary & Playgroup)
+  else if (/PG|PP1|PRE-PRIMARY\s*1|PLAYGROUP/.test(grade)) {
+    gradeOrder = [
+      "LANGUAGE",
+      "LITERACY",
+      "NUMBERWORK",
+      "PSYCOMOTOR",
+      "ENVIRONMENTAL ACTIVITIES"
+    ];
+  }
+  
+  // Sort subjects according to gradeOrder, with unknown subjects at the end (alphabetically)
+  const ordered = [];
+  const unknown = [];
+  
+  normalizedSubjects.forEach(subj => {
+    const orderIdx = gradeOrder.findIndex(o => o === subj);
+    if (orderIdx !== -1) {
+      ordered[orderIdx] = subj;
+    } else {
+      unknown.push(subj);
+    }
+  });
+  
+  // 🆕 Return ordered subjects with Title Case formatting (capitalize each word) and preserved abbreviations
+  const result = [...ordered.filter(Boolean), ...unknown.sort()];
+  return result.map(formatSubjectName);
 }
 
 function processAnalysisData(allRaw, isSenior, assessment, allPrevRaw = null, roster = [], electiveAssignments = []) {
@@ -1000,10 +1136,9 @@ function processAnalysisData(allRaw, isSenior, assessment, allPrevRaw = null, ro
     }
     m.subjects.forEach(sub => {
       const subName = isSenior ? sub.course : sub.subject;
-      if (subName) {
-        streamExpectedSubjectsMap[stream].add(subName);
-        allSubjectsInGrade.add(subName);
-      }
+      if (!subName || (isSenior && isExcludedSeniorSubject(subName))) return;
+      streamExpectedSubjectsMap[stream].add(subName);
+      allSubjectsInGrade.add(subName);
     });
   });
   // Convert sets to sorted arrays for consistent iteration
@@ -1061,9 +1196,14 @@ function processAnalysisData(allRaw, isSenior, assessment, allPrevRaw = null, ro
   // Discover subjects *after* stream filtering, from the 'raw' data
   const subjectsSet = new Set();
   raw.forEach(m => { // Iterate over filtered raw data
-    m.subjects.forEach(sub => { const subName = isSenior ? sub.course : sub.subject; if (subName) subjectsSet.add(subName); });
+    m.subjects.forEach(sub => {
+      const subName = isSenior ? sub.course : sub.subject;
+      if (!subName || (isSenior && isExcludedSeniorSubject(subName))) return;
+      subjectsSet.add(subName);
+    });
   });
-  const sortedSubjects = Array.from(subjectsSet).sort();
+  // 🆕 CHANGED: Use grade-specific subject ordering instead of alphabetical
+  const sortedSubjects = getSubjectOrderForGrade(Array.from(subjectsSet), filterGradeEl.value);
   // --- END IMPORTANT CHANGE ---
 
   const studentsMap = {};
@@ -1212,7 +1352,7 @@ function processAnalysisData(allRaw, isSenior, assessment, allPrevRaw = null, ro
 
     m.subjects.forEach(sub => { // Iterate over subjects
       const subName = isSenior ? sub.course : sub.subject;
-      if (!subName) return;
+      if (!subName || (isSenior && isExcludedSeniorSubject(subName))) return;
       if (!isSubjectEligibleForStudent(m.admissionNo, subName, isSenior, subjectEligibilityMap)) return;
       
       // Robust missing/absent detection (catches null, undefined, empty, or "X")
@@ -1313,7 +1453,7 @@ function processAnalysisData(allRaw, isSenior, assessment, allPrevRaw = null, ro
     if (student && !student.hasAbsence) {
       m.subjects.forEach(sub => {
         const subName = isSenior ? sub.course : sub.subject;
-        if (!subName) return;
+        if (!subName || (isSenior && isExcludedSeniorSubject(subName))) return;
         if (!isSubjectEligibleForStudent(m.admissionNo, subName, isSenior, subjectEligibilityMap)) return;
 
         const score = isSenior ? window.cbcUtils.calculateFinalScore(sub.continuousAssessment, sub.projectWork, sub.endTermExam) : sub.score;
@@ -1416,11 +1556,11 @@ function processAnalysisData(allRaw, isSenior, assessment, allPrevRaw = null, ro
   // Identify top and lowest learners, handling ties
   const topMeanScore = studentArray.length > 0 ? studentArray[0].mean : -1;
   const topLearners = studentArray.filter(s => s.mean === topMeanScore);
-  const topLearnerNames = topLearners.map(s => `${s.name} (${s.mean.toFixed(1)}%)`).join(', ');
+  const topLearnerNames = topLearners.map(s => `${s.name} (${s.mean.toFixed(2)}%)`).join(', ');
 
   const lowMeanScore = studentArray.length > 0 ? studentArray[studentArray.length - 1].mean : -1;
   const lowLearners = studentArray.filter(s => s.mean === lowMeanScore);
-  const lowLearnerNames = lowLearners.map(s => `${s.name} (${s.mean.toFixed(1)}%)`).join(', ');
+  const lowLearnerNames = lowLearners.map(s => `${s.name} (${s.mean.toFixed(2)}%)`).join(', ');
 
   // Group subject data for summary stats and identify top/low subjects with ties
   const subjectList = sortedSubjects.map(s => ({ // Map subjects to objects with mean and count
@@ -1429,8 +1569,8 @@ function processAnalysisData(allRaw, isSenior, assessment, allPrevRaw = null, ro
     count: subjectCounts[s]
   })).sort((a, b) => b.mean - a.mean);
 
-  const topSubjectNames = subjectList.length > 0 ? subjectList.filter(s => s.mean === subjectList[0].mean).map(s => `${s.name} (${s.mean.toFixed(1)}%)`).join(', ') : "-";
-  const lowSubjectNames = subjectList.length > 0 ? subjectList.filter(s => s.mean === subjectList[subjectList.length - 1].mean).map(s => `${s.name} (${s.mean.toFixed(1)}%)`).join(', ') : "-";
+  const topSubjectNames = subjectList.length > 0 ? subjectList.filter(s => s.mean === subjectList[0].mean).map(s => `${s.name} (${s.mean.toFixed(2)}%)`).join(', ') : "-";
+  const lowSubjectNames = subjectList.length > 0 ? subjectList.filter(s => s.mean === subjectList[subjectList.length - 1].mean).map(s => `${s.name} (${s.mean.toFixed(2)}%)`).join(', ') : "-";
 
   // Stats
   setText(classMeanEl, (studentArray.reduce((a, s) => a + s.mean, 0) / (studentArray.length || 1)).toFixed(2));
@@ -1516,7 +1656,7 @@ function renderRankingTable(students, subjects, isSenior) {
         return `<td>${score} <span style="font-size: 0.72rem; color: #64748b; font-weight: 700;">(${pts})</span></td>`;
       }).join("")}
       ${totalCell}
-      <td>${s.mean.toFixed(1)}%</td>
+      <td>${s.mean.toFixed(2)}%</td>
       <td>${progressHtml}</td>
       <td>${s.points}</td><td>${window.cbcUtils.getSubdivision(s.mean, s.grade)}</td>
     </tr>`;
@@ -1550,14 +1690,14 @@ function renderRankingTable(students, subjects, isSenior) {
   subjects.forEach(sub => {
     const subSum = students.reduce((acc, s) => acc + (s.subjects[sub] || 0), 0);
     const subCount = students.filter(s => s.subjects[sub] !== undefined && s.subjects[sub] !== null).length || 1; // Count for subject mean
-    html += `<td style="text-align: center; padding: 8px;">${(subSum / subCount).toFixed(1)}</td>`;
+    html += `<td style="text-align: center; padding: 8px;">${(subSum / subCount).toFixed(2)}</td>`;
   });
   if (!isSenior) {
-    html += `<td style="text-align: center; padding: 8px;">${(groupTotalMarks / groupCount).toFixed(1)}</td>`;
+    html += `<td style="text-align: center; padding: 8px;">${(groupTotalMarks / groupCount).toFixed(2)}</td>`;
   }
-  html += `<td style="text-align: center; padding: 8px;">${(groupMeanSum / groupCount).toFixed(1)}%</td>`;
+  html += `<td style="text-align: center; padding: 8px;">${(groupMeanSum / groupCount).toFixed(2)}%</td>`;
   html += `<td></td>`; // Progress column
-  html += `<td style="text-align: center; padding: 8px;">${(groupTotalPoints / groupCount).toFixed(1)}</td>`;
+  html += `<td style="text-align: center; padding: 8px;">${(groupTotalPoints / groupCount).toFixed(2)}</td>`;
   html += `<td style="text-align: center; padding: 8px; color: #1a237e;">${window.cbcUtils.getSubdivision(groupMeanSum / groupCount, students[0]?.grade)}</td>`;
   html += `</tr></tfoot></table>`;
   rankingTableWrap.innerHTML = html;
@@ -1775,79 +1915,6 @@ async function downloadRankingAsPDF() {
     margin: { left: keyX }
   });
 
-  // 3. Most Improved & Most Dropped Students (Side-by-Side)
-  let improvedStartY = doc.lastAutoTable.finalY + 10;
-  if (improvedStartY > pageHeight - 65) {
-    doc.addPage();
-    improvedStartY = 20;
-  }
-
-  const progressData = rows
-    .map((row, idx) => ({
-      name: row[headers.indexOf(nameLabelForProgress)],
-      progress: parseFloat(tbodyRows[idx].dataset.progress)
-    }))
-    .filter(s => !isNaN(s.progress));
-
-  const improvedStudents = progressData
-    .filter(s => s.progress > 0)
-    .sort((a, b) => b.progress - a.progress).slice(0, 3);
-
-  const droppedStudents = progressData
-    .filter(s => s.progress < 0)
-    .sort((a, b) => a.progress - b.progress).slice(0, 3);
-
-  if (improvedStudents.length > 0) {
-    doc.setFontSize(9);
-    doc.text("Top 3 Most Improved Learners", 14, improvedStartY);
-    doc.autoTable({
-      startY: improvedStartY + 3,
-      head: [['Rank', 'Name', 'Progress']],
-      body: improvedStudents.map((s, i) => [`#${i + 1}`, s.name, `+${s.progress.toFixed(1)}%`]),
-      theme: 'grid',
-      styles: { fontSize: 7.5, cellPadding: 1.2 },
-      headStyles: { fillColor: [16, 185, 129], halign: 'center' },
-      tableWidth: 80,
-      margin: { left: 14 }
-    });
-  }
-
-  if (droppedStudents.length > 0) {
-    const dropX = 14 + 80 + 10; // After improved table + gap
-    doc.setFontSize(9);
-    doc.text("Top 3 Significant Drops", dropX, improvedStartY);
-    doc.autoTable({
-      startY: improvedStartY + 3,
-      head: [['Rank', 'Name', 'Drop']],
-      body: droppedStudents.map((s, i) => [`#${i + 1}`, s.name, `${s.progress.toFixed(1)}%`]),
-      theme: 'grid',
-      styles: { fontSize: 7.5, cellPadding: 1.2 },
-      headStyles: { fillColor: [239, 68, 68], halign: 'center' },
-      tableWidth: 80,
-      margin: { left: dropX }
-    });
-  }
-
-  // --- DRAW SIGNATURE ON THE SECOND LAST  PAGE ---
-  const totalPagesForSig = doc.internal.getNumberOfPages();
-  const targetPage = totalPagesForSig > 1 ? totalPagesForSig - 1 : 1;
-
-  doc.setPage(targetPage);
-  let footerY = pageHeight - 25;
-
-  // Dean's digital signature image
-  if (deanProfileData && deanProfileData.signatureBase64) {
-    try {
-      const sigFormat = deanProfileData.sigFormat || cbcUtils.getImageFormat(deanProfileData.signatureBase64);
-      doc.addImage(deanProfileData.signatureBase64, sigFormat, pageWidth - 54, footerY - 8, 40, 8, undefined, 'FAST');
-    } catch (e) { console.warn("Signature error:", e); }
-  }
-
-  doc.setFontSize(9);
-  doc.setTextColor(0);
-  doc.text("__________________________", pageWidth - 14, footerY, { align: "right" });
-  doc.text("Dean's Signature", pageWidth - 14, footerY + 5, { align: "right" });
-
   // --- ADD PAGE NUMBERS & SYSTEM FOOTER TO ALL PAGES ---
   const totalPages = doc.internal.getNumberOfPages();
   for (let i = 1; i <= totalPages; i++) {
@@ -1874,6 +1941,137 @@ async function downloadRankingAsPDF() {
     const genTextWidth = doc.getTextWidth(genText);
     doc.text(genText, (pageWidth / 2) - (genTextWidth / 2), pageHeight - 7);
   }
+
+  // 🆕 Add Most Improved & Most Dropped Students on a separate page (for internal zone analysis)
+  const progressData = rows
+    .map((row, idx) => ({
+      name: row[headers.indexOf(nameLabelForProgress)],
+      progress: parseFloat(tbodyRows[idx].dataset.progress)
+    }))
+    .filter(s => !isNaN(s.progress));
+
+  const improvedStudents = progressData
+    .filter(s => s.progress > 0)
+    .sort((a, b) => b.progress - a.progress).slice(0, 3);
+
+  const droppedStudents = progressData
+    .filter(s => s.progress < 0)
+    .sort((a, b) => a.progress - b.progress).slice(0, 3);
+
+  // Only add a new page if there's data to display
+  if (improvedStudents.length > 0 || droppedStudents.length > 0) {
+    doc.addPage();
+    let zoneAnalysisY = 20;
+
+    // Page header for zone analysis
+    doc.setFontSize(14);
+    doc.setFont("helvetica", "bold");
+    doc.text("INTERNAL USE ONLY", 14, zoneAnalysisY);
+    zoneAnalysisY += 8;
+
+    // If both tables exist, render side-by-side
+    if (improvedStudents.length > 0 && droppedStudents.length > 0) {
+      doc.setFontSize(9);
+      doc.setFont("helvetica", "bold");
+      doc.text("Top 3 Most Improved Learners", 14, zoneAnalysisY);
+      doc.autoTable({
+        startY: zoneAnalysisY + 3,
+        head: [['Rank', 'Name', 'Progress']],
+        body: improvedStudents.map((s, i) => [`#${i + 1}`, s.name, `+${s.progress.toFixed(1)}%`]),
+        theme: 'grid',
+        styles: { fontSize: 7.5, cellPadding: 1.2 },
+        headStyles: { fillColor: [16, 185, 129], halign: 'center' },
+        tableWidth: 80,
+        margin: { left: 14 }
+      });
+
+      const dropX = 14 + 80 + 10;
+      doc.setFont("helvetica", "bold");
+      doc.text("Top 3 Significant Drops", dropX, zoneAnalysisY);
+      doc.autoTable({
+        startY: zoneAnalysisY + 3,
+        head: [['Rank', 'Name', 'Drop']],
+        body: droppedStudents.map((s, i) => [`#${i + 1}`, s.name, `${s.progress.toFixed(1)}%`]),
+        theme: 'grid',
+        styles: { fontSize: 7.5, cellPadding: 1.2 },
+        headStyles: { fillColor: [239, 68, 68], halign: 'center' },
+        tableWidth: 80,
+        margin: { left: dropX }
+      });
+    } else if (improvedStudents.length > 0) {
+      // Only improved students
+      doc.setFontSize(9);
+      doc.setFont("helvetica", "bold");
+      doc.text("Top 3 Most Improved Learners", 14, zoneAnalysisY);
+      doc.autoTable({
+        startY: zoneAnalysisY + 3,
+        head: [['Rank', 'Name', 'Progress']],
+        body: improvedStudents.map((s, i) => [`#${i + 1}`, s.name, `+${s.progress.toFixed(1)}%`]),
+        theme: 'grid',
+        styles: { fontSize: 7.5, cellPadding: 1.2 },
+        headStyles: { fillColor: [16, 185, 129], halign: 'center' },
+        tableWidth: 80,
+        margin: { left: 14 }
+      });
+    } else if (droppedStudents.length > 0) {
+      // Only dropped students
+      doc.setFontSize(9);
+      doc.setFont("helvetica", "bold");
+      doc.text("Top 3 Significant Drops", 14, zoneAnalysisY);
+      doc.autoTable({
+        startY: zoneAnalysisY + 3,
+        head: [['Rank', 'Name', 'Drop']],
+        body: droppedStudents.map((s, i) => [`#${i + 1}`, s.name, `${s.progress.toFixed(1)}%`]),
+        theme: 'grid',
+        styles: { fontSize: 7.5, cellPadding: 1.2 },
+        headStyles: { fillColor: [239, 68, 68], halign: 'center' },
+        tableWidth: 80,
+        margin: { left: 14 }
+      });
+    }
+
+    // Add page numbers to the new zone analysis page
+    const updatedTotalPages = doc.internal.getNumberOfPages();
+    doc.setPage(updatedTotalPages);
+
+    if (deanProfileData?.schoolLogoBase64) {
+      try {
+        const imgProps = deanProfileData.logoProps || doc.getImageProperties(deanProfileData.schoolLogoBase64);
+        const format = deanProfileData.logoFormat || "PNG";
+        const width = 100; 
+        const height = (imgProps.height * width) / imgProps.width;
+        doc.saveGraphicsState();
+        doc.setGState(new doc.GState({ opacity: 0.08 }));
+        doc.addImage(deanProfileData.schoolLogoBase64, format, (pageWidth - width) / 2, (pageHeight - height) / 2, width, height, undefined, 'FAST');
+        doc.restoreGraphicsState();
+      } catch (e) { console.warn("Watermark rendering error:", e); }
+    }
+
+    doc.setFontSize(8);
+    doc.setTextColor(150);
+    doc.text(`Page ${updatedTotalPages} of ${updatedTotalPages}`, 14, pageHeight - 7);
+    const genText = "CompetenceHub Analytics";
+    const genTextWidth = doc.getTextWidth(genText);
+    doc.text(genText, (pageWidth / 2) - (genTextWidth / 2), pageHeight - 7);
+  }
+
+  // 🆕 Draw Dean's signature on the actual last page (which may be zone analysis or ranking summary)
+  const finalTotalPages = doc.internal.getNumberOfPages();
+  doc.setPage(finalTotalPages); // Set to the last page
+  let footerY = pageHeight - 25;
+
+  // Dean's digital signature image
+  if (deanProfileData && deanProfileData.signatureBase64) {
+    try {
+      const sigFormat = deanProfileData.sigFormat || cbcUtils.getImageFormat(deanProfileData.signatureBase64);
+      doc.addImage(deanProfileData.signatureBase64, sigFormat, pageWidth - 54, footerY - 8, 40, 8, undefined, 'FAST');
+    } catch (e) { console.warn("Signature error:", e); }
+  }
+
+  doc.setFontSize(9);
+  doc.setTextColor(0);
+  doc.text("__________________________", pageWidth - 14, footerY, { align: "right" });
+  doc.text("Dean's Signature", pageWidth - 14, footerY + 5, { align: "right" });
 
   const fileName = `${schoolName}_${grade}_T${termVal}_${year}`.replace(/\s+/g, '_');
   doc.save(`${fileName}.pdf`);
@@ -2431,9 +2629,9 @@ function renderTrendChart(raw, isSenior) {
     labels.push(isAllTerms ? `T${d.term} ${assessLabel}` : assessLabel);
 
     const hasData = d.count > 0;
-    meanData.push(hasData ? (d.total / d.count).toFixed(1) : 0);
-    maxData.push(hasData ? d.max.toFixed(1) : 0);
-    minData.push(hasData ? d.min.toFixed(1) : 0);
+    meanData.push(hasData ? (d.total / d.count).toFixed(2) : 0);
+    maxData.push(hasData ? d.max.toFixed(2) : 0);
+    minData.push(hasData ? d.min.toFixed(2) : 0);
     targetData.push(currentTarget);
   });
 

@@ -546,7 +546,25 @@ document.addEventListener("DOMContentLoaded", async () => {
     const assessment = assessmentFilter?.value || "all";
     const isAllAssessments = assessment === "all";
 
-    // 🆕 Determine Baseline for Progress (Intra-term vs Inter-term)
+    const normalizeSeniorSubjectName = (subjectName) => {
+    const name = String(subjectName || "").trim();
+    const normalized = name.toLowerCase();
+    const aliases = {
+      "physical education": "PE",
+      "phys ed": "PE",
+      "sports and physical education": "PE",
+      "physical health education": "PE",
+      "pe": "PE"
+    };
+    return aliases[normalized] || name;
+  };
+
+  const isExcludedSeniorSubject = (subjectName) => {
+    const normalized = normalizeSeniorSubjectName(subjectName);
+    return normalized.toUpperCase() === "PE";
+  };
+
+  // 🆕 Determine Baseline for Progress (Intra-term vs Inter-term)
     const prevSubjectMeans = {};
     const prevStudentMeans = {};
     let prevBaselineData = null;
@@ -794,11 +812,10 @@ document.addEventListener("DOMContentLoaded", async () => {
       if (m.subjects) {
         m.subjects.forEach(sub => {
           const subName = sub.course || sub.subject;
-          if (subName && subName !== 'null') {
-            streamExpectedSubjectsMap[stream].add(subName);
-            allSubjectsInGrade.add(subName);
-            subjectsSet.add(subName);
-          }
+          if (!subName || subName === 'null' || isExcludedSeniorSubject(subName)) return;
+          streamExpectedSubjectsMap[stream].add(subName);
+          allSubjectsInGrade.add(subName);
+          subjectsSet.add(subName);
         });
       }
     });
@@ -826,14 +843,12 @@ document.addEventListener("DOMContentLoaded", async () => {
   
       m.subjects.forEach(sub => {
         if (sub.subject === 'CA' || sub.subject === 'PW') return;
-  
+
         const subjectName = sub.course || sub.subject;
-        if (!subjectName || subjectName === 'null') return; // Skip if no name found or is the string 'null'
-        
-        subjectsSet.add(subjectName);
+        if (!subjectName || subjectName === 'null' || isExcludedSeniorSubject(subjectName)) return; // Skip if no name found or is a non-graded senior subject
+
         const finalScore = window.cbcUtils.calculateFinalScore(sub.continuousAssessment, sub.projectWork, sub.endTermExam);
         const isAbs = finalScore === null || finalScore === "X";
-
         if (isAbs) students[studentKey].hasAbsence = true;
 
         if (finalScore !== null && !isAbs) {

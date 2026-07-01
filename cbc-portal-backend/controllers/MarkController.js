@@ -30,7 +30,7 @@ const SENIOR_SCHOOL_PATHWAYS = {
   ],
   "Social Sciences": [
     "History & Citizenship","History", "Geography", "Business Studies", "Political Studies",
-    "Christian Religious Studies (CRE)", "Kenya Sign Language", "Literature",
+    "Christian Religious Education", "Kenya Sign Language", "Literature",
     "Fasihi", "Indigenous Language", "Hindu Religious Education", "French",
     "German", "Islamic Religious Education"
   ],
@@ -43,13 +43,66 @@ const SENIOR_SCHOOL_PATHWAYS = {
   ]
 };
 
+const normalizeSeniorSubjectName = (subject) => {
+  const name = String(subject || "").trim();
+  const normalized = name.toLowerCase();
+  const aliases = {
+    "bio": "Biology",
+    "biology": "Biology",
+    "b/s": "Biology",
+    "geo": "Geography",
+    "geography": "Geography",
+    "hist": "History",
+    "history": "History",
+    "chem": "Chemistry",
+    "chemistry": "Chemistry",
+    "cs": "Computer Studies",
+    "computer studies": "Computer Studies",
+    "community service learning": "CSL",
+    "csl": "CSL",
+    "business": "Business Studies",
+    "business studies": "Business Studies",
+    "cre": "Christian Religious Studies",
+    "christian religious education": "Christian Religious Studies",
+    "history & citizenship": "History & Citizenship",
+    "history and citizenship": "History & Citizenship",
+    "english": "English",
+    "english language": "English",
+    "math": "Mathematics",
+    "maths": "Mathematics",
+    "mathematics": "Mathematics",
+    "kiswahili": "Kiswahili",
+    "kiswahili language": "Kiswahili",
+    "physical education": "PE",
+    "phys ed": "PE",
+    "pe": "PE",
+    "ict": "ICT",
+    "information communication technology": "ICT",
+    "information and communication technology": "ICT"
+  };
+  return aliases[normalized] || name;
+};
+
+const getSeniorPathway = (subjectName) => {
+  const sub = normalizeSeniorSubjectName(subjectName);
+  if (SENIOR_COMPULSORY_SUBJECTS.some(s => s.toLowerCase() === sub.toLowerCase())) return "Core";
+
+  for (const [pathway, subjects] of Object.entries(SENIOR_SCHOOL_PATHWAYS)) {
+    if (subjects.some(s => s.toLowerCase() === sub.toLowerCase())) {
+      return pathway;
+    }
+  }
+  return null;
+};
+
 const getElectiveSubjectsForPathway = (pathway) => {
   const pathwaySubjects = SENIOR_SCHOOL_PATHWAYS[pathway];
   if (!pathwaySubjects) return [];
   
   const compulsoryLower = SENIOR_COMPULSORY_SUBJECTS.map(s => s.toLowerCase());
-  
-  return pathwaySubjects.filter(sub => !compulsoryLower.includes(sub.toLowerCase()));
+  return pathwaySubjects
+    .map(sub => normalizeSeniorSubjectName(sub))
+    .filter(sub => !compulsoryLower.includes(sub.toLowerCase()));
 };
 
 const validateSeniorElectiveSelection = (studentPathway, allSubmittedCourses) => {
@@ -60,8 +113,9 @@ const validateSeniorElectiveSelection = (studentPathway, allSubmittedCourses) =>
   }
   const compulsorySubjectsLower = SENIOR_COMPULSORY_SUBJECTS.map(s => s.toLowerCase());
   const pathwayElectivesLower = getElectiveSubjectsForPathway(studentPathway).map(s => s.toLowerCase());
-  const submittedElectives = new Set(allSubmittedCourses.filter(course => pathwayElectivesLower.includes(course.toLowerCase())));
-  const submittedOther = new Set(allSubmittedCourses.filter(course => !compulsorySubjectsLower.includes(course.toLowerCase()) && !pathwayElectivesLower.includes(course.toLowerCase())));
+  const submittedCourses = (allSubmittedCourses || []).map(course => normalizeSeniorSubjectName(course));
+  const submittedElectives = new Set(submittedCourses.filter(course => pathwayElectivesLower.includes(course.toLowerCase())));
+  const submittedOther = new Set(submittedCourses.filter(course => !compulsorySubjectsLower.includes(course.toLowerCase()) && !pathwayElectivesLower.includes(course.toLowerCase())));
   if (submittedElectives.size !== 3) {
     errors.push(`Learner must select exactly 3 elective subjects from their pathway. Currently selected: ${submittedElectives.size}`);
   }
@@ -69,6 +123,13 @@ const validateSeniorElectiveSelection = (studentPathway, allSubmittedCourses) =>
     errors.push(`Some subjects are not part of the compulsory list or the '${studentPathway}' pathway: ${Array.from(submittedOther).join(', ')}`);
   }
   return errors;
+};
+
+const SENIOR_NON_GRADED_SUBJECTS = ["PE"];
+
+const isExcludedSeniorSubject = (subject) => {
+  const normalized = normalizeSeniorSubjectName(subject);
+  return SENIOR_NON_GRADED_SUBJECTS.some(s => s.toLowerCase() === normalized.toLowerCase());
 };
 
 // ---------------------------
@@ -220,6 +281,12 @@ const processSingleMark = async (markData, reqUser, isNew = true, cachedContext 
     endTermExam
   } = markData;
 
+  const effectivePathway = isSeniorSchool ? (pathway || getSeniorPathway(course)) : null;
+
+  if (isSeniorSchool && course && isExcludedSeniorSubject(course)) {
+    throw new Error(`${normalizeSeniorSubjectName(course)} is not a graded senior subject and should not be submitted.`);
+  }
+
   // 🆕 Term Lock Check (Optimized: bypass if already checked in bulk)
   if (!cachedContext?.lockChecked) {
     const lockKey = `term_lock_${reqUser.schoolId}_${year}_${term}`;
@@ -304,7 +371,7 @@ const processSingleMark = async (markData, reqUser, isNew = true, cachedContext 
 
   // Validation
   if (isSeniorSchool) {
-    if (!pathway || !course) {
+    if (!effectivePathway || !course) {
       throw new Error("Pathway and course are required for senior school");
     }
     if (subject) {
@@ -334,7 +401,7 @@ const processSingleMark = async (markData, reqUser, isNew = true, cachedContext 
   };
 
   if (isSeniorSchool) {
-    markFields.subject = null; markFields.pathway = pathway; markFields.course = course; markFields.score = null;
+    markFields.subject = null; markFields.pathway = effectivePathway; markFields.course = course; markFields.score = null;
     markFields.continuousAssessment = safeParse(continuousAssessment);
     markFields.projectWork = safeParse(projectWork);
     markFields.endTermExam = safeParse(endTermExam);
@@ -433,6 +500,14 @@ export const bulkAddUpdateMarks = async (req, res) => {
       return res.status(400).json({ message: "Request body must be an array of marks" });
     }
 
+    // Ensure senior mark payloads always include inferred pathway values for duplicate checks
+    marksArray.forEach(mark => {
+      const gradeNum = getGradeLevel(mark.grade);
+      if (gradeNum >= 10 && gradeNum <= 12 && !mark.pathway && mark.course) {
+        mark.pathway = getSeniorPathway(mark.course);
+      }
+    });
+
     const schoolId = req.user.schoolId;
     const sample = marksArray[0];
 
@@ -495,47 +570,47 @@ export const bulkAddUpdateMarks = async (req, res) => {
     const ops = [];
     const errors = [];
 
-    // 🆕 Group marks by student and assessment for Senior School elective validation
-    const seniorMarksByStudentAssessment = new Map(); // Key: `${studentId}_${assessment}`, Value: { pathway: string, courses: Set<string>, markData: Array<object> }
+    // 🆕 Group elective courses for senior students, but only validate complete elective sets
+    const seniorElectiveGroups = new Map(); // Key: `${studentId}_${assessment}`
 
     for (const markData of marksArray) {
         const gradeNum = getGradeLevel(markData.grade);
         const isSeniorSchool = gradeNum >= 10 && gradeNum <= 12;
 
-        if (isSeniorSchool) {
-            const studentId = markData.studentId || (cachedContext.studentMap.get(markData.admissionNo)?._id);
-            if (!studentId) {
-                errors.push({ mark: markData, message: `Student ID not found for admission ${markData.admissionNo}` });
-                continue;
-            }
-            const key = `${studentId}_${markData.assessment}`;
-            if (!seniorMarksByStudentAssessment.has(key)) {
-                seniorMarksByStudentAssessment.set(key, {
-                    pathway: markData.pathway,
-                    courses: new Set(),
-                    allMarkData: [] // Store all mark data for this group
-                });
-            }
-            const studentAssessmentGroup = seniorMarksByStudentAssessment.get(key);
-            if (markData.course) {
-                studentAssessmentGroup.courses.add(markData.course);
-            }
-            studentAssessmentGroup.allMarkData.push(markData);
+        if (!isSeniorSchool || !markData.course) continue;
+
+        const normalizedCourse = normalizeSeniorSubjectName(markData.course);
+        const coursePathway = getSeniorPathway(normalizedCourse);
+        if (!coursePathway || coursePathway === "Core") continue; // Only validate elective course groups
+
+        const studentId = markData.studentId || (cachedContext.studentMap.get(markData.admissionNo)?._id);
+        if (!studentId) {
+            errors.push({ mark: markData, message: `Student ID not found for admission ${markData.admissionNo}` });
+            continue;
         }
+        const key = `${studentId}_${markData.assessment}`;
+        if (!seniorElectiveGroups.has(key)) {
+            seniorElectiveGroups.set(key, {
+                pathway: markData.pathway,
+                courses: new Set(),
+                sampleMark: markData
+            });
+        }
+        const group = seniorElectiveGroups.get(key);
+        group.courses.add(normalizedCourse);
     }
 
-    // Perform Senior School elective validation
-    for (const [key, group] of seniorMarksByStudentAssessment.entries()) {
-        const sampleMark = group.allMarkData[0]; // Use a sample mark for error message context
+    // Perform validation only for groups with a full elective set
+    for (const group of seniorElectiveGroups.values()) {
+        if (group.courses.size < 3) continue;
         const electiveValidationErrors = validateSeniorElectiveSelection(group.pathway, Array.from(group.courses));
         if (electiveValidationErrors.length > 0) {
             electiveValidationErrors.forEach(err => {
-                errors.push({ mark: sampleMark, message: `Learner ${sampleMark.studentName} (${sampleMark.admissionNo}): ${err}` });
+                errors.push({ mark: group.sampleMark, message: `Learner ${group.sampleMark.studentName} (${group.sampleMark.admissionNo}): ${err}` });
             });
         }
     }
 
-    // If there are any errors from elective validation, return early
     if (errors.length > 0) {
         return res.status(400).json({
             message: "Validation failed for some marks.",
@@ -788,6 +863,8 @@ export const getMarksByGrade = async (req, res) => {
     // ---------------------------
     const gradeStr = String(grade).trim();
     const numericPart = gradeStr.match(/\d+/)?.[0];
+    const gradeNum = parseInt(numericPart || "", 10);
+    const isSeniorGrade = !isNaN(gradeNum) && gradeNum >= 10 && gradeNum <= 12;
     const normalizedGrades = [gradeStr];
 
     // If it's an early childhood grade (PG, PP1, PP2), we only query for that exact string.
@@ -813,6 +890,17 @@ export const getMarksByGrade = async (req, res) => {
     if (assessment && assessment !== "all") markQuery.assessment = Number(assessment);
     if (subject && subject !== "all") markQuery.subject = subject.trim();
     
+    // Exclude senior non-graded subjects like PE from grade-level analysis when no explicit subject filter is provided
+    if (isSeniorGrade && (!subject || subject === "all")) {
+      markQuery.$and = markQuery.$and || [];
+      markQuery.$and.push({
+        $nor: [
+          { course: "PE" },
+          { subject: "PE" }
+        ]
+      });
+    }
+
     // Search logic (optional)
     if (search) {
       const regex = new RegExp(escapeRegex(search), 'i');
@@ -1440,10 +1528,12 @@ export const getSubmittedSubjectStats = async (req, res) => {
 { $sort: { grade: 1, stream: 1, subject: 1 } }
     ]);
 
-    // Cache the result for 5 minutes (300 seconds)
-    cache.set(cacheKey, stats, 300);
+    const filteredStats = stats.filter(item => !isExcludedSeniorSubject(item.subject));
 
-    res.json(stats);
+    // Cache the filtered result for 5 minutes (300 seconds)
+    cache.set(cacheKey, filteredStats, 300);
+
+    res.json(filteredStats);
   } catch (err) {
     res.status(500).json({ message: err.message });
   }

@@ -215,6 +215,7 @@ document.addEventListener("DOMContentLoaded", () => {
   let loadedStudents = [];
   let currentStudentPage = 1;
   let studentsPaginationLoadingButton = null;
+  let isLoadingStudents = false;
   const STUDENTS_PER_PAGE = 15;
 
   // ---------------------------
@@ -447,11 +448,18 @@ document.addEventListener("DOMContentLoaded", () => {
   function processAllocationsData(data) {
     if (data.subjectAllocations) {
       // 🆕 Normalize subjects: Map subdivisions to parent subjects for mark entry
+      // Exclude senior PE from mark entry because it is taught but not graded.
       teacherAllocations = data.subjectAllocations.map(alloc => {
         const subjects = alloc.subjects || [];
+        const gradeNumber = getGradeNumberFromValue(alloc.grade);
         const normalizedSubjects = [...new Set(subjects.map(s => 
           window.SUBJECT_DATA?.getMarkEntrySubject ? window.SUBJECT_DATA.getMarkEntrySubject(s) : s
-        ))];
+        ))].filter(subjectName => {
+          const normalizedForComparison = window.SUBJECT_DATA?.normalizeSeniorSubjectName
+            ? window.SUBJECT_DATA.normalizeSeniorSubjectName(subjectName)
+            : subjectName;
+          return !(gradeNumber >= 10 && gradeNumber <= 12 && normalizedForComparison === "PE");
+        });
         
         return { ...alloc, subjects: normalizedSubjects };
       });
@@ -659,7 +667,8 @@ document.addEventListener("DOMContentLoaded", () => {
       const electiveScope = electiveParams
         ? `${normalizeSubjectName(electiveParams.electiveSubject)}_${normalizePathway(electiveParams.pathway)}`
         : "all";
-      const CACHE_KEY = `students_cache_${classLabel}_${electiveScope}_p${page}`;
+      // 🆕 FIX: Cache key WITHOUT page number to store full student list once
+      const CACHE_KEY = `students_cache_${classLabel}_${electiveScope}`;
       const CACHE_DURATION = 10 * 60 * 1000; // 10 minutes for student list
 
       if (!forceRefresh) {
@@ -669,12 +678,14 @@ document.addEventListener("DOMContentLoaded", () => {
             const { timestamp, data } = JSON.parse(cached);
             if (data && (Date.now() - timestamp < CACHE_DURATION)) {
               console.log("✅ Using cached student list");
+              // 🆕 FIX: data.students now contains the FULL list of students, not paginated
               const cachedStudents = Array.isArray(data?.students) ? data.students : Array.isArray(data) ? data : [];
               let filteredStudents = cachedStudents;
               if (selectedSubject && isSeniorElectiveSubject(selectedSubject, classLabel)) {
                 filteredStudents = filterStudentsBySeniorPathway(cachedStudents, selectedSubject);
               }
 
+              // 🆕 FIX: Now paginate from the full list correctly
               const total = filteredStudents.length;
               const totalPages = Math.max(1, Math.ceil(total / STUDENTS_PER_PAGE));
               const safePage = Math.min(page, totalPages);
@@ -704,8 +715,9 @@ document.addEventListener("DOMContentLoaded", () => {
       console.log("📝 Academic Year:", new Date().getFullYear());
       
       const isElectiveLoad = Boolean(electiveParams);
-      const limit = isElectiveLoad ? 1000 : STUDENTS_PER_PAGE;
-      const fetchPage = isElectiveLoad ? 1 : page;
+      // 🆕 FIX: Always fetch all students at once (limit=1000) instead of paginating per API call
+      const limit = 1000; // Fetch all students for this class
+      const fetchPage = 1; // Always fetch from page 1 since we want all data
       const queryString = buildClassStudentsQuery(fetchPage, limit, electiveParams);
       const res = await fetchWithAuth(`${API_BASE}/enrollments/class/${encodeURIComponent(classLabel)}?${queryString}`);
       
@@ -720,36 +732,33 @@ document.addEventListener("DOMContentLoaded", () => {
       const data = await res.json();
       const rawStudents = Array.isArray(data?.students) ? data.students : Array.isArray(data) ? data : [];
       let filteredStudents = rawStudents;
-      let total = data?.total || rawStudents.length;
-      let totalPages = data?.totalPages || 1;
-      let currentPage = data?.currentPage || 1;
 
       if (isElectiveLoad) {
         filteredStudents = filterStudentsBySeniorPathway(rawStudents, selectedSubject);
-        total = filteredStudents.length;
-        totalPages = Math.max(1, Math.ceil(total / STUDENTS_PER_PAGE));
-        currentPage = Math.min(page, totalPages);
       }
 
+      // 🆕 FIX: Calculate pagination from the full filtered list
+      const total = filteredStudents.length;
+      const totalPages = Math.max(1, Math.ceil(total / STUDENTS_PER_PAGE));
+      const currentPage = Math.min(page, totalPages);
       const startIndex = (currentPage - 1) * STUDENTS_PER_PAGE;
       const pagedStudents = filteredStudents.slice(startIndex, startIndex + STUDENTS_PER_PAGE);
       
-      // Save to cache
+      // 🆕 FIX: Cache the FULL list of filtered students, not just one page
       localStorage.setItem(CACHE_KEY, JSON.stringify({
         timestamp: Date.now(),
         data: {
           ...data,
-          students: filteredStudents,
+          students: filteredStudents, // Store full list for proper pagination
           total,
           totalPages,
-          currentPage,
         }
       }));
 
       loadedStudents = pagedStudents;
       currentStudentPage = currentPage;
       
-      console.log(`✅ Loaded ${pagedStudents.length} student(s) from ${classLabel}`);
+      console.log(`✅ Loaded ${pagedStudents.length} student(s) from ${classLabel} (Page ${currentPage} of ${totalPages})`);
       pagedStudents.forEach((s, idx) => {
         console.log(`   ${idx + 1}. ${s.name} (ADM: ${s.admissionNo || s.admission}) - Grade: ${s.grade}`);
       });
@@ -876,13 +885,17 @@ document.addEventListener("DOMContentLoaded", () => {
 
       // 🆕 Initialize student in global map if not already present
       if (!allMarksEntered.has(markEntryKey)) {
+        const subjectPathway = window.SUBJECT_DATA?.getSeniorPathway?.(selectedSubject);
+        const resolvedPathway = subjectPathway === "Core"
+          ? "Core"
+          : (student.pathway || subjectPathway || null);
         const markData = {
           studentId: student._id,
           admissionNo: student.admissionNo || student.admission,
           studentName: student.name,
           grade: student.grade,
           stream: student.stream || '',
-          pathway: student.pathway || null, // 🆕 Use stored pathway from enrollment
+          pathway: resolvedPathway,
           term: Number(marksTermSelect.value),
           year: Number(marksYearInput.value),
           assessment: Number(marksAssessmentSelect.value),
@@ -907,6 +920,7 @@ document.addEventListener("DOMContentLoaded", () => {
       row.dataset.grade = student.grade;
       row.dataset.stream = student.stream || ''; // Ensure stream is captured
       row.dataset.subject = selectedSubject; // 🆕 Store selected subject with each row
+      row.dataset.pathway = student.pathway || ''; // Preserve stored pathway for senior school students
       const existingMark = allMarksEntered.get(markEntryKey);
       
       // ADM and Name columns
@@ -1026,14 +1040,14 @@ document.addEventListener("DOMContentLoaded", () => {
 
     if (isSeniorSchool) {
       markData.course = selectedSubject;
-      markData.pathway = null;
+      markData.pathway = markData.pathway || row.dataset.pathway || null; // Preserve existing pathway if available
       if (inputElement.classList.contains("ca-input")) {
           markData.continuousAssessment = inputValue.toUpperCase() === "X" ? "X" : (inputValue === "" ? null : inputValue);
       } else if (inputElement.classList.contains("pw-input")) {
           markData.projectWork = inputValue.toUpperCase() === "X" ? "X" : (inputValue === "" ? null : inputValue);
       } else if (inputElement.classList.contains("exam-input")) {
           markData.endTermExam = inputValue.toUpperCase() === "X" ? "X" : (inputValue === "" ? null : inputValue);
-    } 
+      }
       // Recalculate final score if any component changes
       const ca = row.querySelector(".ca-input")?.value;
       const pw = row.querySelector(".pw-input")?.value;
@@ -1273,6 +1287,10 @@ document.addEventListener("DOMContentLoaded", () => {
   // ---------------------------
   if (loadStudentsBtn) {
     loadStudentsBtn.addEventListener("click", async () => {
+      if (isLoadingStudents) {
+        return;
+      }
+
       if (!selectedAllocationData) {
         showToast("Please select a subject/class first", "error");
         return;
@@ -1290,9 +1308,11 @@ document.addEventListener("DOMContentLoaded", () => {
 
       if (currentTermLocked) { // Early exit if term is locked
         showToast("Cannot load students for a locked term.", "error");
-       
         return;
       }
+
+      isLoadingStudents = true;
+      loadStudentsBtn.disabled = true;
 
       console.log("🔄 Loading Learners...");
       console.log(`   Class: ${selectedAllocationData.classLabel}`);
@@ -1308,6 +1328,8 @@ document.addEventListener("DOMContentLoaded", () => {
       await loadStudentsWithPage(1); // Load first page on manual click
       
       window.spinner?.hide(loadStudentsBtn);
+      loadStudentsBtn.disabled = false;
+      isLoadingStudents = false;
     });
   }
 
@@ -1393,47 +1415,47 @@ document.addEventListener("DOMContentLoaded", () => {
         
       }
 
-      // 🆕 Group marks by student and assessment for Senior School elective validation
-      const seniorMarksByStudentAssessment = new Map(); // Key: `${studentId}_${assessment}`, Value: { pathway: string, courses: Set<string>, markData: Array<object> }
+      // 🆕 Group senior elective marks for validation only when a complete elective set is present
+      const seniorElectiveGroups = new Map();
 
-      for (const markData of allMarksEntered.values()) { // Iterate over the global store
+      for (const markData of allMarksEntered.values()) {
           const isSeniorSchool = window.cbcUtils.isSeniorGrade(markData.grade);
-          if (isSeniorSchool) {
-              const key = `${markData.studentId}_${markData.assessment}`;
-              if (!seniorMarksByStudentAssessment.has(key)) {
-                  seniorMarksByStudentAssessment.set(key, {
-                      pathway: markData.pathway, // Assuming pathway is consistent for a student in an assessment
-                      courses: new Set(),
-                      allMarkData: [] // Store all mark data for this group
-                  });
-              }
-              const studentAssessmentGroup = seniorMarksByStudentAssessment.get(key);
-              if (markData.course) {
-                  studentAssessmentGroup.courses.add(markData.course);
-              }
-              studentAssessmentGroup.allMarkData.push(markData);
+          if (!isSeniorSchool || !markData.course) continue;
+
+          const normalizedCourse = window.SUBJECT_DATA.normalizeSeniorSubjectName?.(markData.course) || markData.course;
+          const coursePathway = window.SUBJECT_DATA.getSeniorPathway?.(normalizedCourse);
+          if (!coursePathway || coursePathway === "Core") continue; // Only validate elective courses
+
+          const key = `${markData.studentId}_${markData.assessment}`;
+          if (!seniorElectiveGroups.has(key)) {
+              seniorElectiveGroups.set(key, {
+                  pathway: markData.pathway,
+                  courses: new Set(),
+                  sampleMark: markData
+              });
           }
+          const group = seniorElectiveGroups.get(key);
+          group.courses.add(normalizedCourse);
       }
 
-      // Perform Senior School elective validation
-      for (const [key, group] of seniorMarksByStudentAssessment.entries()) {
-          const studentId = key.split('_')[0];
-          const sampleMark = group.allMarkData[0]; // Use a sample mark to get student name for error message
-
+      for (const group of seniorElectiveGroups.values()) {
+          if (group.courses.size < 3) {
+              // Incomplete elective submission; do not validate until all electives are present
+              continue;
+          }
           if (!group.pathway || group.pathway === "null" || group.pathway === "N/A") {
-              validationErrors.push(`Learner ${sampleMark.studentName} (${sampleMark.admissionNo}): Pathway not specified for Senior School subjects.`);
+              validationErrors.push(`Learner ${group.sampleMark.studentName} (${group.sampleMark.admissionNo}): Pathway not specified for Senior School subjects.`);
               continue;
           }
 
           const electiveValidationErrors = window.SUBJECT_DATA.validateSeniorElectiveSelection(group.pathway, Array.from(group.courses));
           if (electiveValidationErrors.length > 0) {
               electiveValidationErrors.forEach(err => {
-                  validationErrors.push(`Learner ${sampleMark.studentName} (${sampleMark.admissionNo}): ${err}`);
+                  validationErrors.push(`Learner ${group.sampleMark.studentName} (${group.sampleMark.admissionNo}): ${err}`);
               });
           }
       }
 
-      // ... (rest of the existing validationErrors check)
       if (validationErrors.length > 0) {
           showToast(`Validation Errors: ${validationErrors.join(", ")}`, "error");
           return;
@@ -1536,8 +1558,12 @@ document.addEventListener("DOMContentLoaded", () => {
       });
 
       if (!res.ok) {
-        const errorData = await res.json().catch(() => ({ message: "Unknown error during bulk submission" }));
-        throw new Error(errorData.message || "Bulk submission failed");
+        const errorData = await res.json().catch(() => ({}));
+        const errorMessages = Array.isArray(errorData.errors)
+          ? errorData.errors.map(err => err.message || JSON.stringify(err)).join("; ")
+          : null;
+        const serverMessage = errorData.message || "Bulk submission failed";
+        throw new Error(`${serverMessage}${errorMessages ? `: ${errorMessages}` : ""}`);
       }
 
       const result = await res.json(); // Expecting { successCount, failureCount } from backend
