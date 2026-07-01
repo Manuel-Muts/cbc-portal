@@ -3296,30 +3296,48 @@ async function generateBulkReportCards() {
             tableWidth: 75
         });
 
-        const signatureY = Math.max(doc.lastAutoTable.finalY + 16, pageHeight - 45);
-        doc.setFont("helvetica", "normal"); // Reset font
-        doc.line(20, signatureY, 80, signatureY);
-        doc.text("Class Teacher's Signature", 20, signatureY + 5); // Class Teacher signature is always present
-
         const isSeniorGrade = cbcUtils.isSeniorGrade(gradeLabel);
+        const isPrimaryOrJunior = !isSeniorGrade;
+        const signatureY = Math.max(doc.lastAutoTable.finalY + 16, pageHeight - 65);
+        const signatureBlockWidth = (pageWidth - 40) / (isPrimaryOrJunior ? 3 : 2);
+        const leftX = 20;
+        const middleX = leftX + signatureBlockWidth;
+        const rightX = middleX + signatureBlockWidth;
         const headteacherLabel = isSeniorGrade ? "Principal's Signature" : "Headteacher's Signature";
-        doc.line(pageWidth - 80, signatureY, pageWidth - 20, signatureY);
-        doc.text(headteacherLabel, pageWidth - 80, signatureY + 5);
+        const parentGuardianLabel = "Parent/Guardian Signature";
+
+        doc.setFont("helvetica", "normal"); // Reset font
+
+        if (isPrimaryOrJunior) {
+            doc.line(leftX, signatureY, leftX + signatureBlockWidth - 15, signatureY);
+            doc.text(headteacherLabel, leftX, signatureY + 5);
+
+            doc.line(middleX, signatureY, middleX + signatureBlockWidth - 15, signatureY);
+            doc.text("Class Teacher's Signature", middleX, signatureY + 5);
+
+            doc.line(rightX, signatureY, rightX + signatureBlockWidth - 15, signatureY);
+            doc.text(parentGuardianLabel, rightX, signatureY + 5);
+        } else {
+            doc.line(leftX, signatureY, leftX + signatureBlockWidth - 15, signatureY);
+            doc.text("Class Teacher's Signature", leftX, signatureY + 5);
+
+            doc.line(rightX, signatureY, rightX + signatureBlockWidth - 15, signatureY);
+            doc.text(headteacherLabel, rightX, signatureY + 5);
+        }
 
         // 🆕 Embed Signatures
-        // 1. Class Teacher (Left) - Use pre-resolved and converted signature
         const streamKey = s.stream || "Unassigned";
         const ct = classTeacherMap.get(`${window.cbcUtils.normalizeGrade(gradeLabel)}_${streamKey}`);
         if (ct?.sigData) {
-            doc.addImage(ct.sigData.base64, ct.sigData.format, 28, signatureY - 10, 25, 8, undefined, 'FAST');
+            const ctSigX = isPrimaryOrJunior ? middleX + 8 : 28;
+            doc.addImage(ct.sigData.base64, ct.sigData.format, ctSigX, signatureY - 10, 25, 8, undefined, 'FAST');
         }
 
-        // 2. Headteacher (Right) - Prioritize official school HT signature, fallback to current Dean's signature
         const headSigB64 = deanProfileData.headSignatureBase64 || deanProfileData.signatureBase64;
         const headSigFmt = deanProfileData.headSignatureBase64 ? deanProfileData.headSigFormat : deanProfileData.sigFormat;
-
-        if (headSigB64) { // Embed headteacher signature
-            doc.addImage(headSigB64, headSigFmt, pageWidth - 60, signatureY - 10, 25, 8, undefined, 'FAST');
+        if (headSigB64) {
+            const headSigX = isPrimaryOrJunior ? leftX + 8 : pageWidth - 60;
+            doc.addImage(headSigB64, headSigFmt, headSigX, signatureY - 10, 25, 8, undefined, 'FAST');
         }
 
         // 🆕 Watermark (School Logo) - Rendered last to ensure it stays on top of table backgrounds

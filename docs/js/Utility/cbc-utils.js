@@ -313,14 +313,12 @@ window.cbcUtils = {
             "Agriculture": "AGR",
             "Christian Religious Studies": "CRE", // Added for robustness
             "Christian Religious Education": "CRE", // Added for robustness
-            "Christian Religion": "CRE", // Added to catch common variations/typos
             "Creative Arts": "C/A",
             "Sports C/A(s)": "C/A(s)",
             "Creative Arts and Sports": "C/A",
             "Visual Arts C/A(v)": "C/A(v)",
             "Performing Arts C/A(p)": "C/A(p)",
             "Pre-Technical Studies": "P/TECH",
-            "Christian Religious Studies (CRE)": "CRE",
             "Integrated Science": "I/SCI",
             "Environmental Activities": "E/ACT",
             "Health Education": "H/EDU",

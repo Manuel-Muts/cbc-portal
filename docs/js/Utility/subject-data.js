@@ -9,7 +9,7 @@ window.SUBJECT_DATA.gradeSubjects = {
     "Literacy",
     "Kiswahili",
     "Creative Arts",
-    "Christian Religious Studies (CRE)",
+   "Christian Religious Education",
     "English",
     "Mathematics",
    
@@ -21,7 +21,7 @@ window.SUBJECT_DATA.gradeSubjects = {
     "ILA",
     "Environmental Activities",
     "Social Studies",
-    "Christian Religious Studies (CRE)",
+    "Christian Religious Education",
     "Creative Arts and Sports",
     "Sports C/A(s)",
     "Visual Arts C/A(v)",
@@ -34,7 +34,7 @@ window.SUBJECT_DATA.gradeSubjects = {
     "Science and Technology",
     "Integrated Science",
     "Social Studies",
-    "Christian Religious Studies (CRE)",
+    "Christian Religious Education",
     "Creative Arts and Sports",
     "Sports C/A(s)",
     "Visual Arts C/A(v)",
@@ -47,7 +47,7 @@ window.SUBJECT_DATA.gradeSubjects = {
     "Kiswahili",
     "Integrated Science",
     "Agriculture",
-    "Christian Religious Studies (CRE)",
+     "Christian Religious Education",
     "Health Education",
     "Pre-Technical Studies",
     "Sports and Physical Education",
@@ -70,7 +70,7 @@ window.SUBJECT_DATA.gradeSubjects = {
     "Geography",
     "History & Citizenship",
     "Geography",
-    "Christian Religious Studies (CRE)",
+     "Christian Religious Education",
     "Business Studies",
     "Computer Science",
     "Computer Studies",
@@ -148,7 +148,7 @@ window.SUBJECT_DATA.seniorSchoolPathways = {
     "Business Studies",
     "Literature",
     "Fasihi",
-    "Christian Religious Studies (CRE)",
+    "Christian Religious Education",
     "Political Studies",
     "Kenya Sign Language",
     "History & Citizenship",
@@ -250,7 +250,7 @@ window.SUBJECT_DATA.getDefaultFrequency = function(sub, grade) {
   if (name === "Performing Arts C/A(p)") return 2;
   if (name.includes("C/A(")) return 1;
   if (name === "Agriculture" || name === "Pre-Technical Studies") return 4;
-  if (name === "Christian Religious Studies (CRE)" || name === "Christian Religious Education" || name === "Social Studies") return 4;
+  if (name === "Christian Religious Studies" || name === "Christian Religious Education" || name === "Social Studies") return 4;
   if (name === "Kiswahili") return 4;
   const type = window.SUBJECT_DATA.getSubjectType(sub);
   if (type === "CORE") return 5;
