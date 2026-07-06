@@ -26,8 +26,8 @@ import { School } from "../models/school.js";
 
 
 import verifyToken from '../middleware/verifyToken.js';
-// Use local upload middleware for temporary file processing (Base64 conversion)
-import { upload } from '../middleware/upload.js'; 
+// Use Cloudinary storage middleware for school logo uploads
+import upload from '../utils/multer.js';
 const router = express.Router();
 
 // ============================

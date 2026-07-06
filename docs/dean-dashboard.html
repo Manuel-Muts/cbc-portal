@@ -58,8 +58,6 @@
  <meta http-equiv="Content-Security-Policy" 
   content="style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com; font-src https://fonts.gstatic.com https://cdnjs.cloudflare.com;">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2"></script>
 </head>
 <body>
   <div id="toastContainer"></div>
@@ -79,8 +77,9 @@
        </li>
                <li data-tab="submittedSubjectsTab"><a href="#"><i class="fas fa-list-alt"></i> Submitted Subjects</a></li>
         <li data-tab="missingExamsTab"><a href="#"><i class="fas fa-user-times"></i> Missing Exams</a></li>
+        <li data-tab="learnerMarksTab"><a href="#"><i class="fas fa-user-plus"></i> Enter Learner Marks</a></li>
         <li data-tab="learnersReportsTab"><a href="#"><i class="fas fa-file-invoice"></i> Learners Reports</a></li>
-                <li data-tab="analyticsTab"><a href="#"><i class="fas fa-chart-line"></i> Trend Chart</a></li>
+               <!-- <li data-tab="analyticsTab"><a href="#"><i class="fas fa-chart-line"></i> Trend Chart</a></li>-->
         <li data-tab="timetableTab"><a href="#"><i class="fas fa-calendar-alt"></i> Timetable Module</a></li>
 
         <!--<li data-tab="smsResultsTab"><a href="#"><i class="fas fa-paper-plane"></i> SMS Results</a></li>-->
@@ -123,27 +122,16 @@
               <label>Year</label>
               <select id="filterYear"></select>
             </div>
-            <div class="filter-group">
-              <label>Subject</label>
-              <select id="filterSubject" style="display:none;"></select>
-            </div>
-            <div class="filter-group">
-           <label for="filterTarget">School Target(%)</label>
-         <input type="number" id="filterTarget" placeholder="e.g. 70" min="0" max="100" style="width: 80px;">
-        </div>
 
              <div class="filter-group">
           <label for="filterStream">Stream:</label>
-         <select id="filterStream" class="filter-select" style="display: none;">
+         <select id="filterStream" class="filter-select">
         <option value="all">All Streams</option>
          </select>
          </div>
-            <div class="filter-group">
-              <label>View Type</label>
-              <select id="chartTypeToggle">
-                <option value="trend" selected>Trend (Timeline)</option>
-                <option value="stream">Stream Comparison</option>
-              </select>
+            <div class="filter-group" id="pathwayFilterGroup" style="display:none;">
+              <label>Pathway</label>
+              <select id="filterPathway"></select>
             </div>
 
             <button id="applyFiltersBtn">🔍 View Results</button>
@@ -198,7 +186,9 @@
           <div id="analyticsTab" class="tab-pane">
             <div class="dashboard-card">
               <h3>Performance Visualization</h3>
-              <div class="chart-wrap" style="height: 280px;"><canvas id="gradeTrendChart"></canvas></div>
+              <div class="empty-state" style="padding: 30px; text-align:center; color:#475569;">
+                Trend chart content has been disabled. The menu item remains available for future use.
+              </div>
             </div>
           </div>
 
@@ -213,159 +203,176 @@
             </div>
           </div>
 
-          <!-- Submitted Subjects Tab Pane -->
-<div id="submittedSubjectsTab" class="tab-pane">
-    <!-- Module Specific Filters -->
-    <div class="filters-section module-filters" style="background: #ffffff; border-bottom: 2px solid #e2e8f0; margin-bottom: 20px; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
-            <h3 style="margin:0; color: #2d3748;"><i class="fas fa-clipboard-list" style="color: #3182ce;"></i> Subject Submission Audit</h3>
         </div>
-        
-        <div class="filter-grid">
-            <div class="filter-group">
-            
+
+      <div id="moduleTabContent">
+        <!-- Submitted Subjects Tab Pane -->
+        <div id="submittedSubjectsTab" class="tab-pane">
+          <!-- Module Specific Filters -->
+          <div class="filters-section module-filters" style="background: #ffffff; border-bottom: 2px solid #e2e8f0; margin-bottom: 20px; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
+              <h3 style="margin:0; color: #2d3748;"><i class="fas fa-clipboard-list" style="color: #3182ce;"></i> Subject Submission Audit</h3>
             </div>
-            <div class="filter-group">
+            <div class="filter-grid">
+              <div class="filter-group"></div>
+              <div class="filter-group">
                 <label for="ssTermFilter">TERM</label>
                 <select id="ssTermFilter" class="form-control">
-                    <option value="1">Term 1</option>
-                    <option value="2">Term 2</option>
-                    <option value="3">Term 3</option>
+                  <option value="1">Term 1</option>
+                  <option value="2">Term 2</option>
+                  <option value="3">Term 3</option>
                 </select>
-            </div>
-
-            <div class="filter-group">
+              </div>
+              <div class="filter-group">
                 <label for="ssAssessmentFilter">ASSESSMENT</label>
                 <select id="ssAssessmentFilter" class="form-control">
-                    <option value="">-- Select Assessment --</option>
+                  <option value="">-- Select Assessment --</option>
                 </select>
-            </div>
-
-            <div class="filter-group">
+              </div>
+              <div class="filter-group">
                 <label for="ssYearFilter">YEAR</label>
                 <select id="ssYearFilter" class="form-control"></select>
-            </div>
-
-            <div class="filter-group">
+              </div>
+              <div class="filter-group">
                 <button id="loadSubmittedSubjectsBtn" class="btn primary-btn" style="width: 100%; height: 38px; margin-top: 10px; background: #3182ce;">
-                    <i class="fas fa-sync-alt"></i> Audit Submissions
+                  <i class="fas fa-sync-alt"></i> Audit Submissions
                 </button>
-            </div>
-        </div>
-    </div>
-
-    <!-- Results Area -->
-    <div id="submittedSubjectsTableWrap" class="dashboard-card" style="min-height: 300px; background: #fff; border-radius: 12px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);">
-        <div class="empty-state" style="text-align: center; padding: 60px 20px; color: #a0aec0;">
-            <i class="fas fa-search" style="font-size: 3rem; margin-bottom: 15px; opacity: 0.2;"></i>
-            <h4>Ready to Audit</h4>
-            <p>Select the filters above and click "Audit Submissions" to see which subjects have entered marks.</p>
-        </div>
-    </div>
-</div>
-
-
-          <!-- Timetable Tab -->
-          <div id="timetableTab" class="tab-pane">
-            <div class="dashboard-card">
-              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-                <h3 style="margin: 0;">Class Timetable Generator</h3>
-                <div class="actions">
-                  <button id="generateTimetableBtn" class="btn primary-btn"><i class="fas fa-magic"></i> Auto-Generate</button>
-                  <button id="printTimetableBtn" class="btn secondary-btn"><i class="fas fa-file-pdf"></i> Save PDF</button>
-                </div>
-              </div>
-
-              <div class="filter-grid" style="background: #f8fafc; padding: 15px; border-radius: 10px; margin-bottom: 20px; border: 1px solid #e2e8f0;">
-                <div class="filter-group">
-                  <label>Select Grade</label>
-                  <select id="ttGradeSelect"><option value="">-- Choose --</option></select>
-                </div>
-                <div class="filter-group">
-                  <label>Term</label>
-                  <select id="ttTermSelect"><option value="1">Term 1</option><option value="2">Term 2</option><option value="3">Term 3</option></select>
-                </div>
-                <div class="filter-group">
-                  <label>Academic Year</label>
-                  <select id="ttYearSelect"></select>
-                </div>
-              </div>
-
-              <div id="timetableOutput" class="timetable-wrapper">
-                <p style="text-align: center; color: #94a3b8; padding: 40px;">Select a grade and click "Auto-Generate" to build a schedule.</p>
               </div>
             </div>
           </div>
 
-          <!-- Learners Reports Tab -->
-          <div id="learnersReportsTab" class="tab-pane">
-            <div class="dashboard-card">
-              <div style="text-align: center; padding: 20px; border-bottom: 1px solid #edf2f7; margin-bottom: 20px;">
-                <i class="fas fa-file-invoice" style="font-size: 2.5rem; color: #2b6cb0; margin-bottom: 10px;"></i>
-                <h3>Bulk Report Card Generation</h3>
-                <p style="color: #64748b; font-size: 0.9rem;">Generate professional report cards for all learners in the selected grade.</p>
-              </div>
-              
-              <div id="reportsGenerationUI" style="display: none; text-align: center; padding: 30px;">
-                <p id="reportsStatusText" style="margin-bottom: 20px; font-weight: 600; color: #2d3748;"></p>
-                <button id="generateBulkReportsBtn" class="btn primary-btn" style="padding: 12px 30px; font-size: 1rem;">
-                  <i class="fas fa-file-pdf"></i> Generate & Download All Report Cards
-                </button>
-              </div>
-
-              <div id="reportsPlaceholder" style="text-align: center; padding: 40px; color: #94a3b8;">
-                <p>Please apply filters and click "View Results" above to enable bulk report generation for a grade.</p>
-              </div>
+          <!-- Results Area -->
+          <div id="submittedSubjectsTableWrap" class="dashboard-card" style="min-height: 300px; background: #fff; border-radius: 12px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);">
+            <div class="empty-state" style="text-align: center; padding: 60px 20px; color: #a0aec0;">
+              <i class="fas fa-search" style="font-size: 3rem; margin-bottom: 15px; opacity: 0.2;"></i>
+              <h4>Ready to Audit</h4>
+              <p>Select the filters above and click "Audit Submissions" to see which subjects have entered marks.</p>
             </div>
           </div>
-              <!-- SMS Results Tab -->
-          <div id="smsResultsTab" class="tab-pane">
-            <div class="dashboard-card">
-              <div style="text-align: center; padding: 20px; border-bottom: 1px solid #edf2f7; margin-bottom: 20px;">
-                <i class="fas fa-sms" style="font-size: 2.5rem; color: #2b6cb0; margin-bottom: 10px;"></i>
-                <h3>SMS Results Broadcast</h3>
-                <p style="color: #64748b; font-size: 0.9rem;">Broadcast learner performance results for the selected context to parents via SMS.</p>
-              </div>
-              
-              <div id="smsBroadcastUI" style="max-width: 500px; margin: 0 auto; padding: 30px; display: none;">
-                <div id="smsBalanceDisplay" style="margin-bottom: 25px; padding: 15px; background: #eef2ff; border-radius: 12px; border: 1px solid #c7d2fe; text-align: center;">
-                  <span style="font-size: 0.9rem; color: #3730a3; font-weight: 600;">Available SMS Credits: </span>
-                  <strong id="deanSmsBalance" style="font-size: 1.2rem; color: #1e1b4b;">--</strong>
-                </div>
-                <p id="smsTargetText" style="margin-bottom: 20px; font-weight: 600; color: #2d3748; text-align: center; line-height: 1.5;"></p>
-                <button id="broadcastSmsBtn" class="btn primary-btn" style="width: 100%; padding: 14px; font-size: 1.1rem; border-radius: 10px; display: flex; align-items: center; justify-content: center; gap: 10px;">
-                  <i class="fas fa-broadcast-tower"></i> Start SMS Broadcast
-                </button>
+        </div>
 
-                <!-- 🆕 Progress Bar for SMS Broadcast -->
-                <div id="smsBroadcastProgressWrap" style="display: none; margin-top: 25px;">
-                  <div style="background: #e2e8f0; border-radius: 10px; height: 12px; overflow: hidden; margin-bottom: 8px;">
-                    <div id="smsBroadcastProgressBar" style="width: 0%; height: 100%; background: #2b6cb0; transition: width 0.4s ease;"></div>
+        <!-- Learner Marks Tab -->
+        <div id="learnerMarksTab" class="tab-pane">
+          <div class="dashboard-card">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+              <div>
+                <h3 style="margin: 0;">Enter Missing Mark</h3>
+                <p style="margin: 6px 0 0; color: #64748b; font-size: 0.95rem;">Search a learner and submit a single mark when no existing mark exists.</p>
+              </div>
+            </div>
+
+            <div class="filters-section module-filters" style="background: #ffffff; border-bottom: 2px solid #e2e8f0; margin-bottom: 20px; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); padding: 20px;">
+              <div class="filter-grid">
+                <div class="filter-group">
+                  <label for="lmGradeSelect">Grade</label>
+                  <select id="lmGradeSelect" class="form-control"></select>
+                </div>
+                <div class="filter-group">
+                  <label for="lmTermSelect">Term</label>
+                  <select id="lmTermSelect" class="form-control"></select>
+                </div>
+                <div class="filter-group">
+                  <label for="lmAssessmentSelect">Assessment</label>
+                  <select id="lmAssessmentSelect" class="form-control"></select>
+                </div>
+                <div class="filter-group">
+                  <label for="lmYearSelect">Year</label>
+                  <select id="lmYearSelect" class="form-control"></select>
+                </div>
+                <div class="filter-group">
+                  <label for="lmSubjectSelect">Subject</label>
+                  <select id="lmSubjectSelect" class="form-control"></select>
+                </div>
+              </div>
+            </div>
+
+            <div class="dashboard-card" style="background: #fff; border-radius: 12px; padding: 20px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);">
+              <div style="display: grid; gap: 18px; margin-bottom: 18px;">
+                <div id="lmStatusMessage" class="lm-status lm-status-info" style="display: none;"></div>
+                <div style="display: flex; flex-wrap: wrap; gap: 16px;">
+                  <div style="flex: 1 1 320px; min-width: 240px;">
+                    <label for="lmSearchInput" style="font-weight: 700; color: #1f2937; display:block; margin-bottom: 8px;">Search Learner</label>
+                    <div style="display: flex; gap: 10px;">
+                      <input id="lmSearchInput" type="text" class="form-control" placeholder="Admission number or name" style="flex: 1;" />
+                      <button id="lmSearchBtn" class="btn primary-btn" style="white-space: nowrap;">Search</button>
+                    </div>
                   </div>
-                  <p id="smsBroadcastProgressText" style="text-align: center; font-size: 0.85rem; color: #64748b; font-weight: 600;"></p>
-                  
-                  <!-- 🆕 Cancel Button for sending -->
-                  <div style="text-align: center; margin-top: 12px;">
-                    <button id="cancelSmsBroadcastBtn" class="btn secondary-btn" style="padding: 6px 18px; font-size: 0.8rem; border: 1px solid #cbd5e1; color: #4a5568;">
-                      <i class="fas fa-times-circle"></i> Cancel Sending
-                    </button>
-                  </div>
+                  <div id="lmLearnerSummary" style="flex: 1 1 260px; min-width: 260px;"></div>
                 </div>
-
-                <!-- 🆕 Recent Activity Summary -->
-                <div id="smsHistorySummary" style="margin-top: 35px; border-top: 1px solid #e2e8f0; padding-top: 25px;">
-                  <h4 style="font-size: 0.9rem; color: #475569; margin-bottom: 15px; text-transform: uppercase; letter-spacing: 0.05em;">Recent Activity (Last 30 Days)</h4>
-                  <div id="smsStatsGrid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 20px;"></div>
-                  <div id="smsFailureLogWrap"></div>
-                </div>
+                <div id="lmSearchResults" style="display: grid; gap: 12px;"></div>
               </div>
-              <div id="smsPlaceholder" style="text-align: center; padding: 40px; color: #94a3b8;">
-                <p>Please apply filters and click "View Results" above to enable SMS broadcasting for a grade.</p>
+
+              <div id="lmMarkForm"></div>
+
+              <div style="margin-top: 16px; text-align: right;">
+                <button id="lmSubmitBtn" class="btn primary-btn" disabled>Submit Learner Mark</button>
               </div>
             </div>
           </div>
         </div>
-      </section>
+
+        <!-- Learners Reports Tab -->
+        <div id="learnersReportsTab" class="tab-pane">
+          <div class="dashboard-card">
+            <div style="display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap; margin-bottom: 16px;">
+              <div>
+                <h3 style="margin: 0;">Learner Reports</h3>
+                <p style="margin: 6px 0 0; color: #64748b; font-size: 0.95rem;">Use the filters above to build the report pack for the selected learners.</p>
+              </div>
+              <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 8px; min-width: 260px;">
+                <button id="generateBulkReportsBtn" class="btn primary-btn" style="width: 100%; min-width: 240px; padding: 10px 16px; border-radius: 999px; display: inline-flex; align-items: center; justify-content: center; gap: 8px; font-weight: 700; box-shadow: 0 8px 20px rgba(37, 99, 235, 0.18); background: linear-gradient(135deg, #2563eb, #3b82f6);">
+                  <i class="fas fa-file-pdf"></i>
+                  <span>Generate Reports</span>
+                </button>
+                <div id="reportsStatusText" style="font-size: 0.9rem; color: #475569; font-weight: 600; text-align: right;">Select a grade to preview the learner count.</div>
+              </div>
+            </div>
+
+            <div id="reportsProgressWrap" style="display: none; margin-top: 8px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 12px;">
+              <div style="display: flex; justify-content: space-between; margin-bottom: 8px; font-size: 0.75rem; font-weight: 700; color: #475569; text-transform: uppercase;">
+                <span id="reportsProgressText">Preparing report pack...</span>
+                <span id="reportsProgressPercent">0%</span>
+              </div>
+              <div style="height: 10px; background: #e2e8f0; border-radius: 999px; overflow: hidden;">
+                <div id="reportsProgressBar" style="height: 100%; width: 0%; background: linear-gradient(90deg, #3b82f6, #2563eb); transition: width 0.3s ease;"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Timetable Tab -->
+        <div id="timetableTab" class="tab-pane">
+          <div class="dashboard-card">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+              <h3 style="margin: 0;">Class Timetable Generator</h3>
+              <div class="actions">
+                <button id="generateTimetableBtn" class="btn primary-btn"><i class="fas fa-magic"></i> Auto-Generate</button>
+                <button id="printTimetableBtn" class="btn secondary-btn"><i class="fas fa-file-pdf"></i> Save PDF</button>
+              </div>
+            </div>
+
+            <div class="filter-grid" style="background: #f8fafc; padding: 15px; border-radius: 10px; margin-bottom: 20px; border: 1px solid #e2e8f0;">
+              <div class="filter-group">
+                <label>Select Grade</label>
+                <select id="ttGradeSelect"><option value="">-- Choose --</option></select>
+              </div>
+              <div class="filter-group">
+                <label>Term</label>
+                <select id="ttTermSelect"><option value="1">Term 1</option><option value="2">Term 2</option><option value="3">Term 3</option></select>
+              </div>
+              <div class="filter-group">
+                <label>Academic Year</label>
+                <select id="ttYearSelect"></select>
+              </div>
+            </div>
+
+            <div id="timetableOutput" class="timetable-wrapper">
+              <p style="text-align: center; color: #94a3b8; padding: 40px;">Select a grade and click "Auto-Generate" to build a schedule.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
     </main>
   </div>
 
@@ -381,6 +388,7 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
   <script src="js/Utility/subject-data.js"></script>
   <script src="js/dean/submittedSubjectsModule.js"></script>
+  <script src="js/dean/learnerMarksModule.js"></script>
   <script src="js/timetables.js"></script>
   <script src="js/dean.js"></script>
 </body>

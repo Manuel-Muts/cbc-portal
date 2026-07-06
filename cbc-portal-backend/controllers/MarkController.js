@@ -22,22 +22,19 @@ const SENIOR_COMPULSORY_SUBJECTS = [
 
 const SENIOR_SCHOOL_PATHWAYS = {
   STEM: [
-    "Biology", "Chemistry", "Physics", "Business Studies", "Computer Studies",
+    "Biology", "Chemistry", "Physics", "Computer Studies","Home Science", 
     "Environmental Science", "Engineering Technology", "Applied Sciences",
     "Electricity", "Aviation", "Agriculture", "Marine and Fisheries",
     "Building and Construction", "Woodwork", "Metalwork", "Power Mechanics",
-    "General Science", "Home Science", "Media Technology"
+    "General Science", "Media Technology"
   ],
   "Social Sciences": [
     "History & Citizenship","History", "Geography", "Business Studies", "Political Studies",
     "Christian Religious Education", "Kenya Sign Language", "Literature",
     "Fasihi", "Indigenous Language", "Hindu Religious Education", "French",
-    "German", "Islamic Religious Education"
+    "German", "Islamic Religious Education",
   ],
   "Arts & Sports Science": [
-    "French", "Hindu Religious Education", "Computer Studies", "Literature",
-    "Islamic Religious Education", "German", "Fasihi", "Kiswahili",
-    "History & Citizenship", "Geography", "Biology", "General Science",
     "Fine Art", "Film & Media Studies", "Fashion & Design", "Music and Dance",
     "Theatre and Film", "Sports and Recreation"
   ]
@@ -55,15 +52,18 @@ const normalizeSeniorSubjectName = (subject) => {
     "hist": "History",
     "history": "History",
     "chem": "Chemistry",
+    "physics": "Physics",
+    "phy":"Physics",
     "chemistry": "Chemistry",
-    "cs": "Computer Studies",
-    "computer studies": "Computer Studies",
+    "computer science": "Computer Science",
+    "cs": "Computer Science",
+    "computer studies": "Computer Science",
     "community service learning": "CSL",
     "csl": "CSL",
     "business": "Business Studies",
     "business studies": "Business Studies",
-    "cre": "Christian Religious Studies",
-    "christian religious education": "Christian Religious Studies",
+    "cre": "Christian Religious Education",
+    "christian religious education": "Christian Religious Education",
     "history & citizenship": "History & Citizenship",
     "history and citizenship": "History & Citizenship",
     "english": "English",
@@ -81,6 +81,29 @@ const normalizeSeniorSubjectName = (subject) => {
     "information and communication technology": "ICT"
   };
   return aliases[normalized] || name;
+};
+
+// 🆕 Helper to normalize pathway values to canonical backend strings
+const normalizePathway = (p) => {
+  if (p === undefined || p === null) return null;
+  const raw = String(p).trim();
+  if (!raw) return null;
+  const key = raw.toLowerCase().replace(/[^a-z0-9]+/g, "");
+  const map = {
+    stem: 'STEM',
+    STEM: 'STEM',
+    'social sciences': 'Social Sciences',
+    'SOCIAL SCIENCES': 'Social Sciences',
+    socialsciences: 'Social Sciences',
+    ARTS: 'Arts & Sports Science',
+    'ARTS': 'Arts & Sports Science',
+    'arts & sports science': 'Arts & Sports Science',
+    'arts and sports science': 'Arts & Sports Science',
+    artsandsportsscience: 'Arts & Sports Science',
+    artsandsportscience: 'Arts & Sports Science',
+    artssportsscience: 'Arts & Sports Science',
+  };
+  return map[key] || raw;
 };
 
 const getSeniorPathway = (subjectName) => {
@@ -281,7 +304,7 @@ const processSingleMark = async (markData, reqUser, isNew = true, cachedContext 
     endTermExam
   } = markData;
 
-  const effectivePathway = isSeniorSchool ? (pathway || getSeniorPathway(course)) : null;
+  const effectivePathway = isSeniorSchool ? normalizePathway(pathway || getSeniorPathway(course)) : null;
 
   if (isSeniorSchool && course && isExcludedSeniorSubject(course)) {
     throw new Error(`${normalizeSeniorSubjectName(course)} is not a graded senior subject and should not be submitted.`);
@@ -290,9 +313,16 @@ const processSingleMark = async (markData, reqUser, isNew = true, cachedContext 
   // 🆕 Term Lock Check (Optimized: bypass if already checked in bulk)
   if (!cachedContext?.lockChecked) {
     const lockKey = `term_lock_${reqUser.schoolId}_${year}_${term}`;
-    const isLocked = await Setting.findOne({ key: lockKey });
+    const isLocked = await Setting.findOne({ key: lockKey }).lean();
     if (isLocked?.value === true && reqUser.role !== 'super_admin') {
       throw new Error(`Action denied: Year ${year} Term ${term} is officially locked.`);
+    }
+  }
+
+  if (!isNew) {
+    const allowTeacherSubmittedMarkEdits = cachedContext?.allowTeacherSubmittedMarkEdits;
+    if (allowTeacherSubmittedMarkEdits === false && reqUser.role !== 'super_admin') {
+      throw new Error(`Action denied: Teacher edits for submitted marks are disabled by admin for Year ${year} Term ${term}.`);
     }
   }
 
@@ -356,7 +386,7 @@ const processSingleMark = async (markData, reqUser, isNew = true, cachedContext 
       };
 
       if (isSeniorSchool) {
-        existingMarkQuery.pathway = pathway;
+        existingMarkQuery.pathway = normalizePathway(pathway);
         existingMarkQuery.course = course;
       } else {
         existingMarkQuery.subject = subject;
@@ -401,27 +431,17 @@ const processSingleMark = async (markData, reqUser, isNew = true, cachedContext 
   };
 
   if (isSeniorSchool) {
-    markFields.subject = null; markFields.pathway = effectivePathway; markFields.course = course; markFields.score = null;
-    markFields.continuousAssessment = safeParse(continuousAssessment);
-    markFields.projectWork = safeParse(projectWork);
-    markFields.endTermExam = safeParse(endTermExam);
+    markFields.subject = null; markFields.pathway = effectivePathway; markFields.course = course;
+    markFields.score = safeParse(score);
+    markFields.finalScore = markFields.score;
+    markFields.continuousAssessment = null;
+    markFields.projectWork = null;
+    markFields.endTermExam = null;
 
-    // 🆕 Senior School Absence Logic: If ANY component is missing (null), the final score is null (Absent).
-    // This prevents "X" from turning into "0" when other components exist.
-    const isFullyTested = 
-        markFields.continuousAssessment !== null && 
-        markFields.projectWork !== null && 
-        markFields.endTermExam !== null;
-
-    if (isFullyTested) {
-      const ca = markFields.continuousAssessment;
-      const pw = markFields.projectWork;
-      const et = markFields.endTermExam;
-      const finalScore = (ca * 0.3) + (pw * 0.2) + (et * 0.5); // Final score calculation remains the same
-      markFields.finalScore = Math.round(finalScore * 10) / 10; markFields.performanceLevel = getPerformanceSubdivision(markFields.finalScore, grade, customConfig);
-    } else { 
-      markFields.finalScore = null; 
-      markFields.performanceLevel = null; 
+    if (markFields.score !== null) {
+      markFields.performanceLevel = getPerformanceSubdivision(markFields.score, grade, customConfig);
+    } else {
+      markFields.performanceLevel = null;
     }
   } else {
     markFields.subject = subject; markFields.pathway = null; markFields.course = null;
@@ -470,6 +490,14 @@ export const updateMark = async (req, res) => {
     if (mark.teacherId.toString() !== req.user.id) {
       return res.status(403).json({ message: "Unauthorized" });
     }
+
+    if (req.user.role !== 'super_admin') {
+      const editPermissionKey = `submitted_marks_edits_allowed_${req.user.schoolId}_${mark.year}_${mark.term}`;
+      const editSetting = await Setting.findOne({ key: editPermissionKey }).lean();
+      if (!editSetting || editSetting.value !== true) {
+        return res.status(403).json({ message: "Teacher edits for submitted marks are disabled by admin for this term." });
+      }
+    }
     const processedFields = await processSingleMark({ ...req.body, _id: id, admissionNo: mark.admissionNo }, req.user, false); // Pass _id and admissionNo for context, isNew=false
     const updatedMark = await Mark.findByIdAndUpdate(
       id,
@@ -504,7 +532,9 @@ export const bulkAddUpdateMarks = async (req, res) => {
     marksArray.forEach(mark => {
       const gradeNum = getGradeLevel(mark.grade);
       if (gradeNum >= 10 && gradeNum <= 12 && !mark.pathway && mark.course) {
-        mark.pathway = getSeniorPathway(mark.course);
+        mark.pathway = normalizePathway(getSeniorPathway(mark.course));
+      } else if (gradeNum >= 10 && gradeNum <= 12 && mark.pathway) {
+        mark.pathway = normalizePathway(mark.pathway);
       }
     });
 
@@ -513,10 +543,15 @@ export const bulkAddUpdateMarks = async (req, res) => {
 
     // 1. Pre-fetch Term Lock and School Config once for the whole batch
     const lockKey = `term_lock_${schoolId}_${sample.year}_${sample.term}`;
-    const isLocked = await Setting.findOne({ key: lockKey });
+    const editPermissionKey = `submitted_marks_edits_allowed_${schoolId}_${sample.year}_${sample.term}`;
+    const [isLocked, editSetting] = await Promise.all([
+      Setting.findOne({ key: lockKey }).lean(),
+      Setting.findOne({ key: editPermissionKey }).lean()
+    ]);
     if (isLocked?.value === true && req.user.role !== 'super_admin') {
       return res.status(403).json({ message: `Year ${sample.year} Term ${sample.term} is locked.` });
     }
+    const allowTeacherSubmittedMarkEdits = editSetting ? editSetting.value !== false : true;
 
     // 2. Pre-fetch students and enrollments to avoid N+1 queries
     const admissions = [...new Set(marksArray.map(m => m.admissionNo).filter(Boolean))];
@@ -548,7 +583,7 @@ export const bulkAddUpdateMarks = async (req, res) => {
     // 🚀 Optimization: Include subject/course to leverage the full unique index prefix
     const sampleGradeNum = getGradeLevel(sample.grade);
     if (sampleGradeNum >= 10 && sampleGradeNum <= 12) {
-      existingMarksQuery.pathway = sample.pathway;
+      existingMarksQuery.pathway = normalizePathway(sample.pathway);
       existingMarksQuery.course = sample.course;
     } else {
       existingMarksQuery.subject = sample.subject;
@@ -558,15 +593,17 @@ export const bulkAddUpdateMarks = async (req, res) => {
 
     const existingMarksMap = new Set(existingMarks.map(m => {
       const gNum = getGradeLevel(m.grade);
-      return gNum >= 10 && gNum <= 12 
-        ? `${m.admissionNo}_${m.pathway}_${m.course}`
-        : `${m.admissionNo}_${m.subject}`;
+      if (gNum >= 10 && gNum <= 12) {
+        const p = normalizePathway(m.pathway) || '';
+        return `${m.admissionNo}_${p}_${m.course}`;
+      }
+      return `${m.admissionNo}_${m.subject}`;
     }));
 
     // 🚀 NEW: Fetch school grading config once for bulk processing
     const school = await School.findById(schoolId).select("gradingConfig").lean();
 
-    const cachedContext = { studentMap, enrollmentMap, lockChecked: true, existingMarksMap, gradingConfig: school?.gradingConfig };
+    const cachedContext = { studentMap, enrollmentMap, lockChecked: true, existingMarksMap, gradingConfig: school?.gradingConfig, allowTeacherSubmittedMarkEdits };
     const ops = [];
     const errors = [];
 
@@ -590,11 +627,11 @@ export const bulkAddUpdateMarks = async (req, res) => {
         }
         const key = `${studentId}_${markData.assessment}`;
         if (!seniorElectiveGroups.has(key)) {
-            seniorElectiveGroups.set(key, {
-                pathway: markData.pathway,
-                courses: new Set(),
-                sampleMark: markData
-            });
+          seniorElectiveGroups.set(key, {
+            pathway: normalizePathway(markData.pathway),
+            courses: new Set(),
+            sampleMark: markData
+          });
         }
         const group = seniorElectiveGroups.get(key);
         group.courses.add(normalizedCourse);
@@ -706,11 +743,19 @@ export const deleteMark = async (req, res) => {
       return res.status(403).json({ message: "Unauthorized" });
     }
     
-    // 🆕 Check Lock before deletion
+    // 🆕 Check Lock and admin edit permission before deletion
     const lockKey = `term_lock_${req.user.schoolId}_${mark.year}_${mark.term}`;
-    const isLocked = await Setting.findOne({ key: lockKey });
-    if (isLocked?.value === true && req.user.role !== 'super_admin') {
+    const editPermissionKey = `submitted_marks_edits_allowed_${req.user.schoolId}_${mark.year}_${mark.term}`;
+    const [lockSetting, editSetting] = await Promise.all([
+      Setting.findOne({ key: lockKey }).lean(),
+      Setting.findOne({ key: editPermissionKey }).lean()
+    ]);
+
+    if (lockSetting?.value === true && req.user.role !== 'super_admin') {
       return res.status(403).json({ message: "Cannot delete marks: This academic term is officially locked." });
+    }
+    if ((!editSetting || editSetting.value !== true) && req.user.role !== 'super_admin') {
+      return res.status(403).json({ message: "Cannot delete marks: Teacher edits for submitted marks are disabled by admin for this term." });
     }
 
     await mark.deleteOne();
@@ -757,10 +802,24 @@ export const bulkDeleteMarks = async (req, res) => {
     const termKeys = [...new Set(marksToDelete.map(m => `term_lock_${req.user.schoolId}_${m.year}_${m.term}`))];
     if (req.user.role !== 'super_admin') {
       // Optimized: Fetch all relevant lock settings in one go
-      const lockedSettings = await Setting.find({ 
-        key: { $in: termKeys }, 
-        value: true 
-      }).lean();
+      const [lockedSettings, editSettings] = await Promise.all([
+        Setting.find({ key: { $in: termKeys }, value: true }).lean(),
+        Setting.find({ key: { $in: termKeys.map(k => k.replace('term_lock_', 'submitted_marks_edits_allowed_')) } }).lean()
+      ]);
+
+      // For submitted mark edits, require explicit true for each term; missing setting means disabled.
+      const missingOrDisabledEditKey = termKeys.map(k => k.replace('term_lock_', 'submitted_marks_edits_allowed_')).find(editKey => {
+        const found = editSettings.find(e => e.key === editKey);
+        return !found || found.value !== true;
+      });
+      if (missingOrDisabledEditKey) {
+        const parts = missingOrDisabledEditKey.split('_');
+        const disabledYear = parts[4];
+        const disabledTerm = parts[5];
+        return res.status(403).json({
+          message: `Cannot delete marks: Teacher edits for submitted marks are disabled by admin for Year ${disabledYear} Term ${disabledTerm}.`
+        });
+      }
 
       if (lockedSettings.length > 0) {
         const firstLocked = lockedSettings[0].key.split('_');

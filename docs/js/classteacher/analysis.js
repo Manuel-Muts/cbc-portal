@@ -1540,10 +1540,10 @@ document.addEventListener("DOMContentLoaded", async () => {
             
             const subjectData = studentData.subjects.find(sub => sub._id === id);
             if (subjectData) {
-               if (isSeniorSchool) {
-                   payload.pathway = subjectData.pathway;
+                 if (isSeniorSchool) {
+                   payload.pathway = window.cbcUtils?.normalizePathway?.(subjectData.pathway) || subjectData.pathway || null;
                    payload.course = subjectData.course;
-               } else {
+                 } else {
                    payload.subject = subjectData.subject;
                }
             }

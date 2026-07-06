@@ -501,6 +501,9 @@ export const getAllStudentAccounts = async (req, res) => {
     };
     const allowedGrades = SCHOOL_TYPES[schoolType].gradeOptions;
 
+    // 🆕 Smart filtering: exact match for numeric admission, regex for names
+    const isNumericSearch = /^\d+$/.test(search);
+
     // Aggregation Pipeline for efficient Filtering, Searching & Pagination
     const pipeline = [
       // 1. Match Active Enrollments for School/Year
@@ -527,10 +530,15 @@ export const getAllStudentAccounts = async (req, res) => {
         $match: {
           "student.role": "student",
           ...(search ? {
-            $or: [
-              { "student.name": { $regex: escapeRegex(search), $options: "i" } },
-              { "student.admission": { $regex: escapeRegex(search), $options: "i" } }
-            ]
+            ...(isNumericSearch ? 
+              { "student.admission": search } // Exact match for numeric
+              : {
+                $or: [
+                  { "student.name": { $regex: escapeRegex(search), $options: "i" } },
+                  { "student.admission": { $regex: escapeRegex(search), $options: "i" } }
+                ]
+              }
+            )
           } : {})
         }
       },

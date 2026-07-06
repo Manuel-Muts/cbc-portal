@@ -491,10 +491,21 @@ export const getOutstandingFees = async (req, res) => {
       schoolId: req.user.schoolId
     };
     if (name) {
-      userQuery.$or = [
-        { name: { $regex: name, $options: "i" } },
-        { admission: { $regex: name, $options: "i" } }
-      ];
+      // 🆕 Smart filtering: exact match for numeric admission, regex for names
+      const isNumericSearch = /^\d+$/.test(name);
+      
+      if (isNumericSearch) {
+        // For numeric searches, match admission exactly
+        userQuery.$or = [
+          { admission: name }
+        ];
+      } else {
+        // For text searches, use regex on both name and admission fields
+        userQuery.$or = [
+          { name: { $regex: name, $options: "i" } },
+          { admission: { $regex: name, $options: "i" } }
+        ];
+      }
     }
     const students = await Student.find(userQuery).select("name admission _id").lean();
 
@@ -640,10 +651,19 @@ export const generateOutstandingFeesPDF = async (req, res) => {
 
     // Filter by name if specified
     if (name) {
-      students = students.filter(s => 
-        s.name.toLowerCase().includes(name.toLowerCase()) || 
-        (s.admission && s.admission.toLowerCase().includes(name.toLowerCase()))
-      );
+      // 🆕 Smart filtering: exact match for numeric admission, substring for names
+      const isNumericSearch = /^\d+$/.test(name);
+      
+      students = students.filter(s => {
+        if (isNumericSearch) {
+          // For numeric searches, match admission exactly
+          return s.admission && s.admission.toString() === name;
+        } else {
+          // For text searches, use substring on both name and admission
+          return s.name.toLowerCase().includes(name.toLowerCase()) || 
+            (s.admission && s.admission.toLowerCase().includes(name.toLowerCase()));
+        }
+      });
     }
 
     if (students.length === 0) {

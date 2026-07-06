@@ -3,6 +3,7 @@ import mongoose from "mongoose";
 import StudentEnrollment from "../models/StudentEnrollment.js";
 import LearnerElective from "../models/LearnerElective.js";
 import { User } from "../models/User.js";
+import { normalizePathway } from "../utils/pathwayUtils.js";
 
 const SENIOR_PATHWAYS = ["STEM", "Social Sciences", "Arts & Sports Science"];
 
@@ -33,14 +34,26 @@ export const adminSearchStudent = async (req, res) => {
     // -----------------------
     // FIND MATCHING STUDENTS
     // -----------------------
-    const searchQuery = {
+    // 🆕 Smart search: exact match for numeric admission, regex for names
+    const isNumericSearch = /^\d+$/.test(q); // Check if query is all digits
+    
+    let searchQuery = {
       schoolId: req.user.schoolId,
-      role: "student",
-      $or: [
+      role: "student"
+    };
+
+    if (isNumericSearch) {
+      // For numeric searches, match admission exactly (not substring)
+      searchQuery.$or = [
+        { admission: q } // Exact match on admission
+      ];
+    } else {
+      // For text searches, use regex on both name and admission
+      searchQuery.$or = [
         { name: { $regex: sanitizedQ, $options: "i" } },
         { admission: { $regex: sanitizedQ, $options: "i" } }
-      ]
-    };
+      ];
+    }
 
     const total = await User.countDocuments(searchQuery);
 
@@ -165,7 +178,7 @@ export const updateEnrollment = async (req, res) => {
     enrollment.academicYear = academicYear ?? enrollment.academicYear;
     enrollment.grade = grade ? normalizeGrade(grade) : enrollment.grade;
     enrollment.stream = stream ?? enrollment.stream; // Update stream field
-    enrollment.pathway = pathway ?? enrollment.pathway;
+    enrollment.pathway = (pathway !== undefined && pathway !== null) ? normalizePathway(pathway) : enrollment.pathway;
     enrollment.status = status ?? enrollment.status;
 
     await enrollment.save();
@@ -217,7 +230,7 @@ export const getMyEnrollment = async (req, res) => {
       studentId: studentId,
       academicYear: currentYear,
       status: "active"
-    }).select("grade stream term academicYear status");
+    }).select("grade stream term academicYear status pathway");
 
     if (!enrollment) {
       // Fall back to latest enrollment
@@ -225,7 +238,7 @@ export const getMyEnrollment = async (req, res) => {
         studentId: studentId
       })
         .sort({ academicYear: -1 })
-        .select("grade stream term academicYear status");
+        .select("grade stream term academicYear status pathway");
 
       if (!latestEnrollment) {
         return res.status(404).json({ message: "No enrollment found" });
@@ -325,6 +338,73 @@ export const getStudentsByClass = async (req, res) => {
     const limit = parseInt(req.query.limit) || 15;
     const skip = (page - 1) * limit;
 
+    const normalizeSeniorSubjectName = (subject) => {
+      const name = String(subject || "").trim().toLowerCase();
+      const aliasMap = {
+        "bio": "Biology",
+        "biology": "Biology",
+        "physics": "Physics",
+        "phy": "Physics",
+        "geo": "Geography",
+        "geography": "Geography",
+        "hist": "History",
+        "history": "History",
+        "chem": "Chemistry",
+        "chemistry": "Chemistry",
+        "cs": "Computer Studies",
+        "computer studies": "Computer Studies",
+        "computer science": "Computer Studies",
+        "business": "Business Studies",
+        "business studies": "Business Studies",
+        "cre": "Christian Religious Education",
+        "christian religious education": "Christian Religious Education",
+        "christian religious studies": "Christian Religious Education",
+        "religious education": "Christian Religious Education",
+        "history & citizenship": "History & Citizenship",
+        "history and citizenship": "History & Citizenship",
+        "english": "English",
+        "english language": "English",
+        "math": "Mathematics",
+        "maths": "Mathematics",
+        "mathematics": "Mathematics",
+        "kiswahili": "Kiswahili",
+        "kiswahili language": "Kiswahili",
+        "physical education": "PE",
+        "phys ed": "PE",
+        "pe": "PE",
+        "ict": "ICT",
+        "information communication technology": "ICT",
+        "information and communication technology": "ICT",
+      };
+      return aliasMap[name] || subject?.trim() || "";
+    };
+
+    const buildElectiveSubjectPattern = (subject) => {
+      const canonical = normalizeSeniorSubjectName(subject);
+      const escapeRegex = (text) => text.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, "\\$&");
+      const candidates = new Set([
+        canonical,
+        String(subject || "").trim(),
+        String(subject || "").trim().toUpperCase(),
+      ].filter(Boolean));
+
+      const extraAliases = {
+        "Physics": ["PHY"],
+        "Christian Religious Education": ["CRE", "Christian Religious Studies", "Religious Education"],
+        "Computer Studies": ["CS", "Computer Science"],
+        "History & Citizenship": ["History and Citizenship"],
+      };
+      if (extraAliases[canonical]) {
+        extraAliases[canonical].forEach(alias => candidates.add(alias));
+      }
+
+      const regexSource = Array.from(candidates)
+        .map(subjectText => `^\\s*${escapeRegex(subjectText)}\\s*$`)
+        .join("|");
+
+      return new RegExp(`(?:${regexSource})`, "i");
+    };
+
     // Only authenticated users can access this
     if (!req.user || !req.user.schoolId) {
       return res.status(403).json({ message: "Unauthorized" });
@@ -362,12 +442,18 @@ export const getStudentsByClass = async (req, res) => {
       query.stream = extractedStream;
     }
 
-    if (pathway && SENIOR_PATHWAYS.includes(String(pathway).trim())) {
-      query.pathway = String(pathway).trim();
+    const requestedPathway = pathway ? normalizePathway(pathway) : null;
+    const requestedPathways = (req.query.pathways || "")
+      .split(",")
+      .map(p => normalizePathway(p))
+      .filter(Boolean);
+
+    if (!electiveSubject && requestedPathway && SENIOR_PATHWAYS.includes(requestedPathway)) {
+      query.pathway = requestedPathway;
     }
 
     if (electiveSubject && String(electiveSubject).trim()) {
-      const subjectPattern = new RegExp(`^${escapeRegex(String(electiveSubject).trim())}$`, "i");
+      const subjectPattern = buildElectiveSubjectPattern(electiveSubject);
       const electiveQuery = {
         schoolId,
         subjects: subjectPattern,
@@ -382,16 +468,35 @@ export const getStudentsByClass = async (req, res) => {
       }
 
       const learnerIds = await LearnerElective.distinct("learnerId", electiveQuery);
+      console.log("📌 Elective load backend:", {
+        electiveSubject,
+        requestedPathway,
+        requestedPathways,
+        queryGrade,
+        learnerIdsCount: learnerIds.length,
+        learnerIdsSample: learnerIds.slice(0, 10)
+      });
       if (!learnerIds.length) {
-        return res.json({
-          students: [],
-          total: 0,
-          totalPages: 0,
-          currentPage: page,
-        });
+        if (requestedPathway) {
+          query.pathway = requestedPathway;
+          console.log("📌 Falling back to pathway query for elective load:", requestedPathway);
+        } else if (requestedPathways.length > 0) {
+          query.pathway = requestedPathways.length === 1 ? requestedPathways[0] : { $in: requestedPathways };
+          console.log("📌 Falling back to pathways query for elective load:", requestedPathways);
+        } else {
+          return res.json({
+            students: [],
+            total: 0,
+            totalPages: 0,
+            currentPage: page,
+          });
+        }
+      } else {
+        // Use learner IDs directly for elective lookups and avoid grade/stream mismatch filtering.
+        delete query.grade;
+        delete query.stream;
+        query.studentId = { $in: learnerIds };
       }
-
-      query.studentId = { $in: learnerIds };
     }
 
     // 🚀 Performance Optimization: Use countDocuments directly on the roster index.

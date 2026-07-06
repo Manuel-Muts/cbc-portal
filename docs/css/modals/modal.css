@@ -195,6 +195,10 @@ header {
   display: flex; /* Allow icon to sit next to text */
   align-items: center;
   gap: 5px; /* Space between text and icon */
+  background: none;
+  border: none;
+  outline: none;
+  font: inherit;
 }
 
 .dropdown .dropbtn:hover {

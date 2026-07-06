@@ -1161,6 +1161,16 @@ form {
   font-weight: 500;
 }
 
+.marks-entry-scroll-wrapper {
+  width: 100%;
+  overflow-x: auto;
+  overflow-y: auto;
+  max-height: 65vh;
+  position: relative;
+  border-radius: 12px;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.6), inset 0 -10px 15px -10px rgba(0,0,0,0.08);
+}
+
 .marks-entry-table .final-input {
   background: #e8f4f8;
   font-weight: 600;
@@ -1818,6 +1828,29 @@ header.teacher-header .secondary-btn:hover {
   /* Form Field Optimization */
   .form-group label { font-size: 0.62rem !important; margin-bottom: 2px !important; font-weight: 800 !important; text-transform: uppercase !important; letter-spacing: 0.02em !important; line-height: 1 !important; }
   .form-group select, .form-group input { padding: 8px !important; font-size: 0.8rem !important; border-radius: 6px !important; }
+}
+
+@media (max-width: 768px) {
+  .sidebar {
+    width: 100%;
+    position: relative;
+    height: auto;
+  }
+  .dashboard-main { margin-left: 0; }
+  .marks-section { padding: 10px 8px !important; }
+  .marks-entry-scroll-wrapper,
+  #marksTableContainer {
+    overflow-x: auto;
+    width: 100%;
+  }
+  .marks-entry-table {
+    width: 100%;
+    table-layout: auto;
+  }
+  .marks-entry-table th,
+  .marks-entry-table td {
+    white-space: nowrap;
+  }
 }
 
 .students-pagination {

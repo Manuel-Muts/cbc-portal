@@ -51,6 +51,69 @@
 
   let schoolInfo = null;
 
+  const STABLE_CACHE_KEY = "admin_school_info_stable_cache";
+  const DYNAMIC_CACHE_KEY = "admin_school_info_dynamic_cache";
+  const STABLE_CACHE_DURATION = 30 * 24 * 60 * 60 * 1000; // 30 days for mostly static info
+  const DYNAMIC_CACHE_DURATION = 5 * 60 * 1000; // 5 minutes for status and SMS balance
+
+  const clearSchoolInfoCache = () => {
+    localStorage.removeItem(STABLE_CACHE_KEY);
+    localStorage.removeItem(DYNAMIC_CACHE_KEY);
+    localStorage.removeItem("admin_school_info_cache");
+  };
+
+  const applySidebarBrandName = (name) => {
+    const displayName = String(name || "").trim();
+    if (!displayName) return;
+
+    if (sidebarBrandLogo) {
+      sidebarBrandLogo.innerHTML = "";
+      const schoolNameEl = document.createElement("div");
+      schoolNameEl.className = "school-name";
+      schoolNameEl.textContent = displayName;
+      schoolNameEl.style.cssText = "font-size: 1.25rem; font-weight: 800; color: #fff; text-align: center; line-height: 1.2; text-transform: uppercase;";
+      sidebarBrandLogo.appendChild(schoolNameEl);
+      return;
+    }
+
+    const brandContainer = document.querySelector('.sidebar-brand');
+    if (brandContainer) {
+      brandContainer.innerHTML = "";
+      const fallbackBrand = document.createElement("div");
+      fallbackBrand.className = "school-name";
+      fallbackBrand.textContent = displayName;
+      fallbackBrand.style.cssText = "font-size: 1.25rem; font-weight: 800; color: #fff; text-align: center; line-height: 1.2; text-transform: uppercase;";
+      brandContainer.appendChild(fallbackBrand);
+    }
+  };
+
+  const showAdminInitOverlay = () => {
+    if (document.getElementById('adminInitOverlay')) return;
+
+    const overlay = document.createElement('div');
+    overlay.id = 'adminInitOverlay';
+    overlay.style.cssText = `
+      position: fixed; inset: 0; background: rgba(255, 255, 255, 0.95);
+      z-index: 20000; display: flex; align-items: center; justify-content: center;
+      backdrop-filter: blur(6px); transition: opacity 0.3s ease;
+    `;
+    overlay.innerHTML = `
+      <div style="text-align: center; padding: 40px 30px; background: #fff; border-radius: 20px; box-shadow: 0 24px 55px rgba(15, 23, 42, 0.12); border: 1px solid rgba(148, 163, 184, 0.2); max-width: 420px; width: 90%;">
+        <div class="spinner" style="width: 50px; height: 50px; border-width: 5px; border-top-color: #2b6cb0; border-right-color: #2b6cb0; display: inline-block; margin-bottom: 18px;"></div>
+        <h2 style="margin: 0 0 10px; color: #1e293b; font-size: 1.5rem; font-weight: 800; letter-spacing: -0.03em;">Admin Dashboard</h2>
+        <p style="margin: 0; color: #64748b; font-size: 0.95rem; line-height: 1.75;">Loading school data and preparing the portal. Please wait...</p>
+      </div>
+    `;
+    document.body.appendChild(overlay);
+  };
+
+  const removeAdminInitOverlay = () => {
+    const overlay = document.getElementById('adminInitOverlay');
+    if (overlay) {
+      overlay.style.opacity = '0';
+      setTimeout(() => overlay.remove(), 300);
+    }
+  };
 
   // DOM elements
   const teacherSelect = document.getElementById("teacherSelect");
@@ -140,61 +203,172 @@
   const termLockTermSelect = document.getElementById("termLockTermSelect");
   const termLockStatusDisplay = document.getElementById("termLockStatusDisplay");
   const termLockToggleButton = document.getElementById("termLockToggleButton");
+  const submittedMarksEditStatusDisplay = document.getElementById("submittedMarksEditStatusDisplay");
+  const submittedMarksEditToggleButton = document.getElementById("submittedMarksEditToggleButton");
   const saveTermLockBtn = document.getElementById("saveTermLockBtn");
+    let termLockPollIntervalId = null;
 // FETCH SCHOOL INFO
 // ---------------------------
 // Derive BACKEND_URL from config (removes /api suffix)
 const BACKEND_URL = config.api.baseURL.replace('/api', '');
 
-async function loadSchoolInfo(forceReload = false) {
-  const CACHE_KEY = "admin_school_info_cache";
-  const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes (reduced from 30 to catch updates faster)
+function getDisplaySchoolName(info) {
+  const name = info?.name || info?.schoolName || info?.school?.name || info?.school?.schoolName || "";
+  return name ? String(name).trim() : "";
+}
 
-  if (!forceReload) {
-    const cached = localStorage.getItem(CACHE_KEY);
-    if (cached) {
-      try {
-        const { timestamp, data } = JSON.parse(cached);
-        if (Date.now() - timestamp < CACHE_DURATION) {
-          console.log("✅ Using cached school info");
-          schoolInfo = data;
-          currentSchoolInfo = data; // 🆕 Store for grade options
-          window.schoolInfo = schoolInfo;
-          renderSchoolInfo();
-          return;
-        }
-      } catch (e) { console.warn("Cache read error:", e); }
+async function loadSchoolInfo(forceReload = false) {
+  const stableFields = "name,allowSignatureUpload,schoolType,headteacherSignatureUrl";
+  const dynamicFields = "status,smsCredits";
+
+  const getFallbackProfileName = async () => {
+    try {
+      const token = authService.getToken();
+      if (!token) return null;
+
+      const profile = await authService.getUserProfile(["admin"]);
+      if (!profile) return null;
+
+      const currentSchoolId = localStorage.getItem("schoolId") || profile.schoolId || profile.school?.id || "";
+      const profileSchoolName = profile.schoolName || profile.school?.name || profile.school?.schoolName || "";
+
+      if (profileSchoolName && (!currentSchoolId || String(currentSchoolId) === String(profile.schoolId || profile.school?.id || ""))) {
+        return profileSchoolName;
+      }
+
+      return null;
+    } catch (e) {
+      return null;
     }
+  };
+
+  const readCache = (key, duration) => {
+    const cached = localStorage.getItem(key);
+    if (!cached) return null;
+    try {
+      const { timestamp, data } = JSON.parse(cached);
+      if (Date.now() - timestamp < duration) return data;
+    } catch (e) {
+      console.warn(`Cache read error for ${key}:`, e);
+    }
+    localStorage.removeItem(key);
+    return null;
+  };
+
+  const stableCache = !forceReload ? readCache(STABLE_CACHE_KEY, STABLE_CACHE_DURATION) : null;
+  const dynamicCache = !forceReload ? readCache(DYNAMIC_CACHE_KEY, DYNAMIC_CACHE_DURATION) : null;
+  const stableCacheHasName = stableCache && String(stableCache.name || "").trim();
+  // 🆕 Always fetch fresh schoolType - removed from cache check to ensure latest type is always fetched
+  const useCachedSchoolInfo = stableCacheHasName && dynamicCache && !forceReload;
+
+  if (useCachedSchoolInfo) {
+    console.log("✅ Using complete cached school info");
+    schoolInfo = { ...stableCache, ...dynamicCache };
+    currentSchoolInfo = schoolInfo;
+    window.schoolInfo = schoolInfo;
+    renderSchoolInfo();
+    return;
   }
-  
-  // Clear expired cache
-  if (!forceReload) {
-    localStorage.removeItem(CACHE_KEY);
+
+  // If we have stable data but its schoolType is missing, render what we have and refresh stable fields in the background
+  if (stableCache) {
+    schoolInfo = { ...stableCache, status: undefined, smsCredits: 0 };
+    currentSchoolInfo = schoolInfo;
+    window.schoolInfo = schoolInfo;
+    renderSchoolInfo();
   }
 
   try {
     const token = authService.getToken();
-    // 🚀 Optimization: Explicitly request only necessary fields, excluding heavy logo and unneeded address.
-    const fields = "name,status,allowSignatureUpload,schoolType,smsCredits,headteacherSignatureUrl";
-    const res = await fetch(`${API_BASE}/my-school?fields=${fields}`, {
-      headers: { Authorization: `Bearer ${token}` }
+    const requests = [];
+    // 🆕 Always fetch fresh schoolType - set to true to ensure latest schoolType is always fetched
+    const needsStableFetch = true;
+    if (needsStableFetch) {
+      requests.push(
+        fetch(`${API_BASE}/my-school?fields=${stableFields}`, {
+          headers: { Authorization: `Bearer ${token}` }
+        }).then(async res => {
+          if (!res.ok) throw new Error("Failed to fetch stable school info");
+          const data = await res.json();
+          localStorage.setItem(STABLE_CACHE_KEY, JSON.stringify({ timestamp: Date.now(), data }));
+          return { type: 'stable', data };
+        }).catch(err => ({ type: 'stable', error: err }))
+      );
+    }
+    if (!dynamicCache || forceReload) {
+      requests.push(
+        fetch(`${API_BASE}/my-school?fields=${dynamicFields}`, {
+          headers: { Authorization: `Bearer ${token}` }
+        }).then(async res => {
+          if (!res.ok) throw new Error("Failed to fetch dynamic school info");
+          const data = await res.json();
+          localStorage.setItem(DYNAMIC_CACHE_KEY, JSON.stringify({ timestamp: Date.now(), data }));
+          return { type: 'dynamic', data };
+        }).catch(err => ({ type: 'dynamic', error: err }))
+      );
+    }
+
+    const results = await Promise.allSettled(requests);
+    const merged = {
+      ...stableCache,
+      ...dynamicCache
+    };
+
+    results.forEach(result => {
+      if (result.status !== "fulfilled") return;
+      const payload = result.value;
+      if (!payload || payload.error) return;
+      if (payload.type === 'stable') {
+        merged.name = payload.data.name;
+        merged.allowSignatureUpload = payload.data.allowSignatureUpload;
+        // Support alternate field names returned by various backends
+        const pickTypeFrom = (obj) => {
+          if (!obj || typeof obj !== 'object') return null;
+          // direct common keys
+          const direct = obj.schoolType || obj.type || obj.school_type || obj.schooltype || obj['school-type'];
+          if (direct) return direct;
+          // scan keys for anything containing 'type'
+          for (const k of Object.keys(obj)) {
+            if (k.toLowerCase().includes('type')) return obj[k];
+          }
+          return null;
+        };
+
+        merged.schoolType = pickTypeFrom(payload.data) || pickTypeFrom(payload.data.school) || null;
+        merged.headteacherSignatureUrl = payload.data.headteacherSignatureUrl;
+      }
+      if (payload.type === 'dynamic') {
+        merged.status = payload.data.status;
+        merged.smsCredits = payload.data.smsCredits;
+      }
     });
 
-    if (!res.ok) throw new Error("Failed to fetch school info");
+    if (!merged.name) {
+      const fallbackName = await getFallbackProfileName();
+      if (fallbackName) merged.name = fallbackName;
+    }
 
-    schoolInfo = await res.json();
-    currentSchoolInfo = schoolInfo; // 🆕 Store for grade options
-    window.schoolInfo = schoolInfo;
-    
-    localStorage.setItem(CACHE_KEY, JSON.stringify({
-      timestamp: Date.now(),
-      data: schoolInfo
-    }));
-
+    schoolInfo = merged;
+    currentSchoolInfo = merged;
+    window.schoolInfo = merged;
+    try {
+      const resolvedKey = resolveSchoolTypeKey(merged);
+      window.schoolTypeKey = resolvedKey;
+      window.schoolConfig = resolvedKey ? SCHOOL_TYPES[resolvedKey] : null;
+      if (resolvedKey) localStorage.setItem('school_type_key', resolvedKey);
+      else localStorage.removeItem('school_type_key');
+    } catch (e) { console.warn('Failed to persist schoolTypeKey', e); }
     renderSchoolInfo();
-
   } catch (err) {
     console.error("School info error:", err);
+    const fallbackName = await getFallbackProfileName();
+    if (fallbackName) {
+      schoolInfo = { ...(schoolInfo || {}), name: fallbackName };
+      currentSchoolInfo = schoolInfo;
+      window.schoolInfo = schoolInfo;
+      renderSchoolInfo();
+      return;
+    }
     showToast("Failed to load school info", "error");
   }
 }
@@ -202,11 +376,32 @@ async function loadSchoolInfo(forceReload = false) {
 function renderSchoolInfo() {
   if (!schoolInfo) return;
 
+  // Debug: show resolved schoolType and config to help diagnose dropdown population
+  try { console.debug("renderSchoolInfo: schoolInfo.schoolType=", schoolInfo.schoolType, "getSchoolConfig=", getSchoolConfig()); } catch (e) {}
+
+  const displayName = getDisplaySchoolName(schoolInfo) || "School Name";
+  if (displayName && displayName !== "School Name") {
+    applySidebarBrandName(displayName);
+  }
+
   // Replace "Admin Portal" branding with School Name at the top of the sidebar
   if (sidebarBrandLogo) {
-    sidebarBrandLogo.innerHTML = `
-      <div class="school-name" style="font-size: 1.25rem; font-weight: 800; color: #fff; text-align: center; line-height: 1.2; text-transform: uppercase;">${schoolInfo.name || "School Name"}</div>
-    `;
+    sidebarBrandLogo.innerHTML = "";
+    const schoolNameEl = document.createElement("div");
+    schoolNameEl.className = "school-name";
+    schoolNameEl.textContent = displayName;
+    schoolNameEl.style.cssText = "font-size: 1.25rem; font-weight: 800; color: #fff; text-align: center; line-height: 1.2; text-transform: uppercase;";
+    sidebarBrandLogo.appendChild(schoolNameEl);
+  } else {
+    const brandContainer = document.querySelector('.sidebar-brand');
+    if (brandContainer) {
+      brandContainer.innerHTML = "";
+      const fallbackBrand = document.createElement("div");
+      fallbackBrand.className = "school-name";
+      fallbackBrand.textContent = displayName;
+      fallbackBrand.style.cssText = "font-size: 1.25rem; font-weight: 800; color: #fff; text-align: center; line-height: 1.2; text-transform: uppercase;";
+      brandContainer.appendChild(fallbackBrand);
+    }
   }
 
   // Ensure address is not shown in sidebar (Name and Logo alone)
@@ -510,8 +705,7 @@ function attachAdminSignatureLogic() {
             });
 
             showToast("✅ Official signature updated", "success");
-            // Clear cache so the new signature is displayed immediately
-            localStorage.removeItem("admin_school_info_cache");
+            clearSchoolInfoCache();
             loadSchoolInfo(true);
         } catch (err) {
             showToast(err.message, "error");
@@ -578,6 +772,22 @@ function attachAdminSignatureLogic() {
     }
   };
 
+  // Centralized helpers for determining school type and config
+  const resolveSchoolTypeKey = (info = schoolInfo) => {
+    if (!info) return null;
+    const raw = info.schoolType || info.type || info.schoolType || (info.school && (info.school.type || info.school.schoolType));
+    if (!raw) return null;
+    const rawType = String(raw).toLowerCase().replace(/[^a-z]/g, '_');
+    if (rawType.includes('primary') || rawType.includes('junior')) return 'primary_junior';
+    if (rawType.includes('senior')) return 'senior';
+    return 'full';
+  };
+
+  const getSchoolConfig = (info = schoolInfo) => {
+    const key = resolveSchoolTypeKey(info);
+    return key && SCHOOL_TYPES[key] ? { key, config: SCHOOL_TYPES[key] } : null;
+  };
+
   const normalizeGrade = (g) => {
     if (!g) return "";
     const str = String(g).trim();
@@ -587,17 +797,12 @@ function attachAdminSignatureLogic() {
     return match ? `Grade ${match[0]}` : g;
   };
 
-  const getSchoolTypeKey = () => {
-    if (!schoolInfo || !schoolInfo.schoolType) return 'full';
-    const rawType = String(schoolInfo.schoolType).toLowerCase().replace(/[^a-z]/g, '_');
-    if (rawType.includes('primary') || rawType.includes('junior')) return 'primary_junior';
-    if (rawType.includes('senior')) return 'senior';
-    return 'full';
-  };
+  const getSchoolTypeKey = () => resolveSchoolTypeKey();
 
   const supportsElectivesManagement = () => {
-    const schoolType = getSchoolTypeKey();
-    return schoolType === 'senior' || schoolType === 'full';
+    const s = getSchoolConfig();
+    if (!s) return false;
+    return s.key === 'senior' || s.key === 'full';
   };
 
   const applyElectivesSidebarVisibility = () => {
@@ -619,10 +824,73 @@ function attachAdminSignatureLogic() {
     }
   };
 
+  // Ensure electives nav is hidden until we know the school type (prevents a flash of incorrect nav)
+  applyElectivesSidebarVisibility();
+
+  // Small allocation/loading indicators for grade dropdowns and allocation tables
+  function showAllocationLoadingIndicators() {
+    try {
+      if (gradeRangeSelect) {
+        gradeRangeSelect.innerHTML = '<option value="">Loading ranges...</option>';
+        gradeRangeSelect.disabled = true;
+      }
+      if (classGradeSelect) {
+        classGradeSelect.innerHTML = '<option value="">Loading grades...</option>';
+        classGradeSelect.disabled = true;
+      }
+      if (promotionGradeSelect) {
+        promotionGradeSelect.innerHTML = '<option value="all">Loading...</option>';
+        promotionGradeSelect.disabled = true;
+      }
+
+      if (subjectAllocTable) {
+        const tbody = subjectAllocTable.querySelector('tbody');
+        if (tbody && !document.getElementById('subjectAllocLoadingRow')) {
+          const tr = document.createElement('tr');
+          tr.id = 'subjectAllocLoadingRow';
+          tr.innerHTML = `<td colspan="99" style="text-align:center"><span class="spinner"></span> Loading subjects...</td>`;
+          tbody.prepend(tr);
+        }
+      }
+
+      if (classAllocTable) {
+        const tbody = classAllocTable.querySelector('tbody');
+        if (tbody && !document.getElementById('classAllocLoadingRow')) {
+          const tr = document.createElement('tr');
+          tr.id = 'classAllocLoadingRow';
+          tr.innerHTML = `<td colspan="99" style="text-align:center"><span class="spinner"></span> Loading classes...</td>`;
+          tbody.prepend(tr);
+        }
+      }
+    } catch (e) { console.warn('Allocation loading indicator error', e); }
+  }
+
+  function hideAllocationLoadingIndicators() {
+    try {
+      if (gradeRangeSelect) {
+        gradeRangeSelect.disabled = false;
+      }
+      if (classGradeSelect) {
+        classGradeSelect.disabled = false;
+      }
+      if (promotionGradeSelect) {
+        promotionGradeSelect.disabled = false;
+      }
+      const sRow = document.getElementById('subjectAllocLoadingRow');
+      if (sRow) sRow.remove();
+      const cRow = document.getElementById('classAllocLoadingRow');
+      if (cRow) cRow.remove();
+    } catch (e) { console.warn('Allocation hide indicator error', e); }
+  }
+
   const populateGradeRangeOptions = () => {
     if (!gradeRangeSelect) return;
-    const schoolType = getSchoolTypeKey();
-    const options = SCHOOL_TYPES[schoolType].rangeOptions;
+    const s = getSchoolConfig();
+    if (!s) {
+      gradeRangeSelect.innerHTML = '<option value="">-- Select Range --</option>';
+      return;
+    }
+    const options = s.config.rangeOptions;
 
     gradeRangeSelect.innerHTML = '<option value="">-- Select Range --</option>';
     options.forEach(range => {
@@ -640,8 +908,12 @@ function attachAdminSignatureLogic() {
 
   const populateClassGradeOptions = () => {
     if (!classGradeSelect) return;
-    const schoolType = getSchoolTypeKey();
-    const options = SCHOOL_TYPES[schoolType].gradeOptions;
+    const s = getSchoolConfig();
+    if (!s) {
+      classGradeSelect.innerHTML = '<option value="">-- Select Grade --</option>';
+      return;
+    }
+    const options = s.config.gradeOptions;
 
     classGradeSelect.innerHTML = '<option value="">-- Select Grade --</option>';
     options.forEach(grade => {
@@ -654,8 +926,12 @@ function attachAdminSignatureLogic() {
 
   const populatePromotionGradeOptions = () => {
     if (!promotionGradeSelect) return;
-    const schoolType = getSchoolTypeKey();
-    const options = SCHOOL_TYPES[schoolType].gradeOptions;
+    const s = getSchoolConfig();
+    if (!s) {
+      promotionGradeSelect.innerHTML = '<option value="all">-- All Grades --</option>';
+      return;
+    }
+    const options = s.config.gradeOptions;
 
     promotionGradeSelect.innerHTML = '<option value="all">-- All Grades --</option>';
     options.forEach(grade => {
@@ -827,10 +1103,19 @@ function setupPromotionProgressBar() {
 
   // 🆕 1. Local Filtering: filter already fetched learners for speed
   if (promoData.length > 0 && search) {
-    const filtered = promoData.filter(s => 
-      (s.name || "").toLowerCase().includes(search) || 
-      (s.admission || "").toLowerCase().includes(search)
-    );
+    // 🆕 Smart search: exact match for numeric admission, substring for names
+    const isNumericSearch = /^\d+$/.test(search); // Check if search is all digits
+    
+    const filtered = promoData.filter(s => {
+      if (isNumericSearch) {
+        // For numeric searches, match admission exactly (not substring)
+        return (s.admission || "").toString() === search;
+      } else {
+        // For text searches, match name by substring
+        return (s.name || "").toLowerCase().includes(search);
+      }
+    });
+    
     renderPromotionPreview(filtered);
     const controls = document.getElementById("promoPaginationControls");
     if (controls) controls.style.display = "none"; // Hide pagination while filtering
@@ -1129,7 +1414,13 @@ confirmPromotionBtn.addEventListener("click", async () => {
     if (!teacherSelect || !classTeacherSelect) return;
     teacherSelect.innerHTML = '<option value="">-- Select Teacher --</option>';
     classTeacherSelect.innerHTML = '<option value="">-- Select Teacher --</option>';
-    users.filter(u => u.role === "teacher").forEach(u => {
+    const teachers = users.filter(u => u.role === "teacher");
+    if (!teachers || teachers.length === 0) {
+      teacherSelect.innerHTML = '<option value="">No teachers found</option>';
+      classTeacherSelect.innerHTML = '<option value="">No teachers found</option>';
+      return;
+    }
+    teachers.forEach(u => {
       const opt1 = document.createElement("option");
       const opt2 = document.createElement("option");
       opt1.value = opt2.value = u._id;
@@ -1261,7 +1552,11 @@ confirmPromotionBtn.addEventListener("click", async () => {
 
     try { // 🆕 Include search term in the API call
       const res = await secureFetch(`${API_BASE}/users?role=teacher&page=${page}&limit=10&search=${encodeURIComponent(teacherSearchTerm)}`);
-      if (!res || !res.users) return;
+      if (!res || !res.users) {
+        // Ensure selects show 'No teachers' if API returned empty or invalid
+        populateTeacherSelects([]);
+        return;
+      }
 
       teacherListPage = res.page || page;
       teacherListTotalPages = res.pages || 1;
@@ -1932,16 +2227,50 @@ async function loadTermLockStatus() {
     const res = await secureFetch(`${API_BASE}/settings/term-lock?year=${year}&term=${term}`);
     if (res) {
       const isLocked = res.isLocked;
+      // Default: edits disabled unless explicitly enabled by admin
+      const allowTeacherSubmittedMarkEdits = res.allowTeacherSubmittedMarkEdits === true;
       termLockStatusDisplay.textContent = isLocked ? "LOCKED" : "UNLOCKED";
       termLockStatusDisplay.style.color = isLocked ? "red" : "green";
       termLockToggleButton.checked = isLocked;
       termLockToggleButton.disabled = false;
+
+      if (submittedMarksEditStatusDisplay && submittedMarksEditToggleButton) {
+        submittedMarksEditStatusDisplay.textContent = allowTeacherSubmittedMarkEdits ? "Enabled" : "Disabled";
+        submittedMarksEditStatusDisplay.style.color = allowTeacherSubmittedMarkEdits ? "green" : "red";
+        submittedMarksEditToggleButton.checked = allowTeacherSubmittedMarkEdits;
+        submittedMarksEditToggleButton.disabled = false;
+      }
+      // Clear any existing poll
+      if (termLockPollIntervalId) clearInterval(termLockPollIntervalId);
+      // Start a short polling loop to pick up teacher-submitted changes quickly
+      termLockPollIntervalId = setInterval(async () => {
+        try {
+          const p = await secureFetch(`${API_BASE}/settings/term-lock?year=${year}&term=${term}`);
+          if (!p) return;
+          const pIsLocked = p.isLocked;
+          const pAllowEdits = p.allowTeacherSubmittedMarkEdits === true;
+          // Update admin UI if changed
+          termLockStatusDisplay.textContent = pIsLocked ? "LOCKED" : "UNLOCKED";
+          termLockStatusDisplay.style.color = pIsLocked ? "red" : "green";
+          termLockToggleButton.checked = pIsLocked;
+          if (submittedMarksEditStatusDisplay && submittedMarksEditToggleButton) {
+            submittedMarksEditStatusDisplay.textContent = pAllowEdits ? "Enabled" : "Disabled";
+            submittedMarksEditStatusDisplay.style.color = pAllowEdits ? "green" : "red";
+            submittedMarksEditToggleButton.checked = pAllowEdits;
+          }
+        } catch (e) { console.warn('Term lock poll error', e); }
+      }, 5000);
     }
   } catch (err) {
     console.error("Error loading term lock status:", err);
     termLockStatusDisplay.textContent = "Error loading status";
     termLockStatusDisplay.style.color = "orange";
     termLockToggleButton.disabled = true;
+    if (submittedMarksEditStatusDisplay && submittedMarksEditToggleButton) {
+      submittedMarksEditStatusDisplay.textContent = "Error";
+      submittedMarksEditStatusDisplay.style.color = "orange";
+      submittedMarksEditToggleButton.disabled = true;
+    }
   }
 }
 
@@ -1951,6 +2280,7 @@ async function saveTermLockStatus() {
   const year = termLockYearSelect.value;
   const term = termLockTermSelect.value;
   const isLocked = termLockToggleButton.checked;
+  const allowTeacherSubmittedMarkEdits = submittedMarksEditToggleButton ? submittedMarksEditToggleButton.checked : true;
 
   if (!year || !term) {
     showToast("Please select a year and term.", "error");
@@ -1962,7 +2292,7 @@ async function saveTermLockStatus() {
   try {
     const res = await secureFetch(`${API_BASE}/settings/term-lock`, {
       method: "PUT",
-      body: JSON.stringify({ year: Number(year), term: Number(term), isLocked })
+      body: JSON.stringify({ year: Number(year), term: Number(term), isLocked, allowTeacherSubmittedMarkEdits })
     });
 
     if (res) {
@@ -1982,6 +2312,11 @@ termLockYearSelect?.addEventListener("change", loadTermLockStatus);
 termLockTermSelect?.addEventListener("change", loadTermLockStatus);
 saveTermLockBtn?.addEventListener("click", saveTermLockStatus);
 
+// Clean up polling when navigating away
+window.addEventListener('beforeunload', () => {
+  if (termLockPollIntervalId) clearInterval(termLockPollIntervalId);
+});
+
   // IMPORTANT: Ensure your admin.html file has the following list item within the <ul class="menu">
   // for the "Digital Signature" navigation to appear:
   /*
@@ -1993,22 +2328,39 @@ saveTermLockBtn?.addEventListener("click", saveTermLockStatus);
 
 (async function initialLoad() {
   if (isRefreshing) return;
+  showAdminInitOverlay();
   try { 
     const user = await authService.getUserProfile(["admin"]);
     if (!user) return;
     authService.initLogout();
 
+    const profileSchoolName = user.schoolName || user.school?.name || user.school?.schoolName || "";
+    if (profileSchoolName) {
+      applySidebarBrandName(profileSchoolName);
+    }
+    if (user.schoolId) {
+      localStorage.setItem("schoolId", user.schoolId);
+    }
+
+    // Ensure school info is loaded first so grade-related dropdowns can populate
+    showAllocationLoadingIndicators();
+    try {
+      await loadSchoolInfo();
+    } finally {
+      hideAllocationLoadingIndicators();
+    }
     await Promise.all([
       loadTeacherOptions(),
       loadSubjectAllocations(),
       loadClassAllocations(),
-      loadSchoolInfo(), // Add comma here
-          setupPromotionProgressBar() // Call to setup progress bar
-    ]); 
+      setupPromotionProgressBar()
+    ]);
     initTeacherDropdownPagination();
     setupNavigation();
   } catch (err) { 
     console.error("Initial load error:", err); 
+  } finally {
+    removeAdminInitOverlay();
   }
 })();
 
@@ -2016,6 +2368,13 @@ saveTermLockBtn?.addEventListener("click", saveTermLockStatus);
 // ---------------------------
 // FORM SUBMISSIONS
 // ---------------------------
+
+  const isStreamSelectionRequired = (streamSelect) => {
+    if (!streamSelect) return false;
+    const responseOptions = Array.from(streamSelect.options || []).filter(opt => String(opt.value || "").trim() !== "");
+    return responseOptions.length > 0;
+  };
+
 //subject allocation form handler
   if (subjectAllocForm) {
     subjectAllocForm.addEventListener("submit", async (e) => {
@@ -2025,9 +2384,11 @@ saveTermLockBtn?.addEventListener("click", saveTermLockStatus);
       const grades = gradesSelect ? Array.from(gradesSelect.selectedOptions).map(opt => opt.value) : [];
       const grade = grades.length > 0 ? grades[0] : "";
       const subjects = subjectsSelect ? Array.from(subjectsSelect.selectedOptions).map(opt => opt.value) : [];
+      const stream = (streamInput && streamInput.value !== "") ? streamInput.value : null;
 
       if (!teacherId) return showToast("Please select a teacher.", "error");
       if (!grade) return showToast("Please select a Grade.", "error");
+      if (isStreamSelectionRequired(streamInput) && !stream) return showToast("Please select a Stream for this grade before assigning subjects.", "error");
       if (subjects.length === 0) return showToast("Please select at least one subject.", "error");
 
       const ok = await showConfirm({
@@ -2040,7 +2401,6 @@ saveTermLockBtn?.addEventListener("click", saveTermLockStatus);
       window.spinner?.show(submitBtn, "Saving...");
 
       const gradeRange = gradeRangeSelect?.value || "";
-      const stream = (streamInput && streamInput.value !== "") ? streamInput.value : null; 
       
       const res = await secureFetch(`${API_BASE}/users/subjects/assign`, {
         method: 'POST',
@@ -2065,6 +2425,7 @@ saveTermLockBtn?.addEventListener("click", saveTermLockStatus);
 
     if (!teacherId) return showToast("Please select a teacher.", "error");
     if (!assignedClass) return showToast("Please select a Grade.", "error");
+    if (isStreamSelectionRequired(classStreamInput) && !assignedStream) return showToast("Please select a Stream for this grade before assigning a class.", "error");
 
     const ok = await showConfirm({
       title: "Assign Class Teacher",
@@ -2299,8 +2660,12 @@ promotionPreviewBody?.addEventListener("change", (e) => {
   // ---------------------------
   function populateBulkDeleteGradeOptions() {
     if (!bulkDeleteGradeSelect) return;
-    const schoolType = getSchoolTypeKey();
-    const grades = SCHOOL_TYPES[schoolType].gradeOptions;
+    const s = getSchoolConfig();
+    if (!s) {
+      bulkDeleteGradeSelect.innerHTML = '<option value="">-- Select Grade --</option>';
+      return;
+    }
+    const grades = s.config.gradeOptions;
     bulkDeleteGradeSelect.innerHTML = '<option value="">-- Select Grade --</option>';
     grades.forEach(g => {
       const opt = document.createElement('option');
@@ -3022,10 +3387,13 @@ if (announcementForm) {
   // 🆕 Helper to populate the grade dropdown for SMS targeting
   const populateTargetGrades = () => {
     if (!targetGradeSelect) return;
-    const type = getSchoolTypeKey();
-    const grades = SCHOOL_TYPES[type].gradeOptions;
-    
+    const s = getSchoolConfig();
+    if (!s) {
+      targetGradeSelect.innerHTML = '<option value="all">All Grades</option>';
+      return;
+    }
     targetGradeSelect.innerHTML = '<option value="all">All Grades</option>';
+    const grades = s.config.gradeOptions;
     grades.forEach(g => {
       const opt = document.createElement("option");
       opt.value = `Grade ${g}`;

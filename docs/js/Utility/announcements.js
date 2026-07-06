@@ -40,6 +40,13 @@ const AnnouncementSystem = (() => {
             console.log(`📢 Route Check: Path is "${cleanPath}"`);
 
             announcements.forEach(ann => {
+                const expiresAt = ann.expiresAt ? new Date(ann.expiresAt) : null;
+                const isExpired = expiresAt && expiresAt <= new Date();
+                if (isExpired) {
+                    console.log(`⏰ Skipping expired announcement: ${ann.title}`);
+                    return;
+                }
+
                 // Normalize the target page from the DB for comparison
                 const target = ann.targetPage.toLowerCase().replace(/^\/|\/$/g, '').replace(/\.html$/, '');
                 console.log(`🔍 Checking announcement "${ann.title}" against target: "${target}" (Original: "${ann.targetPage}")`);

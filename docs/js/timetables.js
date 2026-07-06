@@ -24,6 +24,47 @@ const TimetableModule = (function() {
         return SUBJECT_DATA.getSubjectType(sub);
     }
 
+    function isMorningPreferredSubject(sub) {
+        const name = String(sub || "").trim().toLowerCase();
+        return ["pe", "physical education", "sports and physical education", "physical health education", "sports", "sports and recreation"].some(alias => name === alias || name.includes(alias));
+    }
+
+    function isSubjectAllowedForPathway(sub, grade, pathway = "") {
+        const subject = String(sub || "").trim();
+        if (!subject || subject === "PPI") return true;
+        if (!window.cbcUtils?.isSeniorGrade?.(grade)) return true;
+
+        const selectedPathway = window.cbcUtils?.normalizePathway?.(pathway) || (String(pathway || "").trim());
+        if (!selectedPathway) return true;
+
+        const normalizedSubject = window.SUBJECT_DATA?.normalizeSeniorSubjectName?.(subject) || subject;
+        const pathwayForSubject = window.SUBJECT_DATA?.getSeniorPathway?.(normalizedSubject) || "";
+        const pathwayForSubjectNorm = window.cbcUtils?.normalizePathway?.(pathwayForSubject) || String(pathwayForSubject || "").trim();
+
+        if (!pathwayForSubjectNorm) {
+            return false;
+        }
+
+        return pathwayForSubjectNorm === "Core" || pathwayForSubjectNorm === selectedPathway;
+    }
+
+    function getDoubleLessonBlockCount(subName) {
+        const counts = placementRules?.doubleLessons?.counts || {};
+        if (counts[subName] !== undefined) return counts[subName];
+        return placementRules?.doubleLessons?.subjects?.includes(subName) ? 1 : 0;
+    }
+
+    function sanitizeGridForPathway(gridData, grade, pathway = "") {
+        if (!Array.isArray(gridData)) return [];
+        return gridData.map(row => {
+            if (!Array.isArray(row)) return [];
+            return row.map(cell => {
+                const subject = String(cell || "").trim();
+                return subject && !isSubjectAllowedForPathway(subject, grade, pathway) ? "" : subject;
+            });
+        });
+    }
+
     /**
      * 🆕 Provides default weekly frequencies for subjects
      */
@@ -60,11 +101,17 @@ const TimetableModule = (function() {
     /**
      * 🆕 Helper to initialize or refresh frequencies for a grade/stream context
      */
-    function ensureFrequenciesInitialized(grade, stream) {
+    function ensureFrequenciesInitialized(grade, stream, pathway = "") {
         if (!grade) return;
-        const allocated = getAllocatedSubjectsForGrade(grade, stream);
+        const allocated = getAllocatedSubjectsForGrade(grade, stream, pathway);
         if (!lessonFrequencies[grade]) lessonFrequencies[grade] = {};
-        
+
+        Object.keys(lessonFrequencies[grade]).forEach(sub => {
+            if (!allocated.includes(sub) && sub !== "PPI") {
+                delete lessonFrequencies[grade][sub];
+            }
+        });
+
         allocated.forEach(sub => {
             if (lessonFrequencies[grade][sub] === undefined) {
                 lessonFrequencies[grade][sub] = getDefaultFrequency(sub, grade);
@@ -135,7 +182,16 @@ const TimetableModule = (function() {
         },
         doubleLessons: {
             enabled: true,
-            subjects: ["Integrated Science", "Agriculture", "Pre-Technical Studies", "Performing Arts C/A(p)"]
+            subjects: ["Mathematics", "Biology", "Chemistry", "Physics", "Computer Studies", "Computer Science", "Electricity", "Integrated Science", "Agriculture", "Pre-Technical Studies", "Performing Arts C/A(p)"],
+            counts: {
+                Mathematics: 1,
+                Biology: 2,
+                Chemistry: 2,
+                Physics: 2,
+                "Computer Studies": 2,
+                "Computer Science": 2,
+                Electricity: 2
+            }
         },
         strictFrequencyMode: {
             enabled: false
@@ -246,9 +302,9 @@ const TimetableModule = (function() {
             settings.lessonsPerDay = 9;
             settings.schoolDayEnd = "17:05";
             settings.breaks = [
-                { name: "BREAK", afterLesson: 2, duration: 15 },
-                { name: "BREAK", afterLesson: 4, duration: 20 },
-                { name: "LUNCH", afterLesson: 6, duration: 70 }
+                { name: "BREAK", afterLesson: 2, duration: 30 },
+                { name: "BREAK", afterLesson: 4, duration: 10 },
+                { name: "LUNCH", afterLesson: 6, duration: 60 }
             ];
         }
     }
@@ -1218,11 +1274,33 @@ const TimetableModule = (function() {
             }
 
             // 🆕 Initialize frequencies for the grade
-            ensureFrequenciesInitialized(grade, document.getElementById('ttStreamSelect')?.value || "");
+            const streamVal = document.getElementById('ttStreamSelect')?.value || "";
+            const pathwayRawVal = document.getElementById('ttPathwaySelect')?.value || "";
+            const pathwayVal = window.cbcUtils?.normalizePathway?.(pathwayRawVal) || (String(pathwayRawVal || "").trim());
+            ensureFrequenciesInitialized(
+                grade,
+                streamVal,
+                pathwayVal
+            );
 
             // 🆕 Populate schedule defaults based on grade level
             updateScheduleSettingsForGrade(grade);
         });
+
+        const ttPathwaySelect = document.getElementById('ttPathwaySelect');
+        if (ttPathwaySelect) {
+            ttPathwaySelect.addEventListener('change', () => {
+                const grade = document.getElementById('ttGradeSelect')?.value;
+                const stream = document.getElementById('ttStreamSelect')?.value || "";
+                if (grade && window.cbcUtils?.isSeniorGrade(grade)) {
+                    const pathwayVal = window.cbcUtils?.normalizePathway?.(ttPathwaySelect.value || "") || (String(ttPathwaySelect.value || "").trim());
+                    ensureFrequenciesInitialized(grade, stream, pathwayVal);
+                    if (currentTimetableData?.grid) {
+                        renderGrid(grade, stream, false, pathwayVal);
+                    }
+                }
+            });
+        }
         }
         
         const configureFrequenciesBtn = document.getElementById('configureFrequenciesBtn');
@@ -1403,25 +1481,47 @@ const TimetableModule = (function() {
     /**
      * 🆕 Extracts unique subjects allocated to a grade from the backend data
      */
-    function getAllocatedSubjectsForGrade(grade, stream = "") {
+    function getAllocatedSubjectsForGrade(grade, stream = "", pathway = "") {
         const subjects = new Set();
-        // Use centralized normalization for consistent matching between UI and DB
         const normalizedTarget = (window.cbcUtils?.normalizeGrade(grade) || grade).toLowerCase().trim();
         const streamTarget = (stream || "").toLowerCase().trim();
+        const selectedPathway = window.cbcUtils?.normalizePathway?.(pathway) || (String(pathway || "").trim());
+        const isSenior = window.cbcUtils?.isSeniorGrade(grade);
 
         schoolAllocations.forEach(teacher => {
             (teacher.allocations || []).forEach(alloc => {
                 const allocGrade = (window.cbcUtils?.normalizeGrade(alloc.grade) || alloc.grade).toLowerCase().trim();
                 const allocStream = (alloc.stream || "").toLowerCase().trim();
-                
-                if (allocGrade === normalizedTarget && allocStream === streamTarget) {
-                    (alloc.subjects || []).forEach(sub => subjects.add(sub));
+
+                if (allocGrade !== normalizedTarget || allocStream !== streamTarget) {
+                    return;
                 }
+
+                (alloc.subjects || []).forEach(sub => {
+                    const normalizedSubject = window.SUBJECT_DATA?.normalizeSeniorSubjectName?.(sub) || sub;
+                    if (!normalizedSubject) {
+                        return;
+                    }
+
+                    if (!isSenior) {
+                        subjects.add(normalizedSubject);
+                        return;
+                    }
+
+                    if (!selectedPathway) {
+                        subjects.add(normalizedSubject);
+                        return;
+                    }
+
+                    const pathwayForSubject = window.SUBJECT_DATA?.getSeniorPathway?.(normalizedSubject) || "";
+                    const pathwayForSubjectNorm = window.cbcUtils?.normalizePathway?.(pathwayForSubject) || String(pathwayForSubject || "").trim();
+                    if (pathwayForSubjectNorm === "Core" || pathwayForSubjectNorm === selectedPathway) {
+                        subjects.add(normalizedSubject);
+                    }
+                });
             });
         });
 
-        // 🆕 Inject mandatory subjects if not present (Frequency defaults to 0 for Junior/Senior)
-        // PPI should appear in the frequency list for all grades to allow visibility/toggling
         if (grade) {
             subjects.add("PPI");
         }
@@ -1435,8 +1535,10 @@ const TimetableModule = (function() {
         document.getElementById('freqModalTitle').textContent = `Frequencies for ${grade}`;
         
         const stream = document.getElementById('ttStreamSelect')?.value || "";
+        const rawPathway = window.cbcUtils?.isSeniorGrade(grade) ? document.getElementById('ttPathwaySelect')?.value || "" : "";
+        const pathway = window.cbcUtils?.normalizePathway?.(rawPathway) || (String(rawPathway || "").trim());
 
-        const subjects = getAllocatedSubjectsForGrade(grade, stream);
+        const subjects = getAllocatedSubjectsForGrade(grade, stream, pathway);
 
         if (subjects.length === 0) {
             container.innerHTML = `
@@ -2107,6 +2209,8 @@ const TimetableModule = (function() {
 
             const grade = document.getElementById('ttGradeSelect')?.value;
             const stream = document.getElementById('ttStreamSelect')?.value || "";
+            const pathwayRaw = window.cbcUtils?.isSeniorGrade(grade) ? document.getElementById('ttPathwaySelect')?.value || "" : "";
+            const pathway = window.cbcUtils?.normalizePathway?.(pathwayRaw) || (String(pathwayRaw || "").trim());
             const output = document.getElementById('timetableOutput');
             const placeholder = document.getElementById('ttPlaceholder');
 
@@ -2139,12 +2243,12 @@ const TimetableModule = (function() {
                 </div>`;
 
             // 🆕 Initialize frequencies for any newly discovered subjects
-            ensureFrequenciesInitialized(grade, stream);
+            ensureFrequenciesInitialized(grade, stream, pathway);
 
             // Simulation of Engine Logic (using Promise to allow await)
             await new Promise(resolve => {
                 setTimeout(() => {
-                    renderGrid(grade, stream);
+                    renderGrid(grade, stream, true, pathway);
                     window.showToast(`Timetable for ${grade} generated successfully!`, "success");
                     resolve();
                 }, 2000);
@@ -2826,7 +2930,8 @@ const eyBreaks = [
         `;
 
         // Populate dropdown with all allocated subjects for this grade
-        const subjects = getAllocatedSubjectsForGrade(currentTimetableData.grade, stream);
+        const currentPathway = currentTimetableData.pathway || "";
+        const subjects = getAllocatedSubjectsForGrade(currentTimetableData.grade, stream, currentPathway);
         selectEl.innerHTML = '<option value="">-- Remove Subject (Empty) --</option>';
         subjects.forEach(sub => {
             const teacherInfo = getTeacherForSubject(currentTimetableData.grade, stream, sub);
@@ -2950,22 +3055,22 @@ const eyBreaks = [
             for (const subName of doublesCandidates) {
                 if (doublePlacedToday) break; // Inhibit multiple doubles per day
                 const countInDay = dayPool.filter(s => s === subName).length;
-                if (countInDay < 2) continue;
+                const requiredBlocks = getDoubleLessonBlockCount(subName);
+                if (requiredBlocks <= 0 || countInDay < 2) continue;
 
-                // 🆕 Ensure we only place one double per week for this subject
-                let alreadyHasDouble = false;
+                // 🆕 Ensure we only place the configured number of doubles per week for this subject
+                let existingDoubleBlocksThisWeek = 0;
                 for (let d = 0; d < 5; d++) {
                     if (d === dayIdx) continue;
                     for (let l = 0; l < grid.length - 1; l++) {
                         if (grid[l][d] === subName && grid[l + 1][d] === subName) {
-                            alreadyHasDouble = true;
+                            existingDoubleBlocksThisWeek += 1;
                             break;
                         }
                     }
-                    if (alreadyHasDouble) break;
                 }
 
-                if (!alreadyHasDouble) {
+                if (existingDoubleBlocksThisWeek < requiredBlocks) {
                     // 🆕 Refined Double Lesson Constraints:
                     // Avoid early morning (L1-L4).
                     // Allow slots from Lesson 5 onwards (L5-L6, L7-L8, L8-L9).
@@ -3597,11 +3702,12 @@ const eyBreaks = [
         };
     }
 
-    function renderGrid(grade, stream = "", generateNew = true) {
+    function renderGrid(grade, stream = "", generateNew = true, pathway = "") {
         const output = document.getElementById('timetableOutput');
         const days = ["MON", "TUE", "WED", "THU", "FRI"];
         const isSenior = window.cbcUtils && window.cbcUtils.isSeniorGrade(grade);
-        const pathway = isSenior ? document.getElementById('ttPathwaySelect').value : "";
+        const pathwayFromUI = window.cbcUtils?.normalizePathway?.(document.getElementById('ttPathwaySelect')?.value || "") || (document.getElementById('ttPathwaySelect')?.value || "");
+        const pathwayValue = isSenior ? (window.cbcUtils?.normalizePathway?.(pathway) || pathwayFromUI || window.cbcUtils?.normalizePathway?.(currentTimetableData?.pathway || "") || (currentTimetableData?.pathway || "")) : "";
         const academicYear = document.getElementById('ttYearSelect').value;
         const term = document.getElementById('ttTermSelect')?.value || "Term 1";
         const selectedStream = stream || document.getElementById('ttStreamSelect')?.value || "";
@@ -3612,13 +3718,18 @@ const eyBreaks = [
         const isPrimary = (gradeNum >= 1 && gradeNum <= 6) || isEarlyYears;
         const isJunior = gradeNum >= 7 && gradeNum <= 9;
 
-        // Get frequencies for this grade
-        const freqs = lessonFrequencies[grade] || {};
+        // Get frequencies for this grade and strictly filter them to the selected pathway
+        const freqs = Object.fromEntries(
+            Object.entries(lessonFrequencies[grade] || {}).filter(([sub]) => isSubjectAllowedForPathway(sub, grade, pathwayValue))
+        );
 
         // 1. GENERATE ASSIGNMENTS (Skip if just refreshing for a manual edit)
         if (generateNew) selectedSwapSlot = null; // 🆕 Clear swap selection on fresh generation
 
         let grid = generateNew ? [] : (currentTimetableData?.grid || []);
+        if (isSenior && pathwayValue) {
+            grid = sanitizeGridForPathway(grid, grade, pathwayValue);
+        }
         if (generateNew) {
             // 🆕 Initialize empty 2D grid and local frequency tracker
             grid = Array.from({ length: settings.lessonsPerDay }, () => Array(5).fill(""));
@@ -3631,41 +3742,44 @@ const eyBreaks = [
                 const subjectsWithDoubles = placementRules.doubleLessons.subjects;
 
                 subjectsWithDoubles.forEach(subName => {
-                    if (freqsCopy[subName] >= 2) {
-                        let doublePlaced = false;
-                        
-                        // 🆕 Specialized day ordering: Prioritize early week for lab/practical subjects
-                        const earlyWeekPriority = ["Integrated Science", "Agriculture"];
-                        let dayOrder = [0, 1, 2, 3, 4];
-                        if (!earlyWeekPriority.includes(subName)) {
-                            dayOrder.sort(() => Math.random() - 0.5);
-                        }
-                        // 🆕 Refined Double Lesson Constraints:
-                        // Avoid early morning (L1-L4).
-                        // Allow L5-L6 (Mid-day) or Lesson 7 and beyond.
-                        let validPairs = [ [4, 5], [6, 7], [7, 8] ];
-                        validPairs.sort(() => Math.random() - 0.5);
+                    const blockCount = getDoubleLessonBlockCount(subName);
+                    if (!blockCount || freqsCopy[subName] < 2) return;
 
-                        for (const d of dayOrder) {
-                            if (daysWithDoubles.has(d)) continue; // Inhibit multiple doubles per day
+                    let placedBlocks = 0;
+                    const requiredLessons = blockCount * 2;
+                    if (freqsCopy[subName] < requiredLessons) return;
 
-                            for (const [l1, l2] of validPairs) {
-                                if (l1 >= settings.lessonsPerDay || l2 >= settings.lessonsPerDay) continue;
-                                if (grid[l1][d] || grid[l2][d]) continue; // Ensure slots are empty
-                                
-                                const t = getTeacherForSubject(grade, stream, subName);
-                                if (!isTeacherBusy(t?.id, d, l1, grade, stream) && !isTeacherBusy(t?.id, d, l2, grade, stream)) {
-                                    grid[l1][d] = subName;
-                                    grid[l2][d] = subName;
-                                    subjectsScheduledToday[d].add(subName);
-                                    freqsCopy[subName] -= 2; // Ensure remaining lessons are single
-                                    doublePlaced = true;
-                                    daysWithDoubles.add(d);
-                                    break;
-                                }
+                    // 🆕 Specialized day ordering: Prioritize early week for lab/practical subjects
+                    const earlyWeekPriority = ["Integrated Science", "Agriculture"];
+                    let dayOrder = [0, 1, 2, 3, 4];
+                    if (!earlyWeekPriority.includes(subName)) {
+                        dayOrder.sort(() => Math.random() - 0.5);
+                    }
+                    // 🆕 Refined Double Lesson Constraints:
+                    // Avoid early morning (L1-L4).
+                    // Allow L5-L6 (Mid-day) or Lesson 7 and beyond.
+                    let validPairs = [ [4, 5], [6, 7], [7, 8] ];
+                    validPairs.sort(() => Math.random() - 0.5);
+
+                    for (const d of dayOrder) {
+                        if (daysWithDoubles.has(d)) continue; // Inhibit multiple doubles per day
+
+                        for (const [l1, l2] of validPairs) {
+                            if (l1 >= settings.lessonsPerDay || l2 >= settings.lessonsPerDay) continue;
+                            if (grid[l1][d] || grid[l2][d]) continue; // Ensure slots are empty
+
+                            const t = getTeacherForSubject(grade, stream, subName);
+                            if (!isTeacherBusy(t?.id, d, l1, grade, stream) && !isTeacherBusy(t?.id, d, l2, grade, stream)) {
+                                grid[l1][d] = subName;
+                                grid[l2][d] = subName;
+                                subjectsScheduledToday[d].add(subName);
+                                freqsCopy[subName] -= 2; // Ensure remaining lessons are single
+                                placedBlocks += 1;
+                                daysWithDoubles.add(d);
+                                break;
                             }
-                            if (doublePlaced) break;
                         }
+                        if (placedBlocks >= blockCount) break;
                     }
                 });
             }
@@ -3685,7 +3799,36 @@ const eyBreaks = [
                 }
             }
 
-            // 🆕 Step 2.2: Priority placement for Core Subjects (Guarantees frequencies)
+            // 🆕 Step 2.2: Priority placement for PE / Sports in morning slots
+            if (placementRules.sportsPreference.enabled) {
+                const preferredMorningSubjects = Object.keys(freqsCopy)
+                    .filter(sub => isMorningPreferredSubject(sub))
+                    .sort((a, b) => freqsCopy[b] - freqsCopy[a]);
+
+                preferredMorningSubjects.forEach(subName => {
+                    if (freqsCopy[subName] <= 0) return;
+                    const morningSlots = [];
+                    for (let l = 0; l < 4; l++) {
+                        for (let d = 0; d < 5; d++) {
+                            if (!grid[l][d]) morningSlots.push({ l, d });
+                        }
+                    }
+                    morningSlots.sort(() => Math.random() - 0.5);
+
+                    const teacherInfo = getTeacherForSubject(grade, stream, subName);
+                    for (const slot of morningSlots) {
+                        if (freqsCopy[subName] <= 0) break;
+                        if (subjectsScheduledToday[slot.d].has(subName) && freqs[subName] <= 5) continue;
+                        if (isTeacherBusy(teacherInfo?.id, slot.d, slot.l, grade, stream)) continue;
+
+                        grid[slot.l][slot.d] = subName;
+                        subjectsScheduledToday[slot.d].add(subName);
+                        freqsCopy[subName]--;
+                    }
+                });
+            }
+
+            // 🆕 Step 2.3: Priority placement for Core Subjects (Guarantees frequencies)
             if (placementRules.coreSubjectsPreference.enabled) {
                 const coreSubjects = placementRules.coreSubjectsPreference.subjects;
                 // Identify core subjects in the remaining frequencies
@@ -3795,6 +3938,9 @@ const eyBreaks = [
 
                     if (freq <= 5 && subjectsScheduledToday[day].has(candidate)) continue;
 
+                    // 🆕 Strict once-per-day rule for single-frequency subjects
+                    if (freq <= 5 && subjectsScheduledToday[day].has(candidate)) continue;
+
                     // 🆕 Placement Preference Check
                     const pref = (subjectPlacements[grade] || {})[candidate] || "any";
                     if (pref === "before4" && lesson > 4) continue;
@@ -3834,6 +3980,7 @@ const eyBreaks = [
                     const fallbackIdx = pool.findIndex(p => {
                         // 1. Prevent non-essential repeats (The "Once a day" logic)
                         const freq = freqs[p] || 0;
+                        if (freq <= 5 && subjectsScheduledToday[day].has(p)) return false;
                         if (freq <= 5 && subjectsScheduledToday[day].has(p)) return false;
 
                         // 2. Respect Core Subject placement rules (No core subjects in the afternoon)
@@ -3904,7 +4051,7 @@ const eyBreaks = [
                     <thead style="background: #ffffff; font-size: 0.75rem;">
                         <tr style="background: #ffffff;">
                             <th colspan="${totalCols}" style="padding: 15px; border-bottom: 1px solid #94a3b8; text-align: center;">
-                                <h3 style="margin:0; text-transform: uppercase; font-weight: 900; font-size: 1.15rem; color: #0f172a;">${grade}${stream ? ` ${stream}` : ''} WEEKLY TIMETABLE ${pathway ? `(${pathway})` : ''} - ${term} ${academicYear}</h3>
+                                <h3 style="margin:0; text-transform: uppercase; font-weight: 900; font-size: 1.15rem; color: #0f172a;">${grade}${stream ? ` ${stream}` : ''} WEEKLY TIMETABLE ${pathwayValue ? `(${pathwayValue})` : ''} - ${term} ${academicYear}</h3>
                             </th>
                         </tr>
                         <tr>
@@ -3977,17 +4124,18 @@ const eyBreaks = [
         const settingsToSave = JSON.parse(JSON.stringify(settings));
         settingsToSave.subjectPlacements = subjectPlacements[grade] || {};
 
+        const sanitizedGrid = isSenior && pathwayValue ? sanitizeGridForPathway(grid, grade, pathwayValue) : grid;
         currentTimetableData = {
             viewMode: 'class',
             grade,
             stream: selectedStream,
             term,
-            pathway: pathway || null,
+            pathway: pathwayValue || null,
             academicYear: Number(academicYear),
             lessonFrequencies: freqs,
             extraActivities, // 🆕 Store persisted activities order
             settings: settingsToSave,
-            grid
+            grid: sanitizedGrid
         };
 
         output.innerHTML = html + `</div>`;
@@ -4009,7 +4157,6 @@ const eyBreaks = [
             "Sports C/A(s)": "#fff1f2",
             "Visual Arts C/A(v)": "#fff1f2",
             "Performing Arts C/A(p)": "#fff1f2",
-            "Christian Religious Studies (CRE)": "#fffbeb",
             "Christian Religious Education": "#fffbeb", // Amber
             "Physics": "#ecfeff",     // Cyan
             "Chemistry": "#f0fdfa",   // Teal

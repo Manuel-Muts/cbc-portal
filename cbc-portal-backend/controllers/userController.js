@@ -17,7 +17,7 @@ import StudentEnrollment  from '../models/StudentEnrollment.js'; // ✅ ADD THIS
 import Mark from '../models/mark.js'; // 🆕 Import Mark model
 import Payment from '../models/Payment.js'; // 🆕 Import Payment model
 import {Material} from '../models/Material.js'; // 🆕 Import Material model
-
+import { normalizePathway } from '../utils/pathwayUtils.js';
 
 // 🆕 Helper to auto-format phone numbers (extracted from registerUser)
 const formatContact = (contact) => {
@@ -80,7 +80,8 @@ export const registerUser = async (req, res) => {
     // roles that MUST belong to a school
     const rolesNeedingSchool = ["admin", "accounts","teacher", "student", "parent", "classteacher"];
 
-    const { name, email, role, admission, schoolId, grade, academicYear, stream, contact, pathway } = req.body;
+    let { name, email, role, admission, schoolId, grade, academicYear, stream, contact, pathway } = req.body;
+    const normalizedEmail = email ? String(email).trim().toLowerCase() : undefined;
     const formattedContact = formatContact(contact);
 
     if (!name || !role)
@@ -90,6 +91,22 @@ export const registerUser = async (req, res) => {
 
     if (!allowedRoles.includes(role)) {
       return res.status(400).json({ msg: "Invalid role" });
+    }
+
+    // Guard: staff roles must not carry an admission field.
+    if (role !== "student") {
+      admission = undefined;
+      if (Object.prototype.hasOwnProperty.call(req.body, 'admission')) {
+        delete req.body.admission;
+      }
+    }
+
+    if (!allowedRoles.includes(role)) {
+      return res.status(400).json({ msg: "Invalid role" });
+    }
+
+    if (role !== "student") {
+      admission = undefined;
     }
 
     // ----------------------------
@@ -140,8 +157,8 @@ export const registerUser = async (req, res) => {
     // ----------------------------
     // EMAIL CHECK
     // ----------------------------
-    if (email && role !== "student") {
-      const existing = await User.findOne({ email });
+    if (normalizedEmail && role !== "student") {
+      const existing = await User.findOne({ email: normalizedEmail });
       if (existing)
         return res.status(400).json({ msg: "Email already exists" });
     }
@@ -150,14 +167,14 @@ export const registerUser = async (req, res) => {
       return res.status(400).json({ msg: "Admission required for students" });
     }
 
-    if (role !== "student" && !email) {
+    if (role !== "student" && !normalizedEmail) {
       return res.status(400).json({ msg: "Email is required for staff registrations" });
     }
 
     // ----------------------------
     // PASSWORD GENERATION
     // ----------------------------
-    const rawPassword = generateRawPassword(role, admission);
+    const rawPassword = generateRawPassword(role, role === "student" ? admission : null);
     const hashedPassword = await bcrypt.hash(rawPassword, 10);
 
     // 🆕 Support for "Upsert" (Update or Insert) for student imports.
@@ -168,10 +185,11 @@ export const registerUser = async (req, res) => {
         if (formattedContact) existingStudent.contact = formattedContact;
         if (name) existingStudent.name = name;
         if (grade) existingStudent.grade = normalizeGrade(grade);
-        if (pathway) existingStudent.pathway = pathway;
+        if (pathway) existingStudent.pathway = normalizePathway(pathway);
 
         // 🆕 Sync Enrollment record for the current academic year to ensure class list consistency
         const currentYear = academicYear || new Date().getFullYear();
+        
         let enrollment = await StudentEnrollment.findOne({
             studentId: existingStudent._id,
             academicYear: currentYear
@@ -179,19 +197,19 @@ export const registerUser = async (req, res) => {
 
         if (enrollment) {
             if (grade) enrollment.grade = normalizeGrade(grade);
-            if (stream) enrollment.stream = stream;
-            if (pathway) enrollment.pathway = pathway;
+            if (stream) enrollment.stream = String(stream).trim();
+            if (pathway) enrollment.pathway = normalizePathway(pathway);
             enrollment.status = "active"; 
             await enrollment.save();
         } else {
             enrollment = new StudentEnrollment({
-                studentId: existingStudent._id,
-                schoolId: schoolIdToAssign,
-                grade: normalizeGrade(grade),
-                pathway: pathway || null,
-                stream: stream || null,
-                academicYear: currentYear,
-                status: "active"
+              studentId: existingStudent._id,
+              schoolId: schoolIdToAssign,
+              grade: normalizeGrade(grade),
+              pathway: normalizePathway(pathway) || null,
+              stream: stream ? String(stream).trim() : null,
+              academicYear: currentYear,
+              status: "active"
             });
             await enrollment.save();
         }
@@ -210,30 +228,53 @@ export const registerUser = async (req, res) => {
     }
 
     // 🆕 Instantiate the correct model based on the role
-    const commonFields = {
-      name,
-      role,
-      email: role !== "student" ? email : undefined,
-      password: hashedPassword,
-      contact: formattedContact,
-      passwordMustChange: ["teacher", "classteacher", "accounts"].includes(role),
-      schoolId: schoolIdToAssign,
-      createdBy: admin._id
-    };
-
+    // Build explicit payloads to avoid accidental fields (like admission:null) sneaking in
     let newUser;
     if (role === "student") {
-      newUser = new Student({
-        ...commonFields,
+      const payload = {
+        name,
+        role,
         admission,
         grade: normalizeGrade(grade),
-        pathway: pathway || null
-      });
-    } else if (role === "teacher" || role === "classteacher") {
-      newUser = new Teacher(commonFields);
+        pathway: normalizePathway(pathway) || null,
+        password: hashedPassword,
+        contact: formattedContact,
+        passwordMustChange: false,
+        schoolId: schoolIdToAssign,
+        createdBy: admin._id
+      };
+      newUser = new Student(payload);
     } else {
-      // Fallback for roles like 'admin' or 'accounts' not yet in discriminators
-      newUser = new User(commonFields);
+      // For staff/admin/accounts build strict payload without admission
+      const payload = {
+        name,
+        role,
+        email: normalizedEmail,
+        password: hashedPassword,
+        contact: formattedContact,
+        passwordMustChange: ["teacher", "classteacher", "accounts"].includes(role),
+        schoolId: schoolIdToAssign,
+        createdBy: admin._id
+      };
+      if (Object.prototype.hasOwnProperty.call(req.body, 'admission')) {
+        return res.status(400).json({ msg: "Invalid payload: 'admission' must not be provided for non-student roles" });
+      }
+      newUser = (role === 'teacher' || role === 'classteacher') ? new Teacher(payload) : new User(payload);
+    }
+
+    // Safety: ensure we never persist an explicit null admission for non-students.
+    try {
+      if (role !== "student") {
+        if (Object.prototype.hasOwnProperty.call(newUser, 'admission')) {
+          // Debug log unexpected admission presence
+          console.warn(`registerUser: removing unexpected admission for role=${role} schoolId=${String(schoolIdToAssign)} ->`, newUser.admission);
+          // Remove the path from the Mongoose document to avoid indexing null
+          newUser.admission = undefined;
+          delete newUser.admission;
+        }
+      }
+    } catch (err) {
+      console.error('registerUser: error while cleaning admission field', err);
     }
 
     await newUser.save();
@@ -250,8 +291,8 @@ export const registerUser = async (req, res) => {
           studentId: newUser._id,
           schoolId: schoolIdToAssign,
           grade: normalizeGrade(grade),
-          pathway: pathway || null,
-          stream: stream || null, // Add stream field (optional)
+          pathway: normalizePathway(pathway) || null,
+          stream: stream ? String(stream).trim() : null, // 🆕 Optional for all grades
           academicYear: academicYear || new Date().getFullYear(),
           status: "active"
         });
@@ -304,6 +345,12 @@ export const registerUser = async (req, res) => {
 
 export const loginUser = async (req, res) => {
   const { role, email, fullname, admission, password } = req.body;
+  const normalizedRole = role ? String(role).trim().toLowerCase() : undefined;
+  const normalizedEmail = email ? String(email).trim().toLowerCase() : undefined;
+
+  function escapeRegExp(str) {
+    return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  }
 
   try {
     // Maintenance mode: block logins for non-super-admins when enabled
@@ -316,46 +363,46 @@ export const loginUser = async (req, res) => {
       console.error('Failed to read maintenance setting:', err);
     }
 
-    if (!role) return res.status(400).json({ message: "Role is required" });
+    if (!normalizedRole) return res.status(400).json({ message: "Role is required" });
 
     let user;
 
     // ---------------------------
     // STUDENT/LEARNER LOGIN
     // ---------------------------
-    if (role === "student" || role === "learner") {
+    if (normalizedRole === "student" || normalizedRole === "learner") {
       if (!fullname || !admission) {
         // Record attempt (no user found yet)
-        await LoginAttempt.create({ identifier: admission || null, roleAttempted: role, success: false, ip: req.ip, userAgent: req.headers['user-agent'] });
+        await LoginAttempt.create({ identifier: admission || null, roleAttempted: normalizedRole, success: false, ip: req.ip, userAgent: req.headers['user-agent'] });
         return res.status(400).json({ message: "Full name and admission number required" });
       }
 
       user = await User.findOne({ role: "student", admission });
       if (!user) {
-        await LoginAttempt.create({ identifier: admission, roleAttempted: role, success: false, ip: req.ip, userAgent: req.headers['user-agent'] });
+        await LoginAttempt.create({ identifier: admission, roleAttempted: normalizedRole, success: false, ip: req.ip, userAgent: req.headers['user-agent'] });
         return res.status(400).json({ message: "Invalid admission number" });
       }
 
       if (user.name.toLowerCase() !== fullname.toLowerCase()) {
-        await LoginAttempt.create({ userId: user._id, identifier: admission, roleAttempted: role, schoolId: user.schoolId, success: false, ip: req.ip, userAgent: req.headers['user-agent'] });
+        await LoginAttempt.create({ userId: user._id, identifier: admission, roleAttempted: normalizedRole, schoolId: user.schoolId, success: false, ip: req.ip, userAgent: req.headers['user-agent'] });
         return res.status(400).json({ message: "Full name does not match" });
       }
     } 
     // ---------------------------
     // CLASS TEACHER LOGIN
     // ---------------------------
-    else if (role === "classteacher") {
-      if (!email || !password) return res.status(400).json({ message: "Email and password required" });
+    else if (normalizedRole === "classteacher") {
+      if (!normalizedEmail || !password) return res.status(400).json({ message: "Email and password required" });
 
-      user = await User.findOne({ email, isClassTeacher: true });
+      user = await User.findOne({ email: { $regex: `^${escapeRegExp(normalizedEmail)}$`, $options: 'i' }, isClassTeacher: true });
       if (!user) {
-        await LoginAttempt.create({ identifier: email, roleAttempted: role, success: false, ip: req.ip, userAgent: req.headers['user-agent'] });
+        await LoginAttempt.create({ identifier: normalizedEmail, roleAttempted: normalizedRole, success: false, ip: req.ip, userAgent: req.headers['user-agent'] });
         return res.status(400).json({ message: "Invalid credentials" });
       }
 
       const isMatch = await bcrypt.compare(password, user.classTeacherPassword);
       if (!isMatch) {
-        await LoginAttempt.create({ userId: user._id, identifier: email, roleAttempted: role, schoolId: user.schoolId, success: false, ip: req.ip, userAgent: req.headers['user-agent'] });
+        await LoginAttempt.create({ userId: user._id, identifier: normalizedEmail, roleAttempted: normalizedRole, schoolId: user.schoolId, success: false, ip: req.ip, userAgent: req.headers['user-agent'] });
         return res.status(400).json({ message: "Invalid credentials" });
       }
     } 
@@ -363,17 +410,17 @@ export const loginUser = async (req, res) => {
     // TEACHER / ADMIN / SUPERADMIN LOGIN
     // ---------------------------
     else {
-      if (!email || !password) return res.status(400).json({ message: "Email and password required" });
+      if (!normalizedEmail || !password) return res.status(400).json({ message: "Email and password required" });
 
-      user = await User.findOne({ email,role });
+      user = await User.findOne({ email: { $regex: `^${escapeRegExp(normalizedEmail)}$`, $options: 'i' }, role: normalizedRole });
       if (!user) {
-        await LoginAttempt.create({ identifier: email, roleAttempted: role, success: false, ip: req.ip, userAgent: req.headers['user-agent'] });
+        await LoginAttempt.create({ identifier: normalizedEmail, roleAttempted: normalizedRole, success: false, ip: req.ip, userAgent: req.headers['user-agent'] });
         return res.status(400).json({ message: "Invalid credentials" });
       }
 
       const isMatch = await bcrypt.compare(password, user.password);
       if (!isMatch) {
-        await LoginAttempt.create({ userId: user._id, identifier: email, roleAttempted: role, schoolId: user.schoolId, success: false, ip: req.ip, userAgent: req.headers['user-agent'] });
+        await LoginAttempt.create({ userId: user._id, identifier: normalizedEmail, roleAttempted: normalizedRole, schoolId: user.schoolId, success: false, ip: req.ip, userAgent: req.headers['user-agent'] });
         return res.status(400).json({ message: "Invalid credentials" });
       }
     }
@@ -414,11 +461,14 @@ export const loginUser = async (req, res) => {
         studentId: user._id,
         status: "active",
         academicYear: currentYear
-      }).select("grade stream");
+      }).select("grade stream pathway");
 
       if (enrollment) {
         if (!studentGrade) studentGrade = enrollment.grade;
         studentStream = enrollment.stream;
+        if (enrollment.pathway && (!user.pathway || user.pathway === null)) {
+          user.pathway = enrollment.pathway;
+        }
       }
     }
 
@@ -458,8 +508,23 @@ export const loginUser = async (req, res) => {
       console.error('Failed to record login attempt:', err);
     }
 
+    // 🆕 For students: populate enrollmentId with enrollment details (stream, pathway)
+    if ((user.role === "student" || user.role === "learner") && user.enrollmentId) {
+      try {
+        await user.populate('enrollmentId', 'grade stream pathway academicYear');
+      } catch (err) {
+        console.warn('Failed to populate enrollmentId:', err);
+      }
+    }
+
     // 🚀 Security Fix: Sanitize user object to exclude sensitive fields from response body
     const sanitizedUser = user.toObject();
+    if ((sanitizedUser.role === 'student' || sanitizedUser.role === 'learner')) {
+      const enrollmentPathway = sanitizedUser.enrollmentId?.pathway || sanitizedUser.pathway || null;
+      if (enrollmentPathway) {
+        sanitizedUser.pathway = normalizePathway(enrollmentPathway);
+      }
+    }
     delete sanitizedUser.password;
     delete sanitizedUser.classTeacherPassword;
     delete sanitizedUser.resetCode;
@@ -627,12 +692,24 @@ export const getAllUsers = async (req, res) => {
     const total = await User.countDocuments(query);
     const users = await User.find(query)
       .select(projection)
-      .populate('enrollmentId', 'grade stream') // Fetch grade/stream from enrollment table
+      .populate('enrollmentId', 'grade stream pathway') // 🆕 Added pathway to populate selection
       .sort(sort)
       .skip(skip)
       .limit(limit);
 
-    const response = { users, total, page, limit, pages: Math.ceil(total / limit) };
+    // 🆕 Tally pathway: ensure User.pathway is populated from enrollmentId if missing
+    const tallyiedUsers = users.map(u => {
+      const userObj = u.toObject ? u.toObject() : u;
+      
+      // If User.pathway is missing but enrollmentId has it, use enrollmentId.pathway
+      if ((!userObj.pathway || userObj.pathway === null) && userObj.enrollmentId && userObj.enrollmentId.pathway) {
+        userObj.pathway = userObj.enrollmentId.pathway;
+      }
+      
+      return userObj;
+    });
+
+    const response = { users: tallyiedUsers, total, page, limit, pages: Math.ceil(total / limit) };
     cache.set(cacheKey, response, 60); // Cache for 60 seconds
     res.json(response);
   } catch (err) {
@@ -869,7 +946,7 @@ export const assignClassTeacher = async (req, res) => {
     teacher.assignedStream = stream;
     teacher.isClassTeacher = true;
 
-    const rawClassTeacherPassword = 'CT-' + Math.random().toString(36).slice(-8).toUpperCase();
+    const rawClassTeacherPassword = 'CT' + Math.random().toString(36).slice(-5).toUpperCase();
     const hashed = await bcrypt.hash(rawClassTeacherPassword, 10);
     teacher.classTeacherPassword = hashed;
 
@@ -888,7 +965,7 @@ export const assignClassTeacher = async (req, res) => {
       
       await sendEmail({
         to: teacher.email,
-        subject: 'CBE Portal Class Teacher Allocation',
+        subject: 'Class Teacher Allocation',
         text: `Hello ${teacher.name},
 
         You have been allocated to ${classLabel} as the class teacher.
@@ -907,7 +984,10 @@ export const assignClassTeacher = async (req, res) => {
             <li>Password: ${rawClassTeacherPassword}</li>
           </ul>
           <p>Please log in and change your password immediately.</p>
-        `
+           <p>
+        <a href="https://competencehub.netlify.app/login" target="_blank">CLICK HERE TO LOGIN</a>
+      </p>
+       `
       });
     }
 
@@ -979,22 +1059,32 @@ export const getClassTeacherAllocations = async (req, res) => {
 
 export const getUser = async (req, res) => {
   try {
-    const user = await User.findById(req.user.id)
+    let user = await User.findById(req.user.id)
       .select("-password -classTeacherPassword -resetCode -resetCodeExpires -resetAttempts -resetVerified")
-      .populate("schoolId", "status") // 🆕 Populate school to retrieve its status
-      .lean();
+      .populate("schoolId", "status"); // 🆕 Populate school to retrieve its status
 
     if (!user) {
       return res.status(404).json({ msg: "User not found" });
     }
 
+    // 🆕 For students: populate enrollmentId with enrollment details (stream, pathway)
+    if ((user.role === "student" || user.role === "learner") && user.enrollmentId) {
+      try {
+        await user.populate('enrollmentId', 'grade stream pathway academicYear');
+      } catch (err) {
+        console.warn('Failed to populate enrollmentId:', err);
+      }
+    }
+
+    const userObj = user.lean ? user.lean() : user.toObject();
+
     return res.status(200).json({
-      ...user,
-      schoolStatus: user.schoolId?.status || "Active", // 🆕 Explicitly provide school status
-      schoolId: user.schoolId?._id || user.schoolId,   // 🆕 Restore schoolId as a standard ID string
-      isDean: !!user.isDean,
+      ...userObj,
+      schoolStatus: userObj.schoolId?.status || "Active", // 🆕 Explicitly provide school status
+      schoolId: userObj.schoolId?._id || userObj.schoolId,   // 🆕 Restore schoolId as a standard ID string
+      isDean: !!userObj.isDean,
       // normalize for frontend safety
-      classGrade: user.assignedClass || user.classGrade || null
+      classGrade: userObj.assignedClass || userObj.classGrade || null
     });
   } catch (err) {
     console.error("GetUser Error:", err);
@@ -1759,14 +1849,19 @@ export const bulkRegisterUsers = async (req, res) => {
           // Update or create enrollment
           let enrollment = existingEnrollmentMap.get(String(student._id));
           if (enrollment) {
-            await StudentEnrollment.findByIdAndUpdate(enrollment._id, { grade: normalizedGrade, stream, pathway, status: "active" });
+            await StudentEnrollment.findByIdAndUpdate(enrollment._id, { 
+              grade: normalizedGrade, 
+              stream: stream ? String(stream).trim() : null, 
+              pathway: normalizePathway(pathway), 
+              status: "active" 
+            });
           } else {
             enrollment = await StudentEnrollment.create({
               studentId: student._id,
               schoolId: schoolIdToAssign,
               grade: normalizedGrade,
-              pathway: pathway || null,
-              stream,
+              pathway: normalizePathway(pathway) || null,
+              stream: stream ? String(stream).trim() : null,
               academicYear: currentYear,
               status: "active"
             });
@@ -1777,7 +1872,7 @@ export const bulkRegisterUsers = async (req, res) => {
             name,
             contact: formattedContact,
             grade: normalizedGrade,
-            pathway: pathway || null,
+            pathway: normalizePathway(pathway) || null,
             enrollmentId: enrollment._id
           });
           
@@ -1792,7 +1887,7 @@ export const bulkRegisterUsers = async (req, res) => {
             role: "student",
             admission,
             grade: normalizedGrade,
-            pathway: pathway || null,
+            pathway: normalizePathway(pathway) || null,
             contact: formattedContact,
             password: hashedPassword,
             schoolId: schoolIdToAssign,
@@ -1803,8 +1898,8 @@ export const bulkRegisterUsers = async (req, res) => {
             studentId: newStudent._id,
             schoolId: schoolIdToAssign,
             grade: normalizedGrade,
-            pathway: pathway || null,
-            stream,
+            pathway: normalizePathway(pathway) || null,
+            stream: stream ? String(stream).trim() : null,
             academicYear: currentYear,
             status: "active"
           });

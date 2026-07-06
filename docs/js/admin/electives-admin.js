@@ -10,7 +10,13 @@
     electiveSubjects: [],
     learners: [],
     assignments: [],
+    assignmentsAll: [],
+    assignmentPage: 1,
+    assignmentLimit: 20,
+    selectedAssignmentPathway: "",
+    assignmentSearch: "",
     selectedGrade: "",
+    selectedPathway: "",
     searchTerm: "",
     selectedSetId: "",
     selectedLearnerIds: new Set(),
@@ -88,24 +94,27 @@
             <p style="margin:4px 0 0;color:#64748b;font-size:0.85rem;">Assign elective sets to senior learners</p>
           </div>
           <div style="display:flex;gap:8px;flex-wrap:wrap;">
-            <button id="refreshElectivesBtn" class="btn secondary-btn">Refresh</button>
-            <button id="openElectiveSetsModalBtn" class="btn primary-btn">Manage Elective Sets</button>
+            <button id="refreshElectivesBtn" class="btn secondary-btn" style="padding:8px 12px; border-radius:8px; background:#eff6ff; color:#1d4ed8; border:1px solid #bfdbfe;">Refresh</button>
+            <button id="openElectiveSetsModalBtn" class="btn primary-btn" style="padding:8px 12px; border-radius:8px; background:#2563eb; color:#ffffff; border:1px solid #2563eb;">Manage Elective Sets</button>
           </div>
         </div>
       </div>
 
       <div class="card" style="padding:12px;margin-bottom:12px;">
         <h4 style="margin:0 0 10px;">Assign</h4>
-        <div style="display:grid;grid-template-columns:1fr 1fr 1fr auto;gap:10px;align-items:end;">
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr auto;gap:10px;align-items:end;">
           <select id="electiveAssignGrade" class="form-control" style="min-width:160px;">
             <option value="">-- Select Grade --</option>
             <option>Grade 10</option>
             <option>Grade 11</option>
             <option>Grade 12</option>
           </select>
+          <select id="electiveAssignPathway" class="form-control" style="min-width:180px;" disabled>
+            <option value="">-- Select grade first --</option>
+          </select>
           <input id="electiveSearchLearner" class="form-control" placeholder="Search learner" disabled style="min-width:180px;">
           <select id="electiveSetSelect" class="form-control" style="min-width:180px;"></select>
-          <button id="bulkAssignBtn" class="btn secondary-btn" style="padding:10px 18px;">Bulk</button>
+          <button id="bulkAssignBtn" class="btn secondary-btn" style="padding:8px 14px; border-radius:8px; background:#eff6ff; color:#1d4ed8; border:1px solid #bfdbfe;">Bulk</button>
         </div>
         <div id="electiveLearnerList" style="margin-top:10px;"></div>
       </div>
@@ -113,38 +122,44 @@
       <div class="card" style="padding:12px;">
         <h4 style="margin:0 0 10px;">Assignments</h4>
         <div style="overflow:auto;">
-          <table class="table table-compact table-striped" style="width:100%;border-collapse:collapse;font-size:0.8rem;">
+          <div style="display:flex; gap:8px; align-items:center; margin-bottom:8px;">
+            <select id="assignmentPathwaySelect" class="form-control" style="min-width:180px;">
+              <option value="">-- All Pathways --</option>
+            </select>
+            <input id="assignmentSearchInput" class="form-control" placeholder="Search name or admission" style="min-width:220px;">
+            <button id="assignmentRefreshBtn" class="btn secondary-btn" style="padding:8px 12px; border-radius:8px; background:#eff6ff; color:#1d4ed8; border:1px solid #bfdbfe;">Refresh</button>
+          </div>
+          <table class="table table-compact table-striped" style="width:100%;border-collapse:collapse;font-size:0.78rem;">
             <thead>
               <tr style="background:#f8fafc;">
-                <th style="padding:5px 6px;">Learner</th>
-                <th style="padding:5px 6px;">Adm</th>
-                <th style="padding:5px 6px;">Grade</th>
-                <th style="padding:5px 6px;">Electives</th>
-                <th style="padding:5px 6px;">Actions</th>
-              </tr>
+                  <th style="padding:6px 8px; font-size:0.82rem;">Learner</th>
+                  <th style="padding:6px 8px; font-size:0.82rem;">Grade</th>
+                  <th style="padding:6px 8px; font-size:0.82rem;">Actions</th>
+                </tr>
             </thead>
             <tbody id="electiveAssignmentsBody">
-              <tr><td colspan="5" style="padding:8px 6px;color:#94a3b8;">Loading...</td></tr>
+              <tr><td colspan="3" style="padding:8px 6px;color:#94a3b8;">Loading...</td></tr>
             </tbody>
           </table>
+              <div id="electiveAssignmentsPagination" style="display:flex; justify-content:space-between; align-items:center; padding:8px 6px;"> </div>
         </div>
       </div>
 
       <div id="electiveSetsModal" class="confirm-overlay" style="display:none;">
-        <div class="confirm-box" style="max-width:960px; width:calc(100% - 40px); text-align:left; max-height:calc(100vh - 60px); overflow:auto; padding:24px; border-radius:22px; box-shadow:0 32px 80px rgba(15, 23, 42, 0.18);">
-          <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap; margin-bottom:16px;">
-            <div style="flex:1 1 300px; min-width:0;">
-              <h3 style="margin:0; font-size:1.35rem;">Manage Elective Sets</h3>
-              <p style="margin:8px 0 0;color:#475569;font-size:0.95rem; line-height:1.5;">Create, review and delete elective sets for senior grades from one modal.</p>
+        <div class="confirm-box" style="max-width:900px; width:calc(100% - 40px); text-align:left; max-height:calc(100vh - 80px); overflow:auto; padding:14px; border-radius:14px; box-shadow:0 24px 48px rgba(15, 23, 42, 0.12);">
+          <div style="display:flex;justify-content:space-between;align-items:center; gap:8px; margin-bottom:12px;">
+            <div>
+              <h3 style="margin:0; font-size:1.15rem;">Manage Elective Sets</h3>
+              <p style="margin:6px 0 0;color:#475569;font-size:0.85rem; line-height:1.25;">Create, review and delete elective sets for senior grades.</p>
             </div>
-            <button id="modalCloseElectiveSetsBtn" class="btn secondary-btn" style="white-space:nowrap; padding:10px 16px;">Close</button>
+            <button id="modalCloseElectiveSetsBtn" class="btn secondary-btn" style="white-space:nowrap; padding:8px 12px; font-size:0.9rem;">Close</button>
           </div>
 
-          <div style="display:grid;grid-template-columns:1fr;gap:18px;">
-            <div style="padding:18px; border:1px solid #e2e8f0; border-radius:16px; background:#ffffff; box-shadow: inset 0 0 0 1px rgba(226,232,240,0.45);">
-              <h4 style="margin:0 0 14px; font-size:1.05rem;">Create Set</h4>
-              <div style="display:grid;grid-template-columns:1fr;gap:12px;">
-                <input id="electiveSetName" class="form-control" placeholder="Set name">
+          <div style="display:grid; grid-template-columns:1fr; gap:12px;">
+            <div style="padding:12px; border:1px solid #e6eef7; border-radius:10px; background:#ffffff;">
+              <h4 style="margin:0 0 10px; font-size:1rem;">Create Set</h4>
+              <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; align-items:center;">
+                <input id="electiveSetName" class="form-control" placeholder="Set name" style="grid-column:1 / -1;">
                 <select id="electiveGrade" class="form-control">
                   <option value="">Grade</option>
                   <option>Grade 10</option>
@@ -157,30 +172,30 @@
                   <option value="inactive">Inactive</option>
                 </select>
               </div>
-              <div id="electiveSubjectChecks" style="margin-top:14px;display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;max-height:260px;overflow:auto;padding:12px;border:1px solid #e2e8f0;border-radius:14px;background:#f8fafc;">
+              <div id="electiveSubjectChecks" style="margin-top:10px; display:flex; flex-direction:column; gap:8px; max-height:320px; overflow:auto; padding:8px; border:1px solid #eef6fb; border-radius:10px; background:#fbfdff; font-size:0.92rem;">
                 <div style="color:#64748b;">Loading...</div>
               </div>
-              <div style="margin-top:16px; text-align:right;">
-                <button id="saveElectiveSetBtn" class="btn primary-btn" style="padding:10px 18px;">Save</button>
+              <div style="margin-top:10px; text-align:right;">
+                <button id="saveElectiveSetBtn" class="btn primary-btn" style="padding:8px 14px; font-size:0.95rem;">Save</button>
               </div>
             </div>
 
-            <div style="padding:18px; border:1px solid #e2e8f0; border-radius:16px; background:#ffffff; box-shadow: inset 0 0 0 1px rgba(226,232,240,0.45);">
-              <h4 style="margin:0 0 14px; font-size:1.05rem;">Elective Sets</h4>
-              <div style="overflow:auto; max-height:420px;">
-                <table class="table table-compact table-striped" style="width:100%;border-collapse:collapse;font-size:0.85rem;">
+            <div style="padding:12px; border:1px solid #e6eef7; border-radius:10px; background:#ffffff;">
+              <h4 style="margin:0 0 10px; font-size:1rem;">Elective Sets</h4>
+              <div style="overflow:auto; max-height:340px;">
+                <table class="table table-compact table-striped" style="width:100%;border-collapse:collapse;font-size:0.84rem;">
                   <thead>
-                    <tr style="background:#f8fafc;">
-                      <th style="padding:10px 8px; text-align:left;">Name</th>
-                      <th style="padding:10px 8px; text-align:left;">Grade</th>
-                      <th style="padding:10px 8px; text-align:left;">Subjects</th>
-                      <th style="padding:10px 8px; text-align:center;">Max</th>
-                      <th style="padding:10px 8px; text-align:center;">Status</th>
-                      <th style="padding:10px 8px; text-align:center;">Actions</th>
+                    <tr style="background:#fbfdff;">
+                      <th style="padding:8px 6px; text-align:left;">Name</th>
+                      <th style="padding:8px 6px; text-align:left;">Grade</th>
+                      <th style="padding:8px 6px; text-align:left;">Subjects</th>
+                      <th style="padding:8px 6px; text-align:center; width:60px;">Max</th>
+                      <th style="padding:8px 6px; text-align:center; width:80px;">Status</th>
+                      <th style="padding:8px 6px; text-align:center; width:120px;">Actions</th>
                     </tr>
                   </thead>
                   <tbody id="electiveSetsTableBody">
-                    <tr><td colspan="6" style="padding:14px; color:#64748b; text-align:center;">Loading sets...</td></tr>
+                    <tr><td colspan="6" style="padding:10px; color:#64748b; text-align:center;">Loading sets...</td></tr>
                   </tbody>
                 </table>
               </div>
@@ -202,8 +217,44 @@
 
     document.getElementById("electiveAssignGrade")?.addEventListener("change", async (e) => {
       state.selectedGrade = e.target.value;
+      state.selectedPathway = "";
+      const isSenior = isSeniorGradeValue(state.selectedGrade);
+      populatePathwayFilter(isSenior);
       updateLearnerSearchState();
       await loadLearners();
+    });
+
+    document.getElementById("electiveAssignPathway")?.addEventListener("change", async (e) => {
+      state.selectedPathway = e.target.value;
+      await loadLearners();
+    });
+
+    // Assignments filters
+    const assignmentPathway = document.getElementById('assignmentPathwaySelect');
+    const assignmentSearch = document.getElementById('assignmentSearchInput');
+    const assignmentRefresh = document.getElementById('assignmentRefreshBtn');
+
+    if (assignmentPathway) {
+      // populate pathways
+      const pathways = (window.SUBJECT_DATA && window.SUBJECT_DATA.seniorSchoolPathways) ? Object.keys(window.SUBJECT_DATA.seniorSchoolPathways) : ["STEM", "Social Sciences", "Arts & Sports Science"];
+      pathways.forEach(p => {
+        const opt = document.createElement('option'); opt.value = p; opt.textContent = p; assignmentPathway.appendChild(opt);
+      });
+      assignmentPathway.addEventListener('change', async (e) => {
+        state.selectedAssignmentPathway = e.target.value;
+        await loadAssignments(1);
+      });
+    }
+
+    if (assignmentSearch) {
+      assignmentSearch.addEventListener('input', debounce(async (e) => {
+        state.assignmentSearch = e.target.value.trim();
+        await loadAssignments(1);
+      }, 350));
+    }
+
+    assignmentRefresh?.addEventListener('click', async () => {
+      await loadAssignments(1);
     });
 
     const searchInput = document.getElementById("electiveSearchLearner");
@@ -274,13 +325,29 @@
       const action = btn.dataset.action;
       const assignmentId = btn.dataset.assignmentId;
       const learnerId = btn.dataset.learnerId;
+      const assignmentIds = btn.dataset.assignmentIds ? String(btn.dataset.assignmentIds).split(",").filter(Boolean) : [];
 
       if (action === "remove-assignment") {
         await removeAssignment(assignmentId);
       }
 
+      if (action === "remove-learner-assignments") {
+        await removeAssignmentsForLearner(learnerId, assignmentIds);
+      }
+
       if (action === "view-learner") {
         await openLearnerAssignmentModal(learnerId);
+      }
+    });
+
+    // Pagination controls for assignments
+    document.getElementById("electiveAssignmentsPagination")?.addEventListener("click", (e) => {
+      const btn = e.target.closest("button");
+      if (!btn) return;
+      if (btn.id === 'assignmentPrevBtn') {
+        renderAssignmentsPage(state.assignmentPage - 1);
+      } else if (btn.id === 'assignmentNextBtn') {
+        renderAssignmentsPage(state.assignmentPage + 1);
       }
     });
   }
@@ -322,20 +389,124 @@
         return;
       }
 
-      container.innerHTML = subjects.map((s) => {
+      // Group subjects by pathway for easier navigation (use SUBJECT_DATA if available)
+      const groups = {};
+      const allowedPaths = (window.SUBJECT_DATA && window.SUBJECT_DATA.seniorSchoolPathways)
+        ? Object.keys(window.SUBJECT_DATA.seniorSchoolPathways)
+        : ["STEM", "Social Sciences", "Arts & Sports Science"];
+
+      subjects.forEach((s) => {
         const value = s.name || s.subjectName || s.title || "";
-        const id = s._id || s.id || value.replace(/\s+/g, "-").toLowerCase();
+        let pathway = null;
+        try {
+          if (window.SUBJECT_DATA && typeof window.SUBJECT_DATA.getSeniorPathway === 'function') {
+            pathway = window.SUBJECT_DATA.getSeniorPathway(value);
+          } else if (window.cbcUtils && typeof window.cbcUtils.normalizePathway === 'function') {
+            pathway = window.cbcUtils.normalizePathway(value);
+          }
+        } catch (e) {
+          pathway = null;
+        }
+
+        // Only include known elective pathways; exclude 'Core' and uncategorized
+        if (!pathway || !allowedPaths.includes(pathway)) return;
+
+        if (!groups[pathway]) groups[pathway] = [];
+        groups[pathway].push({ value, id: s._id || s.id || value.replace(/\s+/g, "-").toLowerCase() });
+      });
+
+      if (!Object.keys(groups).length) {
+        container.innerHTML = `<div style="color:#94a3b8;">No elective subjects found for the selected grade/pathways.</div>`;
+        return;
+      }
+
+      // Build grouped, collapsed sections using <details>
+      let html = "";
+
+      html += Object.keys(groups).map(path => {
+        const normalizedPath = escapeHtml(path);
+        const items = groups[path].map(item => `
+          <div data-subject="${escapeHtml(String(item.value).toLowerCase())}" style="display:flex; justify-content:space-between; align-items:center; padding:10px 12px; border:1px solid #e6eef7; border-radius:8px; background:#ffffff;">
+            <div style="font-size:0.95rem; color:#0f172a; flex:1; min-width:0; margin-right:12px;">${escapeHtml(item.value)}</div>
+            <div style="flex:0 0 auto; margin-left:8px;">
+              <input type="checkbox" class="elective-subject-check" value="${escapeHtml(item.value)}" data-id="${escapeHtml(item.id)}" style="width:18px; height:18px; vertical-align:middle;">
+            </div>
+          </div>
+        `).join("");
+
         return `
-          <label style="display:flex; gap:8px; align-items:center; padding:8px; border:1px solid #e2e8f0; border-radius:8px; background:#fff;">
-            <input type="checkbox" class="elective-subject-check" value="${escapeHtml(value)}" data-id="${escapeHtml(id)}">
-            <span style="font-size:0.9rem;">${escapeHtml(value)}</span>
-          </label>
+          <details data-path="${escapeHtml(path)}" style="margin-bottom:10px; border-radius:10px; padding:8px; background:#f8fafc; border:1px solid #e6eef7;">
+            <summary style="font-weight:700; padding:6px 8px; cursor:pointer;">${normalizedPath} <small style=\"color:#64748b; font-weight:400;\">(${groups[path].length})</small></summary>
+            <div style="margin-top:8px; display:flex; gap:8px; align-items:center;">
+              <input class="pathway-subject-search" data-path="${escapeHtml(path)}" placeholder="Search subjects..." style="flex:1;padding:8px;border-radius:6px;border:1px solid #e6eef7;">
+            </div>
+            <div style="margin-top:8px; display:flex; flex-direction:column; gap:8px;">
+              ${items}
+            </div>
+          </details>
         `;
       }).join("");
+
+      container.innerHTML = html;
+
+      // Ensure pathway groups are collapsed by default and accessible
+      container.querySelectorAll('details[data-path]').forEach((d) => {
+        d.removeAttribute('open');
+        const s = d.querySelector('summary');
+        if (s) {
+          s.setAttribute('role', 'button');
+          s.setAttribute('aria-expanded', 'false');
+        }
+        d.addEventListener('toggle', () => {
+          if (s) s.setAttribute('aria-expanded', d.open ? 'true' : 'false');
+        });
+      });
+
+      // Wire per-pathway subject search inputs (debounced)
+      container.querySelectorAll('.pathway-subject-search').forEach((input) => {
+        input.addEventListener('input', debounce((e) => {
+          const q = String(e.target.value || '').trim().toLowerCase();
+          const path = e.target.dataset.path;
+          if (!path) return;
+          const details = container.querySelector(`details[data-path="${CSS.escape(path)}"]`);
+          if (!details) return;
+          details.querySelectorAll('[data-subject]').forEach((row) => {
+            const subj = String(row.dataset.subject || '');
+            row.style.display = q === '' || subj.includes(q) ? '' : 'none';
+          });
+        }, 180));
+      });
+
+      // No pathway filter: all pathway groups are displayed by default
     } catch (err) {
       console.error("Load elective subjects error:", err);
       container.innerHTML = `<div style="color:#ef4444;">Failed to load subjects: ${escapeHtml(err.message)}</div>`;
     }
+  }
+
+  function populatePathwayFilter(enable) {
+    const pathwaySelect = document.getElementById("electiveAssignPathway");
+    if (!pathwaySelect) return;
+
+    if (!enable) {
+      pathwaySelect.innerHTML = `<option value="">-- Select Grade 10-12 --</option>`;
+      pathwaySelect.disabled = true;
+      return;
+    }
+
+    const pathways = (window.SUBJECT_DATA && window.SUBJECT_DATA.seniorSchoolPathways)
+      ? Object.keys(window.SUBJECT_DATA.seniorSchoolPathways)
+      : ["STEM", "Social Sciences", "Arts & Sports Science"];
+
+    pathwaySelect.innerHTML = `<option value="">-- Select Pathway --</option>`;
+    pathways.forEach((pathway) => {
+      const opt = document.createElement("option");
+      opt.value = pathway;
+      opt.textContent = pathway;
+      pathwaySelect.appendChild(opt);
+    });
+
+    pathwaySelect.disabled = false;
   }
 
   async function loadElectiveSets() {
@@ -417,6 +588,11 @@
 
     if (!grade) {
       state.learners = [];
+      const pathwaySelect = document.getElementById("electiveAssignPathway");
+      if (pathwaySelect) {
+        pathwaySelect.value = "";
+        pathwaySelect.disabled = true;
+      }
       container.innerHTML = `<div style="color:#64748b;">Select a grade to load senior learners.</div>`;
       return;
     }
@@ -431,21 +607,67 @@
       const res = await apiFetch(url);
       const learners = Array.isArray(res) ? res : res?.data || res?.learners || [];
       const seniorLearners = learners.filter((learner) => isSeniorGradeValue(learner.grade));
-      state.learners = seniorLearners;
+      const normalizedPathway = (value) => {
+        if (!value && value !== 0) return "";
+        const raw = String(value || "").trim();
+        if (!raw) return "";
+        if (window.cbcUtils && typeof window.cbcUtils.normalizePathway === 'function') {
+          return window.cbcUtils.normalizePathway(raw);
+        }
+        return raw;
+      };
+      const pathwayFilter = normalizedPathway(state.selectedPathway);
+      const filteredLearners = pathwayFilter
+        ? seniorLearners.filter((learner) => normalizedPathway(learner.pathway) === pathwayFilter)
+        : seniorLearners;
 
-      if (!seniorLearners.length) {
-        container.innerHTML = `<div style="color:#94a3b8;">No senior learners found for ${escapeHtml(grade)}.</div>`;
+      // Fetch assigned learner IDs for this grade so we can exclude them from the assign list
+      let assignedLearnerIds = new Set();
+      try {
+        const idsRes = await apiFetch(`${API_BASE}/electives/assignments/ids?grade=${encodeURIComponent(grade)}`);
+        const ids = Array.isArray(idsRes) ? idsRes : idsRes?.data || [];
+        assignedLearnerIds = new Set((ids || []).map((i) => String(i)));
+        // save to state for potential reuse
+        state.assignedLearnerIdsForGrade = assignedLearnerIds;
+      } catch (e) {
+        console.warn('Could not fetch assigned learner ids:', e);
+      }
+
+      // Exclude learners that already have assignments
+      const unassignedLearners = filteredLearners.filter((learner) => {
+        const lid = String(learner._id || learner.id || "");
+        return !assignedLearnerIds.has(lid);
+      });
+
+      state.learners = unassignedLearners;
+
+      if (!unassignedLearners.length) {
+        const noMatchMessage = state.selectedPathway
+          ? `No unassigned learners found for ${escapeHtml(grade)} in ${escapeHtml(state.selectedPathway)}.`
+          : `No unassigned senior learners found for ${escapeHtml(grade)}.`;
+        container.innerHTML = `<div style="color:#94a3b8;">${noMatchMessage}</div>`;
         return;
       }
 
+      const selectedPathwayLabel = state.selectedPathway ? ` in ${escapeHtml(state.selectedPathway)}` : "";
+      const totalCount = filteredLearners.length;
+      const assignedCount = filteredLearners.filter((learner) => {
+        const lid = String(learner._id || learner.id || "");
+        return assignedLearnerIds.has(lid);
+      }).length;
       container.innerHTML = `
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
-          <div style="font-size:0.85rem; color:#64748b;">${seniorLearners.length} learner(s) found</div>
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; gap:12px;">
+          <div style="font-size:0.85rem; color:#64748b; display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+            <span style="display:inline-flex; align-items:center; gap:6px; padding:4px 10px; border-radius:999px; background:#d1fae5; color:#166534; font-weight:700;"> Total ${totalCount}</span>
+                        <span style="display:inline-flex; align-items:center; gap:6px; padding:4px 10px; border-radius:999px; background:#fce7f3; color:#9f1239; font-weight:700;"> Assigned ${assignedCount}</span>
+            <span style="display:inline-flex; align-items:center; gap:6px; padding:4px 10px; border-radius:999px; background:#eef2ff; color:#3730a3; font-weight:700;"> Unassigned ${unassignedLearners.length}</span>
+            ${selectedPathwayLabel ? `<span style="display:inline-flex; align-items:center; gap:6px; padding:4px 10px; border-radius:999px; background:#f8fafc; color:#334155;">${selectedPathwayLabel}</span>` : ""}
+          </div>
           <div style="font-size:0.8rem; color:#94a3b8;">Tick learners to bulk assign</div>
         </div>
         <div style="max-height:360px; overflow:auto; border:1px solid #e2e8f0; border-radius:10px;">
-          ${seniorLearners.map(renderLearnerRow).join("")}
-        </div>
+            ${unassignedLearners.map(renderLearnerRow).join("")}
+          </div>
       `;
     } catch (err) {
       console.error("Load learners error:", err);
@@ -459,19 +681,20 @@
     const admission = learner.admission || learner.admissionNumber || "-";
     const grade = learner.grade || "-";
     const stream = learner.stream ? ` ${learner.stream}` : "";
-    const alreadyAssigned = learner.electives && learner.electives.length ? learner.electives.join(", ") : "None";
 
     return `
-      <div style="display:grid; grid-template-columns: 24px 1.6fr 1fr 1fr 1fr auto; gap:10px; align-items:center; padding:12px; border-bottom:1px solid #f1f5f9;">
+      <div style="display:grid; grid-template-columns: 24px 1.6fr 0.8fr 1fr auto; gap:8px; align-items:center; padding:8px 8px; border-bottom:1px solid #f1f5f9; font-size:0.88rem;">
         <input type="checkbox" data-action="toggle-select" data-learner-id="${escapeHtml(id)}" ${state.selectedLearnerIds.has(String(id)) ? "checked" : ""}>
         <div>
-          <strong>${escapeHtml(name)}</strong><br>
-          <small style="color:#64748b;">${escapeHtml(admission)}</small>
+          <div style="display:flex; gap:8px; align-items:center;">
+            <small style="color:#64748b; font-size:0.82rem;">${escapeHtml(admission)}</small>
+            <strong style="font-size:0.95rem;">${escapeHtml(name)}</strong>
+          </div>
+          
         </div>
-        <div>${escapeHtml(grade)}${escapeHtml(stream)}</div>
-        <div style="color:#64748b;">${escapeHtml(alreadyAssigned)}</div>
+        <div style="font-size:0.9rem; color:#0f172a;">${escapeHtml(grade)}${escapeHtml(stream)}</div>
         <div>
-          <select class="learner-set-select" data-learner-id="${escapeHtml(id)}" style="width:100%;">
+          <select class="learner-set-select" data-learner-id="${escapeHtml(id)}" style="width:100%; font-size:0.86rem; padding:6px 8px;">
             <option value="">Select set</option>
             ${state.electiveSets.map((s) => `
               <option value="${escapeHtml(s._id || s.id)}">${escapeHtml(s.name)}${s.grade ? ` (${escapeHtml(s.grade)})` : ""}</option>
@@ -479,69 +702,96 @@
           </select>
         </div>
         <div>
-          <button class="btn primary-btn" data-action="assign-one" data-learner-id="${escapeHtml(id)}">Assign</button>
+          <button class="btn primary-btn" data-action="assign-one" data-learner-id="${escapeHtml(id)}" style="padding:6px 8px; font-size:0.82rem; border-radius:8px; background:#eff6ff; color:#1d4ed8; border:1px solid #bfdbfe;">Assign</button>
         </div>
       </div>
     `;
   }
 
-  async function loadAssignments() {
+  async function loadAssignments(page = 1) {
     const tbody = document.getElementById("electiveAssignmentsBody");
     if (!tbody) return;
 
-    tbody.innerHTML = `<tr><td colspan="5" style="padding:12px; color:#94a3b8;">Loading assignments...</td></tr>`;
+    const pager = document.getElementById("electiveAssignmentsPagination");
+    tbody.innerHTML = `<tr><td colspan="3" style="padding:12px; color:#94a3b8;">Loading assignments...</td></tr>`;
 
     try {
-      const res = await apiFetch(`${API_BASE}/electives/assignments`);
-      const assignments = Array.isArray(res) ? res : res?.data || res?.assignments || [];
-      state.assignments = assignments;
+      const params = new URLSearchParams();
+      params.set('page', page);
+      params.set('limit', state.assignmentLimit);
+      if (state.selectedAssignmentPathway) params.set('pathway', state.selectedAssignmentPathway);
+      if (state.assignmentSearch) params.set('q', state.assignmentSearch);
+      const url = `${API_BASE}/electives/assignments?${params.toString()}`;
+      const res = await apiFetch(url);
+      const data = res?.data || [];
+      const total = res?.total || 0;
+      const totalPages = res?.totalPages || Math.max(1, Math.ceil(total / state.assignmentLimit));
 
-      if (!assignments.length) {
-        tbody.innerHTML = `<tr><td colspan="5" style="padding:12px; color:#94a3b8;">No elective assignments yet.</td></tr>`;
-        return;
-      }
+      // server returns grouped learner rows
+      state.assignmentsAll = data;
+      state.assignmentPage = res?.page || page;
+      state.totalAssignments = total;
+      state.totalAssignmentPages = totalPages;
 
-      tbody.innerHTML = assignments.map((a) => {
-        
-        const learner = a.learnerId || a.learner || {};
-        const learnerId = learner._id || a.learnerId?._id || "";
-        const assignmentId = a._id || a.id || "";
-
-
-               const learnerName =
-                learner.name ||
-                learner.fullName ||
-                "Unknown";
-
-                const admission =
-                 learner.admission ||
-                learner.admissionNumber ||
-                "-";
-
-                const grade =
-               a.grade ||
-               learner.grade ||
-                 "-";
-
-           const subjects = Array.isArray(a.subjects)
-  ? a.subjects.join(", ")
-  : (a.subjects || a.electives || "-");
-        return `
-          <tr>
-            <td style="padding:6px;">${escapeHtml(learnerName)}</td>
-            <td style="padding:6px;">${escapeHtml(admission)}</td>
-            <td style="padding:6px;">${escapeHtml(grade)}</td>
-            <td style="padding:6px;">${escapeHtml(subjects)}</td>
-            <td style="padding:6px; white-space:nowrap;">
-              <button class="btn secondary-btn" data-action="view-learner" data-learner-id="${escapeHtml(learnerId)}">View</button>
-              <button class="btn danger" data-action="remove-assignment" data-assignment-id="${escapeHtml(assignmentId)}">Remove</button>
-            </td>
-          </tr>
-        `;
-      }).join("");
+      renderAssignmentsPage(state.assignmentPage);
     } catch (err) {
       console.error("Load assignments error:", err);
-      tbody.innerHTML = `<tr><td colspan="5" style="padding:12px; color:#ef4444;">Failed to load assignments: ${escapeHtml(err.message)}</td></tr>`;
+      if (tbody) tbody.innerHTML = `<tr><td colspan="3" style="padding:12px; color:#ef4444;">Failed to load assignments: ${escapeHtml(err.message)}</td></tr>`;
+      if (pager) pager.innerHTML = '';
+    }
+  }
+
+  function renderAssignmentsPage(page = state.assignmentPage) {
+    const tbody = document.getElementById("electiveAssignmentsBody");
+    const pager = document.getElementById("electiveAssignmentsPagination");
+    if (!tbody) return;
+
+    const groups = state.assignmentsAll || [];
+    if (!groups.length) {
+      tbody.innerHTML = `<tr><td colspan="3" style="padding:12px; color:#94a3b8;">No elective assignments yet.</td></tr>`;
+      if (pager) pager.innerHTML = '';
+      return;
+    }
+
+    const limit = Number(state.assignmentLimit) || 20;
+    const total = Number(state.totalAssignments) || (groups.length);
+    const totalPages = Number(state.totalAssignmentPages) || Math.max(1, Math.ceil(total / limit));
+    if (page < 1) page = 1;
+    if (page > totalPages) page = totalPages;
+    state.assignmentPage = page;
+
+    const start = (page - 1) * limit;
+
+    tbody.innerHTML = groups.map((group) => {
+      // Normalize shape: server returns { learner: { name, admission, _id }, assignmentIds, subjectLines, grade }
+      const learnerObj = group.learner || {};
+      const learnerId = String(learnerObj._id || group._id || group.learnerId || "");
+      const learnerName = learnerObj.name || group.learnerName || "Unknown";
+      const admission = learnerObj.admission || group.admission || "-";
+      const canRemoveMultiple = (group.assignmentIds || []).length > 1;
+
+      return `
+        <tr data-learner-id="${escapeHtml(learnerId)}">
+          <td style="padding:4px; font-size:0.92rem;"><div style="display:flex; gap:8px; align-items:center;"><small style="color:#64748b; font-size:0.82rem;">${escapeHtml(admission)}</small><span style="font-weight:600;">${escapeHtml(learnerName)}</span></div></td>
+          <td style="padding:4px; font-size:0.92rem;">${escapeHtml(group.grade || "-")}</td>
+          <td style="padding:4px; white-space:nowrap;">
+            <button class="btn secondary-btn" data-action="view-learner" data-learner-id="${escapeHtml(learnerId)}" style="padding:6px 8px; font-size:0.82rem; border-radius:8px; background:#eff6ff; color:#1d4ed8; border:1px solid #bfdbfe;">View</button>
+            <button class="btn danger" data-action="${canRemoveMultiple ? 'remove-learner-assignments' : 'remove-assignment'}" data-learner-id="${escapeHtml(learnerId)}" data-assignment-ids="${escapeHtml((group.assignmentIds || []).join(","))}" style="padding:6px 8px; font-size:0.82rem; border-radius:8px; background:#fee2e2; color:#b91c1c; border:1px solid #fecaca;">
+              ${canRemoveMultiple ? 'Remove All' : 'Remove'}
+            </button>
+          </td>
+        </tr>
+      `;
+    }).join("");
+    if (pager) {
+      pager.innerHTML = `
+        <div style="font-size:0.85rem; color:#64748b;">Showing ${start + 1}-${Math.min(start + limit, total)} of ${total}</div>
+        <div style="display:flex; gap:8px; align-items:center;">
+          <button id="assignmentPrevBtn" class="btn secondary-btn" ${page === 1 ? 'disabled' : ''} style="padding:8px 12px; border-radius:8px; background:#eff6ff; color:#1d4ed8; border:1px solid #bfdbfe;">Prev</button>
+          <span style="font-size:0.85rem; color:#475569;">Page ${page} of ${totalPages}</span>
+          <button id="assignmentNextBtn" class="btn secondary-btn" ${page === totalPages ? 'disabled' : ''} style="padding:8px 12px; border-radius:8px; background:#eff6ff; color:#1d4ed8; border:1px solid #bfdbfe;">Next</button>
+        </div>
+      `;
     }
   }
 
@@ -713,6 +963,31 @@
     }
   }
 
+  async function removeAssignmentsForLearner(learnerId, assignmentIds = []) {
+    if (!learnerId || !assignmentIds.length) return;
+
+    const ok = await window.showConfirm?.({
+      title: "Remove Learner Assignments",
+      message: `Are you sure you want to remove all elective assignments for this learner? (${assignmentIds.length} item${assignmentIds.length > 1 ? 's' : ''})`
+    });
+
+    if (!ok) return;
+
+    try {
+      await Promise.all(assignmentIds.map((assignmentId) =>
+        apiFetch(`${API_BASE}/electives/assignments/${assignmentId}`, {
+          method: "DELETE",
+        })
+      ));
+
+      window.showToast?.("All assignments removed", "success");
+      await refreshAll();
+    } catch (err) {
+      console.error("Remove learner assignments error:", err);
+      window.showToast?.(err.message || "Failed to remove learner assignments", "error");
+    }
+  }
+
   async function openLearnerAssignmentModal(learnerId) {
     try {
       const res = await apiFetch(`${API_BASE}/electives/learners/${learnerId}`);
@@ -746,7 +1021,7 @@
                       <div style="padding:10px 0; border-bottom:1px solid #edf2f7;">
                         <div style="font-weight:700; margin-bottom:4px;">${escapeHtml(setName)}</div>
                         <div style="color:#475569; font-size:0.9rem;">
-                          ${setSubjects.length ? setSubjects.map((s) => `<span style="display:inline-block; margin-right:8px; margin-bottom:4px; padding:2px 8px; background:#fff; border-radius:999px; border:1px solid #e2e8f0;">${escapeHtml(s)}</span>`).join("") : "<span style=\"color:#94a3b8;\">No subjects listed</span>"}
+                          ${setSubjects.length ? setSubjects.map((s) => `<span style="display:inline-block; margin-right:8px; margin-bottom:4px; padding:4px 10px; background:#eef2ff; border-radius:999px; color:#3730a3; font-size:0.85rem;">${escapeHtml(s)}</span>`).join("") : "<span style=\"color:#94a3b8;\">No subjects listed</span>"}
                         </div>
                       </div>
                     `;
@@ -774,11 +1049,13 @@
   }
 
   async function refreshAll() {
+    // Load assignments first so we can filter learners reliably,
+    // then fetch other resources in parallel.
+    await loadAssignments();
     await Promise.all([
       loadElectiveSubjects(),
       loadElectiveSets(),
       loadLearners(),
-      loadAssignments(),
     ]);
   }
 

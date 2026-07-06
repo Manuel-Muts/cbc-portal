@@ -13,11 +13,17 @@ export const getTermLockStatus = async (req, res) => {
     }
 
     const lockKey = `term_lock_${req.user.schoolId}_${year}_${term}`;
-    const setting = await Setting.findOne({ key: lockKey });
+    const editPermissionKey = `submitted_marks_edits_allowed_${req.user.schoolId}_${year}_${term}`;
 
-    const isLocked = setting ? setting.value === true : false;
+    const [lockSetting, editSetting] = await Promise.all([
+      Setting.findOne({ key: lockKey }).lean(),
+      Setting.findOne({ key: editPermissionKey }).lean()
+    ]);
 
-    res.json({ isLocked });
+    const isLocked = lockSetting ? lockSetting.value === true : false;
+    const allowTeacherSubmittedMarkEdits = editSetting ? editSetting.value === true : false;
+
+    res.json({ isLocked, allowTeacherSubmittedMarkEdits });
   } catch (err) {
     console.error("getTermLockStatus error:", err);
     res.status(500).json({ message: "Server error fetching term lock status" });
@@ -27,26 +33,51 @@ export const getTermLockStatus = async (req, res) => {
 // New function to update term lock status
 export const updateTermLockStatus = async (req, res) => {
   try {
-    // Only admins can perform this action
-    if (req.user.role !== 'admin' && req.user.role !== 'super_admin') {
-      return res.status(403).json({ message: "Unauthorized: Only admins can manage term locks." });
+    const { year, term, isLocked, allowTeacherSubmittedMarkEdits } = req.body;
+    if (!year || !term || (isLocked === undefined && allowTeacherSubmittedMarkEdits === undefined)) {
+      return res.status(400).json({ message: "Year, term, and at least one status field are required." });
     }
 
-    const { year, term, isLocked } = req.body;
-    if (!year || !term || isLocked === undefined) {
-      return res.status(400).json({ message: "Year, term, and lock status are required." });
+    const isAdmin = req.user.role === 'admin' || req.user.role === 'super_admin';
+    const isTeacher = req.user.role === 'teacher' || req.user.role === 'classteacher';
+
+    // Teachers are allowed only to disable edit permission after submitting marks.
+    if (!isAdmin) {
+      if (!isTeacher || isLocked !== undefined || allowTeacherSubmittedMarkEdits !== false) {
+        return res.status(403).json({ message: "Unauthorized: Only admins can manage term locks." });
+      }
     }
+
 
     const lockKey = `term_lock_${req.user.schoolId}_${year}_${term}`;
+    const editPermissionKey = `submitted_marks_edits_allowed_${req.user.schoolId}_${year}_${term}`;
 
-    // Find and update the setting, or create it if it doesn't exist
-    const updatedSetting = await Setting.findOneAndUpdate(
-      { key: lockKey },
-      { value: isLocked },
-      { upsert: true, new: true } // upsert: create if not found; new: return the updated document
-    );
+    if (isLocked !== undefined) {
+      await Setting.findOneAndUpdate(
+        { key: lockKey },
+        { value: isLocked },
+        { upsert: true, new: true }
+      );
+    }
 
-    res.json({ message: `Term ${term}, Year ${year} lock status updated to ${isLocked ? 'locked' : 'unlocked'}.`, isLocked: updatedSetting.value });
+    if (allowTeacherSubmittedMarkEdits !== undefined) {
+      await Setting.findOneAndUpdate(
+        { key: editPermissionKey },
+        { value: allowTeacherSubmittedMarkEdits },
+        { upsert: true, new: true }
+      );
+    }
+
+    const [lockSetting, editSetting] = await Promise.all([
+      Setting.findOne({ key: lockKey }).lean(),
+      Setting.findOne({ key: editPermissionKey }).lean()
+    ]);
+
+    res.json({
+      message: `Term ${term}, Year ${year} settings updated successfully.`,
+      isLocked: lockSetting ? lockSetting.value === true : false,
+      allowTeacherSubmittedMarkEdits: editSetting ? editSetting.value === true : false
+    });
   } catch (err) {
     console.error("updateTermLockStatus error:", err);
     res.status(500).json({ message: "Server error updating term lock status." });

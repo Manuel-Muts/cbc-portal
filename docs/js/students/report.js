@@ -63,6 +63,10 @@ async function getImageBase64(url) {
   // -----------------------------
   let reportGrade = user.grade || "N/A";
   let reportStream = "";
+  let reportPathway = null;
+  if (window.cbcUtils?.normalizePathway) {
+    reportPathway = window.cbcUtils.normalizePathway(user.pathway || null);
+  }
 
   // 1. Load Local Marks (synced from the student dashboard)
   let marks = JSON.parse(localStorage.getItem("studentReportMarks") || "[]");
@@ -166,6 +170,10 @@ async function getImageBase64(url) {
       const enrollment = await enrollmentRes.json();
       if (enrollment.grade) reportGrade = enrollment.grade;
       if (enrollment.stream) reportStream = enrollment.stream;
+      const normalizedEnrollmentPathway = window.cbcUtils?.normalizePathway?.(enrollment.pathway);
+      if (normalizedEnrollmentPathway && normalizedEnrollmentPathway !== "Core") {
+        reportPathway = normalizedEnrollmentPathway;
+      }
       
       const streamEl = document.getElementById("studentStream");
       if (streamEl) streamEl.textContent = reportStream || "N/A";
@@ -260,22 +268,31 @@ async function getImageBase64(url) {
   setText("studentGrade", user.grade || "N/A");
   setText("reportDate", new Date().toLocaleDateString());
 
-  // ===== Show pathway for Grade 10-11 students =====
+  // ===== Show pathway for Grade 10-12 students =====
   try {
     const gradeNum = getGradeNum(reportGrade);
     if (gradeNum >= 10 && gradeNum <= 12) {
-      // Find pathway from submitted marks
       const pathwayMark = studentMarks.find(m => m.pathway && String(m.pathway).trim());
-      if (pathwayMark && pathwayMark.pathway) {
-        const studentGradeEl = document.getElementById("studentGrade");
-        if (studentGradeEl) {
-          let pathwayLineEl = document.getElementById("studentPathwayLine");
-          if (!pathwayLineEl) {
-            pathwayLineEl = document.createElement("p");
-            pathwayLineEl.id = "studentPathwayLine";
-            studentGradeEl.closest("p").insertAdjacentElement("afterend", pathwayLineEl);
-          }
-          pathwayLineEl.innerHTML = `<strong>Pathway:</strong> <span style="font-weight: bold; text-transform: uppercase; color: #111;">${String(pathwayMark.pathway).toUpperCase()}</span>`;
+      const normalizedMarkPathway = window.cbcUtils?.normalizePathway?.(pathwayMark?.pathway);
+      const resolvedPathway = [reportPathway, normalizedMarkPathway]
+        .map(p => p && String(p).trim())
+        .filter(p => p && p !== "Core")
+        [0] || null;
+
+      const studentGradeEl = document.getElementById("studentGrade");
+      if (studentGradeEl) {
+        let pathwayLineEl = document.getElementById("studentPathwayLine");
+        if (!pathwayLineEl) {
+          pathwayLineEl = document.createElement("p");
+          pathwayLineEl.id = "studentPathwayLine";
+          studentGradeEl.closest("p").insertAdjacentElement("afterend", pathwayLineEl);
+        }
+
+        if (resolvedPathway) {
+          pathwayLineEl.innerHTML = `<strong>Pathway:</strong> <span style="font-weight: bold; text-transform: uppercase; color: #111;">${String(resolvedPathway).toUpperCase()}</span>`;
+          pathwayLineEl.style.display = "block";
+        } else {
+          pathwayLineEl.style.display = "none";
         }
       }
     }
@@ -351,9 +368,8 @@ async function getImageBase64(url) {
     });
   }
 
-  // ===== SENIOR SCHOOL (10-12): Component-Based Report =====
+  // ===== SENIOR SCHOOL (10-12): Single-Score Report =====
   if (isSeniorSchool) {
-    // Update table headers for senior school
     const thead = document.querySelector("#marksTable thead tr");
     if (thead) {
       thead.innerHTML = `
@@ -373,8 +389,9 @@ async function getImageBase64(url) {
     let totalPoints = 0;
 
     studentMarks.forEach(m => {
-      const finalScore = window.cbcUtils.calculateFinalScore(m.continuousAssessment, m.projectWork, m.endTermExam);
-      const isAbs = finalScore === null || String(finalScore).toUpperCase() === "X";
+      const rawScore = m.score ?? m.finalScore ?? m.continuousAssessment ?? m.projectWork ?? m.endTermExam ?? null;
+      const isAbs = rawScore === null || rawScore === undefined || String(rawScore).trim() === "" || String(rawScore).toUpperCase() === "X";
+      const finalScore = isAbs ? null : Number(rawScore);
       const fs = finalScore !== null ? finalScore : "-";
       const points = finalScore !== null ? window.cbcUtils.getPoints(finalScore, reportGrade) : "-";
       const perfLevel = finalScore !== null ? window.cbcUtils.getSubdivision(finalScore, reportGrade) : "N/A";
@@ -390,13 +407,13 @@ async function getImageBase64(url) {
       `;
       tbody.appendChild(tr);
 
-      if (finalScore !== null && finalScore !== "X") {
+      if (finalScore !== null) {
         totalFinalScore += Number(finalScore);
         totalPoints += cbcUtils.getPoints(finalScore, reportGrade);
         validScoreCount++;
       }
     });
-    
+
     const meanFinalScore = validScoreCount > 0 ? (totalFinalScore / validScoreCount).toFixed(1) : 0;
     updateReportSummary(meanFinalScore, totalPoints);
   }
@@ -483,8 +500,13 @@ async function getImageBase64(url) {
   // Buttons
   // -----------------------------
   const reportElement = document.querySelector(".report-container");
+  const backBtn = document.getElementById("backBtn");
   const downloadBtn = document.getElementById("downloadBtn");
   const refreshBtn = document.getElementById("refreshBtn");
+
+  if (backBtn) backBtn.addEventListener("click", () => {
+    window.location.href = "/student";
+  });
 
   if (refreshBtn) refreshBtn.addEventListener("click", () => window.location.reload());
 

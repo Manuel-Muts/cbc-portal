@@ -325,6 +325,9 @@ export const previewPromotion = async (req, res) => {
       ...(normalizedFilterGrade ? { grade: normalizedFilterGrade } : {}) // 🆕 Optional class filter
     };
 
+    // 🆕 Smart filtering: exact match for numeric admission, regex for names
+    const isNumericSearch = /^\d+$/.test(search);
+
     // 🚀 Using aggregation to perform an inner join between Enrollments and Users.
     // This ensures that "Unknown Learner" rows are never generated because $unwind 
     // automatically excludes enrollments that don't have a matching user record.
@@ -339,13 +342,18 @@ export const previewPromotion = async (req, res) => {
         }
       },
       { $unwind: "$student" }, 
-      // 🆕 Add search filter if provided
+      // 🆕 Add search filter if provided (with smart numeric/text matching)
       ...(search ? [{
         $match: {
-          $or: [
-            { "student.name": { $regex: escapeRegex(search), $options: "i" } },
-            { "student.admission": { $regex: escapeRegex(search), $options: "i" } }
-          ]
+          ...(isNumericSearch 
+            ? { "student.admission": search } // Exact match for numeric
+            : {
+              $or: [
+                { "student.name": { $regex: escapeRegex(search), $options: "i" } },
+                { "student.admission": { $regex: escapeRegex(search), $options: "i" } }
+              ]
+            }
+          )
         }
       }] : []),
       {

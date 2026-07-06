@@ -173,6 +173,42 @@ window.cbcUtils = {
         return match ? parseInt(match[0], 10) : 0;
     },
 
+    /**
+     * Normalize pathway names to a canonical form used across the app.
+     * Examples: 'stem' -> 'STEM', 'social-sciences' -> 'Social Sciences'
+     */
+    normalizePathway: (p) => {
+        if (!p && p !== 0) return "";
+        const raw = String(p).trim();
+        if (!raw) return "";
+
+        const normalizedInput = raw.toLowerCase();
+        const map = {
+              stem: 'STEM',
+             STEM: 'STEM',
+            'social sciences': 'Social Sciences',
+            'SOCIAL SCIENCES': 'Social Sciences',
+            socialsciences: 'Social Sciences',
+            ARTS: 'Arts & Sports Science',
+            'ARTS': 'Arts & Sports Science',
+            'arts & sports science': 'Arts & Sports Science',
+            'arts and sports science': 'Arts & Sports Science',
+            artsandsportsscience: 'Arts & Sports Science',
+            artsandsportscience: 'Arts & Sports Science',
+            artssportsscience: 'Arts & Sports Science',
+            na: 'N/A',
+            none: 'N/A'
+        };
+
+        if (map[normalizedInput]) return map[normalizedInput];
+
+        const key = normalizedInput.replace(/[^a-z0-9]+/g, "");
+        if (map[key]) return map[key];
+
+        // Fallback: Title-case common words but preserve & and spacing
+        return raw.split(/\s+/).map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+    },
+
 
     /**
      * Checks if a given grade falls within the Primary school range (PP1 - Grade 6).
@@ -311,7 +347,6 @@ window.cbcUtils = {
             "Social Studies": "S/S",
             "Mathematics": "MATHS",
             "Agriculture": "AGR",
-            "Christian Religious Studies": "CRE", // Added for robustness
             "Christian Religious Education": "CRE", // Added for robustness
             "Creative Arts": "C/A",
             "Sports C/A(s)": "C/A(s)",

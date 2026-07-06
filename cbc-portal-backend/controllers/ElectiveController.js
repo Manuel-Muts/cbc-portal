@@ -219,12 +219,90 @@ export const bulkAssignElectiveSet = async (req, res) => {
 export const getAssignments = async (req, res) => {
   try {
     const schoolId = req.user?.schoolId;
+    // Support server-side pagination: page & limit
+    const page = Math.max(1, parseInt(req.query.page || '1', 10));
+    const limit = Math.max(1, parseInt(req.query.limit || '20', 10));
 
-    const assignments = await LearnerElective.find({ schoolId })
-      .populate("learnerId", "name admission grade stream")
-      .populate("electiveSetId", "name grade subjects");
+    const match = { schoolId: new mongoose.Types.ObjectId(String(schoolId)) };
 
-    return res.json({ data: assignments });
+    const pathway = req.query.pathway ? String(req.query.pathway).trim() : null;
+    const q = req.query.q ? String(req.query.q).trim() : null;
+
+    const pipeline = [
+      { $match: match },
+      { $lookup: { from: 'users', localField: 'learnerId', foreignField: '_id', as: 'learner' } },
+      { $unwind: { path: '$learner', preserveNullAndEmptyArrays: true } },
+      // Optional server-side filtering on learner fields
+      // (pathway and q search will be applied after we have learner in the pipeline)
+      // We will push an additional $match later when needed
+      { $lookup: { from: 'electivesets', localField: 'electiveSetId', foreignField: '_id', as: 'electiveSet' } },
+        { $unwind: { path: '$electiveSet', preserveNullAndEmptyArrays: true } },
+    ];
+
+    // Insert an additional $match stage after unwind if pathway/q provided
+    if (pathway || q) {
+      const andClauses = [];
+      if (pathway) {
+        // match exact pathway (case-insensitive)
+        andClauses.push({ 'learner.pathway': { $regex: new RegExp(`^${pathway.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') } });
+      }
+      if (q) {
+        // 🆕 Smart filtering: exact match for numeric admission, regex for names
+        const isNumericSearch = /^\d+$/.test(q);
+        const qre = new RegExp(q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+        
+        if (isNumericSearch) {
+          // For numeric searches, match admission exactly
+          andClauses.push({ 'learner.admission': q });
+        } else {
+          // For text searches, use regex on both name and admission
+          andClauses.push({ $or: [{ 'learner.name': { $regex: qre } }, { 'learner.admission': { $regex: qre } }] });
+        }
+      }
+      if (andClauses.length) {
+        pipeline.splice(3, 0, { $match: andClauses.length === 1 ? andClauses[0] : { $and: andClauses } });
+      }
+    }
+
+    // continue building pipeline for grouping and pagination
+    pipeline.push(
+      { $group: {
+          _id: '$learnerId',
+          learner: { $first: '$learner' },
+          assignmentIds: { $push: '$_id' },
+          subjectArrays: { $push: { $concatArrays: [ { $ifNull: ['$subjects', []] }, { $ifNull: ['$electiveSet.subjects', []] } ] } },
+          electiveSets: { $addToSet: '$electiveSet' },
+          grade: { $first: '$grade' }
+      }},
+      { $project: {
+          learner: 1,
+          assignmentIds: 1,
+          electiveSets: 1,
+          grade: 1,
+          mergedSubjects: { $reduce: { input: '$subjectArrays', initialValue: [], in: { $concatArrays: ['$$value', '$$this'] } } }
+      }},
+      { $project: {
+          learner: 1,
+          assignmentIds: 1,
+          electiveSets: 1,
+          grade: 1,
+          subjectLines: { $setUnion: ['$mergedSubjects', []] }
+      }},
+      { $sort: { 'learner.name': 1 } },
+      { $facet: {
+        metadata: [{ $count: 'total' }],
+        data: [{ $skip: (page - 1) * limit }, { $limit: limit }]
+      }}
+    );
+
+    const agg = await LearnerElective.aggregate(pipeline);
+    const metadata = (agg[0] && agg[0].metadata && agg[0].metadata[0]) ? agg[0].metadata[0] : { total: 0 };
+    const data = (agg[0] && agg[0].data) ? agg[0].data : [];
+
+    const total = metadata.total || 0;
+    const totalPages = Math.max(1, Math.ceil(total / limit));
+
+    return res.json({ data, page, limit, total, totalPages });
   } catch (err) {
     console.error(err);
     return res.status(500).json({ message: "Server error" });
@@ -291,5 +369,24 @@ export const getLearnerElectives = async (req, res) => {
   } catch (err) {
     console.error(err);
     return res.status(500).json({ message: "Server error" });
+  }
+};
+
+// GET ASSIGNED LEARNER IDS (optionally filter by grade)
+export const getAssignedLearnerIds = async (req, res) => {
+  try {
+    const schoolId = req.user?.schoolId;
+    const grade = req.query.grade;
+    if (!schoolId) return res.status(403).json({ message: 'Missing school context' });
+
+    const query = { schoolId: new mongoose.Types.ObjectId(String(schoolId)) };
+    if (grade) query.grade = String(grade);
+
+    const rows = await LearnerElective.find(query).select('learnerId').lean();
+    const ids = Array.from(new Set(rows.map(r => String(r.learnerId))));
+    return res.json({ data: ids });
+  } catch (err) {
+    console.error('getAssignedLearnerIds error:', err);
+    return res.status(500).json({ message: 'Server error' });
   }
 };

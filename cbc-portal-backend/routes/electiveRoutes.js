@@ -8,6 +8,7 @@ import {
   assignElectiveSet,
   bulkAssignElectiveSet,
   getAssignments,
+  getAssignedLearnerIds,
   deleteAssignment,
   getLearnerElectives
 } from "../controllers/ElectiveController.js";
@@ -26,6 +27,7 @@ router.delete("/sets/:id", verifyToken, deleteElectiveSet);
 /* ============== ASSIGNMENTS ================= */
 
 router.get("/assignments", verifyToken, getAssignments);
+router.get("/assignments/ids", verifyToken, getAssignedLearnerIds);
 router.post("/assignments", verifyToken, assignElectiveSet);
 router.post("/assignments/bulk", verifyToken, bulkAssignElectiveSet);
 router.delete("/assignments/:id", verifyToken, deleteAssignment);

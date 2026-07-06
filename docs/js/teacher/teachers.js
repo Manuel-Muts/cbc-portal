@@ -14,9 +14,17 @@ document.addEventListener("DOMContentLoaded", () => {
   let submittedMarks = []; // in-memory marks list
   let editingMarkId = null;
   let teacher = null;
-  let currentTermLocked = false; // Global variable to store lock status
+  let currentTermLocked = false; // Global variable to store term lock status
+  let teacherSubmittedMarkEditsAllowed = true; // Controls whether teachers may edit submitted marks
   const termLockMessageEl = document.getElementById("termLockMessage"); // Element to display lock message
   let isSingleEditMode = false;
+  let schoolInfo = null; // Global school info cache
+
+  // 🆕 Two-tier school info caching (matches admin.js pattern)
+  const TEACHER_SCHOOL_STABLE_CACHE_KEY = "teacher_school_info_stable_cache";
+  const TEACHER_SCHOOL_DYNAMIC_CACHE_KEY = "teacher_school_info_dynamic_cache";
+  const TEACHER_SCHOOL_STABLE_DURATION = 30 * 24 * 60 * 60 * 1000; // 30 days for school name
+  const TEACHER_SCHOOL_DYNAMIC_DURATION = 5 * 60 * 1000; // 5 minutes for status
 
   // Pagination for individual student tables inside Submitted Marks
   const STUDENTS_PER_TABLE_PAGE = 10;
@@ -24,7 +32,6 @@ document.addEventListener("DOMContentLoaded", () => {
   const subSearchMap = new Map(); // Track search terms for each group
   let activeSearchInfo = { key: null, cursor: 0 }; // Persist focus during re-renders
   const openAccordions = new Set();
-
   // ---------------------------
   // AUTH FETCH HELPER (Prevent Bearer null & handle 401)
   // ---------------------------
@@ -77,6 +84,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const assessmentSelect = document.getElementById("assessmentSelect");
   const logoutBtn = document.getElementById("logoutBtn");
   const submittedMarksContainer = document.getElementById("submittedMarksContainer");
+  const submittedMarksStatusMessage = document.getElementById("submittedMarksStatusMessage");
 
   // Global variables for submitted marks pagination
   let submittedMarksCurrentPage = 1;
@@ -115,6 +123,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     if (!term || !year) {
       currentTermLocked = false;
+      teacherSubmittedMarkEditsAllowed = true;
       updateUIForTermLock();
       return;
     }
@@ -125,12 +134,65 @@ document.addEventListener("DOMContentLoaded", () => {
       if (!res.ok) throw new Error("Failed to fetch term lock status");
       const data = await res.json();
       currentTermLocked = data.isLocked;
+      // Default: edits disabled unless explicitly enabled by admin
+      teacherSubmittedMarkEditsAllowed = data.allowTeacherSubmittedMarkEdits === true;
       updateUIForTermLock();
     } catch (err) {
       console.error("Error checking term lock status:", err);
       currentTermLocked = false; // Default to unlocked on error
+      teacherSubmittedMarkEditsAllowed = true;
       updateUIForTermLock();
+      updateSubmittedMarksEditStatus();
       showToast("Error checking term lock status. Please refresh.", "error");
+    }
+  }
+
+  // ---------------------------
+  // NEW: UPDATE SUBMITTED MARKS EDIT STATUS MESSAGE
+  // ---------------------------
+  function updateSubmittedMarksEditStatus() {
+    if (!submittedMarksStatusMessage) return;
+
+    const canEdit = teacherSubmittedMarkEditsAllowed && !currentTermLocked;
+    submittedMarksStatusMessage.textContent = canEdit ? "Edits enabled" : "Edits disabled";
+    submittedMarksStatusMessage.style.display = "flex";
+    submittedMarksStatusMessage.style.alignItems = "center";
+    submittedMarksStatusMessage.style.justifyContent = "center";
+    submittedMarksStatusMessage.style.fontWeight = "700";
+    submittedMarksStatusMessage.style.color = canEdit ? "#115e59" : "#9b1c1c";
+    submittedMarksStatusMessage.style.background = canEdit ? "#ecfdf5" : "#fee2e2";
+    submittedMarksStatusMessage.style.border = canEdit ? "1px solid #34d399" : "1px solid #f87171";
+    submittedMarksStatusMessage.style.borderRadius = "10px";
+    submittedMarksStatusMessage.style.padding = "12px 14px";
+  }
+
+  // ---------------------------
+  // NEW: UPDATE TERM EDIT PERMISSION FROM TEACHER ACTIONS
+  // ---------------------------
+  async function updateTeacherEditPermissionForTerm(allowEdits) {
+    const year = marksYearInput?.value;
+    const term = marksTermSelect?.value;
+
+    if (!year || !term) return null;
+
+    try {
+      const res = await fetchWithAuth(`${API_BASE}/settings/term-lock`, {
+        method: "PUT",
+        body: JSON.stringify({
+          year: Number(year),
+          term: Number(term),
+          allowTeacherSubmittedMarkEdits: allowEdits
+        })
+      });
+
+      const data = await res.json();
+      // Default: edits disabled unless explicitly enabled by admin
+      teacherSubmittedMarkEditsAllowed = data.allowTeacherSubmittedMarkEdits === true;
+      updateSubmittedMarksEditStatus();
+      return data;
+    } catch (err) {
+      console.error("Error updating submitted marks edit permission:", err);
+      return null;
     }
   }
 
@@ -168,6 +230,7 @@ document.addEventListener("DOMContentLoaded", () => {
         marksTableContainer?.classList.remove("locked-state-overlay");
       }
     }
+    updateSubmittedMarksEditStatus();
   }
 
   // ---------------------------
@@ -255,11 +318,14 @@ document.addEventListener("DOMContentLoaded", () => {
         btn.style.transform = "rotate(360deg)";
         
         setTimeout(() => {
+          // Clear all caches
           localStorage.removeItem("teacher_allocations_cache");
           localStorage.removeItem("user_profile_cache");
-          localStorage.removeItem("teacher_school_cache");
+          localStorage.removeItem("teacher_school_cache"); // Legacy key
           localStorage.removeItem("teacher_marks_cache");
           localStorage.removeItem("teacher_materials_cache");
+          // 🆕 Clear new two-tier school cache
+          clearSchoolInfoCache();
           window.location.reload();
         }, 500);
       });
@@ -337,52 +403,156 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   // ---------------------------
-  // FETCH SCHOOL NAME
-  // ---------------------------
-  async function loadSchoolName() {
+  // 🆕 Cache helper functions (matches admin.js)
+  const readCache = (key, duration) => {
+    const cached = localStorage.getItem(key);
+    if (!cached) return null;
+    try {
+      const { timestamp, data } = JSON.parse(cached);
+      if (Date.now() - timestamp < duration) return data;
+    } catch (e) {
+      console.warn(`Cache read error for ${key}:`, e);
+    }
+    localStorage.removeItem(key);
+    return null;
+  };
+
+  const clearSchoolInfoCache = () => {
+    localStorage.removeItem(TEACHER_SCHOOL_STABLE_CACHE_KEY);
+    localStorage.removeItem(TEACHER_SCHOOL_DYNAMIC_CACHE_KEY);
+    localStorage.removeItem("teacher_school_cache"); // Legacy key cleanup
+  };
+
+  // 🆕 Get fallback school name from teacher profile
+  const getFallbackSchoolName = () => {
+    if (!teacher || !teacher.schoolId) return null;
+    // Try to get school name from teacher object if available
+    return teacher.schoolName || teacher.school?.name || null;
+  };
+
+  // 🆕 FETCH SCHOOL INFO (Two-tier caching with fallback)
+  async function loadSchoolName(forceReload = false) {
     const token = authService.getToken();
     if (!token) return;
-    
-    const CACHE_KEY = "teacher_school_cache";
-    const CACHE_DURATION = 15 * 60 * 1000;
 
-    const cached = localStorage.getItem(CACHE_KEY);
-    if (cached) {
-      try {
-        const { timestamp, data } = JSON.parse(cached);
-        if (Date.now() - timestamp < CACHE_DURATION) {
-          window.currentSchool = data;
-          updateSchoolNameUI(data);
-          updateTeacherNameUI();
-          return;
-        }
-      } catch (e) {}
+    // Read both cache tiers
+    const stableCache = !forceReload ? readCache(TEACHER_SCHOOL_STABLE_CACHE_KEY, TEACHER_SCHOOL_STABLE_DURATION) : null;
+    const dynamicCache = !forceReload ? readCache(TEACHER_SCHOOL_DYNAMIC_CACHE_KEY, TEACHER_SCHOOL_DYNAMIC_DURATION) : null;
+    const stableCacheHasName = stableCache && String(stableCache.name || "").trim();
+    const useCachedSchoolInfo = stableCacheHasName && dynamicCache && !forceReload;
+
+    // If we have complete cached data, use it immediately
+    if (useCachedSchoolInfo) {
+      console.log("✅ Using complete cached school info (stable + dynamic)");
+      schoolInfo = { ...stableCache, ...dynamicCache };
+      window.currentSchool = schoolInfo;
+      updateSchoolNameUI(schoolInfo);
+      updateTeacherNameUI();
+      return;
     }
 
+    // If we have stable data but no dynamic data, render what we have and refresh dynamic in background
+    if (stableCache) {
+      console.log("✅ Using cached stable school info, refreshing dynamic data in background");
+      schoolInfo = { ...stableCache, status: undefined };
+      window.currentSchool = schoolInfo;
+      updateSchoolNameUI(schoolInfo);
+      updateTeacherNameUI();
+    }
+
+    // Fetch school info (potentially both stable and dynamic if needed)
     try {
-      const res = await fetchWithAuth(`${API_BASE}/my-school?fields=name,status`);
-      if (!res.ok) throw new Error("Failed to fetch school");
-      const school = await res.json();
+      const requests = [];
+      const needsStableFetch = !stableCache;
+      
+      if (needsStableFetch) {
+        requests.push(
+          fetchWithAuth(`${API_BASE}/my-school?fields=name`)
+            .then(async res => {
+              if (!res.ok) throw new Error("Failed to fetch stable school info");
+              const data = await res.json();
+              localStorage.setItem(TEACHER_SCHOOL_STABLE_CACHE_KEY, JSON.stringify({ timestamp: Date.now(), data }));
+              return { type: 'stable', data };
+            })
+            .catch(err => ({ type: 'stable', error: err }))
+        );
+      }
 
-      localStorage.setItem(CACHE_KEY, JSON.stringify({
-        timestamp: Date.now(),
-        data: school
-      }));
+      // Always try to refresh dynamic data (status)
+      if (!dynamicCache || forceReload) {
+        requests.push(
+          fetchWithAuth(`${API_BASE}/my-school?fields=status`)
+            .then(async res => {
+              if (!res.ok) throw new Error("Failed to fetch dynamic school info");
+              const data = await res.json();
+              localStorage.setItem(TEACHER_SCHOOL_DYNAMIC_CACHE_KEY, JSON.stringify({ timestamp: Date.now(), data }));
+              return { type: 'dynamic', data };
+            })
+            .catch(err => ({ type: 'dynamic', error: err }))
+        );
+      }
 
-      window.currentSchool = school;
-      updateSchoolNameUI(school);
-      // Refresh teacher UI to include the school name in the unified header
+      // If no requests needed, return early
+      if (requests.length === 0) return;
+
+      const results = await Promise.allSettled(requests);
+      const merged = {
+        ...stableCache,
+        ...dynamicCache
+      };
+
+      results.forEach(result => {
+        if (result.status !== "fulfilled") return;
+        const payload = result.value;
+        if (!payload || payload.error) return;
+        if (payload.type === 'stable') {
+          merged.name = payload.data.name;
+        }
+        if (payload.type === 'dynamic') {
+          merged.status = payload.data.status;
+        }
+      });
+
+      // Fallback if name is still missing
+      if (!merged.name) {
+        const fallbackName = getFallbackSchoolName();
+        if (fallbackName) merged.name = fallbackName;
+      }
+
+      schoolInfo = merged;
+      window.currentSchool = merged;
+      updateSchoolNameUI(merged);
       updateTeacherNameUI();
     } catch (err) {
-      console.error("Load school error:", err);
+      console.error("School info fetch error:", err);
+      // Try fallback name from teacher profile
+      const fallbackName = getFallbackSchoolName();
+      if (fallbackName) {
+        schoolInfo = { ...schoolInfo, name: fallbackName };
+        window.currentSchool = schoolInfo;
+        updateSchoolNameUI(schoolInfo);
+        updateTeacherNameUI();
+      }
     }
   }
 
+  // 🆕 Improved school name UI update with robust error handling
   function updateSchoolNameUI(school) {
+    if (!school) return;
+    
     const schoolNameEl = document.getElementById("schoolName");
-    if (schoolNameEl) {
-      schoolNameEl.textContent = (school.name || "").toUpperCase();
-      schoolNameEl.style.color = "#ffffff"; // Ensure high visibility contrast
+    const displayName = String(school.name || "").trim();
+    
+    if (schoolNameEl && displayName) {
+      schoolNameEl.textContent = displayName.toUpperCase();
+      schoolNameEl.style.color = "#ffffff";
+      schoolNameEl.style.fontWeight = "600";
+    } else if (schoolNameEl && !displayName) {
+      // Fallback if no school name available
+      const fallbackName = getFallbackSchoolName();
+      schoolNameEl.textContent = (fallbackName || "SCHOOL").toUpperCase();
+      schoolNameEl.style.color = "#bfdbfe"; // Lighter color to indicate fallback
+      schoolNameEl.style.fontWeight = "600";
     }
   }
 
@@ -455,10 +625,8 @@ document.addEventListener("DOMContentLoaded", () => {
         const normalizedSubjects = [...new Set(subjects.map(s => 
           window.SUBJECT_DATA?.getMarkEntrySubject ? window.SUBJECT_DATA.getMarkEntrySubject(s) : s
         ))].filter(subjectName => {
-          const normalizedForComparison = window.SUBJECT_DATA?.normalizeSeniorSubjectName
-            ? window.SUBJECT_DATA.normalizeSeniorSubjectName(subjectName)
-            : subjectName;
-          return !(gradeNumber >= 10 && gradeNumber <= 12 && normalizedForComparison === "PE");
+          if (!subjectName) return false;
+          return !window.SUBJECT_DATA?.isSeniorNonGradedMarkSubject?.(subjectName, alloc.grade);
         });
         
         return { ...alloc, subjects: normalizedSubjects };
@@ -585,9 +753,6 @@ document.addEventListener("DOMContentLoaded", () => {
     return String(subjectName || "").trim().toLowerCase();
   }
 
-  function normalizePathway(pathway) {
-    return String(pathway || "").trim();
-  }
 
   function getGradeNumberFromValue(value) {
     const text = String(value || "").trim();
@@ -610,23 +775,21 @@ document.addEventListener("DOMContentLoaded", () => {
     const isCompulsory = (subjectData.seniorCompulsorySubjects || []).some((item) => normalizeSubjectName(item) === normalizedSubject || normalizeSubjectName(item) === normalizedMarkEntrySubject);
     if (isCompulsory) return false;
 
-    const pathway = subjectData.getSeniorPathway?.(subject);
-    if (!pathway || pathway === "Core") return false;
-
-    const electives = subjectData.getElectiveSubjectsForPathway?.(pathway) || [];
-    return electives.some((item) => normalizeSubjectName(item) === normalizedSubject || normalizeSubjectName(item) === normalizedMarkEntrySubject);
+    const subjectPathways = subjectData.getSeniorPathwaysForSubject?.(subject) || [];
+    return subjectPathways.length > 0 && !subjectPathways.includes("Core");
   }
 
   function getSeniorElectiveQueryParams(subjectName, classLabel) {
     if (!isSeniorElectiveSubject(subjectName, classLabel)) return null;
 
     const subjectData = window.SUBJECT_DATA || {};
-    const pathway = subjectData.getSeniorPathway?.(subjectName);
-    if (!pathway || pathway === "Core") return null;
+    const pathways = subjectData.getSeniorPathwaysForSubject?.(subjectName) || [];
+    const uniquePathways = [...new Set(pathways.map(p => String(p || "").trim()).filter(Boolean))];
+    const canonicalSubject = subjectData.normalizeSeniorSubjectName?.(subjectName) || String(subjectName || "").trim();
 
     return {
-      pathway,
-      electiveSubject: String(subjectName || "").trim(),
+      pathways: uniquePathways,
+      electiveSubject: canonicalSubject,
     };
   }
 
@@ -636,8 +799,14 @@ document.addEventListener("DOMContentLoaded", () => {
       limit: String(limit),
     });
 
-    if (electiveParams?.pathway) {
-      params.set("pathway", electiveParams.pathway);
+    if (electiveParams?.pathways?.length === 1) {
+      const normalizedPathway = window.cbcUtils?.normalizePathway?.(electiveParams.pathways[0]) || String(electiveParams.pathways[0] || "").trim();
+      params.set("pathway", normalizedPathway);
+    } else if (electiveParams?.pathways?.length > 1) {
+      const normalizedPathways = electiveParams.pathways
+        .map(p => window.cbcUtils?.normalizePathway?.(p) || String(p || "").trim())
+        .filter(Boolean);
+      params.set("pathways", normalizedPathways.join(","));
     }
     if (electiveParams?.electiveSubject) {
       params.set("electiveSubject", electiveParams.electiveSubject);
@@ -649,11 +818,14 @@ document.addEventListener("DOMContentLoaded", () => {
   function filterStudentsBySeniorPathway(students, subjectName) {
     if (!Array.isArray(students) || !students.length) return students;
 
-    const subjectPathway = window.SUBJECT_DATA?.getSeniorPathway?.(subjectName);
-    if (!subjectPathway || subjectPathway === "Core") return students;
+    const subjectPathways = window.SUBJECT_DATA?.getSeniorPathwaysForSubject?.(subjectName) || [];
+    if (!subjectPathways.length || subjectPathways.length > 1) return students;
 
-    const expectedPathway = normalizePathway(subjectPathway);
-    return students.filter((student) => normalizePathway(student?.pathway) === expectedPathway);
+    const expectedPathway = window.cbcUtils?.normalizePathway?.(subjectPathways[0]) || String(subjectPathways[0] || "").trim();
+    return students.filter((student) => {
+      const studentPathway = window.cbcUtils?.normalizePathway?.(student?.pathway) || String(student?.pathway || "").trim();
+      return !studentPathway || studentPathway === expectedPathway;
+    });
   }
 
   // ---------------------------
@@ -665,7 +837,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
       const electiveParams = getSeniorElectiveQueryParams(selectedSubject, classLabel);
       const electiveScope = electiveParams
-        ? `${normalizeSubjectName(electiveParams.electiveSubject)}_${normalizePathway(electiveParams.pathway)}`
+        ? `${normalizeSubjectName(electiveParams.electiveSubject)}_${electiveParams.pathways?.map(p => window.cbcUtils?.normalizePathway?.(p) || String(p || "").trim()).join("_")}`
         : "all";
       // 🆕 FIX: Cache key WITHOUT page number to store full student list once
       const CACHE_KEY = `students_cache_${classLabel}_${electiveScope}`;
@@ -719,6 +891,12 @@ document.addEventListener("DOMContentLoaded", () => {
       const limit = 1000; // Fetch all students for this class
       const fetchPage = 1; // Always fetch from page 1 since we want all data
       const queryString = buildClassStudentsQuery(fetchPage, limit, electiveParams);
+      console.log("📡 Elective load debug:", {
+        selectedSubject,
+        classLabel,
+        electiveParams,
+        queryString
+      });
       const res = await fetchWithAuth(`${API_BASE}/enrollments/class/${encodeURIComponent(classLabel)}?${queryString}`);
       
       console.log("📨 API Response Status:", res.status);
@@ -731,6 +909,20 @@ document.addEventListener("DOMContentLoaded", () => {
       
       const data = await res.json();
       const rawStudents = Array.isArray(data?.students) ? data.students : Array.isArray(data) ? data : [];
+      console.log("📨 API Response Data:", {
+        classLabel,
+        selectedSubject,
+        isElectiveLoad,
+        electiveParams,
+        dataType: Array.isArray(data) ? "array" : typeof data,
+        hasStudentsField: Array.isArray(data?.students),
+        rawStudentsCount: rawStudents.length,
+        total: data?.total,
+        totalPages: data?.totalPages,
+        currentPage: data?.currentPage,
+        studentsSample: rawStudents.slice(0, 10)
+      });
+
       let filteredStudents = rawStudents;
 
       if (isElectiveLoad) {
@@ -866,18 +1058,7 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     // Update table header for marks column
-    if (isSeniorSchool) {
-      marksColumnHeader.innerHTML = `
-        <div class="senior-header-grid">
-          <div class="header-item">CA<span class="perc"> (30%)</span></div>
-          <div class="header-item">PW<span class="perc"> (20%)</span></div>
-          <div class="header-item">Exam<span class="perc"> (50%)</span></div>
-          <div class="header-item">Final</div>
-        </div>
-      `;
-    } else {
-      marksColumnHeader.innerHTML = "Marks (%)";
-    }
+    marksColumnHeader.innerHTML = "Marks (%)";
 
     // Add student rows
     students.forEach(student => { // student here is from the current page
@@ -903,9 +1084,7 @@ document.addEventListener("DOMContentLoaded", () => {
         };
         if (isSeniorSchool) {
           markData.course = selectedSubject;
-          markData.continuousAssessment = "";
-          markData.projectWork = "";
-          markData.endTermExam = "";
+          markData.score = "";
         } else {
           markData.subject = selectedSubject;
           markData.score = "";
@@ -923,45 +1102,16 @@ document.addEventListener("DOMContentLoaded", () => {
       row.dataset.pathway = student.pathway || ''; // Preserve stored pathway for senior school students
       const existingMark = allMarksEntered.get(markEntryKey);
       
+      const existingScoreValue = existingMark?.score ?? existingMark?.finalScore ?? existingMark?.continuousAssessment ?? existingMark?.projectWork ?? existingMark?.endTermExam ?? '';
+
       // ADM and Name columns
-     row.innerHTML = `
+      row.innerHTML = `
   <td data-label="Admission">${sanitize(student.admissionNo || student.admission)}</td>
   <td data-label="Name">${sanitize(student.name)}</td>
   <td data-label="Marks" class="marks-entry-cell">
-    ${isSeniorSchool ? `
-      <div class="marks-input-grid">
-        <input type="text" class="marks-entry-input ca-input" inputmode="text" placeholder="CA" value="${existingMark?.continuousAssessment ?? ''}" ${currentTermLocked ? 'disabled' : ''} />
-        <input type="text" class="marks-entry-input pw-input" inputmode="text" placeholder="PW" value="${existingMark?.projectWork ?? ''}" ${currentTermLocked ? 'disabled' : ''} />
-        <input type="text" class="marks-entry-input exam-input" inputmode="text" placeholder="Exam" value="${existingMark?.endTermExam ?? ''}" ${currentTermLocked ? 'disabled' : ''} />
-        <input type="text" class="marks-entry-input final-input" placeholder="Final" value="${existingMark?.finalScore ?? ''}" readonly />
-      </div>
-    ` : `
-      <input type="text" class="marks-entry-input marks-input" inputmode="text" placeholder="Score (or X for Absent)" value="${existingMark?.score ?? ''}" ${currentTermLocked ? 'disabled' : ''} />
-    `}
+    <input type="text" class="marks-entry-input marks-input" inputmode="text" placeholder="Score (or X for Absent)" value="${existingScoreValue}" ${currentTermLocked ? 'disabled' : ''} />
   </td>
 `;
-
-      // Auto-calculate final score for senior school
-      if (isSeniorSchool) {
-        const caInput = row.querySelector(".ca-input");
-        const pwInput = row.querySelector(".pw-input");
-        const examInput = row.querySelector(".exam-input");
-        const finalInput = row.querySelector(".final-input");
-        
-        const updateFinal = () => {
-          const score = window.cbcUtils.calculateFinalScore(caInput.value, pwInput.value, examInput.value);
-          finalInput.value = (caInput.value !== "" || pwInput.value !== "" || examInput.value !== "") ? score : "";
-        };
-
-        caInput.addEventListener("input", updateFinal);
-        pwInput.addEventListener("input", updateFinal);
-        examInput.addEventListener("input", updateFinal);
-
-        // Trigger initial calculation if values were pre-filled from existingMark
-        if (existingMark?.continuousAssessment || existingMark?.projectWork || existingMark?.endTermExam) {
-          updateFinal();
-        }
-      }
     });
 
     // Check if draft exists for loaded selection
@@ -982,10 +1132,7 @@ document.addEventListener("DOMContentLoaded", () => {
     let inputValue = inputElement.value;
 
     // Apply validation allowing numbers 0-100 OR 'X'
-    if (inputElement.classList.contains("marks-input") ||
-        inputElement.classList.contains("ca-input") ||
-        inputElement.classList.contains("pw-input") ||
-        inputElement.classList.contains("exam-input")) {
+    if (inputElement.classList.contains("marks-input")) {
         
     // 1. Filter characters: allow only digits and 'X'/'x'
         inputValue = inputValue.replace(/[^0-9Xx]/g, '');
@@ -1041,20 +1188,8 @@ document.addEventListener("DOMContentLoaded", () => {
     if (isSeniorSchool) {
       markData.course = selectedSubject;
       markData.pathway = markData.pathway || row.dataset.pathway || null; // Preserve existing pathway if available
-      if (inputElement.classList.contains("ca-input")) {
-          markData.continuousAssessment = inputValue.toUpperCase() === "X" ? "X" : (inputValue === "" ? null : inputValue);
-      } else if (inputElement.classList.contains("pw-input")) {
-          markData.projectWork = inputValue.toUpperCase() === "X" ? "X" : (inputValue === "" ? null : inputValue);
-      } else if (inputElement.classList.contains("exam-input")) {
-          markData.endTermExam = inputValue.toUpperCase() === "X" ? "X" : (inputValue === "" ? null : inputValue);
-      }
-      // Recalculate final score if any component changes
-      const ca = row.querySelector(".ca-input")?.value;
-      const pw = row.querySelector(".pw-input")?.value;
-      const exam = row.querySelector(".exam-input")?.value;
-      const finalScore = window.cbcUtils.calculateFinalScore(ca, pw, exam);
-      row.querySelector(".final-input").value = finalScore !== null ? finalScore : "";
-      markData.finalScore = finalScore;
+      markData.score = inputValue.toUpperCase() === "X" ? "X" : (inputValue === "" ? null : inputValue);
+      markData.finalScore = markData.score;
     } else {
       markData.subject = selectedSubject;
       if (inputElement.classList.contains("marks-input")) {
@@ -1064,10 +1199,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
 
     // When any marks input changes, mark row as modified
-    if (e.target.classList.contains("marks-input") || 
-        e.target.classList.contains("ca-input") ||
-        e.target.classList.contains("pw-input") ||
-        e.target.classList.contains("exam-input")) {
+    if (e.target.classList.contains("marks-input")) {
       row.style.backgroundColor = "#fffacd"; // Light yellow to show modified
     }
   });
@@ -1082,14 +1214,7 @@ document.addEventListener("DOMContentLoaded", () => {
       if (!row) return;
 
       const isSeniorSchool = cbcUtils.isSeniorGrade(row.dataset.grade);
-      let inputsInRow;
-      
-      // Identify all relevant input fields in the current row
-      if (isSeniorSchool) {
-        inputsInRow = Array.from(row.querySelectorAll(".ca-input, .pw-input, .exam-input"));
-      } else {
-        inputsInRow = Array.from(row.querySelectorAll(".marks-input"));
-      }
+      let inputsInRow = Array.from(row.querySelectorAll(".marks-input"));
 
       const currentIndex = inputsInRow.indexOf(currentInput);
 
@@ -1101,7 +1226,7 @@ document.addEventListener("DOMContentLoaded", () => {
           // It's the last input in the current row, move to the first input of the next row
           const nextRow = row.nextElementSibling;
           if (nextRow) {
-            const nextInputsInRow = Array.from(nextRow.querySelectorAll(".ca-input, .pw-input, .exam-input, .marks-input"));
+            const nextInputsInRow = Array.from(nextRow.querySelectorAll(".marks-input"));
             if (nextInputsInRow.length > 0) {
               nextInputsInRow[0].focus();
             }
@@ -1151,8 +1276,8 @@ document.addEventListener("DOMContentLoaded", () => {
       const isEmpty = (val) => val === undefined || val === null || String(val).trim() === "" || String(val).toLowerCase() === "null";
 
       if (isSeniorSchool) {
-        if (isEmpty(markData.continuousAssessment) || isEmpty(markData.projectWork) || isEmpty(markData.endTermExam)) {
-          errors.push(`Learner ${markData.studentName}: Senior marks (CA, PW, Exam) must all be filled.`);
+        if (isEmpty(markData.score)) {
+          errors.push(`Learner ${markData.studentName}: Score is missing.`);
         }
       } else {
         if (isEmpty(markData.score)) {
@@ -1491,10 +1616,8 @@ document.addEventListener("DOMContentLoaded", () => {
           
           markPayload.pathway = pathway;
           markPayload.course = course;
-          markPayload.continuousAssessment = (String(markData.continuousAssessment).toUpperCase() === "X") ? null : (markData.continuousAssessment !== null && markData.continuousAssessment !== "" ? Number(markData.continuousAssessment) : null);
-          markPayload.projectWork = (String(markData.projectWork).toUpperCase() === "X") ? null : (markData.projectWork !== null && markData.projectWork !== "" ? Number(markData.projectWork) : null);
-          markPayload.endTermExam = (String(markData.endTermExam).toUpperCase() === "X") ? null : (markData.endTermExam !== null && markData.endTermExam !== "" ? Number(markData.endTermExam) : null);
-          markPayload.finalScore = (String(markData.finalScore).toUpperCase() === "X") ? null : (markData.finalScore !== null && markData.finalScore !== "" ? Number(markData.finalScore) : null);
+          markPayload.score = (String(markData.score).toUpperCase() === "X") ? null : (markData.score !== null && markData.score !== "" ? Number(markData.score) : null);
+          markPayload.finalScore = markPayload.score;
 
         }
         else {
@@ -1515,9 +1638,7 @@ document.addEventListener("DOMContentLoaded", () => {
       let absentCount = 0;
       allMarksEntered.forEach(m => {
         const isSenior = window.cbcUtils.isSeniorGrade(m.grade);
-        if (isSenior) {
-          if (m.continuousAssessment === "X" || m.projectWork === "X" || m.endTermExam === "X") absentCount++;
-        } else if (m.score === "X") {
+        if (m.score === "X") {
           absentCount++;
         }
       });
@@ -1595,6 +1716,9 @@ document.addEventListener("DOMContentLoaded", () => {
       }
 
       if (result.successCount > 0) { // Check result.successCount from backend
+        // 🆕 If marks are submitted, immediately disable teacher edits for this term in the database
+        await updateTeacherEditPermissionForTerm(false);
+
         // 🆕 Clear roster cache for this class to ensure fresh data for next load
         const classLabel = selectedAllocationData?.classLabel;
         if (classLabel) {
@@ -1799,8 +1923,9 @@ document.addEventListener("DOMContentLoaded", () => {
         // 🆕 Include Stream in the display title (e.g. Grade 7 B)
         const streamLabel = headerInfo.stream ? ` ${headerInfo.stream}` : '';
         const gradeWithStream = `${window.cbcUtils.normalizeGrade(headerInfo.grade)}${streamLabel}`;
-        const summaryText = `Grade: ${sanitize(gradeWithStream)} • ${sanitize(subjectDisplay)} • Term: ${sanitize(headerInfo.term)} • Year: ${sanitize(headerInfo.year)} • ${assessmentLabel} — ${fullGroupMarksRaw.length} record${fullGroupMarksRaw.length > 1 ? 's' : ''}`;
-
+    const canEditSubmittedGroup = teacherSubmittedMarkEditsAllowed && !currentTermLocked;
+    const adminLockText = canEditSubmittedGroup ? '' : ' • Admin disabled submitted mark edits';
+    const summaryText = `Grade: ${sanitize(gradeWithStream)} • ${sanitize(subjectDisplay)} • Term: ${sanitize(headerInfo.term)} • Year: ${sanitize(headerInfo.year)} • ${assessmentLabel} — ${fullGroupMarksRaw.length} record${fullGroupMarksRaw.length > 1 ? 's' : ''}${adminLockText}`;
         const summary = document.createElement('summary');
         summary.className = 'marks-accordion-summary';
         summary.innerHTML = `<strong>${summaryText}</strong>`;
@@ -1872,12 +1997,20 @@ document.addEventListener("DOMContentLoaded", () => {
       displayPaginatedMarksGroups(submittedMarksCurrentPage);
     });
 
+    const canEditSubmittedGroup = teacherSubmittedMarkEditsAllowed && !currentTermLocked;
+    const editHint = canEditSubmittedGroup ? 'Use the pencil icon to edit records. After submission, this group will be locked again.' : 'Editing submitted marks is disabled for this term.';
+
+    const hintMessage = document.createElement('div');
+    hintMessage.textContent = editHint;
+    hintMessage.style.cssText = 'margin-top: 8px; padding: 8px 10px; background: #eef2ff; color: #3730a3; border-radius: 8px; font-size: 0.82rem; max-width: 100%; box-sizing: border-box; overflow-wrap: break-word; word-break: break-word;';
+
     const deleteGroupBtn = document.createElement('button');
     deleteGroupBtn.className = 'btn danger-btn';
     deleteGroupBtn.innerHTML = '🗑️ Delete Table';
-    deleteGroupBtn.style.cssText = "padding: 3px 10px; font-size: 0.72rem; border-radius: 8px; margin-left: 10px; font-weight: 700; height: 28px; vertical-align: middle;";
+    deleteGroupBtn.style.cssText = "padding: 6px 12px; font-size: 0.8rem; border-radius: 8px; font-weight: 700; height: 34px; vertical-align: middle;";
     deleteGroupBtn.dataset.action = "delete-group";
     deleteGroupBtn.dataset.key = key;
+    deleteGroupBtn.disabled = !canEditSubmittedGroup;
 
     if (activeSearchInfo.key === key) {
       setTimeout(() => {
@@ -1886,25 +2019,39 @@ document.addEventListener("DOMContentLoaded", () => {
       }, 0);
     }
 
-    contentWrapper.appendChild(searchInput);
-    contentWrapper.appendChild(deleteGroupBtn);
+    // Controls row: search on left, delete on right
+    const controlsRow = document.createElement('div');
+    controlsRow.style.cssText = 'display:flex; align-items:center; justify-content:space-between; gap:12px; margin-top:12px;';
+
+    const leftControls = document.createElement('div');
+    leftControls.style.cssText = 'display:flex; align-items:center; gap:8px; flex:1;';
+    searchInput.style.flex = '1';
+    leftControls.appendChild(searchInput);
+
+    const rightControls = document.createElement('div');
+    rightControls.style.cssText = 'display:flex; align-items:center; gap:8px; flex-shrink:0;';
+    rightControls.appendChild(deleteGroupBtn);
+
+    controlsRow.appendChild(leftControls);
+    controlsRow.appendChild(rightControls);
+
+    contentWrapper.appendChild(controlsRow);
+    if (canEditSubmittedGroup) {
+      contentWrapper.appendChild(hintMessage);
+    }
 
     const tableContainer = document.createElement('div');
     tableContainer.className = 'marks-table-container';
 
-    let thead = `<thead><tr><th>Admission</th><th>Name</th>`;
-    if (groupIsSenior) {
-      thead += `<th>Continuous Assessment (30%)</th><th>Project Work (20%)</th><th>End-Term Exam (50%)</th><th>Final Score</th>`;
-    } else {
-      thead += `<th>Score (%)</th>`;
-    }
+    let thead = `<thead><tr><th>Admission</th><th>Name</th><th>Score (%)</th>`;
     thead += `<th>Actions</th></tr></thead>`;
 
+    const editDisabled = !canEditSubmittedGroup;
+    const deleteDisabled = !canEditSubmittedGroup;
     let tbody = `<tbody>${pagedGroupMarks.map(m => {
-      let scoreCell = groupIsSenior 
-        ? `<td data-label="Continuous Assessment">${sanitize(m.continuousAssessment ?? '-')}</td><td data-label="Project Work">${sanitize(m.projectWork ?? '-')}</td><td data-label="End-Term Exam">${sanitize(m.endTermExam ?? '-')}</td><td data-label="Final Score"><strong>${sanitize(m.finalScore ?? '-')}</strong></td>`
-        : `<td data-label="Score">${sanitize(m.score ?? '-')}</td>`;
-      return `<tr data-id="${m._id || ''}"><td data-label="Admission">${sanitize(m.admissionNo ?? m.admission ?? '')}</td><td data-label="Name">${sanitize(m.studentName)}</td>${scoreCell}<td data-label="Actions"><button class="btn-edit" data-action="edit">✏️</button><button class="btn-delete" data-action="delete">🗑️</button></td></tr>`;
+      const displayScore = groupIsSenior ? (m.score ?? m.finalScore ?? '-') : (m.score ?? '-');
+      const scoreCell = `<td data-label="Score">${sanitize(displayScore)}</td>`;
+      return `<tr data-id="${m._id || ''}"><td data-label="Admission">${sanitize(m.admissionNo ?? m.admission ?? '')}</td><td data-label="Name">${sanitize(m.studentName)}</td>${scoreCell}<td data-label="Actions"><button class="btn-edit" data-action="edit" ${editDisabled ? 'disabled' : ''}>✏️</button><button class="btn-delete" data-action="delete" ${deleteDisabled ? 'disabled' : ''}>🗑️</button></td></tr>`;
     }).join('')}</tbody>`;
 
     // Create combined table with header and body
@@ -1974,6 +2121,10 @@ document.addEventListener("DOMContentLoaded", () => {
     const row = btn.closest("tr");
     const id = row?.dataset.id;
     
+    if (!teacherSubmittedMarkEditsAllowed || currentTermLocked) {
+      return showToast("Editing submitted marks is currently disabled for this term.", "error");
+    }
+
     // 🆕 HANDLE BULK DELETE FOR ENTIRE GROUP
     if (btn.dataset.action === "delete-group") {
       const key = btn.dataset.key;
@@ -2031,6 +2182,14 @@ document.addEventListener("DOMContentLoaded", () => {
       // NEW EDIT LOGIC FOR TABLE-BASED ENTRY
       const mark = submittedMarks.find(m => m._id === id);
       if (!mark) return showToast("Error: Mark data not found.", "error");
+
+      const markGroupKey = (() => {
+        const isSenior = window.cbcUtils.isSeniorGrade(mark.grade);
+        const subjectKey = isSenior ? (mark.course || 'no-course') : (mark.subject || 'no-subject');
+        const gradeNorm = window.cbcUtils.normalizeGrade(mark.grade);
+        const streamVal = mark.stream || '';
+        return `${subjectKey}_${mark.assessment}_${gradeNorm}_${streamVal}_${mark.term}_${mark.year}`;
+      })();
 
       // Robust Grade extraction (from mark object)
       const markGradeStr = (mark.grade || "").toString();
@@ -2105,20 +2264,12 @@ document.addEventListener("DOMContentLoaded", () => {
 
         if (!studentRow) return showToast("Could not find the student in the loaded class list.", "error");
 
-        // 7. Populate the mark inputs in that specific row
-        if (isSeniorSchool) {
-          const caInput = studentRow.querySelector(".ca-input");
-          const pwInput = studentRow.querySelector(".pw-input");
-          const examInput = studentRow.querySelector(".exam-input");
-          if (caInput) caInput.value = mark.continuousAssessment ?? '';
-          if (pwInput) pwInput.value = mark.projectWork ?? ''; // Fix: Use pwInput
-          if (examInput) examInput.value = mark.endTermExam ?? ''; // Fix: Use examInput
-          // Trigger final score calculation and update allMarksEntered
-          caInput?.dispatchEvent(new Event('input', { bubbles: true }));
-        } else {
-          // Junior school
-          const marksInput = studentRow.querySelector(".marks-input");
-          if (marksInput) marksInput.value = mark.score ?? '';
+        // 7. Populate the mark input in that specific row
+        const marksInput = studentRow.querySelector(".marks-input");
+        if (marksInput) {
+          const inputValue = mark.score ?? mark.finalScore ?? mark.continuousAssessment ?? mark.projectWork ?? mark.endTermExam ?? '';
+          marksInput.value = inputValue;
+          marksInput.dispatchEvent(new Event('input', { bubbles: true }));
         }
 
         // 8. Scroll to the table and highlight the row
@@ -2137,6 +2288,16 @@ document.addEventListener("DOMContentLoaded", () => {
       }, 100); // Short delay for DOM render
     }
     if (btn.dataset.action === "delete") {
+      const mark = submittedMarks.find(m => m._id === id);
+      if (!mark) return showToast("Error: Mark data not found.", "error");
+      const markGroupKey = (() => {
+        const isSenior = window.cbcUtils.isSeniorGrade(mark.grade);
+        const subjectKey = isSenior ? (mark.course || 'no-course') : (mark.subject || 'no-subject');
+        const gradeNorm = window.cbcUtils.normalizeGrade(mark.grade);
+        const streamVal = mark.stream || '';
+        return `${subjectKey}_${mark.assessment}_${gradeNorm}_${streamVal}_${mark.term}_${mark.year}`;
+      })();
+
       if (!await showConfirm("Are you sure you want to permanently delete this mark? This action cannot be undone.")) return;
       try {
         const res = await fetchWithAuth(`${API_BASE}/marks/${id}`, { method: "DELETE" });

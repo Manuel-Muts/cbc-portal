@@ -213,10 +213,10 @@ document.addEventListener("DOMContentLoaded", function () {
     const selectedRole = roleSelect.value;
     if (!selectedRole) return alert("Please select your role.");
 
-    let payload = { role: selectedRole };
+    let payload = { role: selectedRole.toLowerCase() };
     
     // Normalize superAdmin role for backend if the dropdown uses camelCase
-    if (payload.role === 'superAdmin') payload.role = 'super_admin';
+    if (payload.role === 'superadmin' || payload.role === 'superAdmin') payload.role = 'super_admin';
 
     if (selectedRole === "student" || selectedRole === "learner") {
       const fullname = firstnameField.value.trim();
@@ -225,14 +225,18 @@ document.addEventListener("DOMContentLoaded", function () {
       payload.fullname = fullname;
       payload.admission = admission;
     } else {
-      const email = emailField.value.trim();
+      const email = emailField.value.trim().toLowerCase();
       const password = passwordField.value.trim();
       if (!email || !password) return alert("Enter email and password.");
       payload.email = email;
       payload.password = password;
     }
 
-    console.log("Payload sending to backend:", payload);
+    console.debug("Login request payload:", {
+      role: payload.role,
+      email: payload.email,
+      passwordProvided: !!payload.password
+    });
 
     // Get the submit button and show loading state
     // Add expiresIn to payload based on "Keep me logged in" checkbox
@@ -289,10 +293,20 @@ document.addEventListener("DOMContentLoaded", function () {
     const userKey = config?.auth?.userKey || "loggedInUser";
     const user = JSON.parse(localStorage.getItem(userKey));
     const currentField = document.getElementById("currentPasswordField");
+    const currentPasswordInput = changePasswordModal.querySelector("input[name='currentPassword']");
+    const newPasswordInput = changePasswordModal.querySelector("input[name='newPassword']");
     if (!user) return;
     currentField.style.display = (user.role === "classteacher" || user.isClassTeacher) ? "none" : "block";
-    changePasswordModal.querySelector("input[name='newPassword']").focus();
+    if (currentField.style.display !== "none" && currentPasswordInput) {
+      currentPasswordInput.focus();
+    } else if (newPasswordInput) {
+      newPasswordInput.focus();
+    }
   };
+
+  document.getElementById("cancelChangePasswordBtn")?.addEventListener("click", () => {
+    changePasswordModal.classList.add("hidden");
+  });
 
   changePasswordForm?.addEventListener("submit", async function (e) {
     e.preventDefault();

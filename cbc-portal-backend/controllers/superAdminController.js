@@ -7,7 +7,6 @@ import { sendCredentialsEmail } from '../utils/authHelpers.js';
 import Payment from '../models/Payment.js';
 import Setting from '../models/Setting.js';
 import LoginAttempt from '../models/LoginAttempt.js';
-import fs from 'fs';
 import cache from "../utils/cacheManager.js";
 import axios from 'axios';
 
@@ -35,15 +34,13 @@ export const createSchool = async (req, res) => {
     if (existingSchool) 
       return res.status(400).json({ msg: 'School already exists' });
 
-    // Handle logo upload - convert to base64
     let logo = "";
     let logoMimeType = "image/png";
+    let logoPublicId = "";
     if (req.file) {
-      const fileBuffer = fs.readFileSync(req.file.path);
-      logo = fileBuffer.toString('base64');
+      logo = req.file.path || req.file.secure_url || "";
       logoMimeType = req.file.mimetype || 'image/png';
-      // Delete the file after converting to base64
-      fs.unlinkSync(req.file.path);
+      logoPublicId = req.file.filename || req.file.public_id || "";
     }
 
     const school = await School.create({ 
@@ -55,7 +52,8 @@ export const createSchool = async (req, res) => {
       allowSignatureUpload: req.body.allowSignatureUpload === undefined ? true : parseBoolean(req.body.allowSignatureUpload),
       schoolType: req.body.schoolType || 'full',
       logo,
-      logoMimeType 
+      logoMimeType,
+      logoPublicId
     });
 
     cache.clearByPattern('super_');
@@ -317,13 +315,10 @@ export const updateSchool = async (req, res) => {
       school.schoolType = req.body.schoolType || 'full';
     }
 
-    // Update logo if uploaded - convert to base64
     if (req.file) {
-      const fileBuffer = fs.readFileSync(req.file.path);
-      school.logo = fileBuffer.toString('base64');
+      school.logo = req.file.path || req.file.secure_url || "";
       school.logoMimeType = req.file.mimetype || 'image/png';
-      // Delete the file after converting to base64
-      fs.unlinkSync(req.file.path);
+      school.logoPublicId = req.file.filename || req.file.public_id || "";
     }
 
     await school.save();
@@ -366,10 +361,23 @@ export const deleteSchool = async (req, res) => {
     if (req.user.role !== 'super_admin')
       return res.status(403).json({ msg: 'Only super-admins can delete schools' });
 
-    const school = await School.findById(req.params.id);
-    if (!school) return res.status(404).json({ msg: 'School not found' });
+    const schoolId = req.params.id;
+    if (!schoolId) {
+      return res.status(400).json({ msg: 'School id is required' });
+    }
 
-    await school.deleteOne(); // <-- changed from remove()
+    let school;
+    try {
+      school = await School.findById(schoolId);
+    } catch (err) {
+      return res.status(400).json({ msg: 'Invalid school id format' });
+    }
+
+    if (!school) {
+      return res.status(404).json({ msg: 'School not found or already deleted' });
+    }
+
+    await school.deleteOne();
     cache.clearByPattern('super_');
     res.json({ msg: 'School deleted successfully' });
   } catch (err) {

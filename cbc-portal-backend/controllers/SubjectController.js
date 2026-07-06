@@ -16,24 +16,49 @@ const SENIOR_COMPULSORY_SUBJECTS = [
 
 const SENIOR_SCHOOL_PATHWAYS = {
   STEM: [
-    "Biology", "Chemistry", "Physics", "Business Studies", "Computer Studies",
-    "Environmental Science", "Engineering Technology", "Applied Sciences",
-    "Electricity", "Aviation", "Agriculture", "Marine and Fisheries",
-    "Building and Construction", "Woodwork", "Metalwork", "Power Mechanics",
-    "General Science", "Home Science", "Media Technology"
+   "Physics",
+    "Chemistry",
+    "Biology",
+    "Agriculture",
+    "Computer Studies",
+    "Electricity",
+    "Engineering Technology",
+    "Home Science", 
+    "Environmental Science",
+    "Applied Sciences",
+    "Aviation",
+    "Marine and Fisheries",
+    "Building and Construction",
+    "Woodwork",
+    "Metalwork",
+    "Power Mechanics",
+    "General Science",
+    "Media Technology",
+   
   ],
   "Social Sciences": [
-    "History & Citizenship", "History", "Geography", "Business Studies", "Political Studies",
-    "Christian Religious Studies (CRE)", "Kenya Sign Language", "Literature",
-    "Fasihi", "Indigenous Language", "Hindu Religious Education", "French",
-    "German", "Islamic Religious Education"
+    "Geography",
+    "History",
+    "Business Studies",
+    "Christian Religious Education",
+    "Literature",
+    "Fasihi",
+    "Political Studies",
+    "Kenya Sign Language",
+    "History & Citizenship",
+    "Indigenous Language",
+    "Hindu Religious Education",
+    "Islamic Religious Education",
+    "French",
+    "German",
   ],
   "Arts & Sports Science": [
-    "French", "Hindu Religious Education", "Computer Studies", "Literature",
-    "Islamic Religious Education", "German", "Fasihi", "Kiswahili",
-    "History & Citizenship", "Geography", "Biology", "General Science",
-    "Fine Art", "Film & Media Studies", "Fashion & Design", "Music and Dance",
-    "Theatre and Film", "Sports and Recreation"
+    "Fine Art",
+    "Film & Media Studies",
+    "Fashion & Design",
+    "Music and Dance",
+    "Theatre and Film",
+    "Sports and Recreation"
   ]
 };
 

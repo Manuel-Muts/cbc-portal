@@ -22,14 +22,14 @@ const markSchema = new mongoose.Schema({
   // ===== JUNIOR SCHOOL (Grades 1-9): Simple Score =====
   score: { type: Number, required: false, default: null }, // Single score for junior school
 
-  // ===== SENIOR SCHOOL (Grades 10-12): Component Scores =====
-  // When grade >= 10, use component scores instead
-  continuousAssessment: { type: Number, default: null }, // 0-100 (30% weight)
-  projectWork: { type: Number, default: null },          // 0-100 (20% weight)
-  endTermExam: { type: Number, default: null },          // 0-100 (50% weight)
+  // ===== SENIOR SCHOOL (Grades 10-12): Single score input =====
+  // The teacher UI now submits one mark for senior school and stores it in score/finalScore.
+  continuousAssessment: { type: Number, default: null }, // Legacy field retained for compatibility
+  projectWork: { type: Number, default: null },          // Legacy field retained for compatibility
+  endTermExam: { type: Number, default: null },          // Legacy field retained for compatibility
   
-  // Calculated final weighted score for senior school (auto-calculated)
-  finalScore: { type: Number, default: null },           // Weighted average 0-100
+  // Single submitted score for senior school
+  finalScore: { type: Number, default: null },           // Single score 0-100
   performanceLevel: { type: String, default: null },     // EE, ME, AE, BE
 
   schoolId: {

@@ -197,14 +197,24 @@ export const getActiveAnnouncements = async (req, res) => {
       return res.json([]);
     }
 
-    // Filter for announcements that are active AND (targeted to this school OR system-wide global)
-    let query = { 
-      isActive: true, 
+    const now = new Date();
+    const expirationCondition = {
+      $or: [
+        { expiresAt: null },
+        { expiresAt: { $gt: now } }
+      ]
+    };
+
+    // Filter for announcements that are active AND not expired AND (targeted to this school OR system-wide global)
+    let query = {
+      isActive: true,
       $or: [
         { schoolId: schoolId },
         { schoolId: null }
       ]
     };
+
+    query.$and = [expirationCondition];
 
     // Super admins see everything for oversight
     if (userRole !== 'super_admin') {

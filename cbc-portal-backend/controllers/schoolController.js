@@ -143,42 +143,46 @@ export const handleIntaSendWebhook = async (req, res) => {
 
 export const getMySchool = async (req, res) => {
   try {
-    const schoolId = req.user?.schoolId;
+    const user = req?.user;
+    const schoolId = user?.schoolId;
     if (!schoolId) {
       return res.status(400).json({ msg: "No school assigned" });
     }
 
-    const isStudent = req.user.role === 'student' || req.user.role === 'learner';
-    const includeLogo = req.query.includeLogo === 'true';
-    const fields = req.query.fields;
-    // Determine if we are fetching a "lite" version for a student (no logo, but needs paybill)
+    const query = req?.query || {};
+    const includeLogoParam = typeof query.includeLogo === 'string' ? query.includeLogo : '';
+    const includeLogo = includeLogoParam.toLowerCase() === 'true';
+    const rawFields = typeof query.fields === 'string' ? query.fields : '';
+    const fields = rawFields
+      .split(',')
+      .map((field) => field.trim())
+      .filter(Boolean)
+      .join(' ');
+
+    const isStudent = user?.role === 'student' || user?.role === 'learner';
     const isStudentLiteFetch = isStudent && !includeLogo;
 
-    // Cache key should reflect the type of payload
     let cacheSuffix = '';
-    if (fields) cacheSuffix = `_fields_${fields}`;
+    if (fields) cacheSuffix = `_fields_${fields.replace(/\s+/g, '_')}`;
     if (isStudentLiteFetch) cacheSuffix = '_student_lite';
     else if (includeLogo) cacheSuffix = '_full_with_logo';
-    else cacheSuffix = '_full_no_logo'; // For admins/teachers not requesting logo
+    else cacheSuffix = '_full_no_logo';
 
     const cacheKey = `school_profile_${schoolId}${cacheSuffix}`;
-
     const cached = cache.get(cacheKey);
     if (cached) {
       return res.json(cached);
     }
 
-    let projectionFields = "name address status allowSignatureUpload schoolType smsCredits"; // Base fields
+    let projectionFields = "name address status allowSignatureUpload schoolType smsCredits";
 
     if (fields) {
-      projectionFields = fields.replace(/,/g, ' ');
+      projectionFields = fields;
     } else if (includeLogo) {
       projectionFields += " logo logoMimeType headteacherSignatureUrl paybill mpesaShortcode smsCredits";
     } else if (isStudentLiteFetch) {
-      // For student dashboard/fee modal, get name, address, paybill, mpesaShortcode, but no logo/signature
       projectionFields += " paybill mpesaShortcode";
     } else {
-      // For other roles (admin/teacher) not requesting logo, get all non-logo fields
       projectionFields += " paybill mpesaShortcode headteacherSignatureUrl";
     }
 
@@ -198,22 +202,20 @@ export const getMySchool = async (req, res) => {
       smsCredits: school.smsCredits || 0
     };
 
-    // Conditionally add fields to the response object based on what was projected
-    if (school.logo !== undefined) { // Check if logo was included in the projection
-  response.logo = school.logo || null;
-  response.logoMimeType = school.logoMimeType;
+    if (school.logo !== undefined) {
+      response.logo = school.logo || null;
+      response.logoMimeType = school.logoMimeType || 'image/png';
     }
     if (school.headteacherSignatureUrl !== undefined) {
-  response.headteacherSignatureUrl = school.headteacherSignatureUrl || "";
+      response.headteacherSignatureUrl = school.headteacherSignatureUrl || "";
     }
     if (school.paybill !== undefined) {
       response.paybill = school.paybill || "";
       response.mpesaShortcode = school.mpesaShortcode || "";
-}
+    }
 
-cache.set(cacheKey, response, 300); // Cache for 5 minutes
-res.json(response);
-
+    cache.set(cacheKey, response, 300);
+    return res.json(response);
   } catch (err) {
     console.error("Get My School Error:", err);
     res.status(500).json({ msg: "Failed to fetch school" });

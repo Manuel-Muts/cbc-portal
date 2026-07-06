@@ -382,7 +382,8 @@ document.addEventListener("DOMContentLoaded", async () => {
         uploadBtn.disabled = false; uploadBtn.innerHTML = originalUploadBtnHTML;
         return;
       }
-      formData.append("pathway", materialPathway.value);
+      const normalizedPathway = window.cbcUtils?.normalizePathway?.(materialPathway.value) || String(materialPathway.value || "").trim();
+      formData.append("pathway", normalizedPathway);
       formData.append("course", materialCourse.value);
     }
 

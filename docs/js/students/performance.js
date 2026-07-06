@@ -44,6 +44,27 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
   }
 
+  // Populate Assessment Filter from centralized mapping
+  const assessmentFilter = document.getElementById("assessmentFilter");
+  if (assessmentFilter) {
+    const mapping = window.ASSESSMENT_MAPPING || {};
+    assessmentFilter.innerHTML = '';
+
+    const optAll = document.createElement("option");
+    optAll.value = "all";
+    optAll.textContent = "All Assessments";
+    assessmentFilter.appendChild(optAll);
+
+    Object.entries(mapping).forEach(([val, label]) => {
+      const opt = document.createElement("option");
+      opt.value = val;
+      opt.textContent = label;
+      assessmentFilter.appendChild(opt);
+    });
+
+    assessmentFilter.value = "all";
+  }
+
   let perfChartInstance = null;
 
   // Helper to ensure canvas exists and error messages are cleared
@@ -62,7 +83,14 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     const term = document.getElementById("termFilter")?.value || "";
     const year = document.getElementById("yearFilter")?.value || "";
-    const assess = "all";
+    const assess = document.getElementById("assessmentFilter")?.value || "all";
+
+    if (!assess) {
+      const container = document.getElementById("chartContainer");
+      if (container) container.innerHTML = '<p style="text-align:center; padding:20px; color:#64748b;">Please select an assessment and click "Filter Analysis" to view your progress.</p>';
+      if (spinner) spinner.style.display = "none";
+      return;
+    }
 
     // Reuses the exact query logic from the dashboard
     const query = new URLSearchParams();

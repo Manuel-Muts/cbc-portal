@@ -5,6 +5,7 @@
   <link rel="icon" type="image/png" href="/images/favicon.png"/> 
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>MUTS TECH</title>
+  <link rel="stylesheet" href="css/sidebar.css">
   <link rel="stylesheet" href="css/super-admin.css">
   <!-- Chart.js CDN -->
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -17,7 +18,9 @@
 
     <!-- SIDEBAR -->
     <aside class="sidebar">
-      <h2 class="logo">COMPETENCEHUB</h2>
+      <div class="sidebar-brand">
+        <h2 class="logo">COMPETHUB</h2>
+      </div>
 
       <ul class="menu">
         <li class="active" data-page="overview">Overview</li>
@@ -30,8 +33,10 @@
         <li data-page="announcements">Broadcasts</li>
       </ul>
 
-      <button id="logoutBtn" class="logout-btn">Logout</button><br><br>
-      <button id="refreshBtn" class="refresh-btn">Refresh</button>
+      <div class="sidebar-actions">
+        <button id="logoutBtn" class="btn logout-btn">Logout</button>
+        <button id="refreshBtn" class="btn refresh-btn">Refresh</button>
+      </div>
     </aside>
 
     <!-- MAIN CONTENT -->

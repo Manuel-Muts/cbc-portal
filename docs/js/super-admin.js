@@ -9,29 +9,64 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // Cache state for overview page
   const OVERVIEW_CACHE_KEY = "overview_cache";
-  let overviewLastFetch = 0;
+  const SCHOOL_LIST_CACHE_PREFIX = "schools_cache_";
+  const ADMIN_LIST_CACHE_PREFIX = "admins_cache_";
+  const SCHOOL_OPTIONS_CACHE_KEY = "admin_schools_options_cache";
   const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+  const LIST_CACHE_TTL = 2 * 60 * 1000; // 2 minutes for frequently changing list data
+  const SCHOOL_OPTIONS_CACHE_TTL = 10 * 60 * 1000; // 10 minutes for lightweight school dropdowns
+  let overviewLastFetch = 0;
 
   // ---------------------------
 // GENERIC CACHE HELPER
 // ---------------------------
-function getCache(key) {
-  const cached = JSON.parse(localStorage.getItem(key) || "null");
-  if (!cached) return null;
+function getCache(key, ttl = CACHE_TTL) {
+  try {
+    const cached = JSON.parse(localStorage.getItem(key) || "null");
+    if (!cached || typeof cached !== "object") return null;
 
-  if (Date.now() - cached.timestamp > CACHE_TTL) {
+    const maxAge = typeof cached.ttl === "number" ? cached.ttl : ttl;
+    if (Date.now() - cached.timestamp > maxAge) {
+      localStorage.removeItem(key);
+      return null;
+    }
+
+    return cached.data;
+  } catch (error) {
+    console.warn(`Cache read error for ${key}:`, error);
     localStorage.removeItem(key);
     return null;
   }
-
-  return cached.data;
 }
 
-function setCache(key, data) {
-  localStorage.setItem(key, JSON.stringify({
-    timestamp: Date.now(),
-    data
-  }));
+function setCache(key, data, ttl = CACHE_TTL) {
+  try {
+    localStorage.setItem(key, JSON.stringify({
+      timestamp: Date.now(),
+      ttl,
+      data
+    }));
+  } catch (error) {
+    console.warn(`Cache write error for ${key}:`, error);
+  }
+}
+
+function clearCacheByPrefix(prefix) {
+  try {
+    Object.keys(localStorage).filter(key => key.startsWith(prefix)).forEach(key => localStorage.removeItem(key));
+  } catch (error) {
+    console.warn(`Cache clear error for ${prefix}:`, error);
+  }
+}
+
+function invalidateSchoolManagementCaches({ lists = true, options = true, overview = true } = {}) {
+  if (lists) clearCacheByPrefix(SCHOOL_LIST_CACHE_PREFIX);
+  if (options) localStorage.removeItem(SCHOOL_OPTIONS_CACHE_KEY);
+  if (overview) localStorage.removeItem(OVERVIEW_CACHE_KEY);
+}
+
+function invalidateAdminManagementCaches({ lists = true } = {}) {
+  if (lists) clearCacheByPrefix(ADMIN_LIST_CACHE_PREFIX);
 }
 
   //OVERVIEW CACHE LOGI
@@ -487,6 +522,9 @@ setCache(cacheKey, metrics);
     const tableBody = document.getElementById("announcementsTable");
     const modal = document.getElementById("annModal");
     const schoolSelect = document.getElementById("annSchool");
+    const addAnnBtn = document.getElementById("addAnnBtn");
+    const cancelAnnBtn = document.getElementById("cancelAnnBtn");
+    const saveAnnBtn = document.getElementById("saveAnnBtn");
     let editingAnnId = null; // 🆕 Track editing state
 
     // 🆕 Fetch Africa's Talking Balance
@@ -514,22 +552,27 @@ setCache(cacheKey, metrics);
       }
     }
 
-    document.getElementById("addAnnBtn").onclick = async () => {
-      editingAnnId = null; // Reset for new announcement
-      document.querySelector("#annModal h3").textContent = "Post New Announcement";
-      document.getElementById("saveAnnBtn").textContent = "Broadcast Now";
-      
-      // Clear fields
-      document.getElementById("annTitle").value = "";
-      document.getElementById("annMessage").value = "";
-      document.getElementById("annExpiresAt").value = "";
-      document.getElementById("annRole").value = "all";
-      document.getElementById("annPage").value = "all";
+    addAnnBtn.onclick = async () => {
+      window.spinner?.show(addAnnBtn, "Opening...");
+      try {
+        editingAnnId = null; // Reset for new announcement
+        document.querySelector("#annModal h3").textContent = "Post New Announcement";
+        saveAnnBtn.textContent = "Broadcast Now";
+        
+        // Clear fields
+        document.getElementById("annTitle").value = "";
+        document.getElementById("annMessage").value = "";
+        document.getElementById("annExpiresAt").value = "";
+        document.getElementById("annRole").value = "all";
+        document.getElementById("annPage").value = "all";
 
-      modal.classList.remove("hidden");
-      await populateAnnSchools();
+        modal.classList.remove("hidden");
+        await populateAnnSchools();
+      } finally {
+        window.spinner?.hide(addAnnBtn);
+      }
     };
-    document.getElementById("cancelAnnBtn").onclick = () => modal.classList.add("hidden");
+    cancelAnnBtn.onclick = () => modal.classList.add("hidden");
 
     async function populateAnnSchools() {
       if (!schoolSelect) return;
@@ -549,7 +592,7 @@ setCache(cacheKey, metrics);
       }
     }
 
-    document.getElementById("saveAnnBtn").onclick = async () => {
+    saveAnnBtn.onclick = async () => {
       const payload = {
         title: document.getElementById("annTitle").value.trim(),
         message: document.getElementById("annMessage").value.trim(),
@@ -561,9 +604,7 @@ setCache(cacheKey, metrics);
 
       if (!payload.title || !payload.message) return alert("Please fill all fields");
 
-
-      const saveBtn = document.getElementById("saveAnnBtn");
-      window.spinner?.show(saveBtn, editingAnnId ? "Updating..." : "Broadcasting...");
+      window.spinner?.show(saveAnnBtn, editingAnnId ? "Updating..." : "Broadcasting...");
 
      // 🆕 Determine if we are creating or updating
       const url = editingAnnId ? `/announcements/${editingAnnId}` : "/announcements";
@@ -574,7 +615,7 @@ setCache(cacheKey, metrics);
           const isEdit = !!editingAnnId;
           window.showToast(isEdit ? "Announcement updated successfully!" : "Announcement posted successfully!", "success");
           modal.classList.add("hidden");
-          loadAnnouncements();
+          await loadAnnouncements();
           
           // Clear form fields after successful submission
           if (!isEdit) {
@@ -585,7 +626,7 @@ setCache(cacheKey, metrics);
           editingAnnId = null;
         }
       } finally {
-        window.spinner?.hide(saveBtn);
+        window.spinner?.hide(saveAnnBtn);
       }
     };
 
@@ -623,41 +664,51 @@ setCache(cacheKey, metrics);
       // 🆕 Attach Edit Handlers
       document.querySelectorAll(".editAnnBtn").forEach(btn => {
         btn.onclick = async () => {
-          const annId = btn.dataset.id;
-          const ann = announcements.find(a => a._id === annId);
-          if (!ann) return;
+          window.spinner?.show(btn, "Loading...");
+          try {
+            const annId = btn.dataset.id;
+            const ann = announcements.find(a => a._id === annId);
+            if (!ann) return;
 
-          editingAnnId = annId;
-          document.querySelector("#annModal h3").textContent = "Edit Announcement";
-          document.getElementById("saveAnnBtn").textContent = "Update Announcement";
+            editingAnnId = annId;
+            document.querySelector("#annModal h3").textContent = "Edit Announcement";
+            saveAnnBtn.textContent = "Update Announcement";
 
-          // Fill form
-          document.getElementById("annTitle").value = ann.title || "";
-          document.getElementById("annMessage").value = ann.message || "";
-          document.getElementById("annRole").value = ann.targetRole || "all";
-          document.getElementById("annPage").value = ann.targetPage || "all";
-          
-          // Handle Date conversion for datetime-local input
-          if (ann.expiresAt) {
-            const d = new Date(ann.expiresAt);
-            const localISO = new Date(d.getTime() - (d.getTimezoneOffset() * 60000)).toISOString().slice(0, 16);
-            document.getElementById("annExpiresAt").value = localISO;
-          } else {
-            document.getElementById("annExpiresAt").value = "";
+            // Fill form
+            document.getElementById("annTitle").value = ann.title || "";
+            document.getElementById("annMessage").value = ann.message || "";
+            document.getElementById("annRole").value = ann.targetRole || "all";
+            document.getElementById("annPage").value = ann.targetPage || "all";
+            
+            // Handle Date conversion for datetime-local input
+            if (ann.expiresAt) {
+              const d = new Date(ann.expiresAt);
+              const localISO = new Date(d.getTime() - (d.getTimezoneOffset() * 60000)).toISOString().slice(0, 16);
+              document.getElementById("annExpiresAt").value = localISO;
+            } else {
+              document.getElementById("annExpiresAt").value = "";
+            }
+
+            await populateAnnSchools();
+            document.getElementById("annSchool").value = ann.schoolId?._id || "";
+            
+            modal.classList.remove("hidden");
+          } finally {
+            window.spinner?.hide(btn);
           }
-
-          await populateAnnSchools();
-          document.getElementById("annSchool").value = ann.schoolId?._id || "";
-          
-          modal.classList.remove("hidden");
         };
       });
 
       document.querySelectorAll(".deleteAnnBtn").forEach(btn => {
         btn.onclick = async () => {
           if (!confirm("Delete this announcement? It will disappear for all targeted users.")) return;
-          await authFetch(`/announcements/${btn.dataset.id}`, { method: "DELETE" });
-          loadAnnouncements();
+          window.spinner?.show(btn, "Removing...");
+          try {
+            await authFetch(`/announcements/${btn.dataset.id}`, { method: "DELETE" });
+            await loadAnnouncements();
+          } finally {
+            window.spinner?.hide(btn);
+          }
         };
       });
     }
@@ -804,8 +855,8 @@ setCache(cacheKey, metrics);
       if (res && res.ok) {
         alert("School created successfully");
         modal.classList.add("hidden");
-        localStorage.removeItem("admin_schools_options_cache"); // Clear options cache for dropdowns
-        loadSchools(1);
+        invalidateSchoolManagementCaches({ lists: true, options: true, overview: true });
+        loadSchools(1, true);
       } else {
         const err = await res.json().catch(() => ({ msg: "Failed" }));
         alert(err.msg || "Failed to create school");
@@ -825,7 +876,7 @@ setCache(cacheKey, metrics);
       const search = searchEl.value.trim();
 
       const cacheKey = `schools_cache_p${page}_s${search}`;
-      const cached = getCache(cacheKey);
+      const cached = getCache(cacheKey, LIST_CACHE_TTL);
       let data;
 
       if (!force && cached) {
@@ -938,7 +989,8 @@ if (nextSchoolsBtn) {
               });
 
               document.getElementById("editSchoolModal").classList.add("hidden");
-              loadSchools(currentSchoolPage);
+              invalidateSchoolManagementCaches({ lists: true, options: true, overview: true });
+              loadSchools(currentSchoolPage, true);
             } finally {
               window.spinner?.hide(updateBtn);
             }
@@ -949,10 +1001,32 @@ if (nextSchoolsBtn) {
       // Delete
       document.querySelectorAll(".deleteSchoolBtn").forEach(btn => {
         btn.addEventListener("click", async () => {
+          const schoolId = btn.dataset.id;
+          if (!schoolId) {
+            alert("School id is missing");
+            return;
+          }
+
           if (!confirm("Are you sure?")) return;
-          localStorage.removeItem("admin_schools_options_cache");
-          await authFetch(`/schools/${btn.dataset.id}`, { method: "DELETE" });
-          loadSchools(currentSchoolPage);
+          invalidateSchoolManagementCaches({ lists: true, options: true, overview: true });
+
+          const res = await authFetch(`/schools/${schoolId}`, { method: "DELETE" });
+          if (!res) return;
+
+          let data = {};
+          try {
+            data = await res.json();
+          } catch (err) {
+            // Ignore invalid JSON for no-content responses
+          }
+
+          if (!res.ok) {
+            alert(data.msg || data.message || "Failed to delete school");
+            return;
+          }
+
+          alert(data.msg || "School deleted successfully");
+          loadSchools(Math.max(1, currentSchoolPage), true);
         });
       });
 
@@ -974,7 +1048,8 @@ if (nextSchoolsBtn) {
           btn.dataset.status = data.school.status;
           alert(data.msg);
 
-          loadSchools(currentSchoolPage); // Refresh to update cache
+          invalidateSchoolManagementCaches({ lists: true, options: true, overview: true });
+          loadSchools(currentSchoolPage, true);
         });
       });
 
@@ -997,7 +1072,8 @@ if (nextSchoolsBtn) {
           if (res && res.ok) {
             const data = await res.json();
             alert(data.msg);
-            loadSchools(currentSchoolPage, true); // Force refresh cache and UI
+            invalidateSchoolManagementCaches({ lists: true, overview: true });
+            loadSchools(currentSchoolPage, true);
           } else {
             const err = await res.json().catch(() => ({ msg: "Action failed" }));
             alert(err.msg || "Failed to update credits");
@@ -1012,19 +1088,19 @@ if (nextSchoolsBtn) {
     document.getElementById("searchSchools").addEventListener("input", (e) => {
       clearTimeout(searchDebounce);
       searchDebounce = setTimeout(() => {
-        loadSchools(1);
+        loadSchools(1, true);
       }, 500);
     });
 
     document.getElementById("prevSchools").addEventListener("click", () => {
       if (currentSchoolPage > 1) {
-        loadSchools(currentSchoolPage - 1);
+        loadSchools(currentSchoolPage - 1, true);
       }
     });
 
     document.getElementById("nextSchools").addEventListener("click", () => {
       if (currentSchoolPage < totalSchoolPages) {
-        loadSchools(currentSchoolPage + 1);
+        loadSchools(currentSchoolPage + 1, true);
       }
     });
 
@@ -1103,10 +1179,10 @@ if (nextSchoolsBtn) {
     let adminSearchDebounce;
     
     async function loadSchoolsOptions(force = false) {
-      const CACHE_KEY = "admin_schools_options_cache";
+      const CACHE_KEY = SCHOOL_OPTIONS_CACHE_KEY;
       
       if (!force) {
-        const cached = getCache(CACHE_KEY);
+        const cached = getCache(CACHE_KEY, SCHOOL_OPTIONS_CACHE_TTL);
         if (cached) {
           populateDropdowns(cached);
           return;
@@ -1121,7 +1197,7 @@ if (nextSchoolsBtn) {
       const data = await res.json();
       const schools = data.schools || [];
       
-      setCache(CACHE_KEY, schools);
+      setCache(CACHE_KEY, schools, SCHOOL_OPTIONS_CACHE_TTL);
       populateDropdowns(schools);
     }
 
@@ -1140,7 +1216,7 @@ if (nextSchoolsBtn) {
       const search = searchInput.value.trim();
 
       const cacheKey = `admins_cache_p${page}_s${search}`;
-      const cached = getCache(cacheKey);
+      const cached = getCache(cacheKey, LIST_CACHE_TTL);
       let data;
 
       if (!force && cached) {
@@ -1163,12 +1239,13 @@ if (nextSchoolsBtn) {
 
       tableBody.innerHTML = "";
       admins.forEach((a, i) => {
+        const adminSchoolName = a.schoolId?.name || a.schoolName || '';
         tableBody.innerHTML += `
           <tr>
             <td>${i + 1}</td>
             <td>${a.name}</td>
             <td>${a.email}</td>
-            <td>${a.schoolName || ''}</td>
+            <td>${adminSchoolName}</td>
             <td>${a.status || 'Active'}</td>
             <td>
               <button class="editAdminBtn" data-id="${a._id}">Edit</button>
@@ -1186,9 +1263,13 @@ if (nextSchoolsBtn) {
           const res = await authFetch(`/admins/${id}`);
           const admin = await res.json();
 
+          const schoolId = admin.schoolId && typeof admin.schoolId === 'object'
+            ? (admin.schoolId._id || admin.schoolId.id || '')
+            : (admin.schoolId || '');
+
           document.getElementById("editAdminName").value = admin.name;
           document.getElementById("editAdminEmail").value = admin.email;
-          document.getElementById("editAdminSchool").value = admin.schoolId;
+          document.getElementById("editAdminSchool").value = schoolId;
           const editModal = document.getElementById("editAdminModal");
           editModal.classList.remove("hidden");
           editModal.classList.add("visible");
@@ -1203,7 +1284,8 @@ if (nextSchoolsBtn) {
               await authFetch(`/admins/${id}`, { method: "PUT", body: JSON.stringify({ name, email, schoolId }) });
               editModal.classList.add("hidden");
               editModal.classList.remove("visible");
-              loadAdmins(currentAdminPage, true); // Force refresh after update
+              invalidateAdminManagementCaches();
+              loadAdmins(currentAdminPage, true);
             } finally {
               window.spinner.hide(updateBtn);
             }
@@ -1215,7 +1297,8 @@ if (nextSchoolsBtn) {
         btn.addEventListener("click", async () => {
           if (!confirm("Are you sure?")) return;
           await authFetch(`/admins/${btn.dataset.id}`, { method: "DELETE" });
-          loadAdmins(currentAdminPage, true); // Force refresh after delete
+          invalidateAdminManagementCaches();
+          loadAdmins(currentAdminPage, true);
         });
       });
     }
@@ -1273,7 +1356,8 @@ if (nextSchoolsBtn) {
         alert("Admin registered successfully! Login details sent to email.");
         modal.classList.add("hidden");
         modal.classList.remove("visible");
-        loadAdmins(1, true); // Force refresh after adding new admin
+        invalidateAdminManagementCaches();
+        loadAdmins(1, true);
       } else {
         const errData = res ? await res.json().catch(() => ({ msg: "Registration failed" })) : { msg: "Connection error" };
         alert(`Failed to register admin: ${errData.msg || errData.message}`);

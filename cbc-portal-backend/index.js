@@ -29,6 +29,7 @@ import announcementRoutes from './routes/announcementRoutes.js';
 import electiveRoutes from "./routes/electiveRoutes.js";
 import subjectRoutes from "./routes/subjectRoutes.js";
 import studentRoutes from "./routes/studentRoutes.js";
+import { User } from './models/User.js';
 dotenv.config();
 
 // Resolve __dirname
@@ -238,8 +239,20 @@ console.log(`\n🌍 Environment: ${process.env.NODE_ENV}`);
 console.log(`📦 Using database: ${mongoURI.includes("mongodb+srv") ? "MongoDB Atlas" : "Local MongoDB"}`);
 
 mongoose.connect(mongoURI)
-  .then(() => {
+  .then(async () => {
     console.log("✅ MongoDB connected successfully!");
+
+    try {
+      await User.collection.dropIndex('schoolId_1_admission_1').catch(() => {});
+    } catch (err) {
+      // Ignore cleanup errors; they are non-critical at startup.
+    }
+
+    try {
+      await User.syncIndexes();
+    } catch (err) {
+      // Ignore index sync issues during startup.
+    }
     
     // 🚀 Start scheduled background tasks (Materials cleanup & Payment backups)
     startCronJobs();

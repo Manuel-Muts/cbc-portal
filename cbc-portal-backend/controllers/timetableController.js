@@ -1,6 +1,19 @@
 import crypto from 'crypto';
 import Timetable from '../models/Timetable.js';
 
+const normalizePathway = (p) => {
+  if (p === undefined || p === null) return null;
+  const raw = String(p).trim();
+  if (!raw) return null;
+  const key = raw.toLowerCase().replace(/[^a-z0-9]+/g, "");
+  const map = {
+    'stem': 'STEM',
+    'socialsciences': 'Social Sciences',
+    'artssportsscience': 'Arts & Sports Science'
+  };
+  return map[key] || raw;
+};
+
 const normalizeGrade = (g) => {
   if (!g) return null;
   const str = String(g).trim();
@@ -39,7 +52,7 @@ export const saveTimetable = async (req, res) => {
       schoolId,
       grade: normalizedGrade,
       stream: stream || "",
-      pathway: pathway || null,
+      pathway: normalizePathway(pathway) || null,
       academicYear: Number(academicYear),
       term
     };
@@ -140,7 +153,7 @@ export const getTimetable = async (req, res) => {
 
     // 🆕 Support stream-specific fetching
     if (stream !== undefined) query.stream = stream;
-    if (pathway) query.pathway = pathway;
+    if (pathway) query.pathway = normalizePathway(pathway) || pathway;
 
     const timetable = await Timetable.findOne(query).lean();
 

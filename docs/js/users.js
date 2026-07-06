@@ -502,8 +502,10 @@ if (usersNextPageBtn) {
       const admission = document.getElementById("userAdmission").value.trim();
       const grade = document.getElementById("studentGrade").value;
       const stream = document.getElementById("studentStream").value.trim();
-      const pathway = document.getElementById("studentPathway")?.value || null;
+      const rawPathway = document.getElementById("studentPathway")?.value || null;
+      const pathway = rawPathway ? (window.cbcUtils?.normalizePathway?.(rawPathway) || String(rawPathway).trim()) : null;
       const contact = document.getElementById("studentContact").value.trim();
+      const normalizedEmail = email ? email.toLowerCase() : "";
 
       // Validation
       if (!role || !name) {
@@ -517,11 +519,11 @@ if (usersNextPageBtn) {
         return;
       }
       if (role === "student" && window.cbcUtils.isSeniorGrade(grade) && !pathway) {
-        showFeedback(registerFeedback, "Pathway is required for Senior School learners", "error");
+        showFeedback(registerFeedback, "Select a senior school pathway for this learner", "error");
         submitBtn.disabled = false; submitBtn.textContent = originalText;
         return;
       }
-      if ((role !== "student") && !email) {
+      if (role !== "student" && !normalizedEmail) {
         showFeedback(registerFeedback, "Email required", "error");
         submitBtn.disabled = false; submitBtn.textContent = originalText;
         return;
@@ -536,7 +538,7 @@ if (usersNextPageBtn) {
         if (pathway) body.pathway = pathway;
         if (stream) body.stream = stream;
       } else {
-        body.email = email;
+        body.email = normalizedEmail;
       }
 
       const res = await secureFetch(`${API_BASE}/users/register`, {
@@ -547,7 +549,7 @@ if (usersNextPageBtn) {
       if (res) {
         showFeedback(registerFeedback, "User registered successfully", "success");
         registerForm.reset();
-        studentFields.style.display = "none";
+        userRoleSelect.dispatchEvent(new Event("change"));
         clearUsersCache();
         loadUsers(1, true);
       } else {
@@ -681,13 +683,14 @@ if (usersNextPageBtn) {
              const grade = getVal(row, "Grade","grade","GRADE", "Class","class","CLASS", "Level");
              const stream = getVal(row, "Stream","stream","STREAM", "Class Stream", "Section");
              const contact = getVal(row, "Contact","contact", "Phone","phone", "Parent Contact", "Contact Number", "Telephone", "Mobile");
+             const pathway=getVal(row,"pathway","PATHWAY","Pathway","Senior Pathway","senior pathway");
  
              if (!name || admission === undefined || grade === undefined) {
                localFailed.push({ name: name || "N/A", admission: admission || "N/A", reason: "Missing required fields" });
                continue;
              }
  
-             studentsToRegister.push({ name, admission, grade, stream: stream || null, contact: contact || null });
+             studentsToRegister.push({ name, admission, grade, stream: stream || null, contact: contact || null, pathway: pathway || null });
            }
  
            if (studentsToRegister.length === 0) {

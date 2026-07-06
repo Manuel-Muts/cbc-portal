@@ -9,7 +9,7 @@ window.SUBJECT_DATA.gradeSubjects = {
     "Literacy",
     "Kiswahili",
     "Creative Arts",
-   "Christian Religious Education",
+    "Christian Religious Education",
     "English",
     "Mathematics",
    
@@ -68,17 +68,20 @@ window.SUBJECT_DATA.gradeSubjects = {
     "Biology",
     "History",
     "Geography",
-    "History & Citizenship",
-    "Geography",
+    "Agriculture",
     "Christian Religious Education",
     "Business Studies",
+    "Literature",
+    "Fasihi",
     "Computer Science",
+    "Electricity",
+    "Computer Studies",
+    "Sports",
+    "History & Citizenship",
     "Computer Studies",
     "Home Science",
     "Political Studies",
     "Kenya Sign Language",
-    "Literature",
-    "Fasihi",
     "Indigenous Language",
     "Hindu Religious Education",
     "French",
@@ -87,9 +90,7 @@ window.SUBJECT_DATA.gradeSubjects = {
     "Environmental Science",
     "Engineering Technology",
     "Applied Sciences",
-    "Electricity",
     "Aviation",
-    "Agriculture",
     "Marine and Fisheries",
     "Building and Construction",
     "Woodwork",
@@ -120,6 +121,27 @@ window.SUBJECT_DATA.seniorCompulsorySubjects = [
   "CSL"
 ];
 
+window.SUBJECT_DATA.seniorPathwayOverrides = {
+  Biology: "STEM",
+  Chemistry: "STEM",
+  Physics: "STEM",
+  Agriculture: "STEM",
+  "Computer Studies": "STEM",
+  "Home Science": "STEM",
+  Electricity: "STEM",
+  "Environmental Science": "STEM",
+  "Engineering Technology": "STEM",
+  "Applied Sciences": "STEM",
+  Aviation: "STEM",
+  "Marine and Fisheries": "STEM",
+  "Building and Construction": "STEM",
+  Woodwork: "STEM",
+  Metalwork: "STEM",
+  "Power Mechanics": "STEM",
+  "General Science": "STEM",
+  "Media Technology": "STEM"
+};
+
 window.SUBJECT_DATA.seniorSchoolPathways = {
   STEM: [
     "Physics",
@@ -129,8 +151,8 @@ window.SUBJECT_DATA.seniorSchoolPathways = {
     "Computer Studies",
     "Home Science",
     "Electricity",
-    "Environmental Science",
     "Engineering Technology",
+    "Environmental Science",
     "Applied Sciences",
     "Aviation",
     "Marine and Fisheries",
@@ -138,9 +160,9 @@ window.SUBJECT_DATA.seniorSchoolPathways = {
     "Woodwork",
     "Metalwork",
     "Power Mechanics",
-    "General Science",
-    "Media Technology",
-     "Business Studies",
+  
+   
+   
   ],
   "Social Sciences": [
     "Geography",
@@ -159,18 +181,6 @@ window.SUBJECT_DATA.seniorSchoolPathways = {
     "Islamic Religious Education"
   ],
   "Arts & Sports Science": [
-    "French",
-    "Hindu Religious Education",
-    "Computer Studies",
-    "Literature",
-    "Islamic Religious Education",
-    "German",
-    "Fasihi",
-    "Kiswahili",
-    "History & Citizenship",
-    "Geography",
-    "Biology",
-    "General Science",
     "Fine Art",
     "Film & Media Studies",
     "Fashion & Design",
@@ -235,14 +245,53 @@ window.SUBJECT_DATA.getSubjectType = function(sub) {
 };
 
 window.SUBJECT_DATA.getDefaultFrequency = function(sub, grade) {
- const name = (sub || "").trim();
+  const name = (sub || "").trim();
+  const normalized = name.toLowerCase();
+  const gradeMatch = String(grade || "").match(/\d+/);
+  const gradeNum = gradeMatch ? parseInt(gradeMatch[0], 10) : 0;
+  const isSeniorGrade = typeof window.cbcUtils?.isSeniorGrade === 'function'
+    ? window.cbcUtils.isSeniorGrade(grade)
+    : gradeNum >= 10;
+
   if (name === "PPI") {
-    if (!grade || grade === "all") return 1; 
+    if (!grade || grade === "all") return 1;
     const match = String(grade).match(/\d+/);
     const num = match ? parseInt(match[0]) : 0;
     if (num >= 7) return 0; // Grades 7, 8, 9, 10, 11, 12 default to 0
     return 1; // Primary (1-6)
   }
+
+  if (isSeniorGrade) {
+    const seniorSpecificFrequencies = {
+      mathematics: 6,
+      math: 6,
+      maths: 6,
+      csl: 3,
+      "community service learning": 3,
+      pe: 2,
+      "physical education": 2,
+      "sports and physical education": 2,
+      "physical health education": 2,
+      "sports and recreation": 3,
+      biology: 5,
+      chemistry: 5,
+      physics: 5,
+      "computer studies": 5,
+      electricity: 5,
+      english: 5,
+      kiswahili: 5,
+      "christian religious education": 5,
+      history: 5,
+      geography: 5,
+      agriculture: 3,
+      "business studies": 3,
+      literature: 5,
+      fasihi: 5
+    };
+
+    if (seniorSpecificFrequencies[normalized] !== undefined) return seniorSpecificFrequencies[normalized];
+  }
+
   // Components typically have 1-2 lessons per week
   if (name === "Creative Arts and Sports") return 0;
   if (name === "Sports C/A(s)") return 2;
@@ -250,7 +299,7 @@ window.SUBJECT_DATA.getDefaultFrequency = function(sub, grade) {
   if (name === "Performing Arts C/A(p)") return 2;
   if (name.includes("C/A(")) return 1;
   if (name === "Agriculture" || name === "Pre-Technical Studies") return 4;
-  if (name === "Christian Religious Studies" || name === "Christian Religious Education" || name === "Social Studies") return 4;
+  if (name === "Christian Religious Education" || name === "Social Studies") return 4;
   if (name === "Kiswahili") return 4;
   const type = window.SUBJECT_DATA.getSubjectType(sub);
   if (type === "CORE") return 5;
@@ -269,20 +318,25 @@ window.SUBJECT_DATA.normalizeSeniorSubjectName = function(subject) {
     "bio": "Biology",
     "bio b/s": "Biology",
     "biology": "Biology",
+     "physics": "Physics",
+    "phy":"Physics",
     "geo": "Geography",
     "geography": "Geography",
     "hist": "History",
     "history": "History",
     "chem": "Chemistry",
     "chemistry": "Chemistry",
+    "computer science": "Computer Studies",
     "cs": "Computer Studies",
     "computer studies": "Computer Studies",
     "community service learning": "CSL",
     "csl": "CSL",
     "business": "Business Studies",
     "business studies": "Business Studies",
-    "cre": "Christian Religious Studies",
-    "christian religious education": "Christian Religious Studies",
+    "cre": "Christian Religious Education",
+    "christian religious education": "Christian Religious Education",
+    "christian religious studies": "Christian Religious Education",
+    "religious education": "Christian Religious Education",
     "history & citizenship": "History & Citizenship",
     "history and citizenship": "History & Citizenship",
     "english": "English",
@@ -321,6 +375,18 @@ window.SUBJECT_DATA.getMarkEntrySubject = function(sub) {
   return this.normalizeSeniorSubjectName(name);
 };
 
+window.SUBJECT_DATA.isSeniorNonGradedMarkSubject = function(subjectName, grade) {
+  const normalized = this.normalizeSeniorSubjectName(subjectName);
+  if (!normalized) return false;
+
+  const gradeMatch = String(grade || "").match(/\d+/);
+  const gradeNumber = gradeMatch ? parseInt(gradeMatch[0], 10) : 0;
+  const isSeniorGrade = gradeNumber >= 10 && gradeNumber <= 12;
+  const nonGradedSubjects = ["PE", "ICT"];
+
+  return isSeniorGrade && nonGradedSubjects.includes(normalized);
+};
+
 /**
  * 🆕 Centered helper to determine the pathway for a Senior School subject.
  * Prioritizes Compulsory subjects as "Core".
@@ -331,12 +397,35 @@ window.SUBJECT_DATA.getSeniorPathway = function(subjectName) {
   const isCompulsory = this.seniorCompulsorySubjects.some(s => s.toLowerCase() === sub.toLowerCase());
   if (isCompulsory) return "Core";
 
+  const override = this.seniorPathwayOverrides?.[sub];
+  if (override) return override;
+
   for (const [pathway, subjects] of Object.entries(this.seniorSchoolPathways)) {
     if (subjects.some(s => s.toLowerCase() === sub.toLowerCase())) {
       return pathway;
     }
   }
   return null;
+};
+
+window.SUBJECT_DATA.getSeniorPathwaysForSubject = function(subjectName) {
+  const sub = this.normalizeSeniorSubjectName(subjectName);
+  if (!sub) return [];
+
+  if (this.seniorCompulsorySubjects.some(s => s.toLowerCase() === sub.toLowerCase())) {
+    return ["Core"];
+  }
+
+  const override = this.seniorPathwayOverrides?.[sub];
+  if (override) return [override];
+
+  const matchedPathways = [];
+  for (const [pathway, subjects] of Object.entries(this.seniorSchoolPathways)) {
+    if (subjects.some(s => this.normalizeSeniorSubjectName(s).toLowerCase() === sub.toLowerCase())) {
+      matchedPathways.push(pathway);
+    }
+  }
+  return matchedPathways;
 };
 
 /**

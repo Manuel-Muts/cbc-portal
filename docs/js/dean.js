@@ -4,10 +4,8 @@ const pageTitle = document.getElementById('pageTitle');
 const filterTermEl = document.getElementById("filterTerm");
 const filterAssessmentEl = document.getElementById("filterAssessment");
 const filterYearEl = document.getElementById("filterYear");
-const filterSubjectEl = document.getElementById("filterSubject");
 const filterStreamEl = document.getElementById("filterStream");
-const filterTargetEl = document.getElementById("filterTarget");
-const chartTypeToggle = document.getElementById("chartTypeToggle");
+const filterPathwayEl = document.getElementById("filterPathway");
 const schoolRankingsTableWrap = document.getElementById("schoolRankingsTableWrap");
 const generateSchoolRankingsBtn = document.getElementById("generateSchoolRankingsBtn");
 const applyFiltersBtn = document.getElementById("applyFiltersBtn");
@@ -40,8 +38,6 @@ const smsBroadcastProgressBar = document.getElementById("smsBroadcastProgressBar
 const smsBroadcastProgressText = document.getElementById("smsBroadcastProgressText");
 const cancelSmsBroadcastBtn = document.getElementById("cancelSmsBroadcastBtn");
 
-const gradeTrendChartEl = document.getElementById("gradeTrendChart");
-let gradeTrendChart = null;
 let deanProfileData = null;
 let smsBroadcastAbortController = null; // 🆕 Track broadcast session for cancellation
 let currentAnalysisRawData = null;
@@ -50,12 +46,100 @@ let currentIsSenior = false;
 let currentRoster = []; // 🆕 Store roster globally for re-analysis
 let lastProcessedStudents = []; // 🆕 For reports tab
 let lastProcessedSubjects = []; // 🆕 For reports tab
+let currentElectiveAssignments = []; // 🆕 Cache elective assignments for debug and re-analysis
 
 // Helper function to set text content of an element
 const setText = (el, value) => {
   if (el) el.textContent = value;
 };
 let currentValidKeys = new Set();
+
+function updateReportsActionState() {
+  const button = document.getElementById("generateBulkReportsBtn");
+  const statusText = document.getElementById("reportsStatusText");
+  const count = lastProcessedStudents?.length || 0;
+  const selectedStream = filterStreamEl?.value || "all";
+  const grade = filterGradeEl?.value || "";
+
+  if (button) {
+    const label = count > 0 ? `Generate Reports (${count} learners)` : "Generate Reports";
+    button.innerHTML = `<i class="fas fa-file-pdf"></i><span>${label}</span>`;
+    button.disabled = count === 0;
+    button.style.opacity = count === 0 ? "0.7" : "1";
+  }
+
+  if (statusText) {
+    if (!grade) {
+      statusText.textContent = "Select a grade to preview the learner count.";
+    } else if (count > 0) {
+      const streamLabel = selectedStream && selectedStream !== "all" ? ` • Stream: ${selectedStream}` : "";
+      statusText.textContent = `Ready to generate reports for ${count} learners in ${grade}${streamLabel}.`;
+    } else {
+      const streamLabel = selectedStream && selectedStream !== "all" ? ` in ${selectedStream}` : "";
+      statusText.textContent = `No learners found for ${grade}${streamLabel}.`;
+    }
+  }
+}
+
+// 🆕 Debug helper: call from browser console to inspect a student's eligibility and visible subjects
+window.deanDebugCheckStudent = function(admissionNo) {
+  try {
+    const adm = String(admissionNo || '').trim();
+    if (!adm) return console.warn('Provide an admission number');
+    let roster = currentRoster || [];
+    let electiveAssignments = currentElectiveAssignments || [];
+    let subjectsList = lastProcessedSubjects || [];
+
+    // If roster or assignments are empty, try reading cached analytics for current filters
+    if ((!roster || roster.length === 0) || (!electiveAssignments || electiveAssignments.length === 0)) {
+      try {
+        const grade = filterGradeEl?.value || '';
+        const term = filterTermEl?.value || '';
+        const year = filterYearEl?.value || '';
+        const assessment = filterAssessmentEl?.value || '';
+        const cacheKey = `${grade}_${term}_${year}_${assessment}`;
+        const cached = getAnalyticsCache(cacheKey);
+        if (cached) {
+          roster = roster && roster.length ? roster : (cached.roster || roster);
+          electiveAssignments = electiveAssignments && electiveAssignments.length ? electiveAssignments : (cached.electiveAssignments || []);
+        }
+      } catch (e) {
+        console.warn('Failed to read analytics cache', e);
+      }
+    }
+    const subjectEligibilityMap = buildSeniorSubjectEligibilityMap(roster, electiveAssignments);
+    const eligibility = subjectEligibilityMap.get(adm) || subjectEligibilityMap.get(String(adm)) || null;
+
+    const subjects = (subjectsList && subjectsList.length) ? subjectsList : (lastProcessedSubjects && lastProcessedSubjects.length ? lastProcessedSubjects : []);
+    const results = subjects.map(sub => ({
+      subject: sub,
+      eligible: isSubjectEligibleForStudent(adm, sub, true, subjectEligibilityMap)
+    }));
+
+    console.group(`Dean Debug: Admission ${adm}`);
+    console.log('Roster entry:', roster.find(r => String(r.admissionNo || r.admission) === adm) || null);
+    console.log('Elective assignments (matched):', electiveAssignments.filter(a => {
+      const aid = String(
+        a?.learnerId?._id ||
+        a?.learner?._id ||
+        a?.learnerId ||
+        a?.learner ||
+        a?.admissionNo ||
+        ""
+      ).trim();
+      const aAdm = String(a?.learnerId?.admission || a?.learner?.admission || a?.admissionNo || "").trim();
+      return aid === adm || aAdm === adm;
+    }));
+    console.log('Eligibility set:', eligibility ? Array.from(eligibility) : 'none');
+    console.table(results);
+    console.groupEnd();
+
+    return { admission: adm, eligibility: eligibility ? Array.from(eligibility) : null, subjects: results };
+  } catch (e) {
+    console.error('deanDebugCheckStudent error', e);
+    return null;
+  }
+};
 
 const CACHE_TTL = 15 * 60 * 1000; // 15 minutes
 const CACHE_KEY_PREFIX = "dean_analytics_cache_";
@@ -329,6 +413,52 @@ function getStudentRemark(score) {
   return "Needs Improvement";
 }
 
+function buildStudentTermProgressSeries(student) {
+  if (!Array.isArray(currentAnalysisRawData) || !currentAnalysisRawData.length || !student) return [];
+
+  const targetAdm = String(student.adm || student.admissionNo || "");
+  const grade = filterGradeEl?.value;
+  const selectedStream = filterStreamEl?.value || "all";
+  const term = filterTermEl?.value;
+  const year = filterYearEl?.value;
+
+  const grouped = {};
+  currentAnalysisRawData.forEach((entry) => {
+    const entryAdm = String(entry.admissionNo || entry.admission || "");
+    const sameStudent = entryAdm === targetAdm;
+    const sameGrade = !grade || String(entry.grade) === String(grade) || cbcUtils.normalizeGrade(entry.grade) === cbcUtils.normalizeGrade(grade);
+    const sameTerm = !term || String(entry.term) === String(term);
+    const sameYear = !year || String(entry.year) === String(year);
+    const sameStream = selectedStream === "all" || String(entry.stream || "Unassigned") === String(selectedStream);
+
+    if (!sameStudent || !sameGrade || !sameTerm || !sameYear || !sameStream) return;
+
+    const assessmentKey = String(entry.assessment);
+    if (!grouped[assessmentKey]) {
+      grouped[assessmentKey] = { total: 0, count: 0 };
+    }
+
+    entry.subjects.forEach((sub) => {
+      const subName = getAnalysisSubjectName(sub, currentIsSenior);
+      if (!subName || (currentIsSenior && isExcludedSeniorSubject(subName))) return;
+
+      const score = currentIsSenior ? getSeniorSubjectScore(sub) : sub.score;
+      if (score !== undefined && score !== null && score !== "" && score !== "X" && score !== "x" && !isNaN(score)) {
+        grouped[assessmentKey].total += Number(score);
+        grouped[assessmentKey].count += 1;
+      }
+    });
+  });
+
+  return Object.entries(grouped)
+    .sort((a, b) => Number(a[0]) - Number(b[0]))
+    .map(([assessment, data]) => ({
+      assessment,
+      mean: data.count ? data.total / data.count : 0,
+      label: window.ASSESSMENT_MAPPING?.[assessment] || `A${assessment}`
+    }));
+}
+
 function getAnalyticsCache(key) {
   try {
     const cached = JSON.parse(localStorage.getItem(CACHE_KEY_PREFIX + key));
@@ -395,21 +525,13 @@ function setupTabs() {
       if (activePane) {
         activePane.classList.add("active");
 
-        // Ensure the main analysis section is visible when any tab is clicked
-        // This resolves issues where tabs might not appear if generateReport hasn't been clicked.
-        if (analysisSection) analysisSection.style.display = "block";
-        
-        // 🆕 Toggle global Dean filters and analysis stats: Hidden for Submitted Subjects (uses its own)
+        // 🆕 Toggle global Dean filters and analysis stats: Hidden for module tabs that use their own filters
         const globalFilters = document.querySelector('.filters-section');
         const summaryCards = document.querySelector('.stats-grid');
-        const isSubmittedTab = target === "submittedSubjectsTab";
-        if (globalFilters) globalFilters.style.display = isSubmittedTab ? "none" : "block";
-        if (summaryCards) summaryCards.style.display = isSubmittedTab ? "none" : "grid";
-
-        // Always charts when analytics tab is clicked to fix canvas layout issues
-        if (target === "analyticsTab") {
-           setTimeout(updateDashboardChart, 50);
-        }
+        const isModuleTab = target === "submittedSubjectsTab" || target === "learnerMarksTab";
+        if (globalFilters) globalFilters.style.display = isModuleTab ? "none" : "block";
+        if (summaryCards) summaryCards.style.display = isModuleTab ? "none" : "grid";
+        if (analysisSection) analysisSection.style.display = isModuleTab ? "none" : "block";
 
         // 🆕 Initialize Timetable Logic when tab is opened
         if (target.toLowerCase().includes("timetable") && window.TimetableModule) {
@@ -440,6 +562,19 @@ function setupTabs() {
                     console.warn("⚠️ SubmittedSubjectsModule not found on window object. Verify the script tag in your HTML.");
                 }
              }, 150); // Increased delay for slower network loads or script execution
+           }
+        }
+        if (target === "learnerMarksTab") {
+           if (window.LearnerMarksModule && typeof window.LearnerMarksModule.init === 'function') {
+             window.LearnerMarksModule.init();
+           } else {
+             setTimeout(() => {
+               if (window.LearnerMarksModule && typeof window.LearnerMarksModule.init === 'function') {
+                 window.LearnerMarksModule.init();
+               } else {
+                 console.warn("⚠️ LearnerMarksModule not found on window object. Verify the script tag in your HTML.");
+               }
+             }, 150);
            }
         }
 
@@ -480,6 +615,8 @@ async function generateReport() {
     console.log("✅ Using cached analytics for Grade: " + grade);
     analysisSection.style.display = "block";
     currentPrevRawData = cached.prevTermData;
+    currentRoster = cached.roster || [];
+    currentElectiveAssignments = cached.electiveAssignments || [];
     processAnalysisData(cached.rawData, cached.isSenior, assessment, cached.prevTermData, cached.roster, cached.electiveAssignments || []);
 
     // 🆕 Update Reports Tab UI
@@ -488,8 +625,7 @@ async function generateReport() {
     if (reportsUI) reportsUI.style.display = "block";
     if (reportsPlaceholder) reportsPlaceholder.style.display = "none";
 
-  window.spinner?.hide(applyFiltersBtn);
-    
+    window.spinner?.hide(applyFiltersBtn);
     return;
   }
   
@@ -936,6 +1072,20 @@ function normalizeSubjectName(subjectName) {
   return String(subjectName || "").trim().toLowerCase();
 }
 
+function getAnalysisSubjectName(sub, isSenior) {
+  if (!sub || typeof sub !== 'object') return null;
+
+  const rawName = String(isSenior ? (sub.course || sub.subject || "") : (sub.subject || sub.course || "")).trim();
+  if (!rawName) return null;
+
+  if (isSenior && window.SUBJECT_DATA && typeof window.SUBJECT_DATA.normalizeSeniorSubjectName === 'function') {
+    const normalized = window.SUBJECT_DATA.normalizeSeniorSubjectName(rawName);
+    return normalized || rawName;
+  }
+
+  return rawName;
+}
+
 function isExcludedSeniorSubject(subjectName) {
   const normalized = normalizeSubjectName(subjectName);
   const excluded = new Set([
@@ -943,15 +1093,35 @@ function isExcludedSeniorSubject(subjectName) {
     "physical education",
     "phys ed",
     "sports and physical education",
-    "physical health education"
+    "physical health education",
+    "ict",
+    "information communication technology",
+    "information and communication technology",
+    "information communication technoloy",
+    "information and communication technoloy"
   ]);
   return excluded.has(normalized);
 }
 
 function buildSeniorSubjectEligibilityMap(roster = [], electiveAssignments = []) {
   const eligibilityMap = new Map();
+  electiveAssignments = Array.isArray(electiveAssignments)
+    ? electiveAssignments
+    : Array.isArray(electiveAssignments?.data)
+      ? electiveAssignments.data
+      : Array.isArray(electiveAssignments?.assignments)
+        ? electiveAssignments.assignments
+        : [];
+
+  const normalize = (name) => {
+    if (window.SUBJECT_DATA && typeof window.SUBJECT_DATA.normalizeSeniorSubjectName === 'function') {
+      return window.SUBJECT_DATA.normalizeSeniorSubjectName(String(name || "").trim());
+    }
+    return String(name || "").trim();
+  };
+
   const compulsorySubjects = (window.SUBJECT_DATA?.seniorCompulsorySubjects || [])
-    .map((subject) => String(subject).trim())
+    .map((subject) => normalize(subject))
     .filter(Boolean)
     .filter((subject) => !isExcludedSeniorSubject(subject));
 
@@ -965,17 +1135,45 @@ function buildSeniorSubjectEligibilityMap(roster = [], electiveAssignments = [])
 
     if (isSenior) {
       const assignmentsForStudent = electiveAssignments.filter((assignment) => {
-        const assignmentLearnerId = String(assignment?.learnerId?._id || assignment?.learnerId || assignment?.learner?.id || assignment?.learner?._id || "").trim();
-        const assignmentAdmission = String(assignment?.learnerId?.admission || assignment?.admissionNo || "").trim();
+        const assignmentLearnerId = String(
+          assignment?.learnerId?._id ||
+          assignment?.learner?._id ||
+          assignment?.learnerId ||
+          assignment?.learner ||
+          ""
+        ).trim();
+        const assignmentAdmission = String(
+          assignment?.learnerId?.admission ||
+          assignment?.learner?.admission ||
+          assignment?.admissionNo ||
+          ""
+        ).trim();
 
         return (learnerId && assignmentLearnerId && assignmentLearnerId === learnerId) ||
           (admission && assignmentAdmission && assignmentAdmission === admission);
       });
 
       assignmentsForStudent.forEach((assignment) => {
-        const subjects = Array.isArray(assignment?.subjects) ? assignment.subjects : [];
+        const rawSubjects = Array.isArray(assignment?.subjects)
+          ? assignment.subjects
+          : Array.isArray(assignment?.subjectLines)
+            ? assignment.subjectLines
+            : Array.isArray(assignment?.electiveSet?.subjects)
+              ? assignment.electiveSet.subjects
+              : Array.isArray(assignment?.electiveSets)
+                ? assignment.electiveSets.flatMap((set) => Array.isArray(set?.subjects) ? set.subjects : [])
+                : [];
+
+        const subjects = rawSubjects.map((subject) => {
+          if (typeof subject === 'string') return subject;
+          if (subject && typeof subject === 'object') {
+            return String(subject.subject || subject.course || subject.name || '').trim();
+          }
+          return '';
+        }).filter(Boolean);
+
         subjects.forEach((subject) => {
-          const subjectName = String(subject || "").trim();
+          const subjectName = normalize(subject);
           if (subjectName && !isExcludedSeniorSubject(subjectName)) eligibleSubjects.add(subjectName);
         });
       });
@@ -994,9 +1192,37 @@ function isSubjectEligibleForStudent(studentKey, subjectName, isSenior, eligibil
   if (isExcludedSeniorSubject(subjectName)) return false;
 
   const eligibility = eligibilityMap.get(String(studentKey));
-  if (!eligibility || eligibility.size === 0) return true;
+  if (!eligibility || eligibility.size === 0) {
+    // If we have no eligibility info for this student, restrict to compulsory senior subjects only.
+    try {
+      const normalize = (name) => {
+        if (window.SUBJECT_DATA && typeof window.SUBJECT_DATA.normalizeSeniorSubjectName === 'function') return window.SUBJECT_DATA.normalizeSeniorSubjectName(String(name || '').trim());
+        return String(name || '').trim();
+      };
+      const compulsory = (window.SUBJECT_DATA?.seniorCompulsorySubjects || []).map(s => normalize(s)).map(s => s.toLowerCase());
+      return compulsory.includes(String(normalize(subjectName)).toLowerCase());
+    } catch (e) {
+      return false;
+    }
+  }
 
-  return Array.from(eligibility).some((item) => normalizeSubjectName(item) === normalizeSubjectName(subjectName));
+  const normalizedSubject = normalizeSubjectName(subjectName);
+  return Array.from(eligibility).some((item) => {
+    const normalizedItem = normalizeSubjectName(item);
+    return normalizedItem === normalizedSubject || normalizedItem.includes(normalizedSubject) || normalizedSubject.includes(normalizedItem);
+  });
+}
+
+function getSeniorSubjectScore(sub) {
+  const isX = (v) => v === null || v === undefined || String(v).trim() === "" || (typeof v === 'string' && v.trim().toUpperCase() === "X");
+  if (!isX(sub.score)) return sub.score;
+
+  const ca = sub.continuousAssessment;
+  const pw = sub.projectWork;
+  const exam = sub.endTermExam;
+  const hasComponents = [ca, pw, exam].some(v => !isX(v));
+  if (!hasComponents) return "X";
+  return window.cbcUtils.calculateFinalScore(ca, pw, exam);
 }
 
 /**
@@ -1135,7 +1361,7 @@ function processAnalysisData(allRaw, isSenior, assessment, allPrevRaw = null, ro
       streamExpectedSubjectsMap[stream] = new Set();
     }
     m.subjects.forEach(sub => {
-      const subName = isSenior ? sub.course : sub.subject;
+      const subName = getAnalysisSubjectName(sub, isSenior);
       if (!subName || (isSenior && isExcludedSeniorSubject(subName))) return;
       streamExpectedSubjectsMap[stream].add(subName);
       allSubjectsInGrade.add(subName);
@@ -1188,20 +1414,43 @@ function processAnalysisData(allRaw, isSenior, assessment, allPrevRaw = null, ro
   const streamFilteredRaw = selectedStream === "all" ? allRaw : allRaw.filter(m => m.stream === selectedStream);
   const prevRaw = (allPrevRaw && selectedStream !== "all") ? allPrevRaw.filter(m => m.stream === selectedStream) : allPrevRaw;
 
+  // 🆕 Apply Pathway filter for Senior/Full schools: limits roster and marks to selected pathway
+  const selectedPathwayRaw = filterPathwayEl?.value || "";
+  const selectedPathway = selectedPathwayRaw === 'all'
+    ? 'all'
+    : (window.cbcUtils?.normalizePathway?.(selectedPathwayRaw) || selectedPathwayRaw);
+  let pathwayFilteredRaw = streamFilteredRaw;
+  if (isSenior && selectedPathway && selectedPathway !== 'all') {
+    try {
+      const pathwayRoster = Array.isArray(roster) ? roster.filter(s => {
+        const sp = window.cbcUtils?.normalizePathway?.(s.pathway || s.enrollmentId?.pathway) || String(s.pathway || s.enrollmentId?.pathway || '').trim();
+        return sp === selectedPathway;
+      }) : [];
+      const pathwayAdms = new Set(pathwayRoster.map(s => (s.admissionNo || s.admission || (s.enrollmentId && s.enrollmentId.admissionNo) || '').toString()));
+      pathwayFilteredRaw = streamFilteredRaw.filter(m => pathwayAdms.has(String(m.admissionNo)));
+      // Replace roster with filtered roster for downstream logic (missing/ungrouped lists)
+      roster = pathwayRoster;
+    } catch (e) {
+      console.warn('Pathway filtering failed', e);
+    }
+  }
+
   // 🆕 Determine the current view data based on assessment selection
   const isAll = assessment === "all" || filterTermEl?.value === "all";
-  const raw = isAll ? streamFilteredRaw : streamFilteredRaw.filter(m => String(m.assessment) === assessment);
+  const rawBase = isSenior ? pathwayFilteredRaw : streamFilteredRaw;
+  const raw = isAll ? rawBase : rawBase.filter(m => String(m.assessment) === assessment);
 
   // --- IMPORTANT CHANGE HERE ---
   // Discover subjects *after* stream filtering, from the 'raw' data
   const subjectsSet = new Set();
   raw.forEach(m => { // Iterate over filtered raw data
     m.subjects.forEach(sub => {
-      const subName = isSenior ? sub.course : sub.subject;
+      const subName = getAnalysisSubjectName(sub, isSenior);
       if (!subName || (isSenior && isExcludedSeniorSubject(subName))) return;
       subjectsSet.add(subName);
     });
   });
+
   // 🆕 CHANGED: Use grade-specific subject ordering instead of alphabetical
   const sortedSubjects = getSubjectOrderForGrade(Array.from(subjectsSet), filterGradeEl.value);
   // --- END IMPORTANT CHANGE ---
@@ -1211,6 +1460,16 @@ function processAnalysisData(allRaw, isSenior, assessment, allPrevRaw = null, ro
   const subjectCounts = {};
   const subjectTermStats = {}; // To track T1, T2, T3 means for trend line
   const missingExamsMap = {}; // 🆕 Use a map to group missed subjects by student/assessment
+  const pathwayByAdmission = new Map();
+  if (Array.isArray(roster)) {
+    roster.forEach((student) => {
+      const adm = String(student?.admissionNo || student?.admission || "").trim();
+      if (!adm) return;
+      const pathwayValue = window.cbcUtils?.normalizePathway?.(student.pathway || student.enrollmentId?.pathway) || String(student.pathway || student.enrollmentId?.pathway || "").trim();
+      if (pathwayValue) pathwayByAdmission.set(adm, pathwayValue);
+    });
+  }
+
   const subjectEligibilityMap = buildSeniorSubjectEligibilityMap(roster, electiveAssignments);
 
   // Store current state for re-rendering
@@ -1250,16 +1509,18 @@ function processAnalysisData(allRaw, isSenior, assessment, allPrevRaw = null, ro
       }
 
       m.subjects.forEach(sub => {
-        const subName = isSenior ? sub.course : sub.subject;
+        const subName = getAnalysisSubjectName(sub, isSenior);
         if (!subName) return;
         if (!isSubjectEligibleForStudent(studentKey, subName, isSenior, subjectEligibilityMap)) return;
 
         const isX = (v) => v === null || v === undefined || String(v).trim() === "" || (typeof v === 'string' && v.trim().toUpperCase() === "X");
-        let isAbsent = isSenior 
-            ? (isX(sub.endTermExam) || isX(sub.continuousAssessment) || isX(sub.projectWork))
+        const hasSeniorScore = !isX(sub.score);
+        const seniorComponentsAbsent = isX(sub.endTermExam) && isX(sub.continuousAssessment) && isX(sub.projectWork);
+        let isAbsent = isSenior
+            ? (!hasSeniorScore && seniorComponentsAbsent)
             : isX(sub.score);
 
-        const score = isAbsent ? "X" : (isSenior ? window.cbcUtils.calculateFinalScore(sub.continuousAssessment, sub.projectWork, sub.endTermExam) : sub.score);
+        const score = isSenior ? getSeniorSubjectScore(sub) : sub.score;
         
         if (isAbsent || score === "X") pStudentsMap[studentKey].hasAbsence = true;
 
@@ -1305,32 +1566,6 @@ function processAnalysisData(allRaw, isSenior, assessment, allPrevRaw = null, ro
     });
   }
 
-  // Populate Subject Filter
-  if (filterSubjectEl) {
-    const currentVal = filterSubjectEl.value;
-    filterSubjectEl.innerHTML = '<option value="all">All Subjects (Mean)</option>';
-    sortedSubjects.forEach(s => {
-      const opt = document.createElement("option");
-      opt.value = s; opt.textContent = s;
-      filterSubjectEl.appendChild(opt);
-    });
-    if (currentVal && Array.from(filterSubjectEl.options).some(o => o.value === currentVal)) {
-      filterSubjectEl.value = currentVal;
-    }
-    filterSubjectEl.style.display = "inline-block";
-  }
-
-  // Detect stream counts and handle chart toggle visibility
-  const hasMultipleStreams = streamsSet.size > 1;
-  if (chartTypeToggle) {
-    const toggleGroup = chartTypeToggle.closest(".filter-group") || chartTypeToggle.closest(".form-group") || chartTypeToggle.parentElement;
-    // Always show the chart type toggle if data is present
-    if (toggleGroup) toggleGroup.style.display = sortedSubjects.length > 0 ? "block" : "none";
-    
-    // Default to 'trend' only if no value is set
-    if (!chartTypeToggle.value) chartTypeToggle.value = "trend";
-  }
-
   // Show results area
   analysisSection.style.display = "block";
   
@@ -1339,11 +1574,13 @@ function processAnalysisData(allRaw, isSenior, assessment, allPrevRaw = null, ro
     // Group by admission number if "All" is selected to show overall means
     const key = isAll ? m.admissionNo : `${m.admissionNo}_${m.assessment}`;
     if (!studentsMap[key]) {
+      const pathwayValue = pathwayByAdmission.get(String(m.admissionNo)) || window.cbcUtils?.normalizePathway?.(m.pathway || "") || String(m.pathway || "").trim();
       studentsMap[key] = { 
         name: m.studentName, 
         adm: m.admissionNo, 
         grade: m.grade,
         stream: m.stream || "Unassigned", // Fix: Retain stream for grouped analysis
+        pathway: pathwayValue || undefined,
         assess: isAll ? "Overall" : (m.assessment || "N/A"), 
         subjects: {}, _sum: {}, _cnt: {},
         hasAbsence: false
@@ -1351,18 +1588,18 @@ function processAnalysisData(allRaw, isSenior, assessment, allPrevRaw = null, ro
     }
 
     m.subjects.forEach(sub => { // Iterate over subjects
-      const subName = isSenior ? sub.course : sub.subject;
+      const subName = getAnalysisSubjectName(sub, isSenior);
       if (!subName || (isSenior && isExcludedSeniorSubject(subName))) return;
-      if (!isSubjectEligibleForStudent(m.admissionNo, subName, isSenior, subjectEligibilityMap)) return;
       
       // Robust missing/absent detection (catches null, undefined, empty, or "X")
       const isX = (v) => v === null || v === undefined || String(v).trim() === "" || (typeof v === 'string' && v.trim().toUpperCase() === "X");
+      const hasSeniorScore = !isX(sub.score);
+      const seniorComponentsAbsent = isX(sub.endTermExam) && isX(sub.continuousAssessment) && isX(sub.projectWork);
+      let isAbsent = isSenior
+        ? (!hasSeniorScore && seniorComponentsAbsent)
+        : (isX(sub.score) || sub.score === 0);
       
-      let isAbsent = isSenior 
-        ? (isX(sub.endTermExam) || isX(sub.continuousAssessment) || isX(sub.projectWork)) // Check for absence in senior school components
-        : (isX(sub.score) || sub.score === 0); // 🆕 Standard absence detection
-      
-      const score = isAbsent ? "X" : (isSenior ? window.cbcUtils.calculateFinalScore(sub.continuousAssessment, sub.projectWork, sub.endTermExam) : sub.score);
+      const score = isSenior ? getSeniorSubjectScore(sub) : sub.score;
 
       // Robust absence flag setting
       const isExplicitlyAbsent = isAbsent || score === null || score === undefined || (typeof score === 'string' && score.trim().toUpperCase() === "X");
@@ -1397,7 +1634,11 @@ function processAnalysisData(allRaw, isSenior, assessment, allPrevRaw = null, ro
 
     if (isSenior) {
       const eligibility = subjectEligibilityMap.get(String(s.adm)) || subjectEligibilityMap.get(String(s.adm || ""));
-      subjectsToValidateAgainst = eligibility ? Array.from(eligibility) : [];
+      const submittedSubjects = Object.keys(s.subjects || {});
+      const expectedSet = new Set();
+      if (eligibility) Array.from(eligibility).forEach(sub => expectedSet.add(sub));
+      submittedSubjects.forEach(sub => expectedSet.add(sub));
+      subjectsToValidateAgainst = Array.from(expectedSet);
     } else if (selectedStream === "all") {
       // When viewing all streams, validate against subjects expected for the student's *own* stream
       subjectsToValidateAgainst = streamExpectedSubjectsMap[s.stream || "Unassigned"] || [];
@@ -1452,11 +1693,10 @@ function processAnalysisData(allRaw, isSenior, assessment, allPrevRaw = null, ro
     // Only process scores for students who are NOT disqualified
     if (student && !student.hasAbsence) {
       m.subjects.forEach(sub => {
-        const subName = isSenior ? sub.course : sub.subject;
+        const subName = getAnalysisSubjectName(sub, isSenior);
         if (!subName || (isSenior && isExcludedSeniorSubject(subName))) return;
-        if (!isSubjectEligibleForStudent(m.admissionNo, subName, isSenior, subjectEligibilityMap)) return;
 
-        const score = isSenior ? window.cbcUtils.calculateFinalScore(sub.continuousAssessment, sub.projectWork, sub.endTermExam) : sub.score;
+        const score = isSenior ? getSeniorSubjectScore(sub) : sub.score;
         const scoreStr = String(score).trim().toUpperCase();
         
         if (score !== "" && score !== null && !isNaN(score) && scoreStr !== "X") {
@@ -1522,8 +1762,7 @@ function processAnalysisData(allRaw, isSenior, assessment, allPrevRaw = null, ro
 
   lastProcessedStudents = studentArray; // 🆕 Store for bulk reports
   lastProcessedSubjects = sortedSubjects; // 🆕 Store for bulk reports
-  const statusText = document.getElementById("reportsStatusText");
-  if (statusText) statusText.textContent = `Ready to generate reports for ${studentArray.length} learners in ${filterGradeEl.value}.`;
+  updateReportsActionState();
 
   // Update SMS Tab UI
   if (smsBroadcastUI) smsBroadcastUI.style.display = "block";
@@ -1539,18 +1778,91 @@ function processAnalysisData(allRaw, isSenior, assessment, allPrevRaw = null, ro
   const missingExamsList = Object.values(missingExamsMap);
   missingExamsList.sort((a, b) => a.name.localeCompare(b.name));
 
-  // Calculate ranks with ties (Standard Competition Ranking)
-  let prevMean = null;
-  let prevRank = 0;
-  studentArray.forEach((s, idx) => {
-    const currentMean = parseFloat(s.mean.toFixed(2));
-    if (currentMean === prevMean) {
-      s.rank = prevRank;
-    } else {
-      s.rank = idx + 1;
-      prevRank = s.rank; // Update previous rank
+  const overallRaw = isAll ? allRaw : allRaw.filter(m => String(m.assessment) === assessment);
+  const overallStudentsMap = {};
+
+  overallRaw.forEach((m) => {
+    const key = isAll ? m.admissionNo : `${m.admissionNo}_${m.assessment}`;
+    if (!overallStudentsMap[key]) {
+      overallStudentsMap[key] = {
+        adm: m.admissionNo,
+        name: m.studentName,
+        grade: m.grade,
+        stream: m.stream || "Unassigned",
+        subjects: {}
+      };
     }
-    prevMean = currentMean;
+
+    m.subjects.forEach((sub) => {
+      const subName = getAnalysisSubjectName(sub, isSenior);
+      if (!subName || (isSenior && isExcludedSeniorSubject(subName))) return;
+
+      const score = isSenior ? getSeniorSubjectScore(sub) : sub.score;
+      if (score !== undefined && score !== null && score !== "" && !isNaN(score) && score !== "X" && score !== "x") {
+        if (overallStudentsMap[key].subjects[subName] === undefined) {
+          overallStudentsMap[key].subjects[subName] = Number(score);
+        }
+      }
+    });
+  });
+
+  const overallStudentArray = Object.values(overallStudentsMap)
+    .map((s) => {
+      const rawScores = Object.values(s.subjects);
+      const validScores = rawScores.filter((v) => v !== null && v !== undefined && v !== "" && !isNaN(v) && v !== "X" && v !== "x").map(Number);
+      const total = validScores.reduce((a, b) => a + b, 0);
+      const mean = validScores.length ? total / validScores.length : 0;
+      return { ...s, total, mean };
+    })
+    .sort((a, b) => b.mean - a.mean);
+
+  let prevOverallMean = null;
+  let prevOverallRank = 0;
+  overallStudentArray.forEach((s, idx) => {
+    const currentMean = parseFloat(s.mean.toFixed(2));
+    if (currentMean === prevOverallMean) {
+      s.overallRank = prevOverallRank;
+    } else {
+      s.overallRank = idx + 1;
+      prevOverallRank = s.overallRank;
+    }
+    s.overallRankTotal = overallStudentArray.length;
+    prevOverallMean = currentMean;
+  });
+
+  const overallRankMap = Object.fromEntries(overallStudentArray.map((s) => [String(s.adm), s]));
+  studentArray.forEach((s) => {
+    const match = overallRankMap[String(s.adm)];
+    if (match) {
+      s.rank = match.overallRank;
+      s.rankTotal = match.overallRankTotal;
+    }
+  });
+
+  // Calculate stream ranks using the same ranking logic
+  const streamGroups = {};
+  studentArray.forEach((s) => {
+    const streamKey = String(s.stream || "Unassigned");
+    if (!streamGroups[streamKey]) streamGroups[streamKey] = [];
+    streamGroups[streamKey].push(s);
+  });
+
+  Object.values(streamGroups).forEach((streamStudents) => {
+    streamStudents.sort((a, b) => b.mean - a.mean);
+
+    let prevStreamMean = null;
+    let prevStreamRank = 0;
+    streamStudents.forEach((s, idx) => {
+      const currentMean = parseFloat(s.mean.toFixed(2));
+      if (currentMean === prevStreamMean) {
+        s.streamRank = prevStreamRank;
+      } else {
+        s.streamRank = idx + 1;
+        prevStreamRank = s.streamRank;
+      }
+      prevStreamMean = currentMean;
+      s.streamTotal = streamStudents.length;
+    });
   });
 
   // Identify top and lowest learners, handling ties
@@ -1591,7 +1903,6 @@ function processAnalysisData(allRaw, isSenior, assessment, allPrevRaw = null, ro
   setText(passRateEl, `${passRate}%`);
   
   // Tables
-  updateDashboardChart();
   renderRankingTable(studentArray, sortedSubjects, isSenior);
   renderSubjectStats(sortedSubjects, subjectTotals, subjectCounts, prevSubjectMeans, subjectTermStats);
   renderMissingExamsTable(missingExamsList, streamDiscrepancies); // 🆕 Call renderer for missing exams
@@ -1650,8 +1961,8 @@ function renderRankingTable(students, subjects, isSenior) {
         const score = s.subjects[sub];
         const isAbs = score === undefined || score === null || String(score).toUpperCase() === "X";
         if (isAbs) {
-          return `<td><span style="color:#ef4444; font-weight:700;">ABS</span> <span style="font-size: 0.72rem; color: #64748b; font-weight: 700;">(0)</span></td>`;
-        } // Display ABS for absent scores
+          return `<td><span style="color:#64748b; font-weight:700; font-size:0.95rem;">-</span></td>`;
+        }
         const pts = window.cbcUtils.getPoints(Number(score), s.grade);
         return `<td>${score} <span style="font-size: 0.72rem; color: #64748b; font-weight: 700;">(${pts})</span></td>`;
       }).join("")}
@@ -1703,6 +2014,37 @@ function renderRankingTable(students, subjects, isSenior) {
   rankingTableWrap.innerHTML = html;
 }
 
+function drawDeanPdfHeader(doc, { schoolName, subheader, pageWidth, logoBase64, logoProps, logoFormat, logoWidth = 16, startY = 8 }) {
+  let yPos = startY;
+
+  if (logoBase64) {
+    try {
+      const imgProps = logoProps || doc.getImageProperties(logoBase64);
+      const format = logoFormat || cbcUtils.getImageFormat(logoBase64);
+      const imgWidth = logoWidth;
+      const imgHeight = Math.min(16, (imgProps.height * imgWidth) / imgProps.width);
+      doc.addImage(logoBase64, format, (pageWidth - imgWidth) / 2, yPos, imgWidth, imgHeight, undefined, 'FAST');
+      yPos += imgHeight + 4;
+    } catch (e) {
+      console.warn("Could not embed school logo in PDF:", e);
+    }
+  }
+
+  doc.setFontSize(18);
+  doc.setFont("helvetica", "bold");
+  doc.text(schoolName, pageWidth / 2, yPos, { align: "center" });
+  yPos += 6;
+
+  doc.setFontSize(12);
+  doc.setFont("helvetica", "normal");
+  if (subheader) {
+    doc.text(subheader, pageWidth / 2, yPos, { align: "center" });
+    yPos += 8;
+  }
+
+  return yPos;
+}
+
 async function downloadRankingAsPDF() {
   const table = rankingTableWrap.querySelector("table");
   if (!table || !window.jspdf) return;
@@ -1731,35 +2073,18 @@ async function downloadRankingAsPDF() {
   const streamInfo = selectedStream !== "all" ? ` | Stream: ${selectedStream}` : "";
   const passRate = document.getElementById("passRate")?.textContent || "N/A"; // Retrieve pass rate from UI
 
-  let yPos = 12; // Tighter starting margin for the header
+  let yPos = drawDeanPdfHeader(doc, {
+    schoolName,
+    subheader: `${year} | ${termLabel} | ${assessLabel}${streamInfo}`,
+    pageWidth,
+    logoBase64: deanProfileData?.schoolLogoBase64,
+    logoProps: deanProfileData?.logoProps,
+    logoFormat: deanProfileData?.logoFormat,
+    logoWidth: 16,
+    startY: 8
+  });
 
   try {
-  // Header - School Logo & Name
-  if (deanProfileData && deanProfileData.schoolLogoBase64) {
-    try {
-      // Use pre-calculated properties to avoid expensive re-parsing // 🆕 Use cbcUtils.getImageFormat
-      const imgProps = deanProfileData.logoProps || doc.getImageProperties(deanProfileData.schoolLogoBase64); // 🆕 Use cbcUtils.getImageFormat
-      const format = deanProfileData.logoFormat || cbcUtils.getImageFormat(deanProfileData.schoolLogoBase64); // 🆕 Use cbcUtils.getImageFormat
-      const imgWidth = 25; // Fixed width for logo
-      const imgHeight = (imgProps.height * imgWidth) / imgProps.width;
-      doc.addImage(deanProfileData.schoolLogoBase64, format, (pageWidth - imgWidth) / 2, 8, imgWidth, imgHeight, undefined, 'FAST');
-      yPos = 2 + imgHeight + 5; // Reduced gap from 10mm to 5mm between logo and school name
-    } catch (e) {
-      console.warn("Could not embed school logo in PDF:", e);
-    }
-  }
-
-  doc.setFontSize(18);
-  doc.setFont("helvetica", "bold");
-  doc.text(schoolName, pageWidth / 2, yPos, { align: "center" });
-  yPos += 6; // Reduced spacing after school name
-
-  // 2. Subheader - Year | Term | Assessment
-  doc.setFontSize(12);
-  doc.setFont("helvetica", "normal");
-  doc.text(`${year} | ${termLabel} | ${assessLabel}${streamInfo}`, pageWidth / 2, yPos, { align: "center" });
-  yPos += 9; // Reduced spacing after subheader
-
   // 3. Title Line
   doc.setFontSize(14);
   doc.setFont("helvetica", "bold");
@@ -2320,15 +2645,16 @@ async function downloadSubjectPerformanceAsPDF() {
     const selectedStream = filterStreamEl?.value || "all";
     const streamInfo = selectedStream !== "all" ? ` | Stream: ${selectedStream}` : "";
 
-    let yPos = 15;
-
-  doc.setFontSize(18);
-  doc.setFont("helvetica", "bold");
-  doc.text(schoolName, pageWidth / 2, yPos - 7, { align: "center" });
-
-  doc.setFontSize(12);
-  doc.setFont("helvetica", "normal");
-  doc.text(`${year} | ${termLabel} | ${assessLabel}${streamInfo}`, pageWidth / 2, yPos, { align: "center" });
+    let yPos = drawDeanPdfHeader(doc, {
+      schoolName,
+      subheader: `${year} | ${termLabel} | ${assessLabel}${streamInfo}`,
+      pageWidth,
+      logoBase64: deanProfileData?.schoolLogoBase64,
+      logoProps: deanProfileData?.logoProps,
+      logoFormat: deanProfileData?.logoFormat,
+      logoWidth: 16,
+      startY: 8
+    });
 
   doc.setFontSize(14);
   doc.setFont("helvetica", "bold");
@@ -2443,12 +2769,21 @@ function renderSubjectStats(subjects, totals, counts, prevMeans = {}, termStats 
   subjectTableContainer.style.display = "block";
 
   // Convert to object list and sort by performance
-  const subjectList = subjects.map(s => ({
-    name: s,
-    mean: Number((totals[s] / counts[s]).toFixed(2)),
-    mean: Number((totals[s] / (counts[s] || 1)).toFixed(2)), // 🆕 Prevent division by zero
-    count: counts[s]
-  })).sort((a, b) => b.mean - a.mean);
+  const subjectList = subjects.map(s => {
+    const total = Number(totals[s] || 0);
+    const count = Number(counts[s] || 0);
+    const mean = count > 0 ? Number((total / count).toFixed(2)) : null;
+    return {
+      name: s,
+      mean,
+      count
+    };
+  }).sort((a, b) => {
+    if (a.mean === null && b.mean === null) return 0;
+    if (a.mean === null) return 1;
+    if (b.mean === null) return -1;
+    return b.mean - a.mean;
+  });
 
   // Calculate ranks with tie consideration (Competition Ranking)
   let prevMean = null;
@@ -2513,7 +2848,7 @@ function renderSubjectStats(subjects, totals, counts, prevMeans = {}, termStats 
     html += `<tr${tiedClass}>
       <td>${s.rank}</td>
       <td>${s.name}</td>
-      <td>${s.mean.toFixed(2)}%</td>
+      <td>${s.mean !== null ? s.mean.toFixed(2) + '%' : 'N/A'}</td>
       <td style="text-align:center; padding: 2px;">${getTrendLine(s.name)}</td>
       <td>${progressHtml}</td>
       <td>${s.count}</td>
@@ -2524,385 +2859,6 @@ function renderSubjectStats(subjects, totals, counts, prevMeans = {}, termStats 
   subjectTableWrap.innerHTML = html;
 }
 
-function updateDashboardChart() {
-  if (!currentAnalysisRawData) return;
-  const type = chartTypeToggle?.value || "trend";
-
-  // 🆕 Filter out disqualified learners for consistency across the dashboard
-  const assessment = filterAssessmentEl?.value;
-  const isAll = assessment === "all" || filterTermEl?.value === "all";
-  
-  const filteredData = currentAnalysisRawData.filter(m => {
-    const key = isAll ? m.admissionNo : `${m.admissionNo}_${m.assessment}`;
-    return currentValidKeys.has(key);
-  });
-
-  // Respect stream filter for trend analysis
-  const selectedStream = filterStreamEl?.value || "all";
-  const dataToChart = selectedStream === "all" ? filteredData : filteredData.filter(m => m.stream === selectedStream);
-
-  if (type === "trend") {
-    renderTrendChart(dataToChart, currentIsSenior);
-  } else {
-    renderStreamBarChart(filteredData, currentIsSenior);
-  }
-}
-
-function renderTrendChart(raw, isSenior) {
-  if (!gradeTrendChartEl || typeof Chart === 'undefined') return;
-
-  const selectedSub = filterSubjectEl?.value || "all";
-  const isAllTerms = filterTermEl?.value === "all";
-
-  const manualTarget = filterTargetEl ? parseInt(filterTargetEl.value) : NaN; // Get manual target from UI
-
-  const getSubjectTarget = (sub) => {
-    const targets = { Mathematics: 60, English: 65, Kiswahili: 65 };
-    return targets[sub] || 50;
-  };
-
-  const currentTarget = !isNaN(manualTarget)
-    ? manualTarget
-    : (selectedSub === "all" ? 50 : getSubjectTarget(selectedSub));
-
-  if (gradeTrendChart) gradeTrendChart.destroy();
-
-  const assessmentData = {}; // Store data for each assessment
-
-  raw.forEach(m => {
-    const assess = String(m.assessment);
-    const term = m.term;
-    const key = isAllTerms ? `${term}_${assess.padStart(2, '0')}` : assess;
-
-    if (!assessmentData[key]) {
-      assessmentData[key] = {
-        total: 0,
-        count: 0,
-        max: -1,
-        min: 101,
-        term,
-        assessment: assess
-      };
-    }
-
-    let studentSum = 0; // Sum of student scores
-    let subjectCount = 0;
-
-    m.subjects.forEach(sub => {
-      const subName = isSenior ? sub.course : sub.subject;
-      if (!subName || (selectedSub !== "all" && subName !== selectedSub)) return;
-
-      const score = isSenior
-        ? cbcUtils.calculateFinalScore(sub.continuousAssessment, sub.projectWork, sub.endTermExam)
-        : sub.score;
-
-      if (score !== null) {
-        studentSum += score;
-        subjectCount++;
-      }
-    });
-
-    if (subjectCount > 0) {
-      const avg = studentSum / subjectCount;
-
-      assessmentData[key].total += avg; // Accumulate total for average
-      assessmentData[key].count++;
-      assessmentData[key].max = Math.max(assessmentData[key].max, avg);
-      assessmentData[key].min = Math.min(assessmentData[key].min, avg);
-    }
-  });
-
-  const labels = [];
-  const meanData = [];
-  const maxData = [];
-  const minData = [];
-  const targetData = [];
-  
-  const sortedKeys = Object.keys(assessmentData).sort();
-
-  sortedKeys.forEach(k => {
-    const d = assessmentData[k];
-    
-    const mapping = window.ASSESSMENT_MAPPING || {};
-    const assessLabel = mapping[d.assessment] || `Assmt ${d.assessment}`;
-    
-    labels.push(isAllTerms ? `T${d.term} ${assessLabel}` : assessLabel);
-
-    const hasData = d.count > 0;
-    meanData.push(hasData ? (d.total / d.count).toFixed(2) : 0);
-    maxData.push(hasData ? d.max.toFixed(2) : 0);
-    minData.push(hasData ? d.min.toFixed(2) : 0);
-    targetData.push(currentTarget);
-  });
-
-  const allValues = [...meanData, ...maxData, ...minData, ...targetData].map(v => Number(v) || 0); // All values for Y-axis scaling
-  const maxValue = allValues.length ? Math.max(...allValues) : 100;
-  const yMax = Math.ceil(maxValue + 10);
-
-  gradeTrendChart = new Chart(gradeTrendChartEl, {
-    type: 'line',
-    data: {
-      labels,
-      datasets: [
-        {
-          label: 'Top Learner',
-          data: maxData,
-          borderColor: '#10b981',
-          borderDash: [5, 5],
-          pointRadius: 4,
-          tension: 0.2
-        },
-        {
-          label: 'Class Average',
-          data: meanData,
-          borderColor: '#3498db',
-          backgroundColor: 'rgba(52,152,219,0.1)',
-          borderWidth: 3,
-          fill: true,
-          pointRadius: 5, // Larger points for visibility
-          tension: 0.2
-        },
-        {
-          label: 'Lowest Learner',
-          data: minData,
-          borderColor: '#ef4444',
-          borderDash: [5, 5],
-          pointRadius: 4,
-          tension: 0.2
-        }, // Target line
-        {
-          label: `Target (${currentTarget}%)`,
-          data: targetData,
-          borderColor: '#f59e0b',
-          borderDash: [8, 6],
-          pointRadius: 0,
-          tension: 0
-        }
-      ]
-    },
-
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-
-      layout: {
-        padding: { top: 80, left: 60, right: 40, bottom: 40 }
-      },
-
-      scales: {
-       y: {
-  beginAtZero: true,
-  suggestedMin: 0,
-  suggestedMax: yMax,
-  title: {
-    display: true, // Display Y-axis title
-    font: { size: 16, weight: 'bold' },
-    text: selectedSub === "all"
-      ? 'Score (%)'
-      : `${selectedSub} Score (%)`
-  },
-
-  grid: {
-    color: 'rgba(0,0,0,0.05)'
-  },
-
-  ticks: {
-    autoSkip: false, // Don't skip ticks
-    stepSize: 10,   // Spreads values out more than 5
-    padding: 30,    
-    font: { size: 18, weight: '800' } // Extremely clear labels for the tall axis
-  }
-},
-
-        x: {
-          title: { display: true, text: 'Assessment Timeline' },
-          grid: { display: true, color: 'rgba(0,0,0,0.05)' },
-          ticks: { // X-axis ticks
-            padding: 15,
-            autoSkip: true, // Prioritize vertical space by skipping X labels if they crowd
-            maxRotation: 0, // Keep horizontal to save height
-            minRotation: 0 
-          }
-        }
-      },
-
-      plugins: {
-        legend: {
-          position: 'top',
-          labels: { padding: 20 }
-        },
-
-        tooltip: {
-          mode: 'index',
-          intersect: false,
-          padding: 10
-        },
-
-        datalabels: {}
-      }
-    }
-  });
-}
-
-function renderStreamBarChart(raw, isSenior) {
-  if (!gradeTrendChartEl || typeof Chart === 'undefined') return;
-
-  const selectedSub = filterSubjectEl?.value || "all";
-  if (gradeTrendChart) gradeTrendChart.destroy();
-
-  const streamData = {}; // Store data for each stream
-
-  raw.forEach(m => {
-    const streamName = m.stream || "Unassigned";
-    if (!streamData[streamName]) {
-      streamData[streamName] = { total: 0, count: 0 };
-    }
-
-    let studentSum = 0;
-    let subjectCount = 0; // Count subjects for average
-
-    m.subjects.forEach(sub => {
-      const subName = isSenior ? sub.course : sub.subject;
-      if (!subName || (selectedSub !== "all" && subName !== selectedSub)) return;
-
-      const score = isSenior
-        ? cbcUtils.calculateFinalScore(sub.continuousAssessment, sub.projectWork, sub.endTermExam)
-        : sub.score;
-
-      if (score !== null) {
-        studentSum += score;
-        subjectCount++;
-      }
-    });
-
-    if (subjectCount > 0) {
-      streamData[streamName].total += (studentSum / subjectCount);
-      streamData[streamName].count++;
-    }
-  });
-
-  const labels = Object.keys(streamData).sort(); // Sorted stream names
-  const averages = labels.map(s =>
-    (streamData[s].total / (streamData[s].count || 1)).toFixed(1)
-  );
-
-  const manualTarget = filterTargetEl ? parseInt(filterTargetEl.value) : NaN;
-
-  const getSubjectTarget = (sub) => {
-    const targets = { Mathematics: 60, English: 65, Kiswahili: 65 };
-    return targets[sub] || 50;
-  };
-
-  const currentTarget = !isNaN(manualTarget)
-    ? manualTarget
-    : (selectedSub === "all" ? 50 : getSubjectTarget(selectedSub));
-  
-  const allValues = [...averages, currentTarget].map(Number);
-  const maxValue = allValues.length ? Math.max(...allValues) : 100;
-  const yMax = Math.ceil(maxValue + 10);
-
-  gradeTrendChart = new Chart(gradeTrendChartEl, {
-    type: 'bar',
-    data: {
-      labels,
-      datasets: [
-        {
-          label: selectedSub === "all"
-            ? 'Stream Average (%)'
-            : `${selectedSub} Stream Mean (%)`, // Label for the bar chart
-          data: averages,
-          backgroundColor: labels.map((_, i) => `hsla(${210 + i * 40}, 70%, 50%, 0.7)`),
-          borderColor: labels.map((_, i) => `hsla(${210 + i * 40}, 70%, 45%, 1)`),
-          borderWidth: 1,
-          borderRadius: 6
-        }
-      ]
-    },
-
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-
-      layout: {
-        padding: { top: 60, left: 60, right: 30, bottom: 30 }
-      },
-
-      scales: {
-        y: {
-          beginAtZero: true,
-          suggestedMin: 0,
-          suggestedMax: yMax,
-          title: {
-            display: true, // Display Y-axis title
-            font: { size: 16, weight: 'bold' },
-            text: selectedSub === "all"
-              ? 'Average Score (%)'
-              : `${selectedSub} Score (%)`
-          },
-          grid: { color: 'rgba(0,0,0,0.05)' },
-          ticks: {
-            padding: 30,
-            autoSkip: false,
-            stepSize: 10,
-            font: { size: 18, weight: '800' }
-          }
-        },
-
-        x: {
-          title: { display: true, text: 'Streams' },
-          grid: { display: true, color: 'rgba(0,0,0,0.05)' },
-          ticks: { padding: 15 } // Padding for X-axis ticks
-        }
-      },
-
-      plugins: {
-        legend: {
-          position: 'bottom',
-          labels: { padding: 20 }
-        },
-
-        tooltip: {
-          padding: 10,
-          callbacks: {
-            afterLabel: (item) => {
-              const stream = labels[item.dataIndex];
-              return `Students: ${streamData[stream].count}`;
-            }
-          }
-        },
-
-        datalabels: (typeof ChartDataLabels !== 'undefined')
-          ? {
-              anchor: 'end',
-              align: 'top',
-              formatter: (value) => value + '%',
-              font: { weight: 'bold', size: 11 },
-              color: '#475569',
-              offset: 4
-            }
-          : {},
-
-        annotation: {
-          annotations: {
-            targetLine: {
-              type: 'line',
-              yMin: currentTarget,
-              yMax: currentTarget,
-              borderColor: '#f59e0b',
-              borderWidth: 3,
-              borderDash: [6, 6],
-              label: {
-                content: `Target: ${currentTarget}%`,
-                display: true,
-                position: 'end'
-              }
-            }
-          }
-        }
-      }
-    }
-  });
-}
 
 /**
  * 🆕 Renders multi-select checkboxes to define baseline milestones
@@ -2984,6 +2940,34 @@ function initFilters() {
     const opt = document.createElement("option"); opt.value = g; opt.textContent = g;
     filterGradeEl.appendChild(opt);
   });
+
+  // Populate Pathway filter for Senior/Full school types
+  try {
+    const schoolType = window.cbcUtils?.getSchoolTypeKey?.() || "";
+    const pathwayGroup = document.getElementById('pathwayFilterGroup');
+    if (pathwayGroup && filterPathwayEl) {
+      // Only show for senior or full school types
+      if (schoolType === 'senior' || schoolType === 'full') {
+        pathwayGroup.style.display = 'block';
+        filterPathwayEl.innerHTML = '';
+        const selectOpt = document.createElement('option'); selectOpt.value = ''; selectOpt.textContent = '-- Select Pathway --';
+        filterPathwayEl.appendChild(selectOpt);
+        const allOpt = document.createElement('option'); allOpt.value = 'all'; allOpt.textContent = 'All Pathways';
+        filterPathwayEl.appendChild(allOpt);
+
+        const pathways = (window.SUBJECT_DATA && window.SUBJECT_DATA.seniorSchoolPathways)
+          ? Object.keys(window.SUBJECT_DATA.seniorSchoolPathways)
+          : [];
+        pathways.forEach(p => {
+          const o = document.createElement('option'); o.value = p; o.textContent = p; filterPathwayEl.appendChild(o);
+        });
+      } else {
+        pathwayGroup.style.display = 'none';
+      }
+    }
+  } catch (e) {
+    console.warn('Pathway filter init failed', e);
+  }
 }
 
 async function loadDeanProfile() {
@@ -3247,8 +3231,8 @@ async function loadDeanProfile() {
 }
 
 /**
- * Generates a high-quality merged PDF for all students in the grade
- * This logic uses data ALREADY in memory to avoid extra database costs.
+ * Generates a high-quality merged PDF for all students in the grade.
+ * This logic uses data already in memory to avoid extra database costs.
  */
 async function generateBulkReportCards() {
     if (!lastProcessedStudents.length) return;
@@ -3260,34 +3244,21 @@ async function generateBulkReportCards() {
     }
 
     const btn = document.getElementById("generateBulkReportsBtn");
-    const originalHTML = btn.innerHTML; // Store original button HTML
-    btn.disabled = true;
-    btn.innerHTML = '<span class="spinner"></span> Compiling Reports...';
-
-    // 🆕 Progress Bar UI for Bulk Reports
-    let progressWrap = document.getElementById("reportsProgressWrap");
-    if (!progressWrap) {
-        progressWrap = document.createElement("div");
-        progressWrap.id = "reportsProgressWrap";
-        progressWrap.style.cssText = "margin-top: 15px; background: #f1f5f9; border-radius: 10px; padding: 15px; border: 1px solid #e2e8f0; display: none;";
-        progressWrap.innerHTML = `
-            <div style="display: flex; justify-content: space-between; margin-bottom: 8px; font-size: 0.75rem; font-weight: 700; color: #475569; text-transform: uppercase;">
-                <span id="reportsProgressText">Starting Compilation...</span>
-                <span id="reportsProgressPercent">0%</span>
-            </div>
-            <div style="height: 10px; background: #e2e8f0; border-radius: 5px; overflow: hidden;">
-                <div id="reportsProgressBar" style="height: 100%; width: 0%; background: linear-gradient(90deg, #3b82f6, #2563eb); transition: width 0.3s ease;"></div>
-            </div>
-        `;
-        const statusText = document.getElementById("reportsStatusText");
-        if (statusText) statusText.parentNode.insertBefore(progressWrap, statusText.nextSibling); // Insert progress bar after status text
-    }
+    const progressWrap = document.getElementById("reportsProgressWrap");
     const progressBar = document.getElementById("reportsProgressBar");
     const progressText = document.getElementById("reportsProgressText");
     const progressPercent = document.getElementById("reportsProgressPercent");
+    const originalHTML = btn?.innerHTML || "Generate Reports";
+    if (btn) {
+      btn.disabled = true;
+      btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i><span>Generating Reports...</span>';
+    }
     if (progressWrap) progressWrap.style.display = "block";
+    if (progressBar) progressBar.style.width = "0%";
+    if (progressPercent) progressPercent.textContent = "0%";
+    if (progressText) progressText.textContent = "Preparing report pack...";
 
-    await new Promise(r => setTimeout(r, 100)); // UI Breath
+    await new Promise(r => setTimeout(r, 100));
 
     const doc = new jsPDFClass({ orientation: 'portrait', unit: 'mm', format: 'a4' });
     const pageWidth = doc.internal.pageSize.getWidth();
@@ -3357,13 +3328,11 @@ async function generateBulkReportCards() {
 
     for (let i = 0; i < lastProcessedStudents.length; i++) {
         const s = lastProcessedStudents[i];
-
-        // Update Progress UI
         const percent = Math.round((i / lastProcessedStudents.length) * 100);
         if (progressBar) progressBar.style.width = `${percent}%`;
         if (progressPercent) progressPercent.textContent = `${percent}%`;
-        if (progressText) progressText.textContent = `Processing ${s.name} (${i + 1} of ${lastProcessedStudents.length})...`;
-        await new Promise(r => setTimeout(r, 10)); // Yield control to browser for UI updates
+        if (progressText) progressText.textContent = `Preparing ${s.name} (${i + 1} of ${lastProcessedStudents.length})...`;
+        await new Promise(r => setTimeout(r, 10));
 
         if (i > 0) doc.addPage();
 
@@ -3423,22 +3392,68 @@ async function generateBulkReportCards() {
 
         // 2. Student Info Box
         const studentStream = s.stream || "N/A";
+        const studentPathway = s.pathway || "";
         const infoBoxY = headerY + 2;
-        doc.setDrawColor(200).setLineWidth(0.3).rect(15, infoBoxY, pageWidth - 30, 28);
-        doc.setFont("helvetica", "bold").setFontSize(8.5).text(`Name: ${s.name}`, 18, infoBoxY + 7); // Student name
-        doc.setFont("helvetica", "normal").setFontSize(8.5).text(`ADM: ${s.adm}`, 18, infoBoxY + 13);
-        doc.text(`Grade: ${filterGradeEl.value}`, pageWidth - 70, infoBoxY + 7);
-        doc.text(`Stream: ${studentStream}`, pageWidth - 70, infoBoxY + 13);
-        doc.text(`Rank: ${s.rank} of ${lastProcessedStudents.length}`, 18, infoBoxY + 19);
+        const leftColX = 18;
+        const centerColX = pageWidth / 2 - 10;
+        const rightColX = pageWidth - 74;
+        doc.setDrawColor(200).setLineWidth(0.3).rect(15, infoBoxY, pageWidth - 30, 34);
+
+        doc.setFont("helvetica", "bold").setFontSize(8.5);
+        doc.text(`Name: ${s.name}`, leftColX, infoBoxY + 7);
+
+        doc.setFont("helvetica", "normal").setFontSize(8.5);
+        doc.text(`ADM: ${s.adm}`, leftColX, infoBoxY + 13);
+
+        if (studentPathway) {
+          doc.setFont("helvetica", "bold").setFontSize(8.5);
+          doc.text(`${studentPathway}`, leftColX, infoBoxY + 19);
+        }
+
+        doc.setFont("helvetica", "bold").setFontSize(8.2);
+        doc.text(`Overall Rank:`, centerColX - 14, infoBoxY + 7, { align: "center" });
+        doc.setFont("helvetica", "normal").setFontSize(8.2);
+        doc.text(`${s.rank || '-'} of ${s.rankTotal || lastProcessedStudents.length}`, centerColX + 10, infoBoxY + 7, { align: "center" });
+        doc.setFont("helvetica", "bold").setFontSize(8.2);
+        doc.text(`Stream Rank:`, centerColX - 14, infoBoxY + 13, { align: "center" });
+        doc.setFont("helvetica", "normal").setFontSize(8.2);
+        doc.text(`${s.streamRank || '-'} of ${s.streamTotal || 1}`, centerColX + 10, infoBoxY + 13, { align: "center" });
+
+        doc.setFont("helvetica", "bold").setFontSize(8.2);
+        doc.text(`Grade:`, rightColX - 6, infoBoxY + 7, { align: "right" });
+        doc.setFont("helvetica", "normal").setFontSize(8.2);
+        doc.text(`${filterGradeEl.value}`, rightColX + 18, infoBoxY + 7, { align: "right" });
+        doc.setFont("helvetica", "bold").setFontSize(8.2);
+        doc.text(`Stream:`, rightColX - 6, infoBoxY + 13, { align: "right" });
+        doc.setFont("helvetica", "normal").setFontSize(8.2);
+        doc.text(`${studentStream}`, rightColX + 18, infoBoxY + 13, { align: "right" });
 
         // 3. Subject Grid
         const headers = [["Subject", "Score", "Level", "Pts", "Remarks"]];
         const tableStartY = infoBoxY + 26; // Y position for table
-        const rows = lastProcessedSubjects.map(sub => {
-            const score = s.subjects[sub];
-            const val = (score === undefined || score === null) ? "ABS" : score;
-            const remark = cbcUtils.getSubjectRemark(score, sub);
-            return [sub, val, cbcUtils.getSubdivision(score, s.grade), cbcUtils.getPoints(score, s.grade), remark];
+
+        // Determine senior status and eligibility map (use cached roster/elective assignments)
+        const currentIsSenior = window.cbcUtils?.isSeniorGrade ? window.cbcUtils.isSeniorGrade(gradeLabel) : false;
+        let eligibilityMap = new Map();
+        try {
+          if (currentIsSenior && typeof buildSeniorSubjectEligibilityMap === 'function') {
+            eligibilityMap = buildSeniorSubjectEligibilityMap(currentRoster || [], currentElectiveAssignments || []);
+          }
+        } catch (e) {
+          // fail silently and fall back to showing all subjects
+          eligibilityMap = new Map();
+        }
+
+        // Filter subjects for senior learners based on eligibility; for non-senior show all
+        const subjectsToShow = (currentIsSenior)
+          ? lastProcessedSubjects.filter(sub => isSubjectEligibleForStudent(s.adm || s.admission || s.admissionNo || s.adm, sub, true, eligibilityMap))
+          : lastProcessedSubjects.slice();
+
+        const rows = subjectsToShow.map(sub => {
+          const score = s.subjects[sub];
+          const val = (score === undefined || score === null) ? "ABS" : score;
+          const remark = cbcUtils.getSubjectRemark(score, sub);
+          return [sub, val, cbcUtils.getSubdivision(score, s.grade), cbcUtils.getPoints(score, s.grade), remark];
         });
 
         doc.autoTable({
@@ -3482,60 +3497,144 @@ async function generateBulkReportCards() {
         }
 
         const keyStartY = finalY + 20; // Y position for performance key
-        doc.setFont("helvetica", "bold").setFontSize(9).text("Performance Key", metaX, keyStartY);
+        doc.setFont("helvetica", "bold").setFontSize(7.5).text("Performance Key", metaX, keyStartY);
         doc.autoTable({
-            startY: keyStartY + 3,
-            head: [["Level", "Range", "Points"]],
+            startY: keyStartY + 2.5,
+            head: [["Level", "Range", "Pts"]],
             body: perfKeyBody,
             theme: 'grid',
-            headStyles: { fillColor: [29, 78, 216], textColor: 255 },
-            styles: { fontSize: 7, cellPadding: 2, lineWidth: 0.2, lineColor: [0, 0, 0] },
+            headStyles: { fillColor: [29, 78, 216], textColor: 255, fontSize: 6.2, halign: 'center' },
+            styles: { fontSize: 6, cellPadding: 1.2, lineWidth: 0.2, lineColor: [0, 0, 0] },
             margin: { left: metaX },
-            tableWidth: 75
+            tableWidth: 62
         });
 
+        const progressSeries = buildStudentTermProgressSeries(s);
+        const chartX = metaX + 68;
+        const chartY = keyStartY;
+        const chartW = 72;
+        const chartH = 34;
+        if (progressSeries.length >= 2) {
+            doc.setFont("helvetica", "bold").setFontSize(8).setTextColor(0, 0, 0);
+            doc.text("Term Progress", chartX, chartY);
+            doc.setDrawColor(203, 213, 225).setLineWidth(0.25).rect(chartX, chartY + 2, chartW, chartH);
+
+            const plotX = chartX + 6;
+            const plotY = chartY + 8;
+            const plotW = chartW - 12;
+            const plotH = chartH - 12;
+            const maxVal = 100;
+            const minVal = 0;
+            const ySteps = [0, 25, 50, 75, 100];
+
+            const points = progressSeries.map((point, index) => ({
+                x: plotX + (index / Math.max(progressSeries.length - 1, 1)) * plotW,
+                y: plotY + plotH - ((point.mean - minVal) / (maxVal - minVal || 1)) * plotH,
+            }));
+
+            doc.setDrawColor(226, 232, 240).setLineWidth(0.2);
+            ySteps.forEach((step) => {
+                const y = plotY + plotH - ((step - minVal) / (maxVal - minVal || 1)) * plotH;
+                doc.line(plotX, y, plotX + plotW, y);
+            });
+
+            doc.setDrawColor(148, 163, 184).setLineWidth(0.2);
+            doc.line(plotX, plotY + plotH, plotX + plotW, plotY + plotH);
+            doc.line(plotX, plotY, plotX, plotY + plotH);
+
+            doc.setFont("helvetica", "normal").setFontSize(5.5);
+            ySteps.forEach((step) => {
+                const y = plotY + plotH - ((step - minVal) / (maxVal - minVal || 1)) * plotH;
+                doc.text(String(step), plotX - 2, y + 0.8, { align: "right" });
+            });
+
+            doc.text("Mean", plotX - 8, plotY + plotH / 2, { align: "center", angle: -90 });
+            doc.text("Assessments", plotX + plotW / 2, plotY + plotH + 8, { align: "center" });
+
+            doc.setDrawColor(37, 99, 235).setLineWidth(0.4);
+            points.forEach((point, index) => {
+                if (index > 0) {
+                    const prev = points[index - 1];
+                    doc.line(prev.x, prev.y, point.x, point.y);
+                }
+            });
+            doc.setFillColor(37, 99, 235);
+            points.forEach((point) => doc.circle(point.x, point.y, 0.9, 'F'));
+
+            doc.setFont("helvetica", "bold").setFontSize(5.8);
+            progressSeries.forEach((point, index) => {
+                const pointX = points[index].x;
+                const label = point.label || `A${index + 1}`;
+                doc.text(label, pointX, plotY + plotH + 4, { align: "center" });
+            });
+
+            doc.setFont("helvetica", "bold").setFontSize(6.2);
+            progressSeries.forEach((point, index) => {
+                const pointX = points[index].x;
+                const valueText = `${Math.round(point.mean)}%`;
+                doc.text(valueText, pointX, points[index].y - 2, { align: "center" });
+            });
+        }
+
         const isSeniorGrade = cbcUtils.isSeniorGrade(gradeLabel);
-        const isPrimaryOrJunior = !isSeniorGrade;
-        const signatureY = Math.max(doc.lastAutoTable.finalY + 16, pageHeight - 65);
-        const signatureBlockWidth = (pageWidth - 40) / (isPrimaryOrJunior ? 3 : 2);
-        const leftX = 20;
+        // Always render three signature columns: Principal | Class Teacher | Parent/Guardian
+        const signatureY = pageHeight - 38;
+        const leftMargin = 15;
+        const cols = 3;
+        const signatureBlockWidth = (pageWidth - (leftMargin * 2)) / cols;
+        const leftX = leftMargin;
         const middleX = leftX + signatureBlockWidth;
-        const rightX = middleX + signatureBlockWidth;
+        const rightX = leftX + signatureBlockWidth * 2;
         const headteacherLabel = isSeniorGrade ? "Principal's Signature" : "Headteacher's Signature";
         const parentGuardianLabel = "Parent/Guardian Signature";
 
         doc.setFont("helvetica", "normal"); // Reset font
 
-        if (isPrimaryOrJunior) {
-            doc.line(leftX, signatureY, leftX + signatureBlockWidth - 15, signatureY);
-            doc.text(headteacherLabel, leftX, signatureY + 5);
+        doc.setDrawColor(0, 0, 0).setLineWidth(0.25);
+        doc.setLineDash([1.2, 1.2], 0);
 
-            doc.line(middleX, signatureY, middleX + signatureBlockWidth - 15, signatureY);
-            doc.text("Class Teacher's Signature", middleX, signatureY + 5);
+        // Line length and offsets to keep labels inside margins
+        const linePadding = 10;
+        const lineLen = Math.max(40, signatureBlockWidth - (linePadding * 2));
 
-            doc.line(rightX, signatureY, rightX + signatureBlockWidth - 15, signatureY);
-            doc.text(parentGuardianLabel, rightX, signatureY + 5);
-        } else {
-            doc.line(leftX, signatureY, leftX + signatureBlockWidth - 15, signatureY);
-            doc.text("Class Teacher's Signature", leftX, signatureY + 5);
+        // Helper to draw a centered dashed line and label for a column
+        const drawSigColumn = (startX, label) => {
+          const lineStart = startX + linePadding;
+          const lineEnd = lineStart + lineLen;
+          doc.line(lineStart, signatureY, lineEnd, signatureY);
+          doc.setFont("helvetica", "bold").setFontSize(9);
+          doc.text(label, lineStart + (lineLen / 2), signatureY + 6, { align: 'center' });
+          doc.setFont("helvetica", "normal");
+          return { lineStart, lineLen };
+        };
 
-            doc.line(rightX, signatureY, rightX + signatureBlockWidth - 15, signatureY);
-            doc.text(headteacherLabel, rightX, signatureY + 5);
-        }
+        // Draw columns
+        const leftCol = drawSigColumn(leftX, headteacherLabel);
+        const midCol = drawSigColumn(middleX, "Class Teacher's Signature");
+        const rightCol = drawSigColumn(rightX, parentGuardianLabel);
 
-        // 🆕 Embed Signatures
+        doc.setLineDash([]);
+
+        // 🆕 Embed Signatures centered above each line when available
         const streamKey = s.stream || "Unassigned";
         const ct = classTeacherMap.get(`${window.cbcUtils.normalizeGrade(gradeLabel)}_${streamKey}`);
-        if (ct?.sigData) {
-            const ctSigX = isPrimaryOrJunior ? middleX + 8 : 28;
-            doc.addImage(ct.sigData.base64, ct.sigData.format, ctSigX, signatureY - 10, 25, 8, undefined, 'FAST');
-        }
 
-        const headSigB64 = deanProfileData.headSignatureBase64 || deanProfileData.signatureBase64;
-        const headSigFmt = deanProfileData.headSignatureBase64 ? deanProfileData.headSigFormat : deanProfileData.sigFormat;
-        if (headSigB64) {
-            const headSigX = isPrimaryOrJunior ? leftX + 8 : pageWidth - 60;
-            doc.addImage(headSigB64, headSigFmt, headSigX, signatureY - 10, 25, 8, undefined, 'FAST');
+        const imgW = 30;
+        const imgH = 9;
+        try {
+          if (ct?.sigData) {
+            const x = midCol.lineStart + (midCol.lineLen - imgW) / 2;
+            doc.addImage(ct.sigData.base64, ct.sigData.format, x, signatureY - imgH - 2, imgW, imgH, undefined, 'FAST');
+          }
+
+          const headSigB64 = deanProfileData.headSignatureBase64 || deanProfileData.signatureBase64;
+          const headSigFmt = deanProfileData.headSignatureBase64 ? deanProfileData.headSigFormat : deanProfileData.sigFormat;
+          if (headSigB64) {
+            const x = leftCol.lineStart + (leftCol.lineLen - imgW) / 2;
+            doc.addImage(headSigB64, headSigFmt, x, signatureY - imgH - 2, imgW, imgH, undefined, 'FAST');
+          }
+        } catch (e) {
+          console.warn('Signature embed failed', e);
         }
 
         // 🆕 Watermark (School Logo) - Rendered last to ensure it stays on top of table backgrounds
@@ -3562,19 +3661,25 @@ async function generateBulkReportCards() {
         doc.text(`Printed: ${printedTimestamp}, CompetenceHub Analytics`, pageWidth / 2, pageHeight - 10, { align: "center" });
     }
 
+    const streamSuffix = selectedStream !== "all" ? `_${selectedStream.replace(/\s+/g, '_')}` : "";
+    const fileName = `Reports_${filterGradeEl.value.replace(/\s+/g, '_')}${streamSuffix}_T${termVal}_${year}.pdf`;
+    doc.save(fileName);
+
     if (progressBar) progressBar.style.width = "100%";
     if (progressPercent) progressPercent.textContent = "100%";
-    if (progressText) progressText.textContent = "Compilation Complete!";
+    if (progressText) progressText.textContent = "Report pack ready";
+    if (progressWrap) {
+      setTimeout(() => {
+        progressWrap.style.display = "none";
+      }, 1400);
+    }
 
-    const streamSuffix = selectedStream !== "all" ? `_${selectedStream.replace(/\s+/g, '_')}` : "";
-    doc.save(`Reports_${filterGradeEl.value.replace(/\s+/g, '_')}${streamSuffix}_T${termVal}_${year}.pdf`);
-    btn.disabled = false;
-    btn.innerHTML = originalHTML;
-    cbcUtils.showToast("Reports downloaded successfully!", "success");
-
-    setTimeout(() => {
-        if (progressWrap) progressWrap.style.display = "none";
-    }, 3000);
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = originalHTML;
+    }
+    updateReportsActionState();
+    cbcUtils.showToast("Reports generated successfully!", "success");
 }
 
 /**
@@ -3780,12 +3885,6 @@ async function startSmsBroadcast() {
   }
 }
 
-if (filterSubjectEl) {
-  filterSubjectEl.addEventListener("change", () => updateDashboardChart());
-}
-if (filterTargetEl) {
-  filterTargetEl.addEventListener("input", () => updateDashboardChart());
-}
 if (filterStreamEl) {
   filterStreamEl.addEventListener("change", () => {
     if (currentAnalysisRawData) { // Check if raw data exists
@@ -3800,8 +3899,18 @@ if (filterStreamEl) {
     }
   }); // Update analysis on stream change
 }
-if (chartTypeToggle) {
-  chartTypeToggle.addEventListener("change", () => updateDashboardChart()); // Update chart on toggle change
+if (filterPathwayEl) {
+  filterPathwayEl.addEventListener('change', () => {
+    if (currentAnalysisRawData) {
+      const grade = filterGradeEl.value;
+      const term = filterTermEl.value;
+      const year = filterYearEl.value;
+      const assessment = filterAssessmentEl.value;
+      const cacheKey = `${grade}_${term}_${year}_${assessment}`;
+      const cached = getAnalyticsCache(cacheKey);
+      processAnalysisData(currentAnalysisRawData, currentIsSenior, assessment, currentPrevRawData, cached?.roster || []);
+    }
+  });
 }
 
 // 🆕 Centralized event listeners for buttons

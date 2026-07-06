@@ -49,9 +49,9 @@ const studentEnrollmentSchema = new mongoose.Schema({
 
   pathway: {
     type: String,
-    enum: ['STEM', 'Social Sciences', 'Arts & Sports Science', 'N/A'], // Added enum validation
-    trim: true,
-    // Consider adding an enum here if pathways are fixed
+    enum: ['STEM', 'Social Sciences', 'Arts & Sports Science', 'N/A'],
+    default: null,  // 🆕 Allow null for non-senior school students
+    trim: true
   },
   term: {
     type: String,

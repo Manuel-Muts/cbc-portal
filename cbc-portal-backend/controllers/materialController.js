@@ -75,9 +75,24 @@ export const addMaterial = async (req, res) => {
         return res.status(400).json({ message: "Pathway and Course are required for Senior School materials" });
       }
 
+      const normalizePathway = (p) => {
+        if (p === undefined || p === null) return null;
+        const raw = String(p).trim();
+        if (!raw) return null;
+        const key = raw.toLowerCase().replace(/[^a-z0-9]+/g, "");
+        const map = {
+          'stem': 'STEM',
+          'socialsciences': 'Social Sciences',
+          'artssportsscience': 'Arts & Sports Science'
+        };
+        return map[key] || raw;
+      };
+
+      const normalizedPathway = normalizePathway(pathway) || pathway;
+
       const material = new Material({
         grade,
-        pathway,
+        pathway: normalizedPathway,
         course,
         title,
         description,
@@ -168,13 +183,19 @@ export const getStudentMaterials = async (req, res) => {
       const { subject } = req.query; // 'subject' is used for pathway in frontend
       if (subject && subject.toLowerCase() !== "all") {
         // Convert slugified pathway back to proper format
-        const pathwayMap = {
-          "stem": "STEM",
-          "social-sciences": "Social Sciences",
-          "arts-&-sports-science": "Arts & Sports Science"
-        };
-        const pathway = pathwayMap[subject.toLowerCase()] || subject;
-        filter.pathway = pathway;
+          const normalizePathway = (p) => {
+            if (!p) return null;
+            const raw = String(p).trim();
+            const key = raw.toLowerCase().replace(/[^a-z0-9]+/g, "");
+            const map = {
+              'stem': 'STEM',
+              'socialsciences': 'Social Sciences',
+              'artssportsscience': 'Arts & Sports Science'
+            };
+            return map[key] || raw;
+          };
+          const pathway = normalizePathway(subject) || subject;
+          filter.pathway = pathway;
       }
     }
 

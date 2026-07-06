@@ -69,9 +69,9 @@ const userSchema = new mongoose.Schema({
   passwordMustChange: { type: Boolean, default: false },
   pathway: {
     type: String,
-    enum: ['STEM', 'Social Sciences', 'Arts & Sports Science', 'N/A'], // Added enum validation
-    trim: true,
-    // Consider adding an enum here if pathways are fixed (e.g., ['STEM', 'Social Sciences', 'Arts & Sports Science'])
+    enum: ['STEM', 'Social Sciences', 'Arts & Sports Science', 'N/A'],
+    default: null,  // 🆕 Allow null for non-senior school students
+    trim: true
   },
 
   // ------------------------------------
@@ -142,7 +142,16 @@ userSchema.index({ schoolId: 1, role: 1 }); // Optimize filtering users by role 
 
 // 🚀 Supporting bulk lookups in MarkController (find all students in a class by admission list)
 userSchema.index({ schoolId: 1, role: 1, name: 1 }); // Optimize for searching users by name within a role and school
-userSchema.index({ schoolId: 1, admission: 1 }, { unique: true, sparse: true }); // 🛡️ Unique within school
+userSchema.index(
+  { schoolId: 1, admission: 1 },
+  {
+    unique: true,
+    partialFilterExpression: {
+      role: 'student',
+      admission: { $type: 'string' }
+    }
+  }
+); // 🛡️ Unique for students only, avoiding collisions for staff accounts with no admission
 
 userSchema.index({ name: "text", admission: "text", email: "text" }); // Enable fast text search
 

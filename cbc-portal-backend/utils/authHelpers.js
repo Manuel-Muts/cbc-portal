@@ -50,7 +50,7 @@ export const generateRawPassword = (role, admissionNumber) => {
     case 'teacher':
       return 'T' + Math.random().toString(36).slice(-6).toUpperCase();
     case 'classTeacher':
-      return 'CT' + Math.random().toString(36).slice(-6).toUpperCase();
+      return 'CT' + Math.random().toString(36).slice(-5).toUpperCase();
     case 'admin':
       return 'ADM' + Math.random().toString(36).slice(-6).toUpperCase();
     case 'accounts':

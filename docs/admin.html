@@ -16,7 +16,7 @@
     <!-- Sidebar Navigation -->
     <aside class="sidebar">
         <div class="sidebar-brand">
-            <h2 class="logo">ADMIN PORTAL</h2>
+            <h2 class="logo">Loading...</h2>
         </div>
         
         <ul class="menu">
@@ -371,7 +371,7 @@
     </div>
 
     <div class="form-group" style="display: flex; align-items: center; gap: 15px; margin-top: 20px;">
-      <label>Current Status:</label>
+      <label>Term Lock Status:</label>
       <span id="termLockStatusDisplay" style="font-weight: bold; font-size: 1.1rem;">Loading...</span>
       <label class="switch">
         <input type="checkbox" id="termLockToggleButton">
@@ -380,7 +380,17 @@
       <span style="font-size: 0.9rem; color: #6b7280;">(Toggle to Lock/Unlock)</span>
     </div>
 
-    <button id="saveTermLockBtn" class="btn primary-btn" style="margin-top: 20px;">Save Lock Status</button>
+    <div class="form-group" style="display: flex; align-items: center; gap: 15px; margin-top: 12px;">
+      <label>Teacher Submitted Marks Edits:</label>
+      <span id="submittedMarksEditStatusDisplay" style="font-weight: bold; font-size: 1.1rem;">Loading...</span>
+      <label class="switch">
+        <input type="checkbox" id="submittedMarksEditToggleButton">
+        <span class="slider round"></span>
+      </label>
+      <span style="font-size: 0.9rem; color: #6b7280;">(Toggle to allow teachers to edit submitted marks)</span>
+    </div>
+
+    <button id="saveTermLockBtn" class="btn primary-btn" style="margin-top: 20px;">Save Settings</button>
   </div>
 </section>
 
@@ -437,7 +447,7 @@
 <script src="js/ui.js"></script>
 <script src="js/admin/electives-admin.js"></script>
 <script src="js/Utility/subject-data.js"></script>
-<script src="js/admin.js"></script>
+<script src="js/admin/admin.js"></script>
 
 </body>
 </html>

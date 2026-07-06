@@ -739,10 +739,7 @@ const displayStudentTables = async () => {
           <thead>
             <tr>
               <th>Course</th>
-              <th>CA (30%)</th>
-              <th>PW (20%)</th>
-              <th>Exam (50%)</th>
-              <th>Final</th>
+              <th>Score (%)</th>
               <th>Level</th>
             </tr>
           </thead>`;
@@ -760,19 +757,16 @@ const displayStudentTables = async () => {
       let tbody = "<tbody>";
       list.forEach(m => {
         if (isSenior) {
-          const final = window.cbcUtils.calculateFinalScore(m.continuousAssessment, m.projectWork, m.endTermExam);
-          const isAbsentFinal = final === null || String(final).toUpperCase() === "X";
-          const finalDisplay = isAbsentFinal ? '<span style="color:#ef4444; font-weight:700;">ABS</span>' : (final + "%");
-          const finalLevel = isAbsentFinal ? "-" : window.cbcUtils.getSubdivision(final, m.grade || user.grade);
+          const rawScore = m.score ?? m.finalScore ?? m.continuousAssessment ?? m.projectWork ?? m.endTermExam ?? null;
+          const scorePresent = rawScore !== undefined && rawScore !== null && String(rawScore).trim() !== "" && String(rawScore).trim().toUpperCase() !== "X";
+          const scoreDisplay = scorePresent ? `${Number(rawScore)}%` : '<span style="color:#ef4444; font-weight:700;">ABS</span>';
+          const levelDisplay = scorePresent ? window.cbcUtils.getSubdivision(Number(rawScore), m.grade || user.grade) : "-";
 
           tbody += `
             <tr>
               <td>${(m.course || "Unknown").replace(/-/g, " ")}</td>
-              <td>${m.continuousAssessment ?? "-"}</td>
-              <td>${m.projectWork ?? "-"}</td>
-              <td>${m.endTermExam ?? "-"}</td>
-              <td><strong>${finalDisplay}</strong></td>
-              <td>${finalLevel}</td>
+              <td><strong>${scoreDisplay}</strong></td>
+              <td>${levelDisplay}</td>
             </tr>`;
         } else {
           const scorePresent = m.score !== undefined && m.score !== null && String(m.score).trim() !== "";
@@ -816,29 +810,22 @@ const displayStudentTables = async () => {
         summary.className = "analysis-summary";
 
         if (isSenior) {
-          let caSum = 0, caCount = 0;
-          let pwSum = 0, pwCount = 0;
-          let etSum = 0, etCount = 0;
-          let fsSum = 0, fsCount = 0;
           const courseScores = [];
+          let scoreSum = 0;
+          let scoreCount = 0;
 
           list.forEach(m => {
-            if (m.continuousAssessment !== null) { caSum += Number(m.continuousAssessment); caCount++; }
-            if (m.projectWork !== null) { pwSum += Number(m.projectWork); pwCount++; }
-            if (m.endTermExam !== null) { etSum += Number(m.endTermExam); etCount++; }
-            const fs = window.cbcUtils.calculateFinalScore(m.continuousAssessment, m.projectWork, m.endTermExam);
-            const isFsAbsent = fs === null || String(fs).toUpperCase() === "X";
-            if (!isFsAbsent) {
-              fsSum += Number(fs);
-              fsCount++;
-              courseScores.push({ course: (m.course || "Unknown").replace(/-/g, " "), score: Number(fs) });
+            const rawScore = m.score ?? m.finalScore ?? m.continuousAssessment ?? m.projectWork ?? m.endTermExam ?? null;
+            const scorePresent = rawScore !== undefined && rawScore !== null && String(rawScore).trim() !== "" && String(rawScore).trim().toUpperCase() !== "X";
+            if (scorePresent) {
+              const numericScore = Number(rawScore);
+              scoreSum += numericScore;
+              scoreCount++;
+              courseScores.push({ course: (m.course || "Unknown").replace(/-/g, " "), score: numericScore });
             }
           });
 
-          const caAvg = caCount > 0 ? (caSum / caCount).toFixed(1) : 0;
-          const pwAvg = pwCount > 0 ? (pwSum / pwCount).toFixed(1) : 0;
-          const etAvg = etCount > 0 ? (etSum / etCount).toFixed(1) : 0;
-          const fsAvg = fsCount > 0 ? (fsSum / fsCount).toFixed(1) : 0;
+          const averageScore = scoreCount > 0 ? (scoreSum / scoreCount).toFixed(1) : 0;
 
           const createProgressBar = (score, color) => `
             <div style="width:100%; background:#eee; border-radius:10px; height:6px; margin-top:3px;">
@@ -846,61 +833,33 @@ const displayStudentTables = async () => {
           </div>
         `;
 
-        const topStrengths = courseScores.filter(s => s.score >= 80).sort((a, b) => b.score - a.score);
-        const areasToImprove = courseScores.filter(s => s.score < 50).sort((a, b) => a.score - b.score);
+          const topStrengths = courseScores.filter(s => s.score >= 80).sort((a, b) => b.score - a.score);
+          const areasToImprove = courseScores.filter(s => s.score < 50).sort((a, b) => a.score - b.score);
 
-        let strengthsHtml = topStrengths.length 
-          ? topStrengths.map(s => `<div style="margin-bottom: 5px;"><span style="color:green;font-weight:bold;">${s.course} (${s.score}%)</span>${createProgressBar(s.score, "green")}</div>`).join("") 
-          : "No courses above 80%.";
-        
-        let improveHtml = areasToImprove.length 
-          ? areasToImprove.map(s => `<div style="margin-bottom: 5px;"><span style="color:red;font-weight:bold;">${s.course} (${s.score}%)</span>${createProgressBar(s.score, "red")}</div>`).join("") 
-          : "Great work! No courses below 50%.";
+          let strengthsHtml = topStrengths.length
+            ? topStrengths.map(s => `<div style="margin-bottom: 5px;"><span style="color:green;font-weight:bold;">${s.course} (${s.score}%)</span>${createProgressBar(s.score, "green")}</div>`).join("")
+            : "No courses above 80%.";
 
-        summary.innerHTML = `
-          <hr style="margin: 10px 0;">
-          <h4 style="text-align:center; color:#2563eb; margin: 5px 0; font-size: 1rem;">📊 COMPONENT ANALYSIS</h4>
-          <p style="font-size:0.95rem; text-align:center; margin-bottom:10px;"><strong>Overall Final Score:</strong> <span style="color:#2563eb;">${fsAvg}%</span></p>
-          
-          <div class="table-scroll-wrapper">
-            <table style="width:100%; border-collapse:collapse; margin:5px 0; font-size: 0.85rem;">
-              <thead>
-                <tr style="background:#f8fafc;">
-                  <th style="border:1px solid #ddd; padding:6px 8px; text-align:left;">Component</th>
-                  <th style="border:1px solid #ddd; padding:6px 8px; text-align:center;">Avg. Score</th>
-                  <th style="border:1px solid #ddd; padding:6px 8px; text-align:center;">Weight</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr>
-                  <td style="border:1px solid #ddd; padding:6px 8px;">Continuous Assessment</td>
-                  <td style="border:1px solid #ddd; padding:6px 8px; text-align:center;"><strong>${caAvg}%</strong> ${createProgressBar(caAvg, "orange")}</td>
-                  <td style="border:1px solid #ddd; padding:6px 8px; text-align:center;">30%</td>
-                </tr>
-                <tr>
-                  <td style="border:1px solid #ddd; padding:6px 8px;">Project Work</td>
-                  <td style="border:1px solid #ddd; padding:6px 8px; text-align:center;"><strong>${pwAvg}%</strong> ${createProgressBar(pwAvg, "#34d399")}</td>
-                  <td style="border:1px solid #ddd; padding:6px 8px; text-align:center;">20%</td>
-                </tr>
-                <tr>
-                  <td style="border:1px solid #ddd; padding:6px 8px;">End-Term Exam</td>
-                  <td style="border:1px solid #ddd; padding:6px 8px; text-align:center;"><strong>${etAvg}%</strong> ${createProgressBar(etAvg, "#2563eb")}</td>
-                  <td style="border:1px solid #ddd; padding:6px 8px; text-align:center;">50%</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-          <div style="display:grid; grid-template-columns: 1fr 1fr; gap:15px; margin-top: 10px;">
-            <div>
-              <p style="margin-bottom: 5px; font-size: 0.9rem;"><strong>✅ TOP STRENGTHS:</strong></p>
-              <div style="font-size:0.85rem;">${strengthsHtml}</div>
+          let improveHtml = areasToImprove.length
+            ? areasToImprove.map(s => `<div style="margin-bottom: 5px;"><span style="color:red;font-weight:bold;">${s.course} (${s.score}%)</span>${createProgressBar(s.score, "red")}</div>`).join("")
+            : "Great work! No courses below 50%.";
+
+          summary.innerHTML = `
+            <hr style="margin: 10px 0;">
+            <h4 style="text-align:center; color:#2563eb; margin: 5px 0; font-size: 1rem;">📊 PERFORMANCE ANALYSIS</h4>
+            <p style="font-size:0.95rem; text-align:center; margin-bottom:10px;"><strong>Overall Average Score:</strong> <span style="color:#2563eb;">${averageScore}%</span></p>
+
+            <div style="display:grid; grid-template-columns: 1fr 1fr; gap:15px; margin-top: 10px;">
+              <div>
+                <p style="margin-bottom: 5px; font-size: 0.9rem;"><strong>✅ TOP STRENGTHS:</strong></p>
+                <div style="font-size:0.85rem;">${strengthsHtml}</div>
+              </div>
+              <div>
+                <p style="margin-bottom: 5px; font-size: 0.9rem;"><strong>⚠️ AREAS TO IMPROVE:</strong></p>
+                <div style="font-size:0.85rem;">${improveHtml}</div>
+              </div>
             </div>
-            <div>
-              <p style="margin-bottom: 5px; font-size: 0.9rem;"><strong>⚠️ AREAS TO IMPROVE:</strong></p>
-              <div style="font-size:0.85rem;">${improveHtml}</div>
-            </div>
-          </div>
-        `;
+          `;
         } else {
           // Junior School Analysis (1-9)
           const averages = getSubjectAverages(list);

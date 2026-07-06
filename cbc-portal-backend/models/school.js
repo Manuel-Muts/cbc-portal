@@ -5,8 +5,9 @@ const schoolSchema = new mongoose.Schema({
   name: { type: String, required: true },
   adminEmail: { type: String, required: true, unique: true },
   status: { type: String, enum: ["Active", "Suspended"], default: "Active" },
-  logo: { type: String, default: "" }, // Base64 encoded image or data URL
+  logo: { type: String, default: "" }, // Cloudinary URL or base64 image string
   logoMimeType: { type: String, default: "image/png" }, // MIME type of logo
+  logoPublicId: { type: String, default: "" }, // Cloudinary public_id for logo deletion/management
   address: { type: String, default: "" },
   smsCredits: { type: Number, default: 0 },
   // Add this field:
@@ -40,5 +41,12 @@ const schoolSchema = new mongoose.Schema({
   createdAt: { type: Date, default: Date.now }
 
 });
+
+schoolSchema.index({ name: 1 });
+schoolSchema.index({ status: 1 });
+schoolSchema.index({ schoolType: 1 });
+schoolSchema.index({ registrationOpen: 1 });
+schoolSchema.index({ allowSignatureUpload: 1 });
+schoolSchema.index({ createdAt: -1 });
 
 export const School = mongoose.model('School', schoolSchema);
