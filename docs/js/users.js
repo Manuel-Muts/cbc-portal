@@ -684,13 +684,14 @@ if (usersNextPageBtn) {
              const stream = getVal(row, "Stream","stream","STREAM", "Class Stream", "Section");
              const contact = getVal(row, "Contact","contact", "Phone","phone", "Parent Contact", "Contact Number", "Telephone", "Mobile");
              const pathway=getVal(row,"pathway","PATHWAY","Pathway","Senior Pathway","senior pathway");
+             const normalizedPathway = pathway ? (window.cbcUtils?.normalizePathway?.(pathway) || String(pathway).trim()) : null;
  
              if (!name || admission === undefined || grade === undefined) {
                localFailed.push({ name: name || "N/A", admission: admission || "N/A", reason: "Missing required fields" });
                continue;
              }
  
-             studentsToRegister.push({ name, admission, grade, stream: stream || null, contact: contact || null, pathway: pathway || null });
+             studentsToRegister.push({ name, admission, grade, stream: stream || null, contact: contact || null, pathway: normalizedPathway });
            }
  
            if (studentsToRegister.length === 0) {

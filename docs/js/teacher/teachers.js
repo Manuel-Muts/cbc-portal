@@ -20,11 +20,11 @@ document.addEventListener("DOMContentLoaded", () => {
   let isSingleEditMode = false;
   let schoolInfo = null; // Global school info cache
 
-  // 🆕 Two-tier school info caching (matches admin.js pattern)
-  const TEACHER_SCHOOL_STABLE_CACHE_KEY = "teacher_school_info_stable_cache";
-  const TEACHER_SCHOOL_DYNAMIC_CACHE_KEY = "teacher_school_info_dynamic_cache";
-  const TEACHER_SCHOOL_STABLE_DURATION = 30 * 24 * 60 * 60 * 1000; // 30 days for school name
-  const TEACHER_SCHOOL_DYNAMIC_DURATION = 5 * 60 * 1000; // 5 minutes for status
+  // ---------------------------
+  // CACHES
+  // ---------------------------
+  // Teacher page does not cache school name to avoid stale school type/name bugs on login.
+  // Always fetch fresh school info for the current session.
 
   // Pagination for individual student tables inside Submitted Marks
   const STUDENTS_PER_TABLE_PAGE = 10;
@@ -321,7 +321,7 @@ document.addEventListener("DOMContentLoaded", () => {
           // Clear all caches
           localStorage.removeItem("teacher_allocations_cache");
           localStorage.removeItem("user_profile_cache");
-          localStorage.removeItem("teacher_school_cache"); // Legacy key
+          // Removed legacy teacher school cache cleanup; no frontend school-info cache used
           localStorage.removeItem("teacher_marks_cache");
           localStorage.removeItem("teacher_materials_cache");
           // 🆕 Clear new two-tier school cache
@@ -418,115 +418,43 @@ document.addEventListener("DOMContentLoaded", () => {
   };
 
   const clearSchoolInfoCache = () => {
-    localStorage.removeItem(TEACHER_SCHOOL_STABLE_CACHE_KEY);
-    localStorage.removeItem(TEACHER_SCHOOL_DYNAMIC_CACHE_KEY);
-    localStorage.removeItem("teacher_school_cache"); // Legacy key cleanup
+    // Removed legacy teacher school cache cleanup; no frontend school-info cache used
   };
 
   // 🆕 Get fallback school name from teacher profile
   const getFallbackSchoolName = () => {
-    if (!teacher || !teacher.schoolId) return null;
-    // Try to get school name from teacher object if available
-    return teacher.schoolName || teacher.school?.name || null;
+    if (!teacher) return null;
+    const fallbackName = teacher.schoolName || teacher.school?.name || teacher.school?.schoolName || null;
+    return String(fallbackName || "").trim() || null;
   };
 
-  // 🆕 FETCH SCHOOL INFO (Two-tier caching with fallback)
-  async function loadSchoolName(forceReload = false) {
+  // 🆕 FETCH SCHOOL INFO without any frontend school name cache
+  async function loadSchoolName() {
     const token = authService.getToken();
     if (!token) return;
 
-    // Read both cache tiers
-    const stableCache = !forceReload ? readCache(TEACHER_SCHOOL_STABLE_CACHE_KEY, TEACHER_SCHOOL_STABLE_DURATION) : null;
-    const dynamicCache = !forceReload ? readCache(TEACHER_SCHOOL_DYNAMIC_CACHE_KEY, TEACHER_SCHOOL_DYNAMIC_DURATION) : null;
-    const stableCacheHasName = stableCache && String(stableCache.name || "").trim();
-    const useCachedSchoolInfo = stableCacheHasName && dynamicCache && !forceReload;
-
-    // If we have complete cached data, use it immediately
-    if (useCachedSchoolInfo) {
-      console.log("✅ Using complete cached school info (stable + dynamic)");
-      schoolInfo = { ...stableCache, ...dynamicCache };
-      window.currentSchool = schoolInfo;
-      updateSchoolNameUI(schoolInfo);
-      updateTeacherNameUI();
-      return;
+    const fallbackName = getFallbackSchoolName();
+    if (fallbackName) {
+      updateSchoolNameUI({ name: fallbackName });
     }
 
-    // If we have stable data but no dynamic data, render what we have and refresh dynamic in background
-    if (stableCache) {
-      console.log("✅ Using cached stable school info, refreshing dynamic data in background");
-      schoolInfo = { ...stableCache, status: undefined };
-      window.currentSchool = schoolInfo;
-      updateSchoolNameUI(schoolInfo);
-      updateTeacherNameUI();
-    }
-
-    // Fetch school info (potentially both stable and dynamic if needed)
     try {
-      const requests = [];
-      const needsStableFetch = !stableCache;
-      
-      if (needsStableFetch) {
-        requests.push(
-          fetchWithAuth(`${API_BASE}/my-school?fields=name`)
-            .then(async res => {
-              if (!res.ok) throw new Error("Failed to fetch stable school info");
-              const data = await res.json();
-              localStorage.setItem(TEACHER_SCHOOL_STABLE_CACHE_KEY, JSON.stringify({ timestamp: Date.now(), data }));
-              return { type: 'stable', data };
-            })
-            .catch(err => ({ type: 'stable', error: err }))
-        );
+      const res = await fetchWithAuth(`${API_BASE}/my-school?fields=name`);
+      const data = await res.json();
+      const schoolName = String(data?.name || "").trim();
+
+      if (!schoolName) {
+        throw new Error("School name missing from API response");
       }
 
-      // Always try to refresh dynamic data (status)
-      if (!dynamicCache || forceReload) {
-        requests.push(
-          fetchWithAuth(`${API_BASE}/my-school?fields=status`)
-            .then(async res => {
-              if (!res.ok) throw new Error("Failed to fetch dynamic school info");
-              const data = await res.json();
-              localStorage.setItem(TEACHER_SCHOOL_DYNAMIC_CACHE_KEY, JSON.stringify({ timestamp: Date.now(), data }));
-              return { type: 'dynamic', data };
-            })
-            .catch(err => ({ type: 'dynamic', error: err }))
-        );
-      }
-
-      // If no requests needed, return early
-      if (requests.length === 0) return;
-
-      const results = await Promise.allSettled(requests);
-      const merged = {
-        ...stableCache,
-        ...dynamicCache
-      };
-
-      results.forEach(result => {
-        if (result.status !== "fulfilled") return;
-        const payload = result.value;
-        if (!payload || payload.error) return;
-        if (payload.type === 'stable') {
-          merged.name = payload.data.name;
-        }
-        if (payload.type === 'dynamic') {
-          merged.status = payload.data.status;
-        }
-      });
-
-      // Fallback if name is still missing
-      if (!merged.name) {
-        const fallbackName = getFallbackSchoolName();
-        if (fallbackName) merged.name = fallbackName;
-      }
-
-      schoolInfo = merged;
-      window.currentSchool = merged;
-      updateSchoolNameUI(merged);
+      const freshSchoolInfo = { name: schoolName };
+      schoolInfo = freshSchoolInfo;
+      window.currentSchool = schoolInfo;
+      updateSchoolNameUI(schoolInfo);
       updateTeacherNameUI();
     } catch (err) {
       console.error("School info fetch error:", err);
-      // Try fallback name from teacher profile
-      const fallbackName = getFallbackSchoolName();
+
       if (fallbackName) {
         schoolInfo = { ...schoolInfo, name: fallbackName };
         window.currentSchool = schoolInfo;
@@ -538,20 +466,18 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // 🆕 Improved school name UI update with robust error handling
   function updateSchoolNameUI(school) {
-    if (!school) return;
-    
     const schoolNameEl = document.getElementById("schoolName");
-    const displayName = String(school.name || "").trim();
-    
-    if (schoolNameEl && displayName) {
+    if (!schoolNameEl) return;
+
+    const displayName = String(school?.name || "").trim();
+    if (displayName) {
       schoolNameEl.textContent = displayName.toUpperCase();
       schoolNameEl.style.color = "#ffffff";
       schoolNameEl.style.fontWeight = "600";
-    } else if (schoolNameEl && !displayName) {
-      // Fallback if no school name available
+    } else {
       const fallbackName = getFallbackSchoolName();
       schoolNameEl.textContent = (fallbackName || "SCHOOL").toUpperCase();
-      schoolNameEl.style.color = "#bfdbfe"; // Lighter color to indicate fallback
+      schoolNameEl.style.color = "#bfdbfe";
       schoolNameEl.style.fontWeight = "600";
     }
   }

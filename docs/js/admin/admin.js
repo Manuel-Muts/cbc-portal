@@ -51,15 +51,9 @@
 
   let schoolInfo = null;
 
-  const STABLE_CACHE_KEY = "admin_school_info_stable_cache";
-  const DYNAMIC_CACHE_KEY = "admin_school_info_dynamic_cache";
-  const STABLE_CACHE_DURATION = 30 * 24 * 60 * 60 * 1000; // 30 days for mostly static info
-  const DYNAMIC_CACHE_DURATION = 5 * 60 * 1000; // 5 minutes for status and SMS balance
-
   const clearSchoolInfoCache = () => {
-    localStorage.removeItem(STABLE_CACHE_KEY);
-    localStorage.removeItem(DYNAMIC_CACHE_KEY);
-    localStorage.removeItem("admin_school_info_cache");
+    // Removed admin school-info cache handling — always use fresh data
+    // Intentionally left as a no-op to avoid accidental stale cache usage
   };
 
   const applySidebarBrandName = (name) => {
@@ -217,9 +211,8 @@ function getDisplaySchoolName(info) {
   return name ? String(name).trim() : "";
 }
 
-async function loadSchoolInfo(forceReload = false) {
-  const stableFields = "name,allowSignatureUpload,schoolType,headteacherSignatureUrl";
-  const dynamicFields = "status,smsCredits";
+async function loadSchoolInfo() {
+  const fields = "name,allowSignatureUpload,schoolType,headteacherSignatureUrl,status,smsCredits";
 
   const getFallbackProfileName = async () => {
     try {
@@ -242,134 +235,57 @@ async function loadSchoolInfo(forceReload = false) {
     }
   };
 
-  const readCache = (key, duration) => {
-    const cached = localStorage.getItem(key);
-    if (!cached) return null;
-    try {
-      const { timestamp, data } = JSON.parse(cached);
-      if (Date.now() - timestamp < duration) return data;
-    } catch (e) {
-      console.warn(`Cache read error for ${key}:`, e);
-    }
-    localStorage.removeItem(key);
-    return null;
-  };
-
-  const stableCache = !forceReload ? readCache(STABLE_CACHE_KEY, STABLE_CACHE_DURATION) : null;
-  const dynamicCache = !forceReload ? readCache(DYNAMIC_CACHE_KEY, DYNAMIC_CACHE_DURATION) : null;
-  const stableCacheHasName = stableCache && String(stableCache.name || "").trim();
-  // 🆕 Always fetch fresh schoolType - removed from cache check to ensure latest type is always fetched
-  const useCachedSchoolInfo = stableCacheHasName && dynamicCache && !forceReload;
-
-  if (useCachedSchoolInfo) {
-    console.log("✅ Using complete cached school info");
-    schoolInfo = { ...stableCache, ...dynamicCache };
-    currentSchoolInfo = schoolInfo;
-    window.schoolInfo = schoolInfo;
-    renderSchoolInfo();
-    return;
-  }
-
-  // If we have stable data but its schoolType is missing, render what we have and refresh stable fields in the background
-  if (stableCache) {
-    schoolInfo = { ...stableCache, status: undefined, smsCredits: 0 };
-    currentSchoolInfo = schoolInfo;
-    window.schoolInfo = schoolInfo;
-    renderSchoolInfo();
-  }
-
   try {
     const token = authService.getToken();
-    const requests = [];
-    // 🆕 Always fetch fresh schoolType - set to true to ensure latest schoolType is always fetched
-    const needsStableFetch = true;
-    if (needsStableFetch) {
-      requests.push(
-        fetch(`${API_BASE}/my-school?fields=${stableFields}`, {
-          headers: { Authorization: `Bearer ${token}` }
-        }).then(async res => {
-          if (!res.ok) throw new Error("Failed to fetch stable school info");
-          const data = await res.json();
-          localStorage.setItem(STABLE_CACHE_KEY, JSON.stringify({ timestamp: Date.now(), data }));
-          return { type: 'stable', data };
-        }).catch(err => ({ type: 'stable', error: err }))
-      );
-    }
-    if (!dynamicCache || forceReload) {
-      requests.push(
-        fetch(`${API_BASE}/my-school?fields=${dynamicFields}`, {
-          headers: { Authorization: `Bearer ${token}` }
-        }).then(async res => {
-          if (!res.ok) throw new Error("Failed to fetch dynamic school info");
-          const data = await res.json();
-          localStorage.setItem(DYNAMIC_CACHE_KEY, JSON.stringify({ timestamp: Date.now(), data }));
-          return { type: 'dynamic', data };
-        }).catch(err => ({ type: 'dynamic', error: err }))
-      );
-    }
+    if (!token) return;
 
-    const results = await Promise.allSettled(requests);
-    const merged = {
-      ...stableCache,
-      ...dynamicCache
-    };
-
-    results.forEach(result => {
-      if (result.status !== "fulfilled") return;
-      const payload = result.value;
-      if (!payload || payload.error) return;
-      if (payload.type === 'stable') {
-        merged.name = payload.data.name;
-        merged.allowSignatureUpload = payload.data.allowSignatureUpload;
-        // Support alternate field names returned by various backends
-        const pickTypeFrom = (obj) => {
-          if (!obj || typeof obj !== 'object') return null;
-          // direct common keys
-          const direct = obj.schoolType || obj.type || obj.school_type || obj.schooltype || obj['school-type'];
-          if (direct) return direct;
-          // scan keys for anything containing 'type'
-          for (const k of Object.keys(obj)) {
-            if (k.toLowerCase().includes('type')) return obj[k];
-          }
-          return null;
-        };
-
-        merged.schoolType = pickTypeFrom(payload.data) || pickTypeFrom(payload.data.school) || null;
-        merged.headteacherSignatureUrl = payload.data.headteacherSignatureUrl;
-      }
-      if (payload.type === 'dynamic') {
-        merged.status = payload.data.status;
-        merged.smsCredits = payload.data.smsCredits;
-      }
+    const res = await fetch(`${API_BASE}/my-school?fields=${fields}`, {
+      headers: { Authorization: `Bearer ${token}` }
     });
 
-    if (!merged.name) {
-      const fallbackName = await getFallbackProfileName();
-      if (fallbackName) merged.name = fallbackName;
+    if (!res.ok) {
+      throw new Error(`Failed to fetch school info (Status: ${res.status})`);
     }
 
-    schoolInfo = merged;
-    currentSchoolInfo = merged;
-    window.schoolInfo = merged;
+    const data = await res.json();
+    const parsedData = {
+      name: String(data?.name || "").trim(),
+      allowSignatureUpload: data?.allowSignatureUpload,
+      schoolType: data?.schoolType || data?.type || data?.school_type || data?.schooltype || data?.['school-type'] || null,
+      headteacherSignatureUrl: data?.headteacherSignatureUrl || null,
+      status: data?.status,
+      smsCredits: data?.smsCredits
+    };
+
+    if (!parsedData.name) {
+      const fallbackName = await getFallbackProfileName();
+      if (fallbackName) parsedData.name = fallbackName;
+    }
+
+    schoolInfo = parsedData;
+    currentSchoolInfo = parsedData;
+    window.schoolInfo = parsedData;
+
     try {
-      const resolvedKey = resolveSchoolTypeKey(merged);
+      const resolvedKey = resolveSchoolTypeKey(parsedData);
       window.schoolTypeKey = resolvedKey;
       window.schoolConfig = resolvedKey ? SCHOOL_TYPES[resolvedKey] : null;
-      if (resolvedKey) localStorage.setItem('school_type_key', resolvedKey);
-      else localStorage.removeItem('school_type_key');
-    } catch (e) { console.warn('Failed to persist schoolTypeKey', e); }
+    } catch (e) {
+      console.warn('Failed to resolve schoolTypeKey', e);
+      window.schoolTypeKey = null;
+      window.schoolConfig = null;
+    }
+
     renderSchoolInfo();
   } catch (err) {
     console.error("School info error:", err);
     const fallbackName = await getFallbackProfileName();
-    if (fallbackName) {
-      schoolInfo = { ...(schoolInfo || {}), name: fallbackName };
-      currentSchoolInfo = schoolInfo;
-      window.schoolInfo = schoolInfo;
-      renderSchoolInfo();
-      return;
-    }
-    showToast("Failed to load school info", "error");
+    schoolInfo = { ...(schoolInfo || {}), name: fallbackName || "School Name" };
+    currentSchoolInfo = schoolInfo;
+    window.schoolInfo = schoolInfo;
+    window.schoolTypeKey = null;
+    window.schoolConfig = null;
+    renderSchoolInfo();
   }
 }
 
@@ -883,6 +799,13 @@ function attachAdminSignatureLogic() {
     } catch (e) { console.warn('Allocation hide indicator error', e); }
   }
 
+  const getDefaultRangeForSchoolType = () => {
+    const s = getSchoolConfig();
+    if (!s) return "";
+    const rangeOptions = Array.isArray(s.config?.rangeOptions) ? s.config.rangeOptions : [];
+    return rangeOptions[0] || "";
+  };
+
   const populateGradeRangeOptions = () => {
     if (!gradeRangeSelect) return;
     const s = getSchoolConfig();
@@ -896,14 +819,86 @@ function attachAdminSignatureLogic() {
     options.forEach(range => {
       const opt = document.createElement('option');
       opt.value = range;
-     if (range.includes('PP') || range.includes('PG')) { // Handle PP and PG ranges specifically
-        opt.textContent = range; // Display as "PG-PP2" or "PP1-PP2"
+      if (range.includes('PP') || range.includes('PG')) {
+        opt.textContent = range;
       } else {
         const [start, end] = range.split('-').map(Number);
         opt.textContent = start === end ? `Grade ${start}` : `Grade ${start}-${end}`;
       }
       gradeRangeSelect.appendChild(opt);
     });
+  };
+
+  const populateGradeSelectionForRange = (selectedRange = gradeRangeSelect?.value || "") => {
+    if (gradesSelect) {
+      gradesSelect.innerHTML = "";
+      gradesSelect.multiple = true;
+
+      if (!selectedRange) {
+        const emptyOpt = document.createElement("option");
+        emptyOpt.value = "";
+        emptyOpt.textContent = "-- Select Grade --";
+        gradesSelect.appendChild(emptyOpt);
+        return;
+      }
+
+      if (selectedRange === "PG-PP2" || selectedRange === "PP1-PP2") {
+        (selectedRange === "PG-PP2" ? ["PG", "PP1", "PP2"] : ["PP1", "PP2"]).forEach(g => {
+          const opt = document.createElement("option");
+          opt.value = g;
+          opt.textContent = g;
+          gradesSelect.appendChild(opt);
+        });
+      } else if (selectedRange) {
+        const [start, end] = selectedRange.split("-").map(Number);
+        if (Number.isFinite(start) && Number.isFinite(end)) {
+          for (let i = start; i <= end; i++) {
+            const opt = document.createElement("option");
+            opt.value = i;
+            opt.textContent = `Grade ${i}`;
+            gradesSelect.appendChild(opt);
+          }
+        }
+      }
+    }
+
+    if (subjectsSelect) {
+      subjectsSelect.innerHTML = "";
+      subjectsSelect.multiple = true;
+
+      if (selectedRange === "10-12" && window.SUBJECT_DATA && window.SUBJECT_DATA.seniorCompulsorySubjects) {
+        const compulsoryOptgroup = document.createElement("optgroup");
+        compulsoryOptgroup.label = "Compulsory Subjects";
+        window.SUBJECT_DATA.seniorCompulsorySubjects.forEach(subject => {
+          const opt = document.createElement("option");
+          opt.value = subject;
+          opt.textContent = `${subject}`;
+          compulsoryOptgroup.appendChild(opt);
+        });
+        subjectsSelect.appendChild(compulsoryOptgroup);
+      }
+
+      if (selectedRange === "10-12") {
+        Object.entries(seniorSchoolPathways || {}).forEach(([pathway, courses]) => {
+          const optgroup = document.createElement("optgroup");
+          optgroup.label = pathway;
+          courses.forEach(course => {
+            const opt = document.createElement("option");
+            opt.value = course;
+            opt.textContent = `${course}`;
+            optgroup.appendChild(opt);
+          });
+          subjectsSelect.appendChild(optgroup);
+        });
+      } else if (selectedRange && gradeSubjects[selectedRange]) {
+        gradeSubjects[selectedRange].forEach(sub => {
+          const opt = document.createElement("option");
+          opt.value = sub;
+          opt.textContent = sub;
+          subjectsSelect.appendChild(opt);
+        });
+      }
+    }
   };
 
   const populateClassGradeOptions = () => {
@@ -918,8 +913,8 @@ function attachAdminSignatureLogic() {
     classGradeSelect.innerHTML = '<option value="">-- Select Grade --</option>';
     options.forEach(grade => {
       const opt = document.createElement('option');
-      opt.value = grade; // Value can be "PP1" or "1"
-     opt.textContent = (String(grade).toUpperCase().startsWith("PP") || String(grade).toUpperCase() === "PG") ? grade : `Grade ${grade}`; // Display "PG", "PP1" or "Grade 1"
+      opt.value = grade;
+      opt.textContent = (String(grade).toUpperCase().startsWith("PP") || String(grade).toUpperCase() === "PG") ? grade : `Grade ${grade}`;
       classGradeSelect.appendChild(opt);
     });
   };
@@ -971,9 +966,15 @@ function attachAdminSignatureLogic() {
     populateGradeRangeOptions();
     populateClassGradeOptions();
     resetGradeSelection();
-    populatePromotionGradeOptions(); // 🆕 Populate for promotion section
-    populateBulkDeleteGradeOptions(); // 🆕 Populate for bulk delete modal
-    populatePromotionYearOptions(); // 🆕 Populate year dropdowns for promotion
+    populatePromotionGradeOptions();
+    populateBulkDeleteGradeOptions();
+    populatePromotionYearOptions();
+
+    const defaultRange = getDefaultRangeForSchoolType();
+    if (gradeRangeSelect && defaultRange) {
+      gradeRangeSelect.value = defaultRange;
+      populateGradeSelectionForRange(defaultRange);
+    }
   };
 
   const getNextGrade = (currentGrade) => {
@@ -2983,70 +2984,7 @@ studentSearchBody.addEventListener("click", async (e) => {
 
   if (gradeRangeSelect) {
     gradeRangeSelect.addEventListener("change", () => {
-      const selectedRange = gradeRangeSelect.value;
-      if (gradesSelect) { 
-        gradesSelect.innerHTML = ""; 
-        gradesSelect.multiple = true; 
-        if (selectedRange === "PG-PP2" || selectedRange === "PP1-PP2") {
-          (selectedRange === "PG-PP2" ? ["PG", "PP1", "PP2"] : ["PP1", "PP2"]).forEach(g => {
-            const opt = document.createElement("option");
-            opt.value = g;
-            opt.textContent = g;
-            gradesSelect.appendChild(opt);
-          });
-        } else if (selectedRange) { 
-          const [start, end] = selectedRange.split("-").map(Number); 
-          for (let i=start;i<=end;i++){ 
-            const opt=document.createElement("option"); 
-            opt.value=i; 
-            opt.textContent=`Grade ${i}`; 
-            gradesSelect.appendChild(opt); 
-          }
-        }
-
-     
-      }
-      
-      if (subjectsSelect) { 
-        subjectsSelect.innerHTML=""; 
-        subjectsSelect.multiple=true;
-        
-        // 🆕 Add Compulsory Subjects for Senior School
-        if (selectedRange === "10-12" && window.SUBJECT_DATA && window.SUBJECT_DATA.seniorCompulsorySubjects) {
-          const compulsoryOptgroup = document.createElement("optgroup");
-          compulsoryOptgroup.label = "Compulsory Subjects";
-          window.SUBJECT_DATA.seniorCompulsorySubjects.forEach(subject => {
-            const opt = document.createElement("option");
-            opt.value = subject;
-            opt.textContent = `${subject}`;
-            compulsoryOptgroup.appendChild(opt);
-          });
-          subjectsSelect.appendChild(compulsoryOptgroup);
-        }
-
-
-        // For senior school (10-12), show pathways with courses grouped
-        if (selectedRange === "10-12") {
-          Object.entries(seniorSchoolPathways).forEach(([pathway, courses]) => {
-            const optgroup = document.createElement("optgroup");
-            optgroup.label = pathway;
-            courses.forEach(course => { // Display in the order defined in subject-data.js
-              const opt = document.createElement("option");
-              opt.value = course;
-              opt.textContent = `${course}`; // Display Pathway - Course for clarity
-              optgroup.appendChild(opt);
-            });
-            subjectsSelect.appendChild(optgroup);
-          });
-        } else if(selectedRange && gradeSubjects[selectedRange]) {
-          gradeSubjects[selectedRange].forEach(sub=>{ 
-            const opt=document.createElement("option"); 
-            opt.value=sub; 
-            opt.textContent=sub; 
-            subjectsSelect.appendChild(opt); 
-          }); 
-        }
-      }
+      populateGradeSelectionForRange(gradeRangeSelect.value);
     });
   }
 
