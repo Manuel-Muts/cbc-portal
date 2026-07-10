@@ -991,7 +991,7 @@
         <div id="fee-details-content">
           <div class="report-header" style="text-align:center; margin-bottom:20px; border-bottom: 2px solid #eee; padding-bottom: 10px;">
             <h2 style="margin:0;">FEE STATEMENT</h2>
-            <p style="margin:5px 0;"><strong>Learner:</strong> ${studentName}</p>
+            <p style="margin:5px 0;"><strong>Learner:</strong> ${studentName} <strong>(ADM ${admission})</strong></p>
             <p style="margin:0;"><strong>Grade:</strong> ${grade} | <strong>Year:</strong> ${year}</p>
           </div>
 
@@ -1098,6 +1098,20 @@
   // ---------------------------
   // GENERATE PDF FROM MODAL CONTENT
   // ---------------------------
+  async function runDownloadWithSpinner(button, elementId, titleSuffix, customTitle) {
+    if (!button) {
+      await generateModalPDF(elementId, titleSuffix, customTitle);
+      return;
+    }
+
+    window.spinner?.show(button, "Generating...");
+    try {
+      await generateModalPDF(elementId, titleSuffix, customTitle);
+    } finally {
+      window.spinner?.hide(button);
+    }
+  }
+
   async function generateModalPDF(elementId, titleSuffix, customTitle) {
     const contentElement = document.getElementById(elementId);
     const headerElement = document.querySelector('#studentFeeModalBody .report-header');
@@ -1146,12 +1160,13 @@
       
       pdf.addImage(imgData, 'PNG', 10, 10, imgWidth, imgHeight);
 
-      // Add footer with current date
+      // Add footer with current date and right-side metadata
       const dateStr = `Generated: ${new Date().toLocaleString()}`;
+      const servedBy = userProfile?.name || userProfile?.fullName || userProfile?.username || userProfile?.email || 'Unknown';
       pdf.setFontSize(8);
       pdf.setTextColor(100);
       pdf.text(dateStr, 10, pdf.internal.pageSize.getHeight() - 10);
-      pdf.text(`Page 1 of 1`, pdf.internal.pageSize.getWidth() - 10, pdf.internal.pageSize.getHeight() - 10, { align: 'right' });
+      pdf.text(`Page 1 of 1  |  Served by: ${servedBy}`, pdf.internal.pageSize.getWidth() - 10, pdf.internal.pageSize.getHeight() - 10, { align: 'right' });
 
       const fname = `${currentStudentDetails?.name || 'Student'}_${titleSuffix}.pdf`;
       pdf.save(fname);
@@ -1164,8 +1179,12 @@
     }
   }
 
-  if (dlStructureBtn) dlStructureBtn.addEventListener('click', () => generateModalPDF('fee-structure-for-pdf', 'Fee_Structure', 'FEE STRUCTURE AND BALANCE'));
-  if (dlStatementBtn) dlStatementBtn.addEventListener('click', () => generateModalPDF('payment-statement-for-pdf', 'Fee_Statement', 'FEE STATEMENT'));
+  if (dlStructureBtn) {
+    dlStructureBtn.addEventListener('click', () => runDownloadWithSpinner(dlStructureBtn, 'fee-structure-for-pdf', 'Fee_Structure', 'FEE STRUCTURE AND BALANCE'));
+  }
+  if (dlStatementBtn) {
+    dlStatementBtn.addEventListener('click', () => runDownloadWithSpinner(dlStatementBtn, 'payment-statement-for-pdf', 'Fee_Statement', 'FEE STATEMENT'));
+  }
 
   // ---------------------------
   // GLOBAL FEE NOTE LOGIC

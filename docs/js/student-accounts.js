@@ -623,24 +623,10 @@ const displayValue = (String(g).toUpperCase().startsWith("PP") || String(g).toUp
         <div id="fee-details-content">
           <div class="report-header" style="text-align:center; margin-bottom:20px; border-bottom: 2px solid #eee; padding-bottom: 10px;">
              <h2 style="margin:0;">FEE STATEMENT</h2>
-             <p style="margin:5px 0;"><strong>Learner:</strong> ${studentName}</p>
+             <p style="margin:5px 0;"><strong>Learner:</strong> ${studentName} <strong>(ADM ${admission})</strong></p>
              <p style="margin:0;"><strong>Grade:</strong> ${grade} | <strong>Year:</strong> ${year}</p>
           </div>
 
-          <div style="display:grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap:10px; margin-bottom: 18px;">
-            <div style="border: 1px solid #ddd; border-radius: 6px; padding: 10px; background: #f8f9fa;">
-              <div style="font-size: 12px; color: #64748b;">Paid</div>
-              <div style="font-size: 16px; font-weight: 700;">KES ${formatCurrency(totalPaid)}</div>
-            </div>
-            <div style="border: 1px solid #ddd; border-radius: 6px; padding: 10px; background: #f8f9fa;">
-              <div style="font-size: 12px; color: #64748b;">Unpaid</div>
-              <div style="font-size: 16px; font-weight: 700;">KES ${formatCurrency(unpaidAmount)}</div>
-            </div>
-            <div style="border: 1px solid #ddd; border-radius: 6px; padding: 10px; background: #f8f9fa;">
-              <div style="font-size: 12px; color: #64748b;">Balance</div>
-              <div style="font-size: 16px; font-weight: 700; color:${totalBalance > 0 ? '#dc3545' : '#28a745'};">KES ${formatCurrency(totalBalance)}</div>
-            </div>
-          </div>
 
           <div id="fee-structure-for-pdf" style="margin-bottom: 25px;">
             <h4 style="border-bottom: 1px solid #ccc; padding-bottom: 5px; margin-bottom: 10px;">Fee Structure & Status</h4>
@@ -785,12 +771,13 @@ const displayValue = (String(g).toUpperCase().startsWith("PP") || String(g).toUp
       
       pdf.addImage(imgData, 'PNG', 10, 10, imgWidth, imgHeight);
 
-      // Add footer with current date
+      // Add footer with current date and right-side metadata
       const dateStr = `Generated: ${new Date().toLocaleString()}`;
+      const servedBy = userProfile?.name || userProfile?.fullName || userProfile?.username || userProfile?.email || 'Unknown';
       pdf.setFontSize(8);
       pdf.setTextColor(100);
       pdf.text(dateStr, 10, pdf.internal.pageSize.getHeight() - 10);
-      pdf.text(`Page 1 of 1`, pdf.internal.pageSize.getWidth() - 10, pdf.internal.pageSize.getHeight() - 10, { align: 'right' });
+      pdf.text(`Page 1 of 1  |  Served by: ${servedBy}`, pdf.internal.pageSize.getWidth() - 10, pdf.internal.pageSize.getHeight() - 10, { align: 'right' });
 
       const fname = `${currentStudentDetails?.name || 'Student'}_${titleSuffix}.pdf`;
       pdf.save(fname);
@@ -837,8 +824,22 @@ const displayValue = (String(g).toUpperCase().startsWith("PP") || String(g).toUp
     doc.save(`Receipt_${payment.reference}.pdf`);
   }
 
-  if (dlStructureBtn) dlStructureBtn.addEventListener('click', () => generateModalPDF('fee-structure-for-pdf', 'Fee_Structure', 'FEE STRUCTURE AND BALANCE'));
-  if (dlStatementBtn) dlStatementBtn.addEventListener('click', () => generateModalPDF('payment-statement-for-pdf', 'Fee_Statement', 'FEE STATEMENT'));
+  const runDownloadWithSpinner = async (button, elementId, titleSuffix, customTitle) => {
+    if (!button) {
+      await generateModalPDF(elementId, titleSuffix, customTitle);
+      return;
+    }
+
+    window.spinner?.show(button, 'Generating...');
+    try {
+      await generateModalPDF(elementId, titleSuffix, customTitle);
+    } finally {
+      window.spinner?.hide(button);
+    }
+  };
+
+  if (dlStructureBtn) dlStructureBtn.addEventListener('click', () => runDownloadWithSpinner(dlStructureBtn, 'fee-structure-for-pdf', 'Fee_Structure', 'FEE STRUCTURE AND BALANCE'));
+  if (dlStatementBtn) dlStatementBtn.addEventListener('click', () => runDownloadWithSpinner(dlStatementBtn, 'payment-statement-for-pdf', 'Fee_Statement', 'FEE STATEMENT'));
 
   if (ledgerTableContainer) {
     ledgerTableContainer.addEventListener("click", async (e) => {

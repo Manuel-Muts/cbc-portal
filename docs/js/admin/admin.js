@@ -3022,7 +3022,7 @@ studentSearchBody.addEventListener("click", async (e) => {
     const streamDisplay = document.getElementById(`${elementId}Display`);
     if (!streamSelect) return;
 
-    streamSelect.innerHTML = '<option value="">-- No Stream --</option>';
+    streamSelect.innerHTML = '<option value="">-- Select Stream --</option>';
     streamSelect.value = "";
 
     if (!grade) {
