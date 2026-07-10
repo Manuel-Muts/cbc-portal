@@ -131,8 +131,8 @@
     toast.style.cssText = `
       position: fixed; top: 20px; left: 50%; transform: translateX(-50%);
       padding: 12px 24px; border-radius: 8px; color: white; font-size: 14px;
-      font-weight: 600; z-index: 10001; box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
-      transition: all 0.3s ease;
+      font-weight: 600; z-index: 999999; box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+      transition: all 0.3s ease; pointer-events: none;
     `;
     if (type === "success") toast.style.backgroundColor = "#10b981";
     else if (type === "error") toast.style.backgroundColor = "#ef4444";
@@ -244,9 +244,16 @@ const displayValue = (String(g).toUpperCase().startsWith("PP") || String(g).toUp
       const adm = s.admission || s.admissionNo || "-";
       const cls = s.className || s.grade || "-";
       
-      let expected = s.expected || s.totalFee || 0;
-      let paid = s.paid || 0;
-      let balance = s.balance !== undefined ? s.balance : (expected - paid);
+      const term1Fee = Number(s.termBalances?.term1?.fee ?? s.termBalances?.term1?.amount ?? 0);
+      const term2Fee = Number(s.termBalances?.term2?.fee ?? s.termBalances?.term2?.amount ?? 0);
+      const term3Fee = Number(s.termBalances?.term3?.fee ?? s.termBalances?.term3?.amount ?? 0);
+      const rowExpected = Number((s.expected ?? s.totalFee ?? (term1Fee + term2Fee + term3Fee)) || 0);
+      const rowPaid = Number(s.totalPaid ?? s.paid ?? 0);
+      const rowBalance = s.balance !== undefined ? Number(s.balance) : Number(rowExpected - rowPaid);
+
+      let expected = rowExpected;
+      let paid = rowPaid;
+      let balance = rowBalance;
 
       // Determine B/F Badge Type
       let bfBadge = '';
@@ -287,7 +294,7 @@ const displayValue = (String(g).toUpperCase().startsWith("PP") || String(g).toUp
         <td style="white-space: nowrap;">
           <button class="btn primary-btn pay-btn" data-admission="${adm}" data-name="${name.replace(/'/g, "\\'")}" data-balance="${balance}">Pay</button>
           <button class="btn secondary-btn ledger-btn" data-admission="${adm}" data-name="${name.replace(/'/g, "\\'")}">Ledger</button>
-          ${balance <= 0 ? `<button class="btn secondary-btn view-fee-btn" data-admission="${adm}" data-name="${name.replace(/'/g, "\\'")}" data-grade="${cls}">View</button>` : ''}
+          ${balance <= 0 ? `<button class="btn secondary-btn view-fee-btn" data-admission="${adm}" data-name="${name.replace(/'/g, "\\'")}" data-grade="${cls}" data-expected="${rowExpected}" data-paid="${rowPaid}" data-balance="${rowBalance}" data-term1fee="${term1Fee}" data-term2fee="${term2Fee}" data-term3fee="${term3Fee}" data-totalfee="${rowExpected}">View</button>` : ''}
         </td>
       `;
       frag.appendChild(tr);
@@ -369,12 +376,35 @@ const displayValue = (String(g).toUpperCase().startsWith("PP") || String(g).toUp
       });
 
       if (res) {
+        console.log('[Payment] Payment successful! Broadcasting signal...', res);
         showToast("Payment recorded successfully", "success");
         paymentModal.classList.remove("visible");
         setTimeout(() => paymentModal.style.display = "none", 200);
-        accountsCache.clear(); // Invalidate cache on update
+        
+        // Clear all caches to force fresh data
+        accountsCache.clear();
+        ledgerCache.clear();
+        console.log('[Payment] Caches cleared');
+        
+        // Broadcast payment signal to all pages (including accounts.js)
+        const timestamp = Date.now().toString();
+        sessionStorage.setItem('paymentRecorded', timestamp);
+        localStorage.setItem('paymentRecorded', timestamp); // Also use localStorage for reliability
+        console.log('[Payment] sessionStorage.paymentRecorded set to', timestamp);
+        
+        // Trigger custom event that works reliably on same tab
+        window.dispatchEvent(new CustomEvent('paymentRecorded', {
+          detail: { timestamp: timestamp, studentId: currentStudentAdmission }
+        }));
+        console.log('[Payment] Custom paymentRecorded event dispatched');
+        
         if (currentStudentAdmission) ledgerCache.delete(currentStudentAdmission);
-        loadAccounts(currentPage, true);
+        
+        // Wait longer to allow backend to clear and rebuild cache
+        setTimeout(() => {
+          console.log('[Payment] Reloading student accounts table after payment...');
+          loadAccounts(currentPage, true);
+        }, 1500);
       }
     } catch (err) {
       console.error("Record Payment Error:", err);
@@ -492,7 +522,7 @@ const displayValue = (String(g).toUpperCase().startsWith("PP") || String(g).toUp
   // ---------------------------
   // VIEW STUDENT FEE DETAILS LOGIC
   // ---------------------------
-  async function openStudentFeeDetails(admission, studentName, grade) {
+  async function openStudentFeeDetails(admission, studentName, grade, summaryData = {}) {
     studentFeeModalBody.innerHTML = '<div style="text-align:center; padding:20px;">Loading details...</div>';
     studentFeeDetailsModal.style.display = 'flex';
     requestAnimationFrame(() => studentFeeDetailsModal.classList.add('visible'));
@@ -501,43 +531,115 @@ const displayValue = (String(g).toUpperCase().startsWith("PP") || String(g).toUp
     currentStudentDetails = { name: studentName, year };
 
     try {
-      // Fetch payments AND fee structures
-      const [payRes, feesRes] = await Promise.all([
-        secureFetch(`${API_BASE}/users/ledger/${admission}`),
-        secureFetch(`${API_BASE}/accounts/fee-structures?limit=1000`)
-      ]);
+      const formatCurrency = (value) => {
+        const numericValue = Number(value || 0);
+        return Number.isFinite(numericValue) ? numericValue.toLocaleString() : '0';
+      };
 
-      const payData = payRes || { payments: [] };
-      const feesData = Array.isArray(feesRes) ? feesRes : (feesRes.data || []);
-      
-      // Filter payments for the selected year only
-      const allPayments = payData.payments || [];
-      const payments = allPayments.filter(p => Number(p.academicYear) === Number(year));
+      const matchesGrade = (candidate, target) => {
+        const normalize = (value) => String(value || '').trim().replace(/^Grade\s+/i, '');
+        const left = normalize(candidate);
+        const right = normalize(target);
+        return left === right || `Grade ${left}` === right || left === `Grade ${right}`;
+      };
 
-      // Find Fee Structure
-      const feeStructure = feesData.find(f => 
-        f.academicYear === Number(year) && 
-        (grade === f.grade || (grade.startsWith(f.grade) && !/\d/.test(grade.substring(f.grade.length))))
-      );
+      let statement = null;
+      let ledgerPayload = null;
+      let feeStructuresPayload = null;
 
-      const fees = feeStructure || { term1Fee: 0, term2Fee: 0, term3Fee: 0, totalFee: 0 };
-      
-      // Calculate Term Totals
+      try {
+        statement = await secureFetch(`${API_BASE}/accounts/student-fee-statement/${admission}?academicYear=${year}${grade ? `&grade=${encodeURIComponent(grade)}` : ''}`);
+      } catch (err) {
+        console.warn('Fee statement endpoint failed in student view, falling back to ledger data.', err);
+      }
+
+      if (!statement) {
+        try {
+          ledgerPayload = await secureFetch(`${API_BASE}/users/ledger/${admission}`);
+        } catch (err) {
+          console.warn('Ledger fallback failed in student view.', err);
+        }
+
+        try {
+          feeStructuresPayload = await secureFetch(`${API_BASE}/accounts/fee-structures?limit=1000`);
+        } catch (err) {
+          console.warn('Fee structure fallback failed in student view.', err);
+        }
+      }
+
+      const feeList = Array.isArray(feeStructuresPayload)
+        ? feeStructuresPayload
+        : Array.isArray(feeStructuresPayload?.data)
+          ? feeStructuresPayload.data
+          : [];
+
+      const matchedFeeStructure = (() => {
+        const feeSource = statement?.feeStructure && Object.keys(statement.feeStructure).length
+          ? statement.feeStructure
+          : null;
+
+        const fallbackFeeStructure = feeList.find((item) => Number(item.academicYear) === Number(year) && matchesGrade(item.grade, grade)) || null;
+
+        const hasRowFees = summaryData.term1Fee !== undefined || summaryData.term2Fee !== undefined || summaryData.term3Fee !== undefined || summaryData.totalFee !== undefined;
+        const rowFeeStructure = hasRowFees
+          ? {
+              term1Fee: Number(summaryData.term1Fee || 0),
+              term2Fee: Number(summaryData.term2Fee || 0),
+              term3Fee: Number(summaryData.term3Fee || 0),
+              totalFee: Number(summaryData.totalFee || summaryData.expected || 0)
+            }
+          : null;
+
+        return {
+          term1Fee: rowFeeStructure?.term1Fee ?? feeSource?.term1Fee ?? fallbackFeeStructure?.term1Fee ?? 0,
+          term2Fee: rowFeeStructure?.term2Fee ?? feeSource?.term2Fee ?? fallbackFeeStructure?.term2Fee ?? 0,
+          term3Fee: rowFeeStructure?.term3Fee ?? feeSource?.term3Fee ?? fallbackFeeStructure?.term3Fee ?? 0,
+          totalFee: rowFeeStructure?.totalFee ?? feeSource?.totalFee ?? fallbackFeeStructure?.totalFee ?? Number(summaryData.totalFee || summaryData.expected || 0)
+        };
+      })();
+
+      const fees = matchedFeeStructure || { term1Fee: 0, term2Fee: 0, term3Fee: 0, totalFee: 0 };
+      const payments = Array.isArray(statement?.payments)
+        ? statement.payments
+        : Array.isArray(ledgerPayload?.payments)
+          ? ledgerPayload.payments.filter((payment) => Number(payment.academicYear) === Number(year))
+          : [];
+      const totals = statement?.totals || {};
       const termPaid = { "Term 1": 0, "Term 2": 0, "Term 3": 0 };
-      payments.forEach(p => {
-        if (termPaid[p.term] !== undefined) termPaid[p.term] += p.amount;
+      payments.forEach((payment) => {
+        const amount = Number(payment.amount || payment.totalAmount || 0);
+        if (termPaid[payment.term] !== undefined) {
+          termPaid[payment.term] += amount;
+        }
       });
 
-      const totalPaid = payments.reduce((sum, p) => sum + p.amount, 0);
-      const totalBalance = fees.totalFee - totalPaid;
+      const paymentTotal = payments.reduce((sum, payment) => sum + Number(payment.amount || payment.totalAmount || 0), 0);
+      const totalPaid = Number(summaryData.paid ?? totals.totalPaid ?? paymentTotal ?? 0);
+      const totalFee = Number(summaryData.expected ?? totals.totalFee ?? fees.totalFee ?? fees.total ?? 0);
+      const totalBalance = Number(summaryData.balance ?? totals.totalBalance ?? totals.balance ?? (totalFee - totalPaid));
+      const unpaidAmount = Math.max(totalFee - totalPaid, 0);
       
-      // Create HTML content
       let content = `
         <div id="fee-details-content">
           <div class="report-header" style="text-align:center; margin-bottom:20px; border-bottom: 2px solid #eee; padding-bottom: 10px;">
              <h2 style="margin:0;">FEE STATEMENT</h2>
              <p style="margin:5px 0;"><strong>Learner:</strong> ${studentName}</p>
              <p style="margin:0;"><strong>Grade:</strong> ${grade} | <strong>Year:</strong> ${year}</p>
+          </div>
+
+          <div style="display:grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap:10px; margin-bottom: 18px;">
+            <div style="border: 1px solid #ddd; border-radius: 6px; padding: 10px; background: #f8f9fa;">
+              <div style="font-size: 12px; color: #64748b;">Paid</div>
+              <div style="font-size: 16px; font-weight: 700;">KES ${formatCurrency(totalPaid)}</div>
+            </div>
+            <div style="border: 1px solid #ddd; border-radius: 6px; padding: 10px; background: #f8f9fa;">
+              <div style="font-size: 12px; color: #64748b;">Unpaid</div>
+              <div style="font-size: 16px; font-weight: 700;">KES ${formatCurrency(unpaidAmount)}</div>
+            </div>
+            <div style="border: 1px solid #ddd; border-radius: 6px; padding: 10px; background: #f8f9fa;">
+              <div style="font-size: 12px; color: #64748b;">Balance</div>
+              <div style="font-size: 16px; font-weight: 700; color:${totalBalance > 0 ? '#dc3545' : '#28a745'};">KES ${formatCurrency(totalBalance)}</div>
+            </div>
           </div>
 
           <div id="fee-structure-for-pdf" style="margin-bottom: 25px;">
@@ -554,27 +656,27 @@ const displayValue = (String(g).toUpperCase().startsWith("PP") || String(g).toUp
               <tbody>
                 <tr>
                   <td style="padding:8px; border:1px solid #ddd;">Term 1</td>
-                  <td style="padding:8px; text-align:right; border:1px solid #ddd;">${(fees.term1Fee || 0).toLocaleString()}</td>
-                  <td style="padding:8px; text-align:right; border:1px solid #ddd;">${termPaid["Term 1"].toLocaleString()}</td>
-                  <td style="padding:8px; text-align:right; border:1px solid #ddd; font-weight:bold;">${(fees.term1Fee - termPaid["Term 1"]).toLocaleString()}</td>
+                  <td style="padding:8px; text-align:right; border:1px solid #ddd;">${formatCurrency(fees.term1Fee || 0)}</td>
+                  <td style="padding:8px; text-align:right; border:1px solid #ddd;">${formatCurrency(termPaid["Term 1"])}</td>
+                  <td style="padding:8px; text-align:right; border:1px solid #ddd; font-weight:bold;">${formatCurrency((fees.term1Fee || 0) - termPaid["Term 1"])}</td>
                 </tr>
                 <tr>
                   <td style="padding:8px; border:1px solid #ddd;">Term 2</td>
-                  <td style="padding:8px; text-align:right; border:1px solid #ddd;">${(fees.term2Fee || 0).toLocaleString()}</td>
-                  <td style="padding:8px; text-align:right; border:1px solid #ddd;">${termPaid["Term 2"].toLocaleString()}</td>
-                  <td style="padding:8px; text-align:right; border:1px solid #ddd; font-weight:bold;">${(fees.term2Fee - termPaid["Term 2"]).toLocaleString()}</td>
+                  <td style="padding:8px; text-align:right; border:1px solid #ddd;">${formatCurrency(fees.term2Fee || 0)}</td>
+                  <td style="padding:8px; text-align:right; border:1px solid #ddd;">${formatCurrency(termPaid["Term 2"])}</td>
+                  <td style="padding:8px; text-align:right; border:1px solid #ddd; font-weight:bold;">${formatCurrency((fees.term2Fee || 0) - termPaid["Term 2"])}</td>
                 </tr>
                 <tr>
                   <td style="padding:8px; border:1px solid #ddd;">Term 3</td>
-                  <td style="padding:8px; text-align:right; border:1px solid #ddd;">${(fees.term3Fee || 0).toLocaleString()}</td>
-                  <td style="padding:8px; text-align:right; border:1px solid #ddd;">${termPaid["Term 3"].toLocaleString()}</td>
-                  <td style="padding:8px; text-align:right; border:1px solid #ddd; font-weight:bold;">${(fees.term3Fee - termPaid["Term 3"]).toLocaleString()}</td>
+                  <td style="padding:8px; text-align:right; border:1px solid #ddd;">${formatCurrency(fees.term3Fee || 0)}</td>
+                  <td style="padding:8px; text-align:right; border:1px solid #ddd;">${formatCurrency(termPaid["Term 3"])}</td>
+                  <td style="padding:8px; text-align:right; border:1px solid #ddd; font-weight:bold;">${formatCurrency((fees.term3Fee || 0) - termPaid["Term 3"])}</td>
                 </tr>
                 <tr style="background:#f8f9fa; font-weight:bold;">
                   <td style="padding:8px; border:1px solid #ddd;">TOTAL</td>
-                  <td style="padding:8px; text-align:right; border:1px solid #ddd;">${(fees.totalFee || 0).toLocaleString()}</td>
-                  <td style="padding:8px; text-align:right; border:1px solid #ddd;">${totalPaid.toLocaleString()}</td>
-                  <td style="padding:8px; text-align:right; border:1px solid #ddd; color:${totalBalance > 0 ? '#dc3545' : '#28a745'};">${totalBalance.toLocaleString()}</td>
+                  <td style="padding:8px; text-align:right; border:1px solid #ddd;">${formatCurrency(fees.totalFee || 0)}</td>
+                  <td style="padding:8px; text-align:right; border:1px solid #ddd;">${formatCurrency(totalPaid)}</td>
+                  <td style="padding:8px; text-align:right; border:1px solid #ddd; color:${totalBalance > 0 ? '#dc3545' : '#28a745'};">${formatCurrency(totalBalance)}</td>
                 </tr>
               </tbody>
             </table>
@@ -598,14 +700,16 @@ const displayValue = (String(g).toUpperCase().startsWith("PP") || String(g).toUp
       if (payments.length === 0) {
         content += `<tr><td colspan="5" style="text-align:center; padding:10px;">No payments recorded for this year.</td></tr>`;
       } else {
-        payments.forEach(p => {
+        payments.forEach((payment) => {
+          const paymentDate = payment.createdAt ? new Date(payment.createdAt).toLocaleDateString() : '—';
+          const paymentAmount = Number(payment.amount || payment.totalAmount || 0);
           content += `
             <tr>
-              <td style="padding:8px; border-bottom:1px solid #eee;">${new Date(p.createdAt).toLocaleDateString()}</td>
-              <td style="padding:8px; border-bottom:1px solid #eee;">${p.reference}</td>
-              <td style="padding:8px; border-bottom:1px solid #eee;">${p.method}</td>
-              <td style="padding:8px; border-bottom:1px solid #eee;">${p.term}</td>
-              <td style="padding:8px; border-bottom:1px solid #eee; text-align:right;">${p.amount.toLocaleString()}</td>
+              <td style="padding:8px; border-bottom:1px solid #eee;">${paymentDate}</td>
+              <td style="padding:8px; border-bottom:1px solid #eee;">${payment.reference || '—'}</td>
+              <td style="padding:8px; border-bottom:1px solid #eee;">${payment.method || '—'}</td>
+              <td style="padding:8px; border-bottom:1px solid #eee;">${payment.term || '—'}</td>
+              <td style="padding:8px; border-bottom:1px solid #eee; text-align:right;">${formatCurrency(paymentAmount)}</td>
             </tr>
           `;
         });
@@ -905,7 +1009,15 @@ const displayValue = (String(g).toUpperCase().startsWith("PP") || String(g).toUp
         const admission = viewBtn.dataset.admission;
         const name = viewBtn.dataset.name;
         const grade = viewBtn.dataset.grade;
-        openStudentFeeDetails(admission, name, grade);
+        openStudentFeeDetails(admission, name, grade, {
+          expected: viewBtn.dataset.expected,
+          paid: viewBtn.dataset.paid,
+          balance: viewBtn.dataset.balance,
+          term1Fee: viewBtn.dataset.term1fee,
+          term2Fee: viewBtn.dataset.term2fee,
+          term3Fee: viewBtn.dataset.term3fee,
+          totalFee: viewBtn.dataset.totalfee
+        });
     }
   });
 

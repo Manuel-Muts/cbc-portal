@@ -1,0 +1,12 @@
+import mongoose from 'mongoose';
+const mongoUri = 'mongodb://127.0.0.1:27017/cbcportal';
+await mongoose.connect(mongoUri);
+const db = mongoose.connection.db;
+console.log('dbName', db.databaseName);
+const users = await db.collection('users').find({ role: 'student' }, { projection: { admission: 1, name: 1, schoolId: 1, role: 1, _id: 1 } }).limit(10).toArray();
+console.log('Students', JSON.stringify(users, null, 2));
+const feeStructures = await db.collection('feestructures').find({}, { projection: { schoolId: 1, grade: 1, academicYear: 1, term1Fee: 1, term2Fee: 1, term3Fee: 1, totalFee: 1, _id: 1 } }).limit(10).toArray();
+console.log('FeeStructures', JSON.stringify(feeStructures, null, 2));
+const payments = await db.collection('payments').find({}, { projection: { studentId: 1, academicYear: 1, term: 1, amount: 1, reference: 1, method: 1, createdAt: 1, isReversed: 1, _id: 1 } }).limit(10).toArray();
+console.log('Payments', JSON.stringify(payments, null, 2));
+await mongoose.disconnect();

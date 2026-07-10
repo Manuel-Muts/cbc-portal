@@ -58,7 +58,7 @@ export const adminSearchStudent = async (req, res) => {
     const total = await User.countDocuments(searchQuery);
 
     const students = await User.find(searchQuery)
-      .select("name admission contact")
+      .select("name admission contact gender dateOfBirth")
       .skip(skip)
       .limit(limit)
       .lean();
@@ -96,6 +96,8 @@ export const adminSearchStudent = async (req, res) => {
         name: s.name,
         admission: s.admission,
         contact: s.contact || null,
+        gender: s.gender || null,
+        dateOfBirth: s.dateOfBirth || null,
         academicYear: e?.academicYear || null,
         grade: e?.grade || null,
         stream: e?.stream || null,
@@ -575,7 +577,11 @@ export const getUniqueStreams = async (req, res) => {
       filter.grade = normalizedGrade;
     }
     const streams = await StudentEnrollment.distinct('stream', filter); // 🆕 Use the filter object
-    res.json(streams);
+    const cleanedStreams = (Array.isArray(streams) ? streams : [])
+      .filter((s) => s !== null && s !== undefined && String(s).trim() !== "" && String(s).trim().toLowerCase() !== "null" && String(s).trim().toLowerCase() !== "undefined")
+      .map((s) => String(s).trim());
+
+    res.json(cleanedStreams);
   } catch (err) {
     console.error("getUniqueStreams error:", err);
     res.status(500).json({ message: "Server error fetching streams" });

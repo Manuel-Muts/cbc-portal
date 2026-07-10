@@ -186,12 +186,29 @@
     };
 
   function getSchoolTypeKey() {
-    const schoolInfoEntry = schoolInfoCache.get('school-all');
-    const schoolInfo = schoolInfoEntry ? schoolInfoEntry.data : null;
-    if (!schoolInfo || !schoolInfo.schoolType) return 'full';
-    const rawType = String(schoolInfo.schoolType).toLowerCase().replace(/[^a-z]/g, '_');
-    if (rawType.includes('primary') || rawType.includes('junior')) return 'primary_junior';
-    if (rawType.includes('senior')) return 'senior';
+    const preferredKeys = ['school-name,schoolType', 'school-all'];
+
+    for (const key of preferredKeys) {
+      const schoolInfoEntry = schoolInfoCache.get(key);
+      const schoolInfo = schoolInfoEntry ? schoolInfoEntry.data : null;
+      if (schoolInfo && schoolInfo.schoolType) {
+        const rawType = String(schoolInfo.schoolType).toLowerCase().replace(/[^a-z]/g, '_');
+        if (rawType.includes('primary') || rawType.includes('junior')) return 'primary_junior';
+        if (rawType.includes('senior')) return 'senior';
+        return 'full';
+      }
+    }
+
+    for (const schoolInfoEntry of schoolInfoCache.values()) {
+      const schoolInfo = schoolInfoEntry ? schoolInfoEntry.data : null;
+      if (schoolInfo && schoolInfo.schoolType) {
+        const rawType = String(schoolInfo.schoolType).toLowerCase().replace(/[^a-z]/g, '_');
+        if (rawType.includes('primary') || rawType.includes('junior')) return 'primary_junior';
+        if (rawType.includes('senior')) return 'senior';
+        return 'full';
+      }
+    }
+
     return 'full';
   }
 
@@ -298,6 +315,15 @@
       refreshBtn.disabled = true;
       refreshBtn.textContent = "Refreshing...";
     }
+    
+    if (forceRefresh) {
+      console.log('Clearing all caches for dashboard refresh...');
+      outstandingCache.clear();
+      statsCache.clear();
+      feeStructuresCache.clear();
+      globalNoteCache.clear();
+    }
+    
     try {
       await Promise.all([
         loadStats(forceRefresh),
@@ -701,6 +727,7 @@
     if (!forceRefresh && outstandingCache.has(cacheKey)) {
       const cached = outstandingCache.get(cacheKey);
       if (Date.now() - cached.timestamp < CACHE_TTL) {
+        console.log('Using cached outstanding fees');
         renderOutstandingTable(cached.data.students || []);
         outstandingPage = cached.data.currentPage || 1;
         outstandingTotalPages = cached.data.totalPages || 1;
@@ -713,9 +740,13 @@
     if (grade) query.append("class", grade);
     if (sort) query.append("sort", sort);
     if (search) query.append("name", search);
+    // Add cache-busting parameter if force refresh
+    if (forceRefresh) query.append("_t", Date.now());
     
     try {
+      console.log(`Fetching outstanding fees (forceRefresh=${forceRefresh})...`);
       const data = await secureFetch(`${API_BASE}/reports/outstanding-fees?${query.toString()}`);
+      console.log('Outstanding fees data received:', data.students?.length || 0, 'students');
       outstandingCache.set(cacheKey, { data, timestamp: Date.now() });
       
       renderOutstandingTable(data.students || []);
@@ -723,7 +754,7 @@
       outstandingTotalPages = data.totalPages || 1;
       updateOutstandingPagination();
     } catch (err) {
-      console.error(err);
+      console.error('Error loading outstanding fees:', err);
       outstandingTableBody.innerHTML = '<tr><td colspan="6" style="text-align: center; color: red;">Error loading data.</td></tr>';
     }
   }
@@ -741,7 +772,10 @@
     }
     
     outstandingTableBody.innerHTML = accounts.map(s => {
-      let balance = (s.balance !== undefined && s.balance !== null) ? s.balance : ((s.expected || 0) - (s.paid || 0));
+      const totalFee = Number(s.expected ?? s.totalFee ?? 0);
+      const paidAmount = Number(s.totalPaid ?? s.paid ?? 0);
+      let balance = Number(s.balance ?? (totalFee - paidAmount));
+      if (!Number.isFinite(balance)) balance = 0;
       if (balance <= 0) return '';
       
       const safeName = (s.studentName || s.name || 'Unknown').replace(/'/g, "&apos;");
@@ -751,8 +785,6 @@
       
       const admission = s.admission || s.admissionNo || '';
       let statusBadge = '';
-      const paidAmount = s.paid || 0;
-      const totalFee = s.expected || 0;
       
       if (balance <= 0) {
         statusBadge = `<span class="status-badge status-paid" style="background:#d1fae5; color:#065f46;">Paid</span>`;
@@ -762,6 +794,10 @@
         statusBadge = `<span class="status-badge status-unpaid" style="background:#fee2e2; color:#991b1b;">Unpaid</span>`;
       }
       
+      const term1Fee = getNumeric(s.termBalances?.term1?.fee ?? s.termBalances?.term1?.amount ?? 0);
+      const term2Fee = getNumeric(s.termBalances?.term2?.fee ?? s.termBalances?.term2?.amount ?? 0);
+      const term3Fee = getNumeric(s.termBalances?.term3?.fee ?? s.termBalances?.term3?.amount ?? 0);
+      const totalFeeValue = getNumeric(s.termBalances?.term1?.fee ?? s.termBalances?.term2?.fee ?? s.termBalances?.term3?.fee ?? totalFee);
       return `
         <tr>
           <td>${admission}</td>
@@ -769,7 +805,7 @@
           <td>${s.className || s.grade || '-'}</td>
           <td style="text-align: right; font-weight: bold; color: #dc3545;">KES ${balance.toLocaleString()}</td>
           <td style="text-align: center;">${statusBadge}</td>
-          <td style="text-align: center;"><button class="btn secondary-btn view-fee-btn" data-id="${studentId}" data-admission="${admission}" data-name="${safeName}" data-grade="${s.className || s.grade || ''}">View</button></td>
+          <td style="text-align: center;"><button class="btn secondary-btn view-fee-btn" data-id="${studentId}" data-admission="${admission}" data-name="${safeName}" data-grade="${s.className || s.grade || ''}" data-expected="${totalFee}" data-paid="${paidAmount}" data-balance="${balance}" data-term1fee="${term1Fee}" data-term2fee="${term2Fee}" data-term3fee="${term3Fee}" data-totalfee="${totalFeeValue}">View</button></td>
         </tr>
       `;
     }).join('');
@@ -779,10 +815,39 @@
     outstandingTableBody.addEventListener('click', async (e) => {
       if (e.target.classList.contains('view-fee-btn')) {
         const btn = e.target;
-        await openStudentFeeDetails(btn.dataset.id, btn.dataset.admission, btn.dataset.name, btn.dataset.grade);
+        await openStudentFeeDetails(btn.dataset.id, btn.dataset.admission, btn.dataset.name, btn.dataset.grade, {
+          expected: btn.dataset.expected,
+          paid: btn.dataset.paid,
+          balance: btn.dataset.balance,
+          term1Fee: btn.dataset.term1fee,
+          term2Fee: btn.dataset.term2fee,
+          term3Fee: btn.dataset.term3fee,
+          totalFee: btn.dataset.totalfee
+        });
       }
     });
   }
+
+  const getNumeric = (val) => {
+    if (val === null || val === undefined) return 0;
+    if (typeof val === 'object') {
+      if ('amount' in val) return Number(val.amount) || 0;
+      if ('fee' in val) return Number(val.fee) || 0;
+      if ('value' in val) return Number(val.value) || 0;
+      return 0;
+    }
+    if (typeof val === 'string') {
+      const cleaned = val.replace(/[^0-9.\-]/g, '');
+      return Number(cleaned) || 0;
+    }
+    if (typeof val === 'number') return val;
+    return 0;
+  };
+
+  const formatCurrency = (value) => {
+    const numericValue = getNumeric(value);
+    return `KES ${Number.isFinite(numericValue) ? numericValue.toLocaleString() : '0'}`;
+  };
 
   if (logoutBtn) {
     logoutBtn.addEventListener("click", () => {
@@ -794,7 +859,7 @@
     });
   }
 
-  async function openStudentFeeDetails(studentId, admission, studentName, grade) {
+  async function openStudentFeeDetails(studentId, admission, studentName, grade, summaryData = {}) {
     studentFeeModalBody.innerHTML = '<div style="text-align:center; padding:20px;">Loading details...</div>';
     studentFeeDetailsModal.style.display = 'flex';
     requestAnimationFrame(() => studentFeeDetailsModal.classList.add('visible'));
@@ -808,31 +873,119 @@
     }
     
     try {
-      const [payRes, feesRes] = await Promise.all([
-        secureFetch(`${API_BASE}/users/ledger/${admission}`),
-        secureFetch(`${API_BASE}/accounts/fee-structures?limit=1000`)
-      ]);
-      
-      const payData = payRes || { payments: [] };
-      const feesData = Array.isArray(feesRes) ? feesRes : (feesRes.data || []);
-      
-      const allPayments = payData.payments || [];
-      const payments = allPayments.filter(p => Number(p.academicYear) === Number(year));
-      
-      const feeStructure = feesData.find(f => 
-        f.academicYear === Number(year) && 
-        (grade === f.grade || (grade.startsWith(f.grade) && !/\d/.test(grade.substring(f.grade.length))))
-      );
-      
-      const fees = feeStructure || { term1Fee: 0, term2Fee: 0, term3Fee: 0, totalFee: 0 };
-      
+      const matchesGrade = (candidate, target) => {
+        const normalize = (value) => String(value || '').trim().replace(/^Grade\s+/i, '').replace(/\s+/g, '');
+        const left = normalize(candidate);
+        const right = normalize(target);
+
+        // direct equality or Grade wrapper
+        if (left === right || `Grade ${left}` === right || left === `Grade ${right}`) return true;
+
+        // handle class sections like '10A' vs '10' by comparing numeric parts
+        const leftDigits = (left.match(/\d+/) || [])[0] || '';
+        const rightDigits = (right.match(/\d+/) || [])[0] || '';
+        if (leftDigits && rightDigits && leftDigits === rightDigits) return true;
+
+        // handle startsWith/includes (e.g., '10' matches '10A' or '10A' matches '10')
+        if (left && right && (left.startsWith(right) || right.startsWith(left))) return true;
+
+        return false;
+      };
+
+      let statement = null;
+      let ledgerPayload = null;
+      let feeStructuresPayload = null;
+
+      try {
+        statement = await secureFetch(`${API_BASE}/accounts/student-fee-statement/${admission}?academicYear=${year}${grade ? `&grade=${encodeURIComponent(grade)}` : ''}`);
+      } catch (err) {
+        console.warn('Fee statement endpoint failed, falling back to ledger data.', err);
+      }
+
+      if (!statement) {
+        try {
+          ledgerPayload = await secureFetch(`${API_BASE}/users/ledger/${admission}`);
+        } catch (err) {
+          console.warn('Ledger fallback failed.', err);
+        }
+
+        try {
+          feeStructuresPayload = await secureFetch(`${API_BASE}/accounts/fee-structures?limit=1000`);
+        } catch (err) {
+          console.warn('Fee structure fallback failed.', err);
+        }
+      }
+
+      const feeList = Array.isArray(feeStructuresPayload)
+        ? feeStructuresPayload
+        : Array.isArray(feeStructuresPayload?.data)
+          ? feeStructuresPayload.data
+          : [];
+
+      const directFeeStructure = statement?.feeStructure && Object.keys(statement.feeStructure).length
+        ? statement.feeStructure
+        : null;
+      let fallbackFeeStructure = feeList.find((item) => Number(item.academicYear) === Number(year) && matchesGrade(item.grade, grade)) || null;
+      // If not found, try looser matching by comparing numeric grade parts or includes
+      if (!fallbackFeeStructure && grade) {
+        const gradeDigits = (String(grade).match(/\d+/) || [])[0] || '';
+        fallbackFeeStructure = feeList.find((item) => {
+          if (Number(item.academicYear) !== Number(year)) return false;
+          if (!item.grade) return false;
+          const g = String(item.grade);
+          if (matchesGrade(g, grade)) return true;
+          const gDigits = (g.match(/\d+/) || [])[0] || '';
+          if (gradeDigits && gDigits && gradeDigits === gDigits) return true;
+          if (g.toLowerCase().includes(String(grade).toLowerCase()) || String(grade).toLowerCase().includes(g.toLowerCase())) return true;
+          return false;
+        }) || null;
+      }
+      const hasRowFeeSource = summaryData.term1Fee !== undefined || summaryData.term2Fee !== undefined || summaryData.term3Fee !== undefined || summaryData.totalFee !== undefined;
+      const rowFeeStructure = hasRowFeeSource
+        ? {
+            term1Fee: getNumeric(summaryData.term1Fee),
+            term2Fee: getNumeric(summaryData.term2Fee),
+            term3Fee: getNumeric(summaryData.term3Fee),
+            totalFee: getNumeric(summaryData.totalFee || summaryData.expected)
+          }
+        : null;
+      const matchedFeeStructure = {
+        term1Fee: rowFeeStructure?.term1Fee ?? directFeeStructure?.term1Fee ?? fallbackFeeStructure?.term1Fee ?? 0,
+        term2Fee: rowFeeStructure?.term2Fee ?? directFeeStructure?.term2Fee ?? fallbackFeeStructure?.term2Fee ?? 0,
+        term3Fee: rowFeeStructure?.term3Fee ?? directFeeStructure?.term3Fee ?? fallbackFeeStructure?.term3Fee ?? 0,
+        totalFee: rowFeeStructure?.totalFee ?? directFeeStructure?.totalFee ?? fallbackFeeStructure?.totalFee ?? getNumeric(summaryData.totalFee || summaryData.expected || 0)
+      };
+
+      const feePayload = matchedFeeStructure?.feeStructure || matchedFeeStructure;
+      const fees = feePayload || { term1Fee: 0, term2Fee: 0, term3Fee: 0, totalFee: 0 };
+      const normalizedFees = {
+        term1Fee: getNumeric(fees.term1Fee ?? fees.term1 ?? fees.Term1 ?? fees.term1Amount ?? (fees.term1 && fees.term1.amount) ?? 0),
+        term2Fee: getNumeric(fees.term2Fee ?? fees.term2 ?? fees.Term2 ?? fees.term2Amount ?? (fees.term2 && fees.term2.amount) ?? 0),
+        term3Fee: getNumeric(fees.term3Fee ?? fees.term3 ?? fees.Term3 ?? fees.term3Amount ?? (fees.term3 && fees.term3.amount) ?? 0),
+        totalFee: getNumeric(fees.totalFee ?? fees.total ?? fees.Total ?? fees.amount ?? fees.fee ?? 0)
+      };
+      if (!normalizedFees.totalFee && (normalizedFees.term1Fee || normalizedFees.term2Fee || normalizedFees.term3Fee)) {
+        normalizedFees.totalFee = normalizedFees.term1Fee + normalizedFees.term2Fee + normalizedFees.term3Fee;
+      }
+      const payments = Array.isArray(statement?.payments)
+        ? statement.payments
+        : Array.isArray(ledgerPayload?.payments)
+          ? ledgerPayload.payments.filter((payment) => Number(payment.academicYear) === Number(year))
+          : [];
+      const totals = statement?.totals || {};
       const termPaid = { "Term 1": 0, "Term 2": 0, "Term 3": 0 };
-      payments.forEach(p => {
-        if (termPaid[p.term] !== undefined) termPaid[p.term] += p.amount;
+      payments.forEach((payment) => {
+        const amount = Number(payment.amount || payment.totalAmount || 0);
+        if (termPaid[payment.term] !== undefined) {
+          termPaid[payment.term] += amount;
+        }
       });
-      
-      const totalPaid = payments.reduce((sum, p) => sum + p.amount, 0);
-      const totalBalance = fees.totalFee - totalPaid;
+
+      const paymentTotal = payments.reduce((sum, payment) => sum + Number(payment.amount || payment.totalAmount || 0), 0);
+      const totalPaid = Number(summaryData.paid ?? totals.totalPaid ?? paymentTotal ?? 0);
+      const totalFee = Number(summaryData.expected ?? totals.totalFee ?? normalizedFees.totalFee ?? 0);
+      const totalBalance = Number(summaryData.balance ?? totals.totalBalance ?? totals.balance ?? (totalFee - totalPaid));
+      const unpaidAmount = Math.max(totalFee - totalPaid, 0);
       
       let content = `
         <div id="fee-details-content">
@@ -841,7 +994,7 @@
             <p style="margin:5px 0;"><strong>Learner:</strong> ${studentName}</p>
             <p style="margin:0;"><strong>Grade:</strong> ${grade} | <strong>Year:</strong> ${year}</p>
           </div>
-          
+
           <div id="fee-structure-for-pdf" style="margin-bottom: 25px;">
             <h4 style="border-bottom: 1px solid #ccc; padding-bottom: 5px; margin-bottom: 10px;">Fee Structure & Status</h4>
             <table style="width:100%; border-collapse:collapse; font-size: 13px; margin-bottom: 15px;">
@@ -856,27 +1009,27 @@
               <tbody>
                 <tr>
                   <td style="padding:8px; border:1px solid #ddd;">Term 1</td>
-                  <td style="padding:8px; text-align:right; border:1px solid #ddd;">${(fees.term1Fee || 0).toLocaleString()}</td>
-                  <td style="padding:8px; text-align:right; border:1px solid #ddd;">${termPaid["Term 1"].toLocaleString()}</td>
-                  <td style="padding:8px; text-align:right; border:1px solid #ddd; font-weight:bold;">${(fees.term1Fee - termPaid["Term 1"]).toLocaleString()}</td>
+                  <td style="padding:8px; text-align:right; border:1px solid #ddd;">${formatCurrency(normalizedFees.term1Fee || 0)}</td>
+                  <td style="padding:8px; text-align:right; border:1px solid #ddd;">${formatCurrency(termPaid["Term 1"])}</td>
+                  <td style="padding:8px; text-align:right; border:1px solid #ddd; font-weight:bold;">${formatCurrency((normalizedFees.term1Fee || 0) - termPaid["Term 1"])}</td>
                 </tr>
                 <tr>
                   <td style="padding:8px; border:1px solid #ddd;">Term 2</td>
-                  <td style="padding:8px; text-align:right; border:1px solid #ddd;">${(fees.term2Fee || 0).toLocaleString()}</td>
-                  <td style="padding:8px; text-align:right; border:1px solid #ddd;">${termPaid["Term 2"].toLocaleString()}</td>
-                  <td style="padding:8px; text-align:right; border:1px solid #ddd; font-weight:bold;">${(fees.term2Fee - termPaid["Term 2"]).toLocaleString()}</td>
+                  <td style="padding:8px; text-align:right; border:1px solid #ddd;">${formatCurrency(normalizedFees.term2Fee || 0)}</td>
+                  <td style="padding:8px; text-align:right; border:1px solid #ddd;">${formatCurrency(termPaid["Term 2"])}</td>
+                  <td style="padding:8px; text-align:right; border:1px solid #ddd; font-weight:bold;">${formatCurrency((normalizedFees.term2Fee || 0) - termPaid["Term 2"])}</td>
                 </tr>
                 <tr>
                   <td style="padding:8px; border:1px solid #ddd;">Term 3</td>
-                  <td style="padding:8px; text-align:right; border:1px solid #ddd;">${(fees.term3Fee || 0).toLocaleString()}</td>
-                  <td style="padding:8px; text-align:right; border:1px solid #ddd;">${termPaid["Term 3"].toLocaleString()}</td>
-                  <td style="padding:8px; text-align:right; border:1px solid #ddd; font-weight:bold;">${(fees.term3Fee - termPaid["Term 3"]).toLocaleString()}</td>
+                  <td style="padding:8px; text-align:right; border:1px solid #ddd;">${formatCurrency(normalizedFees.term3Fee || 0)}</td>
+                  <td style="padding:8px; text-align:right; border:1px solid #ddd;">${formatCurrency(termPaid["Term 3"])}</td>
+                  <td style="padding:8px; text-align:right; border:1px solid #ddd; font-weight:bold;">${formatCurrency((normalizedFees.term3Fee || 0) - termPaid["Term 3"])}</td>
                 </tr>
                 <tr style="background:#f8f9fa; font-weight:bold;">
                   <td style="padding:8px; border:1px solid #ddd;">TOTAL</td>
-                  <td style="padding:8px; text-align:right; border:1px solid #ddd;">${(fees.totalFee || 0).toLocaleString()}</td>
-                  <td style="padding:8px; text-align:right; border:1px solid #ddd;">${totalPaid.toLocaleString()}</td>
-                  <td style="padding:8px; text-align:right; border:1px solid #ddd; color:${totalBalance > 0 ? '#dc3545' : '#28a745'};">${totalBalance.toLocaleString()}</td>
+                  <td style="padding:8px; text-align:right; border:1px solid #ddd;">${formatCurrency(normalizedFees.totalFee || 0)}</td>
+                  <td style="padding:8px; text-align:right; border:1px solid #ddd;">${formatCurrency(totalPaid)}</td>
+                  <td style="padding:8px; text-align:right; border:1px solid #ddd; color:${totalBalance > 0 ? '#dc3545' : '#28a745'};">${formatCurrency(totalBalance)}</td>
                 </tr>
               </tbody>
             </table>
@@ -900,14 +1053,16 @@
       if (payments.length === 0) {
         content += `<tr><td colspan="5" style="text-align:center; padding:10px;">No payments recorded for this year.</td></tr>`;
       } else {
-        payments.forEach(p => {
+        payments.forEach((payment) => {
+          const paymentDate = payment.createdAt ? new Date(payment.createdAt).toLocaleDateString() : '—';
+          const paymentAmount = Number(payment.amount || payment.totalAmount || 0);
           content += `
             <tr>
-              <td style="padding:8px; border-bottom:1px solid #eee;">${new Date(p.createdAt).toLocaleDateString()}</td>
-              <td style="padding:8px; border-bottom:1px solid #eee;">${p.reference}</td>
-              <td style="padding:8px; border-bottom:1px solid #eee;">${p.method}</td>
-              <td style="padding:8px; border-bottom:1px solid #eee;">${p.term}</td>
-              <td style="padding:8px; border-bottom:1px solid #eee; text-align:right;">${p.amount.toLocaleString()}</td>
+              <td style="padding:8px; border-bottom:1px solid #eee;">${paymentDate}</td>
+              <td style="padding:8px; border-bottom:1px solid #eee;">${payment.reference || '—'}</td>
+              <td style="padding:8px; border-bottom:1px solid #eee;">${payment.method || '—'}</td>
+              <td style="padding:8px; border-bottom:1px solid #eee;">${payment.term || '—'}</td>
+              <td style="padding:8px; border-bottom:1px solid #eee; text-align:right;">${formatCurrency(paymentAmount)}</td>
             </tr>
           `;
         });
@@ -920,7 +1075,13 @@
         </div>
       `;
       
-      studentFeeModalBody.innerHTML = content;
+      // Prepend debug panel so it's visible in modal when debugging
+      try {
+        studentFeeModalBody.innerHTML = (typeof debugHtml !== 'undefined' ? debugHtml : '') + content;
+      } catch (e) {
+        // Fallback to plain content if debug injection fails
+        studentFeeModalBody.innerHTML = content;
+      }
     } catch (err) {
       console.error("Error loading student details", err);
       studentFeeModalBody.innerHTML = '<div style="color:red; text-align:center;">Error loading details.</div>';
@@ -1271,6 +1432,35 @@
     });
   }
 
+  if (refreshBtn) {
+    refreshBtn.addEventListener('click', async () => {
+      refreshBtn.disabled = true;
+      refreshBtn.textContent = 'Refreshing...';
+
+      try {
+        outstandingCache.clear();
+        statsCache.clear();
+        feeStructuresCache.clear();
+        globalNoteCache.clear();
+
+        await Promise.all([
+          loadOutstandingFees(1, true),
+          loadStats(true),
+          loadFeeStructures(true),
+          loadGlobalFeeNote(true)
+        ]);
+
+        showToast('Accounts data refreshed', 'success');
+      } catch (err) {
+        console.error('Refresh failed:', err);
+        showToast('Refresh failed', 'error');
+      } finally {
+        refreshBtn.disabled = false;
+        refreshBtn.textContent = '🔄 Refresh';
+      }
+    });
+  }
+
   // Filter listeners
   outstandingGradeFilter?.addEventListener('change', () => loadOutstandingFees(1, true));
   outstandingSortFilter?.addEventListener('change', () => loadOutstandingFees(1));
@@ -1318,9 +1508,72 @@
   });
 
   // ---------------------------
+  // CROSS-PAGE PAYMENT SIGNAL LISTENER
+  // ---------------------------
+  let lastPaymentSignalTime = 0;
+
+  // Listen for storage events (cross-tab payments)
+  window.addEventListener('storage', (e) => {
+    if (e.key === 'paymentRecorded') {
+      console.log('[Accounts] Payment detected from another tab, refreshing...');
+      outstandingCache.clear();
+      statsCache.clear();
+      loadOutstandingFees(1, true);
+      loadStats(true);
+    }
+  });
+
+  // Listen for custom payment event (same-tab payments)
+  window.addEventListener('paymentRecorded', (e) => {
+    console.log('[Accounts] Payment detected (custom event), refreshing...', e.detail);
+    lastPaymentSignalTime = Date.now();
+    outstandingCache.clear();
+    statsCache.clear();
+    feeStructuresCache.clear();
+    loadOutstandingFees(1, true);
+    loadStats(true);
+    loadFeeStructures(true);
+  });
+
+  // More aggressive same-tab check - run every 500ms for 5 seconds after page load
+  const paymentCheckInterval = setInterval(() => {
+    const paymentTime = Math.max(
+      parseInt(sessionStorage.getItem('paymentRecorded') || '0'),
+      parseInt(localStorage.getItem('paymentRecorded') || '0')
+    );
+    const now = Date.now();
+    
+    // If payment signal detected and it's recent (within 5 seconds), refresh
+    if (paymentTime > 0 && now - paymentTime < 5000 && now - lastPaymentSignalTime > 1000) {
+      console.log('[Accounts] Payment detected on same tab, refreshing table and stats...');
+      lastPaymentSignalTime = now;
+      outstandingCache.clear();
+      statsCache.clear();
+      feeStructuresCache.clear();
+      loadOutstandingFees(1, true);
+      loadStats(true);
+      loadFeeStructures(true);
+    }
+  }, 500);
+
+  // Stop checking after 30 seconds to avoid performance impact
+  setTimeout(() => clearInterval(paymentCheckInterval), 30000);
+
+  // ---------------------------
   // INITIALIZATION
   // ---------------------------
   (async function init() {
+    // Check if there was a recent payment while this page was closed
+    const lastPaymentTime = Math.max(
+      parseInt(sessionStorage.getItem('paymentRecorded') || '0'),
+      parseInt(localStorage.getItem('paymentRecorded') || '0')
+    );
+    const now = Date.now();
+    if (lastPaymentTime > 0 && now - lastPaymentTime < 60000) {
+      console.log('[Accounts] Recent payment detected on initialization, will refresh data...');
+      lastPaymentSignalTime = Date.now();
+    }
+    
     userProfile = await authService.getUserProfile(["accounts", "admin"]);
     if (!userProfile) return;
     authService.initLogout();

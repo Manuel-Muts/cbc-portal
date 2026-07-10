@@ -11,6 +11,7 @@ import axios from "axios"; // Import axios
 import Payment from "../models/Payment.js";
 import { PassThrough } from 'stream';
 import cache from "../utils/cacheManager.js";
+import { buildGradeMatch, getAllowedGradesForSchoolType } from "../utils/accountsQueryHelpers.js";
 
 const getImageBase64FromUrl = async (url) => {
   try {
@@ -20,6 +21,43 @@ const getImageBase64FromUrl = async (url) => {
     console.error(`Error fetching image from URL ${url}:`, error);
     return null;
   }
+};
+
+const formatClassLabel = (grade, stream) => {
+  const normalizedGrade = grade ? String(grade).trim() : "Not Assigned";
+  const normalizedStream = stream ? String(stream).trim().toUpperCase() : "";
+
+  const gradeText = normalizedGrade.toUpperCase().startsWith("GRADE ")
+    ? normalizedGrade
+    : (normalizedGrade === "PG" || normalizedGrade === "PP1" || normalizedGrade === "PP2" || /^\d+$/.test(normalizedGrade)
+      ? `Grade ${normalizedGrade}`
+      : normalizedGrade);
+
+  return normalizedStream ? `${gradeText}${normalizedStream}` : gradeText;
+};
+
+const sortGradesForDisplay = (grades = []) => {
+  const gradeRank = (value) => {
+    const normalized = String(value || "").trim().toUpperCase();
+
+    if (normalized === "PG") return 0;
+    if (normalized === "PP1") return 1;
+    if (normalized === "PP2") return 2;
+
+    const match = normalized.match(/^(?:GRADE\s*)?(\d{1,2})$/);
+    if (match) return 3 + Number(match[1]);
+
+    return 1000;
+  };
+
+  return [...grades].sort((a, b) => {
+    const aRank = gradeRank(a);
+    const bRank = gradeRank(b);
+
+    if (aRank !== bRank) return aRank - bRank;
+
+    return String(a || "").localeCompare(String(b || ""), undefined, { numeric: true, sensitivity: "base" });
+  });
 };
 
 export const generateFeeStructuresPDF = async (req, res) => {
@@ -450,16 +488,11 @@ export const getOutstandingFees = async (req, res) => {
     const school = await School.findById(req.user.schoolId).select('schoolType').lean();
     if (!school) return res.status(404).json({ message: 'School not found' });
 
+    const { name, class: classFilter, academicYear, term, page: pageQuery, limit: limitQuery, sort } = req.query;
     const schoolType = school.schoolType || 'full';
-    const SCHOOL_TYPES = {
-      full: { gradeOptions: ["PG", "PP1", "PP2", "Grade 1","Grade 2","Grade 3","Grade 4","Grade 5","Grade 6","Grade 7","Grade 8","Grade 9","Grade 10","Grade 11","Grade 12"] },
-      primary_junior: { gradeOptions: ["PG", "PP1", "PP2", "Grade 1","Grade 2","Grade 3","Grade 4","Grade 5","Grade 6","Grade 7","Grade 8","Grade 9"] },
-      senior: { gradeOptions: ["Grade 10","Grade 11","Grade 12"] }
-    };
-    const allowedGrades = SCHOOL_TYPES[schoolType].gradeOptions;
+    const gradeMatch = buildGradeMatch(schoolType, classFilter);
 
     // Construct cache key (ignore '_t' for standard UI browsing)
-    const { name, class: classFilter, academicYear, term, page: pageQuery, limit: limitQuery, sort } = req.query;
     const queryForCache = { ...req.query };
     const limitQueryInt = parseInt(limitQuery, 10);
     if (limitQueryInt <= 50 || isNaN(limitQueryInt)) delete queryForCache._t;
@@ -472,135 +505,188 @@ export const getOutstandingFees = async (req, res) => {
 
     const page = parseInt(pageQuery) || 1;
     const limit = parseInt(limitQuery) || 10;
+    const skip = (page - 1) * limit;
     const yearToUse = parseInt(academicYear) || new Date().getFullYear();
+    const schoolIdObj = new mongoose.Types.ObjectId(req.user.schoolId);
 
-    // 🔎 1. Get active enrollments for the selected year and school type
-    const enrollmentQuery = {
-      schoolId: req.user.schoolId,
+    const matchStage = {
+      schoolId: schoolIdObj,
       academicYear: yearToUse,
       status: "active",
-      grade: classFilter ? classFilter : { $in: allowedGrades }
+      grade: gradeMatch
     };
 
-    const enrollments = await StudentEnrollment.find(enrollmentQuery).select("studentId grade stream").lean();
-    const activeStudentIds = enrollments.map(e => e.studentId);
+    const isNumericSearch = name && /^\d+$/.test(name);
+    const searchStage = name
+      ? (isNumericSearch
+        ? [{ $match: { "student.admission": name } }]
+        : [{ $match: { $or: [{ "student.name": { $regex: name, $options: "i" } }, { "student.admission": { $regex: name, $options: "i" } }] } }])
+      : [];
 
-    // 2. Fetch Student details for active students only
-    const userQuery = {
-      _id: { $in: activeStudentIds },
-      schoolId: req.user.schoolId
-    };
-    if (name) {
-      // 🆕 Smart filtering: exact match for numeric admission, regex for names
-      const isNumericSearch = /^\d+$/.test(name);
-      
-      if (isNumericSearch) {
-        // For numeric searches, match admission exactly
-        userQuery.$or = [
-          { admission: name }
-        ];
-      } else {
-        // For text searches, use regex on both name and admission fields
-        userQuery.$or = [
-          { name: { $regex: name, $options: "i" } },
-          { admission: { $regex: name, $options: "i" } }
-        ];
-      }
-    }
-    const students = await Student.find(userQuery).select("name admission _id").lean();
-
-    if (students.length === 0) {
-       const response = { students: [], total: 0, totalPages: 0, currentPage: page };
-       cache.set(cacheKey, response, 120);
-       return res.json(response);
-    }
-
-    const studentIdsToFetch = students.map(s => s._id);
-
-    // 3. Batch Fetch Payments
-    const payments = await Payment.find({
-      studentId: { $in: studentIdsToFetch },
-      academicYear: yearToUse,
-      isReversed: { $ne: true }
-    }).select("studentId amount term").lean();
-
-    // 4. Batch Fetch Fee Structures
-    const feeStructures = await FeeStructure.find({
-      schoolId: req.user.schoolId,
-      academicYear: yearToUse
-    }).lean();
-
-    // 5. Process in memory
-    let studentData = students.map(student => {
-      const sId = String(student._id);
-      const enrollment = enrollments.find(e => String(e.studentId) === sId);
-
-      if (!enrollment) return null;
-      
-      const fee = feeStructures.find(f => f.grade === enrollment.grade) || {};
-      const sPayments = payments.filter(p => String(p.studentId) === sId);
-      
-      const termPaid = { "Term 1": 0, "Term 2": 0, "Term 3": 0 };
-      sPayments.forEach(p => {
-        if (termPaid[p.term] !== undefined) termPaid[p.term] += p.amount;
-      });
-      
-      const totalPaid = Object.values(termPaid).reduce((a, b) => a + b, 0);
-      const totalFee = fee.totalFee || 0;
-      
-      const balanceData = {
-        totalFee,
-        totalPaid,
-        balance: totalFee - totalPaid,
-        termBalances: {
-          term1: { fee: fee.term1Fee || 0, paid: termPaid["Term 1"], balance: (fee.term1Fee || 0) - termPaid["Term 1"] },
-          term2: { fee: fee.term2Fee || 0, paid: termPaid["Term 2"], balance: (fee.term2Fee || 0) - termPaid["Term 2"] },
-          term3: { fee: fee.term3Fee || 0, paid: termPaid["Term 3"], balance: (fee.term3Fee || 0) - termPaid["Term 3"] }
-        }
-      };
-
-      return {
-        studentId: student._id,
-        admission: student.admission,
-        className: enrollment.stream ? `${enrollment.grade}${enrollment.stream}` : enrollment.grade,
-        studentName: student.name,
-        expected: balanceData.totalFee,
-        paid: balanceData.totalPaid,
-        balance: balanceData.balance,
-        termBalances: balanceData.termBalances
-      };
-    }).filter(Boolean);
-
-    let outstandingStudents;
-    if (term) {
+    const termFilterStage = (() => {
+      if (!term) return null;
       const termKey = term.toLowerCase().replace(/\s+/g, '');
-      outstandingStudents = studentData.filter(s => s.termBalances && s.termBalances[termKey] && s.termBalances[termKey].balance > 0);
-    } else {
-      outstandingStudents = studentData.filter(s => s.balance > 0);
-    }
+      const balancePath = `termBalances.${termKey}.balance`;
+      return { $match: { [balancePath]: { $gt: 0 } } };
+    })();
 
-    if (sort) {
+    const sortStage = (() => {
+      if (!sort) return { $sort: { balance: -1 } };
       const [field, order] = sort.split('_');
-      const multiplier = order === 'desc' ? -1 : 1;
+      const direction = order === 'asc' ? 1 : -1;
+      if (field === 'balance') return { $sort: { balance: direction } };
+      if (field === 'name') return { $sort: { studentName: direction } };
+      if (field === 'admission') return { $sort: { admission: direction } };
+      return { $sort: { balance: -1 } };
+    })();
 
-      outstandingStudents.sort((a, b) => {
-        if (field === 'balance') return (a.balance - b.balance) * multiplier;
-        if (field === 'name') return a.studentName.localeCompare(b.studentName) * multiplier;
-        if (field === 'admission') return a.admission.localeCompare(b.admission, undefined, { numeric: true }) * multiplier;
-        return 0;
-      });
-    }
+    const pipeline = [
+      { $match: matchStage },
+      {
+        $lookup: {
+          from: 'users',
+          localField: 'studentId',
+          foreignField: '_id',
+          as: 'student'
+        }
+      },
+      { $unwind: '$student' },
+      ...searchStage,
+      {
+        $lookup: {
+          from: 'feestructures',
+          let: { eGrade: '$grade' },
+          pipeline: [
+            {
+              $match: {
+                $expr: {
+                  $and: [
+                    { $eq: ['$schoolId', schoolIdObj] },
+                    { $eq: ['$academicYear', yearToUse] },
+                    { $eq: ['$grade', '$$eGrade'] }
+                  ]
+                }
+              }
+            }
+          ],
+          as: 'feeStructure'
+        }
+      },
+      { $unwind: { path: '$feeStructure', preserveNullAndEmptyArrays: true } },
+      {
+        $lookup: {
+          from: 'payments',
+          let: { studentId: '$studentId' },
+          pipeline: [
+            {
+              $match: {
+                $expr: {
+                  $and: [
+                    { $eq: ['$studentId', '$$studentId'] },
+                    { $eq: ['$schoolId', schoolIdObj] },
+                    { $eq: ['$academicYear', yearToUse] },
+                    { $ne: ['$isReversed', true] }
+                  ]
+                }
+              }
+            },
+            { $group: { _id: '$term', totalAmount: { $sum: '$amount' } } }
+          ],
+          as: 'paymentSummaries'
+        }
+      },
+      {
+        $project: {
+          _id: '$student._id',
+          studentId: '$student._id',
+          studentName: '$student.name',
+          admission: '$student.admission',
+          className: {
+            $cond: [
+              { $ifNull: ['$stream', false] },
+              { $concat: ['$grade', '$stream'] },
+              '$grade'
+            ]
+          },
+          expected: { $ifNull: ['$feeStructure.totalFee', 0] },
+          term1Fee: { $ifNull: ['$feeStructure.term1Fee', 0] },
+          term2Fee: { $ifNull: ['$feeStructure.term2Fee', 0] },
+          term3Fee: { $ifNull: ['$feeStructure.term3Fee', 0] },
+          term1Paid: {
+            $reduce: {
+              input: '$paymentSummaries',
+              initialValue: 0,
+              in: {
+                $cond: [{ $eq: ['$$this._id', 'Term 1'] }, { $add: ['$$value', '$$this.totalAmount'] }, '$$value']
+              }
+            }
+          },
+          term2Paid: {
+            $reduce: {
+              input: '$paymentSummaries',
+              initialValue: 0,
+              in: {
+                $cond: [{ $eq: ['$$this._id', 'Term 2'] }, { $add: ['$$value', '$$this.totalAmount'] }, '$$value']
+              }
+            }
+          },
+          term3Paid: {
+            $reduce: {
+              input: '$paymentSummaries',
+              initialValue: 0,
+              in: {
+                $cond: [{ $eq: ['$$this._id', 'Term 3'] }, { $add: ['$$value', '$$this.totalAmount'] }, '$$value']
+              }
+            }
+          }
+        }
+      },
+      {
+        $addFields: {
+          totalPaid: { $add: ['$term1Paid', '$term2Paid', '$term3Paid'] },
+          balance: { $subtract: ['$expected', { $add: ['$term1Paid', '$term2Paid', '$term3Paid'] }] },
+          termBalances: {
+            term1: {
+              fee: '$term1Fee',
+              paid: '$term1Paid',
+              balance: { $subtract: ['$term1Fee', '$term1Paid'] }
+            },
+            term2: {
+              fee: '$term2Fee',
+              paid: '$term2Paid',
+              balance: { $subtract: ['$term2Fee', '$term2Paid'] }
+            },
+            term3: {
+              fee: '$term3Fee',
+              paid: '$term3Paid',
+              balance: { $subtract: ['$term3Fee', '$term3Paid'] }
+            }
+          }
+        }
+      }
+    ];
 
-    const total = outstandingStudents.length;
-    const paginatedStudents = outstandingStudents.slice((page - 1) * limit, page * limit);
+    if (termFilterStage) pipeline.push(termFilterStage);
+    pipeline.push({
+      $facet: {
+        metadata: [{ $count: 'total' }],
+        data: [sortStage, { $skip: skip }, { $limit: limit }]
+      }
+    });
 
-    const response = { 
-      students: paginatedStudents, 
-      total, 
-      totalPages: Math.ceil(total / limit), 
+    const aggregationResult = await StudentEnrollment.aggregate(pipeline).allowDiskUse(true);
+    const metadata = aggregationResult[0]?.metadata?.[0] || { total: 0 };
+    const students = aggregationResult[0]?.data || [];
+    const total = metadata.total || 0;
+
+    const response = {
+      students,
+      total,
+      totalPages: Math.ceil(total / limit),
       currentPage: page,
-      totalFilteredStudents: studentData.length 
+      totalFilteredStudents: total
     };
+
     cache.set(cacheKey, response, 120);
     res.json(response);
   } catch (err) {
@@ -1186,19 +1272,14 @@ export const getSchoolTotals = async (req, res) => {
     const school = await School.findById(req.user.schoolId).select('schoolType').lean();
     if (!school) return res.status(404).json({ message: 'School not found' });
     const schoolType = school.schoolType || 'full';
-    const SCHOOL_TYPES = {
-      full: { gradeOptions: ["PG", "PP1", "PP2", "Grade 1","Grade 2","Grade 3","Grade 4","Grade 5","Grade 6","Grade 7","Grade 8","Grade 9","Grade 10","Grade 11","Grade 12"] },
-      primary_junior: { gradeOptions: ["PG", "PP1", "PP2", "Grade 1","Grade 2","Grade 3","Grade 4","Grade 5","Grade 6","Grade 7","Grade 8","Grade 9"] },
-      senior: { gradeOptions: ["Grade 10","Grade 11","Grade 12"] }
-    };
-    const allowedGrades = SCHOOL_TYPES[schoolType].gradeOptions;
+    const gradeMatch = buildGradeMatch(schoolType, null);
 
     // 🔎 Get only active student IDs for this year and school type to filter income
     const enrollments = await StudentEnrollment.find({
       schoolId: schoolId,
       academicYear,
       status: "active",
-      grade: { $in: allowedGrades }
+      grade: gradeMatch
     }).select("studentId").lean();
     const activeStudentIds = enrollments.map(e => e.studentId);
 
@@ -1248,12 +1329,7 @@ export const getSchoolOverviewStats = async (req, res) => {
     const school = await School.findById(req.user.schoolId).select('schoolType').lean();
     if (!school) return res.status(404).json({ message: 'School not found' });
     const schoolType = school.schoolType || 'full';
-    const SCHOOL_TYPES = {
-      full: { gradeOptions: ["PG", "PP1", "PP2", "Grade 1","Grade 2","Grade 3","Grade 4","Grade 5","Grade 6","Grade 7","Grade 8","Grade 9","Grade 10","Grade 11","Grade 12"] },
-      primary_junior: { gradeOptions: ["PG", "PP1", "PP2", "Grade 1","Grade 2","Grade 3","Grade 4","Grade 5","Grade 6","Grade 7","Grade 8","Grade 9"] },
-      senior: { gradeOptions: ["Grade 10","Grade 11","Grade 12"] }
-    };
-    const allowedGrades = SCHOOL_TYPES[schoolType].gradeOptions;
+    const gradeMatch = buildGradeMatch(schoolType, grade);
 
     // ---------------------------
     // 1. Get Enrolled Students
@@ -1262,7 +1338,7 @@ export const getSchoolOverviewStats = async (req, res) => {
       schoolId: schoolId,
       academicYear,
       status: "active",
-      grade: grade ? grade : { $in: allowedGrades }
+      grade: gradeMatch
     };
 
     const enrollments = await StudentEnrollment.find(enrollmentMatch)
@@ -1272,32 +1348,7 @@ export const getSchoolOverviewStats = async (req, res) => {
     const studentIds = enrollments.map(e => e.studentId);
 
     // ---------------------------
-    // 2. Total Paid (Income)
-    // ---------------------------
-    const paymentMatch = {
-      schoolId: schoolId,
-      academicYear,
-      isReversed: { $ne: true },
-      studentId: { $in: studentIds }
-    };
-
-    if (term) paymentMatch.term = term;
-
-    const totalPaidResult = await Payment.aggregate([
-      { $match: paymentMatch },
-      {
-        $group: {
-          _id: null,
-          totalPaid: { $sum: "$amount" }
-        }
-      }
-    ]);
-
-    const totalPaid =
-      totalPaidResult.length > 0 ? totalPaidResult[0].totalPaid : 0;
-
-    // ---------------------------
-    // 3. Expected Fees + Learners
+    // 2. Totals in one aggregation pass
     // ---------------------------
     let feeField = "$feeStructure.totalFee";
 
@@ -1305,7 +1356,7 @@ export const getSchoolOverviewStats = async (req, res) => {
     else if (term === "Term 2") feeField = "$feeStructure.term2Fee";
     else if (term === "Term 3") feeField = "$feeStructure.term3Fee";
 
-    const expectedFeesAndLearners = await StudentEnrollment.aggregate([
+    const overviewStatsResult = await StudentEnrollment.aggregate([
       { $match: enrollmentMatch },
       {
         $lookup: {
@@ -1334,26 +1385,60 @@ export const getSchoolOverviewStats = async (req, res) => {
         }
       },
       {
+        $lookup: {
+          from: "payments",
+          let: { studentId: "$studentId" },
+          pipeline: [
+            {
+              $match: {
+                $expr: {
+                  $and: [
+                    { $eq: ["$studentId", "$$studentId"] },
+                    { $eq: ["$schoolId", schoolId] },
+                    { $eq: ["$academicYear", academicYear] },
+                    { $ne: ["$isReversed", true] },
+                    ...(term ? [{ $eq: ["$term", term] }] : [])
+                  ]
+                }
+              }
+            }
+          ],
+          as: "payments"
+        }
+      },
+      {
+        $addFields: {
+          paidAmount: {
+            $reduce: {
+              input: "$payments",
+              initialValue: 0,
+              in: { $add: ["$$value", { $ifNull: ["$$this.amount", 0] }] }
+            }
+          }
+        }
+      },
+      {
         $group: {
           _id: null,
+          totalPaid: { $sum: "$paidAmount" },
           totalExpectedFees: { $sum: { $ifNull: [feeField, 0] } },
           totalLearners: { $sum: 1 }
         }
       }
     ]);
 
-    const totalExpectedFees =
-      expectedFeesAndLearners.length > 0
-        ? expectedFeesAndLearners[0].totalExpectedFees
-        : 0;
+    const stats = overviewStatsResult[0] || {
+      totalPaid: 0,
+      totalExpectedFees: 0,
+      totalLearners: 0
+    };
 
-    const totalLearners =
-      expectedFeesAndLearners.length > 0
-        ? expectedFeesAndLearners[0].totalLearners
-        : 0;
+    const totalPaid = stats.totalPaid || 0;
+    const totalExpectedFees = stats.totalExpectedFees || 0;
+    const totalLearners = stats.totalLearners || 0;
 
     // ---------------------------
-    // 4. Outstanding Balance
+    // 3. Outstanding Balance
     // ---------------------------
     const totalOutstandingBalance = totalExpectedFees - totalPaid;
 
@@ -1366,6 +1451,259 @@ export const getSchoolOverviewStats = async (req, res) => {
 
   } catch (err) {
     console.error("Get School Overview Stats Error:", err);
+    res.status(500).json({ message: err.message });
+  }
+};
+
+// ---------------------------
+// GET LEARNER DEMOGRAPHICS ANALYTICS (Admin Dashboard)
+// ---------------------------
+export const getLearnerDemographics = async (req, res) => {
+  try {
+    if (!req.user || !req.user.schoolId) {
+      return res.status(400).json({ message: 'No school assigned' });
+    }
+
+    const academicYear = parseInt(req.query.academicYear) || new Date().getFullYear();
+    const { grade, stream } = req.query;
+    const schoolId = new mongoose.Types.ObjectId(req.user.schoolId);
+
+    // 🔎 Get school info
+    const school = await School.findById(req.user.schoolId).select('schoolType').lean();
+    if (!school) return res.status(404).json({ message: 'School not found' });
+
+    // Build match stage for enrollments
+    const matchStage = {
+      schoolId: schoolId,
+      academicYear: academicYear,
+      status: "active"
+    };
+
+    // Apply grade filter if provided
+    if (grade) {
+      matchStage.grade = grade;
+    }
+
+    // Apply stream filter if provided
+    if (stream) {
+      matchStage.stream = stream;
+    }
+
+    // Get all unique grades and streams for filter options
+    const gradesAndStreams = await StudentEnrollment.aggregate([
+      { $match: { schoolId: schoolId, academicYear: academicYear, status: "active" } },
+      {
+        $group: {
+          _id: null,
+          grades: { $addToSet: "$grade" },
+          streams: { $addToSet: "$stream" }
+        }
+      },
+      { $project: { grades: 1, streams: { $filter: { input: "$streams", cond: { $ne: ["$$this", null] } } } } }
+    ]);
+
+    const availableGrades = gradesAndStreams[0]?.grades || [];
+    const availableStreams = gradesAndStreams[0]?.streams || [];
+
+    // ---------------------------
+    // 1. OVERALL DEMOGRAPHICS
+    // ---------------------------
+    const overallDemographics = await StudentEnrollment.aggregate([
+      { $match: matchStage },
+      {
+        $lookup: {
+          from: "users",
+          localField: "studentId",
+          foreignField: "_id",
+          as: "student"
+        }
+      },
+      { $unwind: "$student" },
+      {
+        $group: {
+          _id: "$student.gender",
+          count: { $sum: 1 }
+        }
+      }
+    ]);
+
+    // Format overall demographics
+    const genderBreakdown = {
+      male: 0,
+      female: 0,
+      other: 0,
+      notSpecified: 0
+    };
+
+    let totalLearners = 0;
+    overallDemographics.forEach(item => {
+      if (!item._id) {
+        genderBreakdown.notSpecified = item.count;
+      } else if (item._id.toLowerCase() === 'male') {
+        genderBreakdown.male = item.count;
+      } else if (item._id.toLowerCase() === 'female') {
+        genderBreakdown.female = item.count;
+      } else {
+        genderBreakdown.other = item.count;
+      }
+      totalLearners += item.count;
+    });
+
+    // Calculate percentages
+    const malePercentage = totalLearners > 0 ? ((genderBreakdown.male / totalLearners) * 100).toFixed(2) : 0;
+    const femalePercentage = totalLearners > 0 ? ((genderBreakdown.female / totalLearners) * 100).toFixed(2) : 0;
+
+    // ---------------------------
+    // 2. DEMOGRAPHICS BY CLASS / STREAM
+    // ---------------------------
+    const byClass = await StudentEnrollment.aggregate([
+      { $match: matchStage },
+      {
+        $lookup: {
+          from: "users",
+          localField: "studentId",
+          foreignField: "_id",
+          as: "student"
+        }
+      },
+      { $unwind: "$student" },
+      {
+        $group: {
+          _id: {
+            grade: "$grade",
+            stream: "$stream",
+            gender: "$student.gender"
+          },
+          count: { $sum: 1 }
+        }
+      },
+      {
+        $sort: { "_id.grade": 1, "_id.stream": 1 }
+      }
+    ]);
+
+    const classMap = {};
+    byClass.forEach(item => {
+      const gradeValue = item._id.grade || "Not Assigned";
+      const streamValue = item._id.stream || null;
+      const classKey = formatClassLabel(gradeValue, streamValue);
+
+      if (!classMap[classKey]) {
+        classMap[classKey] = {
+          label: classKey,
+          grade: gradeValue,
+          stream: streamValue,
+          male: 0,
+          female: 0,
+          other: 0,
+          notSpecified: 0,
+          total: 0
+        };
+      }
+
+      const genderKey = !item._id.gender
+        ? "notSpecified"
+        : item._id.gender.toLowerCase() === "male"
+        ? "male"
+        : item._id.gender.toLowerCase() === "female"
+        ? "female"
+        : "other";
+
+      classMap[classKey][genderKey] = item.count;
+      classMap[classKey].total += item.count;
+    });
+
+    const classBreakdown = Object.values(classMap).map(entry => ({
+      ...entry,
+      malePercentage: entry.total > 0 ? ((entry.male / entry.total) * 100).toFixed(2) : 0,
+      femalePercentage: entry.total > 0 ? ((entry.female / entry.total) * 100).toFixed(2) : 0
+    }));
+
+    const gradeBreakdown = classBreakdown;
+    const streamBreakdown = [];
+
+    // ---------------------------
+    // 4. AGE STATISTICS (if DOB available)
+    // ---------------------------
+    const ageStats = await StudentEnrollment.aggregate([
+      { $match: matchStage },
+      {
+        $lookup: {
+          from: "users",
+          localField: "studentId",
+          foreignField: "_id",
+          as: "student"
+        }
+      },
+      { $unwind: "$student" },
+      { $match: { "student.dateOfBirth": { $exists: true, $ne: null } } },
+      {
+        $project: {
+          age: {
+            $divide: [
+              { $subtract: [new Date(), "$student.dateOfBirth"] },
+              1000 * 60 * 60 * 24 * 365.25
+            ]
+          }
+        }
+      },
+      {
+        $group: {
+          _id: null,
+          avgAge: { $avg: "$age" },
+          minAge: { $min: "$age" },
+          maxAge: { $max: "$age" },
+          countWithDOB: { $sum: 1 }
+        }
+      }
+    ]);
+
+    const ageData = ageStats[0] || {
+      avgAge: 0,
+      minAge: 0,
+      maxAge: 0,
+      countWithDOB: 0
+    };
+
+    // Round age values
+    const avgAge = ageData.avgAge ? Math.round(ageData.avgAge * 100) / 100 : 0;
+    const minAge = ageData.minAge ? Math.round(ageData.minAge * 100) / 100 : 0;
+    const maxAge = ageData.maxAge ? Math.round(ageData.maxAge * 100) / 100 : 0;
+
+    // Response
+    res.json({
+      summary: {
+        totalLearners,
+        totalLearnersCounted: totalLearners,
+        academicYear,
+        filters: {
+          grade: grade || null,
+          stream: stream || null
+        }
+      },
+      genderBreakdown: {
+        ...genderBreakdown,
+        malePercentage: parseFloat(malePercentage),
+        femalePercentage: parseFloat(femalePercentage),
+        total: totalLearners
+      },
+      classBreakdown,
+      gradeBreakdown,
+      streamBreakdown,
+      ageStatistics: {
+        averageAge: avgAge,
+        minAge,
+        maxAge,
+        learnersWithDOB: ageData.countWithDOB
+      },
+      filterOptions: {
+        availableGrades: sortGradesForDisplay(availableGrades),
+        availableStreams: [...availableStreams].sort()
+      }
+    });
+
+  } catch (err) {
+    console.error("Get Learner Demographics Error:", err);
     res.status(500).json({ message: err.message });
   }
 };

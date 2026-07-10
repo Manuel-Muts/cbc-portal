@@ -799,13 +799,6 @@ function attachAdminSignatureLogic() {
     } catch (e) { console.warn('Allocation hide indicator error', e); }
   }
 
-  const getDefaultRangeForSchoolType = () => {
-    const s = getSchoolConfig();
-    if (!s) return "";
-    const rangeOptions = Array.isArray(s.config?.rangeOptions) ? s.config.rangeOptions : [];
-    return rangeOptions[0] || "";
-  };
-
   const populateGradeRangeOptions = () => {
     if (!gradeRangeSelect) return;
     const s = getSchoolConfig();
@@ -969,12 +962,6 @@ function attachAdminSignatureLogic() {
     populatePromotionGradeOptions();
     populateBulkDeleteGradeOptions();
     populatePromotionYearOptions();
-
-    const defaultRange = getDefaultRangeForSchoolType();
-    if (gradeRangeSelect && defaultRange) {
-      gradeRangeSelect.value = defaultRange;
-      populateGradeSelectionForRange(defaultRange);
-    }
   };
 
   const getNextGrade = (currentGrade) => {
@@ -1881,6 +1868,57 @@ confirmPromotionBtn.addEventListener("click", async () => {
   };
 }
 
+function formatDateForDisplay(value) {
+  if (!value) return "";
+
+  const text = String(value).trim();
+  if (!text) return "";
+
+  if (/^\d{4}-\d{2}-\d{2}$/.test(text)) return text;
+  if (/^\d{4}-\d{2}-\d{2}T/.test(text)) return text.slice(0, 10);
+
+  const parsed = new Date(text);
+  if (!Number.isNaN(parsed.getTime())) {
+    return `${parsed.getUTCFullYear()}-${String(parsed.getUTCMonth() + 1).padStart(2, '0')}-${String(parsed.getUTCDate()).padStart(2, '0')}`;
+  }
+
+  return text;
+}
+
+function getAgeFromDateOfBirth(value) {
+  if (!value) return null;
+
+  const text = String(value).trim();
+  if (!text) return null;
+
+  let birthDate = null;
+
+  if (/^\d{4}-\d{2}-\d{2}$/.test(text)) {
+    const [year, month, day] = text.split('-').map(Number);
+    birthDate = new Date(year, month - 1, day);
+  } else if (/^\d{4}-\d{2}-\d{2}T/.test(text)) {
+    const [year, month, day] = text.slice(0, 10).split('-').map(Number);
+    birthDate = new Date(year, month - 1, day);
+  } else {
+    const parsed = new Date(text);
+    if (Number.isNaN(parsed.getTime())) return null;
+    birthDate = new Date(parsed.getFullYear(), parsed.getMonth(), parsed.getDate());
+  }
+
+  if (!birthDate || Number.isNaN(birthDate.getTime())) return null;
+
+  const today = new Date();
+  let age = today.getFullYear() - birthDate.getFullYear();
+  const monthDiff = today.getMonth() - birthDate.getMonth();
+  const dayDiff = today.getDate() - birthDate.getDate();
+
+  if (monthDiff < 0 || (monthDiff === 0 && dayDiff < 0)) {
+    age -= 1;
+  }
+
+  return age;
+}
+
 // ---------------------------
 // EDIT STUDENT PROFILE MODAL
 // ---------------------------
@@ -1906,6 +1944,25 @@ function openEditProfileModal(userToEdit) {
         <label>Contact:</label>
         <input type="text" id="editProfileContact" value="${userToEdit.contact || ''}" style="width:100%;padding:8px;border:1px solid #ccc;border-radius:4px;" />
       </div>
+      ${isStudent ? `
+      <div style="margin:15px 0;">
+        <label>Gender (Optional):</label>
+        <select id="editProfileGender" style="width:100%;padding:8px;border:1px solid #ccc;border-radius:4px;">
+          <option value="">-- Select --</option>
+          <option value="Male" ${userToEdit.gender === 'Male' ? 'selected' : ''}>Male</option>
+          <option value="Female" ${userToEdit.gender === 'Female' ? 'selected' : ''}>Female</option>
+          <option value="Other" ${userToEdit.gender === 'Other' ? 'selected' : ''}>Other</option>
+          <option value="Prefer not to say" ${userToEdit.gender === 'Prefer not to say' ? 'selected' : ''}>Prefer not to say</option>
+        </select>
+      </div>
+      <div style="margin:15px 0;">
+        <label style="display:flex;justify-content:space-between;align-items:center;gap:10px;">
+          <span>Date of Birth (Optional):</span>
+          ${userToEdit.dateOfBirth ? `<span style="background:#e8f0fe;color:#1d4ed8;padding:3px 8px;border-radius:999px;font-size:12px;font-weight:600;">Age ${getAgeFromDateOfBirth(userToEdit.dateOfBirth)}</span>` : ''}
+        </label>
+        <input type="text" id="editProfileDob" value="${formatDateForDisplay(userToEdit.dateOfBirth)}" style="width:100%;padding:8px;border:1px solid #ccc;border-radius:4px;margin-top:6px;" placeholder="dd/mm/yyyy" />
+      </div>
+      ` : ''}
       <div style="display:flex;gap:10px;margin-top:20px;">
         <button id="saveProfileBtn" style="flex:1;padding:10px;background:#2ecc71;color:#fff;border:none;border-radius:4px;cursor:pointer;">Save</button>
         <button id="cancelProfileBtn" style="flex:1;padding:10px;background:#95a5a6;color:#fff;border:none;border-radius:4px;cursor:pointer;">Cancel</button>
@@ -1930,6 +1987,10 @@ function openEditProfileModal(userToEdit) {
 
     if (isStudent) {
       payload.admission = document.getElementById("editProfileIdentifier").value.trim();
+      const gender = document.getElementById("editProfileGender")?.value?.trim() || "";
+      const dob = document.getElementById("editProfileDob")?.value?.trim() || "";
+      if (gender) payload.gender = gender;
+      if (dob) payload.dateOfBirth = dob;
     } else {
       payload.email = document.getElementById("editProfileIdentifier").value.trim();
     }
@@ -2858,13 +2919,15 @@ studentSearchBody.addEventListener("click", async (e) => {
     const studentName = btn.dataset.studentName;
     const studentAdmission = btn.dataset.studentAdmission;
     const studentContact = btn.dataset.studentContact;
+    const studentGender = btn.dataset.studentGender;
+    const studentDob = btn.dataset.studentDob;
 
     if (!studentId) {
       showToast("Student ID missing", "error");
       return;
     }
 
-    openEditProfileModal({ id: studentId, name: studentName, admission: studentAdmission, contact: studentContact });
+    openEditProfileModal({ id: studentId, name: studentName, admission: studentAdmission, contact: studentContact, gender: studentGender, dateOfBirth: studentDob });
   } catch (err) {
     console.error("Edit profile error:", err);
     showToast(err.message || "Failed to open profile editor", "error");
@@ -2944,13 +3007,29 @@ studentSearchBody.addEventListener("click", async (e) => {
   // ---------------------------
   // DYNAMIC GRADE & SUBJECT MULTI-SELECT
   // ---------------------------
+  function toggleStreamSelectionUI(streamSelect, streamDisplay, hasStreams) {
+    if (!streamSelect || !streamDisplay) return;
+
+    const showDropdown = Array.isArray(hasStreams) && hasStreams.length > 0;
+    streamSelect.style.display = showDropdown ? "" : "none";
+    streamDisplay.style.display = showDropdown ? "none" : "flex";
+    streamDisplay.textContent = showDropdown ? "" : "No stream";
+  }
+
   // 🆕 Helper to populate stream dropdowns for allocation sections
   async function updateStreamDropdown(grade, elementId) {
     const streamSelect = document.getElementById(elementId);
-    if (!streamSelect || !grade) return;
-    
+    const streamDisplay = document.getElementById(`${elementId}Display`);
+    if (!streamSelect) return;
+
     streamSelect.innerHTML = '<option value="">-- No Stream --</option>';
-    
+    streamSelect.value = "";
+
+    if (!grade) {
+      toggleStreamSelectionUI(streamSelect, streamDisplay, []);
+      return;
+    }
+
     let streams = streamsCache.get(grade);
     if (!streams) {
       try {
@@ -2963,24 +3042,39 @@ studentSearchBody.addEventListener("click", async (e) => {
       }
     }
 
-    if (streams && Array.isArray(streams)) {
-      streams.forEach(s => {
-        const opt = document.createElement("option");
-        opt.value = s;
-        opt.textContent = `Stream ${s}`;
-        streamSelect.appendChild(opt);
-      });
-    }
+    const cleanedStreams = Array.isArray(streams)
+      ? streams.filter((s) => {
+          const normalized = String(s ?? "").trim();
+          return normalized !== "" && normalized.toLowerCase() !== "null" && normalized.toLowerCase() !== "undefined";
+        }).map((s) => String(s).trim())
+      : [];
+
+    cleanedStreams.forEach((s) => {
+      const opt = document.createElement("option");
+      opt.value = s;
+      opt.textContent = `Stream ${s}`;
+      streamSelect.appendChild(opt);
+    });
+
+    toggleStreamSelectionUI(streamSelect, streamDisplay, cleanedStreams);
   }
 
   // 🆕 Attach listeners to handle grade selection changes for streams
   gradesSelect?.addEventListener("change", () => {
-    if (gradesSelect.value) updateStreamDropdown(gradesSelect.value, "streamInput");
+    updateStreamDropdown(gradesSelect.value, "streamInput");
   });
 
   classGradeSelect?.addEventListener("change", () => {
-    if (classGradeSelect.value) updateStreamDropdown(classGradeSelect.value, "classStreamInput");
+    updateStreamDropdown(classGradeSelect.value, "classStreamInput");
   });
+
+  if (gradesSelect?.value) {
+    updateStreamDropdown(gradesSelect.value, "streamInput");
+  }
+
+  if (classGradeSelect?.value) {
+    updateStreamDropdown(classGradeSelect.value, "classStreamInput");
+  }
 
   if (gradeRangeSelect) {
     gradeRangeSelect.addEventListener("change", () => {
@@ -3282,7 +3376,7 @@ studentSearchBtn.addEventListener("click", async () => {
         <td>
           <button class="btn-history" data-student-id="${s.studentId}" data-student-name="${s.name}">📋 History</button>
           <button class="btn-edit" data-enrollment-id="${s.enrollmentId}" data-student-id="${s.studentId}">✏️ Edit Enrollment</button>
-          <button class="btn-edit-profile" data-student-id="${s.studentId}" data-student-name="${s.name}" data-student-admission="${s.admission}" data-student-grade="${s.grade}" data-student-contact="${s.contact || ''}">👤 Edit Profile</button>
+          <button class="btn-edit-profile" data-student-id="${s.studentId}" data-student-name="${s.name}" data-student-admission="${s.admission}" data-student-grade="${s.grade}" data-student-contact="${s.contact || ''}" data-student-gender="${s.gender || ''}" data-student-dob="${s.dateOfBirth || ''}">👤 Edit Profile</button>
         </td>
       `;
 

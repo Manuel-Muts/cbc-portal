@@ -1,0 +1,403 @@
+/* docs/css/learner-demographics.css */
+
+/* Container and Layout */
+.demographics-dashboard {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  padding: 0;
+}
+
+/* Summary Cards Grid */
+.summary-cards-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 15px;
+  margin-bottom: 20px;
+}
+
+.stats-card {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  padding: 20px;
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+.stats-card:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.stats-icon {
+  font-size: 32px;
+  line-height: 1;
+  min-width: 40px;
+}
+
+.stats-content {
+  flex: 1;
+}
+
+.stats-label {
+  font-size: 12px;
+  color: #666;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  font-weight: 600;
+  margin-bottom: 5px;
+}
+
+.stats-value {
+  font-size: 28px;
+  font-weight: bold;
+  color: #2c3e50;
+  line-height: 1;
+}
+
+.stats-percentage {
+  font-size: 14px;
+  color: #27ae60;
+  font-weight: 600;
+  margin-top: 5px;
+}
+
+.stats-year {
+  font-size: 11px;
+  color: #999;
+  margin-top: 5px;
+}
+
+/* Section Cards */
+.section-card {
+  background: white;
+  border-radius: 8px;
+  padding: 25px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.section-card h3 {
+  margin: 0 0 20px 0;
+  font-size: 18px;
+  color: #2c3e50;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Gender Cards */
+.gender-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 15px;
+}
+
+.gender-card {
+  background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+  padding: 20px;
+  border-radius: 10px;
+  text-align: center;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+  transition: transform 0.3s ease;
+}
+
+.gender-card:hover {
+  transform: translateY(-3px);
+}
+
+.gender-card h4 {
+  margin: 0 0 10px 0;
+  font-size: 14px;
+  color: #2c3e50;
+  font-weight: 600;
+}
+
+.gender-card.male-card {
+  background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%);
+  border-left: 4px solid #3498db;
+}
+
+.gender-card.female-card {
+  background: linear-gradient(135deg, #fce4ec 0%, #f8bbd0 100%);
+  border-left: 4px solid #e74c3c;
+}
+
+.gender-card.other-card {
+  background: linear-gradient(135deg, #f3e5f5 0%, #e1bee7 100%);
+  border-left: 4px solid #9c27b0;
+}
+
+.gender-card.not-specified-card {
+  background: linear-gradient(135deg, #fff3e0 0%, #ffe0b2 100%);
+  border-left: 4px solid #f39c12;
+}
+
+.gender-count {
+  font-size: 36px;
+  font-weight: bold;
+  color: #2c3e50;
+  margin: 10px 0;
+  line-height: 1;
+}
+
+.gender-percentage {
+  font-size: 18px;
+  font-weight: 600;
+  color: #27ae60;
+  margin-bottom: 12px;
+}
+
+.progress-bar {
+  background-color: rgba(255, 255, 255, 0.5);
+  border-radius: 10px;
+  height: 8px;
+  overflow: hidden;
+  margin-top: 10px;
+}
+
+.progress-fill {
+  height: 100%;
+  border-radius: 10px;
+  transition: width 0.3s ease;
+}
+
+/* Tables */
+.table-responsive {
+  overflow-x: auto;
+}
+
+.demographics-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 15px;
+}
+
+.demographics-table thead {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  font-weight: 600;
+}
+
+.demographics-table th {
+  padding: 15px;
+  text-align: left;
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.demographics-table td {
+  padding: 12px 15px;
+  border-bottom: 1px solid #ecf0f1;
+  font-size: 14px;
+}
+
+.demographics-table tbody tr:hover {
+  background-color: #f8f9fa;
+}
+
+.demographics-table tbody tr:nth-child(even) {
+  background-color: #f5f7fa;
+}
+
+.demographics-table strong {
+  color: #2c3e50;
+  font-weight: 600;
+}
+
+/* Badges */
+.badge {
+  display: inline-block;
+  padding: 4px 10px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 600;
+  color: white;
+}
+
+.badge-blue {
+  background-color: #3498db;
+}
+
+.badge-red {
+  background-color: #e74c3c;
+}
+
+/* Age Statistics */
+.age-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 15px;
+  margin-top: 15px;
+}
+
+.age-stat-card {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  padding: 20px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  box-shadow: 0 4px 8px rgba(102, 126, 234, 0.3);
+  transition: transform 0.3s ease;
+}
+
+.age-stat-card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 6px 12px rgba(102, 126, 234, 0.4);
+}
+
+.age-stat-icon {
+  font-size: 28px;
+  line-height: 1;
+}
+
+.age-stat-content {
+  flex: 1;
+}
+
+.age-stat-label {
+  font-size: 12px;
+  opacity: 0.9;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  font-weight: 600;
+  margin-bottom: 5px;
+}
+
+.age-stat-value {
+  font-size: 24px;
+  font-weight: bold;
+  line-height: 1;
+}
+
+/* Error Message */
+.error-message {
+  background-color: #fee;
+  color: #c33;
+  padding: 15px;
+  border-radius: 8px;
+  border-left: 4px solid #c33;
+  font-weight: 500;
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+  .summary-cards-grid {
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 10px;
+  }
+
+  .stats-card {
+    padding: 15px;
+  }
+
+  .stats-value {
+    font-size: 22px;
+  }
+
+  .stats-icon {
+    font-size: 24px;
+  }
+
+  .gender-cards {
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 10px;
+  }
+
+  .gender-count {
+    font-size: 28px;
+  }
+
+  .demographics-table {
+    font-size: 12px;
+  }
+
+  .demographics-table th,
+  .demographics-table td {
+    padding: 10px;
+  }
+
+  .section-card {
+    padding: 15px;
+  }
+
+  .section-card h3 {
+    font-size: 16px;
+  }
+
+  .age-stats-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .age-stat-card {
+    padding: 15px;
+  }
+
+  .age-stat-icon {
+    font-size: 20px;
+  }
+
+  .age-stat-value {
+    font-size: 18px;
+  }
+}
+
+@media (max-width: 480px) {
+  .summary-cards-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .gender-cards {
+    grid-template-columns: 1fr;
+  }
+
+  .age-stats-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .demographics-table {
+    font-size: 11px;
+  }
+
+  .demographics-table th,
+  .demographics-table td {
+    padding: 8px;
+  }
+
+  .stats-value {
+    font-size: 20px;
+  }
+
+  .gender-count {
+    font-size: 24px;
+  }
+}
+
+/* Print Styles */
+@media print {
+  .demographics-dashboard {
+    background: white;
+  }
+
+  .section-card {
+    page-break-inside: avoid;
+    box-shadow: none;
+    border: 1px solid #ddd;
+  }
+
+  .stats-card,
+  .gender-card {
+    box-shadow: none;
+    border: 1px solid #ddd;
+  }
+
+  .demographics-table {
+    width: 100%;
+  }
+}

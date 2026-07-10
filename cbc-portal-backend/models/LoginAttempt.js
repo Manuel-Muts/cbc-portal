@@ -21,5 +21,7 @@ loginAttemptSchema.index(
   { createdAt: 1 },
   { expireAfterSeconds: 604800 } // 7 days in seconds
 );
+loginAttemptSchema.index({ schoolId: 1, success: 1, createdAt: -1 });
+loginAttemptSchema.index({ identifier: 1, createdAt: -1 });
 
 export default mongoose.model('LoginAttempt', loginAttemptSchema);

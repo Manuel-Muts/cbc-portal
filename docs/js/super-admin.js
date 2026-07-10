@@ -414,9 +414,15 @@ setCache(cacheKey, metrics);
         contentArea.innerHTML = `
           <div class="card">
             <h2>System Settings</h2>
-            <div id="settingsArea">
-              <label><input type="checkbox" id="maintenanceMode"> Maintenance Mode</label><br>
-              <label><input type="checkbox" id="registrationOpen"> Allow Registrations</label><br>
+            <div id="settingsArea" class="settings-panel">
+              <div class="settings-toggle-row">
+                <label for="maintenanceMode">Maintenance Mode</label>
+                <input type="checkbox" id="maintenanceMode">
+              </div>
+              <div class="settings-toggle-row">
+                <label for="registrationOpen">Allow Registrations</label>
+                <input type="checkbox" id="registrationOpen">
+              </div>
               <button id="saveSettingsBtn" class="primary-btn">Save Settings</button>
               
               <hr style="margin: 25px 0; border: 0; border-top: 1px solid #eee;">
@@ -756,22 +762,31 @@ setCache(cacheKey, metrics);
       <div id="addSchoolModal" class="modal hidden">
         <div class="modal-content">
           <h3>Add New School</h3>
-          <label>School Name</label>
+          <label>School Name <span class="required-field">*</span></label>
           <input type="text" id="newSchoolName">
-          <label>Admin Email</label>
+          <label>Admin Email <span class="required-field">*</span></label>
           <input type="email" id="newSchoolAdmin">
-          <label>Address</label>
+          <label>Address <span class="required-field">*</span></label>
           <input type="text" id="newSchoolAddress">
           <label>Logo</label>
           <input type="file" id="newSchoolLogo" accept="image/*">
-          <label>School Type</label>
+          <label>School Type <span class="required-field">*</span></label>
           <select id="newSchoolType">
+            <option value="">-- Select School Type --</option>
             <option value="full">Full School (Grades 1-12)</option>
             <option value="primary_junior">Primary + Junior (Grades 1-9)</option>
             <option value="senior">Senior School (Grades 10-12)</option>
           </select>
-          <label><input type="checkbox" id="newSchoolRegistrationOpen" checked> Allow Student Registrations</label>
-          <label><input type="checkbox" id="newSchoolAllowSignatureUpload" checked> Allow Signature Uploads</label>
+          <div class="modal-checkbox-section">
+            <div class="modal-checkbox-row">
+              <label for="newSchoolRegistrationOpen" class="modal-checkbox-label">Allow Student Registrations</label>
+              <input type="checkbox" id="newSchoolRegistrationOpen" checked>
+            </div>
+            <div class="modal-checkbox-row">
+              <label for="newSchoolAllowSignatureUpload" class="modal-checkbox-label">Allow Signature Uploads</label>
+              <input type="checkbox" id="newSchoolAllowSignatureUpload" checked>
+            </div>
+          </div>
           <button id="saveSchoolBtn" class="primary-btn">Save</button>
           <button id="cancelAddSchoolBtn" class="close-btn">Cancel</button>
         </div>
@@ -780,22 +795,31 @@ setCache(cacheKey, metrics);
       <div id="editSchoolModal" class="modal hidden">
         <div class="modal-content">
           <h3>Edit School</h3>
-          <label>School Name</label>
+          <label>School Name <span class="required-field">*</span></label>
           <input type="text" id="editSchoolName">
-          <label>Admin Email</label>
+          <label>Admin Email <span class="required-field">*</span></label>
           <input type="email" id="editSchoolAdmin">
-          <label>Address</label>
+          <label>Address <span class="required-field">*</span></label>
           <input type="text" id="editSchoolAddress">
           <label>Logo</label>
           <input type="file" id="editSchoolLogo" accept="image/*">
-          <label>School Type</label>
+          <label>School Type <span class="required-field">*</span></label>
           <select id="editSchoolType">
+            <option value="">-- Select School Type --</option>
             <option value="full">Full School (Grades 1-12)</option>
             <option value="primary_junior">Primary + Junior (Grades 1-9)</option>
             <option value="senior">Senior School (Grades 10-12)</option>
           </select>
-          <label><input type="checkbox" id="editSchoolRegistrationOpen"> Allow Student Registrations</label>
-          <label><input type="checkbox" id="editSchoolAllowSignatureUpload"> Allow Signature Uploads</label>
+          <div class="modal-checkbox-section">
+            <div class="modal-checkbox-row">
+              <label for="editSchoolRegistrationOpen" class="modal-checkbox-label">Allow Student Registrations</label>
+              <input type="checkbox" id="editSchoolRegistrationOpen">
+            </div>
+            <div class="modal-checkbox-row">
+              <label for="editSchoolAllowSignatureUpload" class="modal-checkbox-label">Allow Signature Uploads</label>
+              <input type="checkbox" id="editSchoolAllowSignatureUpload">
+            </div>
+          </div>
           <button id="updateSchoolBtn" class="primary-btn">Update</button>
           <button id="cancelEditSchoolBtn" class="close-btn">Cancel</button>
         </div>
@@ -948,53 +972,60 @@ if (nextSchoolsBtn) {
       document.querySelectorAll(".editSchoolBtn").forEach(btn => {
         btn.addEventListener("click", async () => {
           const id = btn.dataset.id;
-          const res = await authFetch(`/schools/${id}`);
-          const school = await res.json();
+          window.spinner?.show(btn, "Opening...");
 
-          document.getElementById("editSchoolName").value = school.name;
-          document.getElementById("editSchoolAdmin").value = school.adminEmail;
-          document.getElementById("editSchoolAddress").value = school.address || '';
-          document.getElementById("editSchoolType").value = school.schoolType || 'full';
-          document.getElementById("editSchoolRegistrationOpen").checked = school.registrationOpen !== false;
-          document.getElementById("editSchoolAllowSignatureUpload").checked = school.allowSignatureUpload !== false;
-          document.getElementById("editSchoolModal").classList.remove("hidden");
+          try {
+            const res = await authFetch(`/schools/${id}`);
+            if (!res) return;
+            const school = await res.json();
 
-          // Show paybill modal if needed
-          showPaybillModalIfNeeded(school);
+            document.getElementById("editSchoolName").value = school.name;
+            document.getElementById("editSchoolAdmin").value = school.adminEmail;
+            document.getElementById("editSchoolAddress").value = school.address || '';
+            document.getElementById("editSchoolType").value = school.schoolType || 'full';
+            document.getElementById("editSchoolRegistrationOpen").checked = school.registrationOpen !== false;
+            document.getElementById("editSchoolAllowSignatureUpload").checked = school.allowSignatureUpload !== false;
+            document.getElementById("editSchoolModal").classList.remove("hidden");
 
-          const updateBtn = document.getElementById("updateSchoolBtn");
-          updateBtn.onclick = async () => {
-            const name = document.getElementById("editSchoolName").value.trim();
-            const adminEmail = document.getElementById("editSchoolAdmin").value.trim();
-            const address = document.getElementById("editSchoolAddress").value.trim();
-            const logoFile = document.getElementById("editSchoolLogo").files[0];
+            // Show paybill modal if needed
+            showPaybillModalIfNeeded(school);
 
-            if (!name || !adminEmail || !address) return alert("Fill all fields");
+            const updateBtn = document.getElementById("updateSchoolBtn");
+            updateBtn.onclick = async () => {
+              const name = document.getElementById("editSchoolName").value.trim();
+              const adminEmail = document.getElementById("editSchoolAdmin").value.trim();
+              const address = document.getElementById("editSchoolAddress").value.trim();
+              const logoFile = document.getElementById("editSchoolLogo").files[0];
 
-            window.spinner?.show(updateBtn, "Updating...");
+              if (!name || !adminEmail || !address) return alert("Fill all fields");
 
-            const formData = new FormData();
-            formData.append("name", name);
-            formData.append("adminEmail", adminEmail);
-            formData.append("address", address);
-            formData.append("schoolType", document.getElementById("editSchoolType").value);
-            formData.append("registrationOpen", document.getElementById("editSchoolRegistrationOpen").checked);
-            formData.append("allowSignatureUpload", document.getElementById("editSchoolAllowSignatureUpload").checked);
-            if (logoFile) formData.append("logo", logoFile);
+              window.spinner?.show(updateBtn, "Updating...");
 
-            try {
-              await authFetch(`/schools/${id}`, {
-                method: "PUT",
-                body: formData
-              });
+              const formData = new FormData();
+              formData.append("name", name);
+              formData.append("adminEmail", adminEmail);
+              formData.append("address", address);
+              formData.append("schoolType", document.getElementById("editSchoolType").value);
+              formData.append("registrationOpen", document.getElementById("editSchoolRegistrationOpen").checked);
+              formData.append("allowSignatureUpload", document.getElementById("editSchoolAllowSignatureUpload").checked);
+              if (logoFile) formData.append("logo", logoFile);
 
-              document.getElementById("editSchoolModal").classList.add("hidden");
-              invalidateSchoolManagementCaches({ lists: true, options: true, overview: true });
-              loadSchools(currentSchoolPage, true);
-            } finally {
-              window.spinner?.hide(updateBtn);
-            }
-          };
+              try {
+                await authFetch(`/schools/${id}`, {
+                  method: "PUT",
+                  body: formData
+                });
+
+                document.getElementById("editSchoolModal").classList.add("hidden");
+                invalidateSchoolManagementCaches({ lists: true, options: true, overview: true });
+                loadSchools(currentSchoolPage, true);
+              } finally {
+                window.spinner?.hide(updateBtn);
+              }
+            };
+          } finally {
+            window.spinner?.hide(btn);
+          }
         });
       });
 
@@ -1142,12 +1173,14 @@ if (nextSchoolsBtn) {
       <div id="addAdminModal" class="modal hidden">
         <div class="modal-content">
           <h3>Add New Admin</h3>
-          <label>Full Name</label>
+          <label>Full Name <span class="required-field">*</span></label>
           <input type="text" id="newAdminName">
-          <label>Email</label>
+          <label>School Email <span class="required-field">*</span></label>
           <input type="email" id="newAdminEmail">
-          <label>Assign School</label>
-          <select id="newAdminSchool"></select>
+          <label>School <span class="required-field">*</span></label>
+          <select id="newAdminSchool">
+            <option value="">-- Select School --</option>
+          </select>
           <button id="saveAdminBtn" class="primary-btn">Save</button>
           <button id="cancelAddAdminBtn" class="close-btn">Cancel</button>
         </div>
@@ -1155,12 +1188,14 @@ if (nextSchoolsBtn) {
       <div id="editAdminModal" class="modal hidden">
         <div class="modal-content">
           <h3>Edit Admin</h3>
-          <label>Full Name</label>
+          <label>Full Name <span class="required-field">*</span></label>
           <input type="text" id="editAdminName">
-          <label>Email</label>
+          <label>School Email <span class="required-field">*</span></label>
           <input type="email" id="editAdminEmail">
-          <label>School</label>
-          <select id="editAdminSchool"></select>
+          <label>School <span class="required-field">*</span></label>
+          <select id="editAdminSchool">
+            <option value="">-- Select School --</option>
+          </select>
           <button id="updateAdminBtn" class="primary-btn">Update</button>
           <button id="cancelEditAdminBtn" class="close-btn">Cancel</button>
         </div>
@@ -1260,36 +1295,43 @@ if (nextSchoolsBtn) {
       document.querySelectorAll(".editAdminBtn").forEach(btn => {
         btn.addEventListener("click", async () => {
           const id = btn.dataset.id;
-          const res = await authFetch(`/admins/${id}`);
-          const admin = await res.json();
+          window.spinner?.show(btn, "Opening...");
 
-          const schoolId = admin.schoolId && typeof admin.schoolId === 'object'
-            ? (admin.schoolId._id || admin.schoolId.id || '')
-            : (admin.schoolId || '');
+          try {
+            const res = await authFetch(`/admins/${id}`);
+            if (!res) return;
+            const admin = await res.json();
 
-          document.getElementById("editAdminName").value = admin.name;
-          document.getElementById("editAdminEmail").value = admin.email;
-          document.getElementById("editAdminSchool").value = schoolId;
-          const editModal = document.getElementById("editAdminModal");
-          editModal.classList.remove("hidden");
-          editModal.classList.add("visible");
+            const schoolId = admin.schoolId && typeof admin.schoolId === 'object'
+              ? (admin.schoolId._id || admin.schoolId.id || '')
+              : (admin.schoolId || '');
 
-          const updateBtn = document.getElementById("updateAdminBtn");
-          updateBtn.onclick = async () => {
-            window.spinner.show(updateBtn, "Updating...");
-            try {
-              const name = document.getElementById("editAdminName").value.trim();
-              const email = document.getElementById("editAdminEmail").value.trim();
-              const schoolId = document.getElementById("editAdminSchool").value;
-              await authFetch(`/admins/${id}`, { method: "PUT", body: JSON.stringify({ name, email, schoolId }) });
-              editModal.classList.add("hidden");
-              editModal.classList.remove("visible");
-              invalidateAdminManagementCaches();
-              loadAdmins(currentAdminPage, true);
-            } finally {
-              window.spinner.hide(updateBtn);
-            }
-          };
+            document.getElementById("editAdminName").value = admin.name;
+            document.getElementById("editAdminEmail").value = admin.email;
+            document.getElementById("editAdminSchool").value = schoolId;
+            const editModal = document.getElementById("editAdminModal");
+            editModal.classList.remove("hidden");
+            editModal.classList.add("visible");
+
+            const updateBtn = document.getElementById("updateAdminBtn");
+            updateBtn.onclick = async () => {
+              window.spinner?.show(updateBtn, "Updating...");
+              try {
+                const name = document.getElementById("editAdminName").value.trim();
+                const email = document.getElementById("editAdminEmail").value.trim();
+                const schoolId = document.getElementById("editAdminSchool").value;
+                await authFetch(`/admins/${id}`, { method: "PUT", body: JSON.stringify({ name, email, schoolId }) });
+                editModal.classList.add("hidden");
+                editModal.classList.remove("visible");
+                invalidateAdminManagementCaches();
+                loadAdmins(currentAdminPage, true);
+              } finally {
+                window.spinner?.hide(updateBtn);
+              }
+            };
+          } finally {
+            window.spinner?.hide(btn);
+          }
         });
       });
 

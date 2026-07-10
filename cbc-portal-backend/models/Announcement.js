@@ -19,7 +19,8 @@ const announcementSchema = new mongoose.Schema({
 
 // Index for faster filtering by role and status
 announcementSchema.index({ targetRole: 1, isActive: 1, targetGrade: 1, targetStream: 1, schoolId: 1 });
-
+announcementSchema.index({ schoolId: 1, isActive: 1, createdAt: -1 });
+announcementSchema.index({ targetRole: 1, schoolId: 1, isActive: 1, targetPage: 1 });
 
 const Announcement = mongoose.model('Announcement', announcementSchema);
 export default Announcement;

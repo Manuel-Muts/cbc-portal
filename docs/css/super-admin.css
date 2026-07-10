@@ -197,6 +197,45 @@ body {
   cursor: pointer;
 }
 
+.required-field {
+  color: #dc2626;
+  margin-left: 4px;
+  font-weight: 700;
+}
+
+.modal-checkbox-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 14px 0 18px;
+}
+
+.modal-checkbox-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid #e5edf7;
+  border-radius: 10px;
+  background: #f8fbff;
+}
+
+.modal-checkbox-label {
+  margin: 0;
+  font-weight: 600;
+  color: #334155;
+  flex: 1;
+}
+
+.modal-checkbox-row input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  accent-color: #2563eb;
+  cursor: pointer;
+}
+
 .primary-btn:hover {
   background: #1f6691;
 }
@@ -599,3 +638,7 @@ input:checked + .slider:before {
 .settings-area { display:flex; flex-direction:column; gap:8px; }
 .settings-area label { font-size:0.95rem; }
 .settings-area button { align-self:flex-start; }
+.settings-panel { display:flex; flex-direction:column; gap:12px; max-width:520px; }
+.settings-toggle-row { display:flex; align-items:center; justify-content:space-between; gap:16px; padding:10px 12px; border:1px solid #e2e8f0; border-radius:8px; background:#f8fafc; }
+.settings-toggle-row label { margin:0; font-weight:600; color:#334155; }
+.settings-toggle-row input { width:auto; margin:0; accent-color:#2563eb; }

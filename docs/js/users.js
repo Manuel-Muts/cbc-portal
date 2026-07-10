@@ -180,11 +180,15 @@
       const gradeField = document.getElementById("studentGrade")?.parentElement;
       const streamField = document.getElementById("studentStream")?.parentElement;
       const pathwayField = document.getElementById("studentPathway")?.parentElement;
+      const genderField = document.getElementById("studentGender")?.parentElement;
+      const dobField = document.getElementById("studentDob")?.parentElement;
       const contactField = document.getElementById("studentContact")?.parentElement;
 
       if (admField) admField.style.display = isStudent ? "block" : "none";
       if (gradeField) gradeField.style.display = isStudent ? "block" : "none";
       if (streamField) streamField.style.display = isStudent ? "block" : "none";
+      if (genderField) genderField.style.display = isStudent ? "block" : "none";
+      if (dobField) dobField.style.display = isStudent ? "block" : "none";
       if (pathwayField) {
         const isSenior = isStudent && window.cbcUtils.isSeniorGrade(document.getElementById("studentGrade")?.value);
         pathwayField.style.display = isSenior ? "block" : "none";
@@ -194,7 +198,7 @@
       // 🆕 Update contact field label based on role
       const contactLabel = contactField?.querySelector('label');
       if (contactLabel) {
-        contactLabel.textContent = isStudent ? "Parent Contact (optional)" : "Teacher Contact (optional)";
+        contactLabel.textContent = isStudent ? "Parent Contact" : "Teacher Contact";
       }
 
       // Show student-specific filters and print button in the management table
@@ -502,6 +506,8 @@ if (usersNextPageBtn) {
       const admission = document.getElementById("userAdmission").value.trim();
       const grade = document.getElementById("studentGrade").value;
       const stream = document.getElementById("studentStream").value.trim();
+      const gender = document.getElementById("studentGender")?.value?.trim() || "";
+      const dateOfBirth = document.getElementById("studentDob")?.value?.trim() || "";
       const rawPathway = document.getElementById("studentPathway")?.value || null;
       const pathway = rawPathway ? (window.cbcUtils?.normalizePathway?.(rawPathway) || String(rawPathway).trim()) : null;
       const contact = document.getElementById("studentContact").value.trim();
@@ -537,6 +543,8 @@ if (usersNextPageBtn) {
         body.grade = grade;
         if (pathway) body.pathway = pathway;
         if (stream) body.stream = stream;
+        if (gender) body.gender = gender;
+        if (dateOfBirth) body.dateOfBirth = dateOfBirth;
       } else {
         body.email = normalizedEmail;
       }
@@ -635,7 +643,11 @@ if (usersNextPageBtn) {
           const workbook = XLSX.read(data, { type: "array" });
           const firstSheetName = workbook.SheetNames[0];
           const worksheet = workbook.Sheets[firstSheetName];
-          const jsonData = XLSX.utils.sheet_to_json(worksheet);
+          const jsonData = XLSX.utils.sheet_to_json(worksheet, {
+            defval: "",
+            raw: false,
+            cellDates: true
+          });
 
           if (jsonData.length === 0) {
             showToast("File appears to be empty", "error");
@@ -661,14 +673,77 @@ if (usersNextPageBtn) {
             return;
           }
 
+           const normalizeHeaderKey = (value) => {
+             if (value === undefined || value === null) return "";
+             return String(value)
+               .trim()
+               .toLowerCase()
+               .replace(/[^a-z0-9]+/g, "");
+           };
+
+           const normalizeGenderValue = (value) => {
+             if (value === undefined || value === null || value === "") return null;
+
+             const normalized = String(value).trim().toLowerCase();
+             if (["male", "m", "boy", "man"].includes(normalized)) return "Male";
+             if (["female", "f", "girl", "woman"].includes(normalized)) return "Female";
+             if (["other", "others", "nonbinary", "non-binary", "prefer not to say", "prefer not to say", "prefer not say", "not say"].includes(normalized)) return "Prefer not to say";
+             return String(value).trim();
+           };
+
+           const formatDateValue = (value) => {
+             if (value === undefined || value === null || value === "") return undefined;
+
+             if (value instanceof Date) {
+               return `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, '0')}-${String(value.getDate()).padStart(2, '0')}`;
+             }
+
+             if (typeof value === "number" && Number.isFinite(value)) {
+               const serial = Number(value);
+               const excelEpoch = new Date(Date.UTC(1899, 11, 30));
+               const parsed = new Date(excelEpoch.getTime() + serial * 24 * 60 * 60 * 1000);
+               if (!Number.isNaN(parsed.getTime())) {
+                 return `${parsed.getUTCFullYear()}-${String(parsed.getUTCMonth() + 1).padStart(2, '0')}-${String(parsed.getUTCDate()).padStart(2, '0')}`;
+               }
+             }
+
+             const raw = String(value).trim();
+             if (!raw) return undefined;
+
+             const numeric = Number(raw);
+             if (Number.isFinite(numeric) && Math.abs(numeric) > 1000) {
+               const excelEpoch = new Date(Date.UTC(1899, 11, 30));
+               const parsed = new Date(excelEpoch.getTime() + numeric * 24 * 60 * 60 * 1000);
+               if (!Number.isNaN(parsed.getTime())) {
+                 return `${parsed.getUTCFullYear()}-${String(parsed.getUTCMonth() + 1).padStart(2, '0')}-${String(parsed.getUTCDate()).padStart(2, '0')}`;
+               }
+             }
+
+             const parsedDate = new Date(raw);
+             if (!Number.isNaN(parsedDate.getTime())) {
+               return `${parsedDate.getFullYear()}-${String(parsedDate.getMonth() + 1).padStart(2, '0')}-${String(parsedDate.getDate()).padStart(2, '0')}`;
+             }
+
+             return raw;
+           };
+
+           const normalizeImportValue = (value) => {
+             return String(value).trim();
+           };
+
            // Robust column mapping helper
            const getVal = (row, ...keys) => {
-             const rowKeys = Object.keys(row);
+             const normalizedKeys = Object.keys(row).reduce((acc, rk) => {
+               acc[normalizeHeaderKey(rk)] = rk;
+               return acc;
+             }, {});
+
              for (const key of keys) {
-               const match = rowKeys.find(rk => rk.trim().toLowerCase() === key.toLowerCase());
+               const normalizedKey = normalizeHeaderKey(key);
+               const match = normalizedKeys[normalizedKey];
                if (match !== undefined) {
                  const val = row[match];
-                 return (val !== undefined && val !== null) ? String(val).trim() : undefined;
+                 return normalizeImportValue(val);
                }
              }
              return undefined;
@@ -684,6 +759,8 @@ if (usersNextPageBtn) {
              const stream = getVal(row, "Stream","stream","STREAM", "Class Stream", "Section");
              const contact = getVal(row, "Contact","contact", "Phone","phone", "Parent Contact", "Contact Number", "Telephone", "Mobile");
              const pathway=getVal(row,"pathway","PATHWAY","Pathway","Senior Pathway","senior pathway");
+             const gender = normalizeGenderValue(getVal(row, "Gender","gender","GENDER", "Sex","sex","SEX"));
+             const dateOfBirth = formatDateValue(getVal(row, "Date of Birth", "Date Of Birth", "DATE OF BIRTH", "date of birth","DateOfBirth","dateOfBirth","DOB","dob","Date of Birth (Optional)", "DOB (Optional)"));
              const normalizedPathway = pathway ? (window.cbcUtils?.normalizePathway?.(pathway) || String(pathway).trim()) : null;
  
              if (!name || admission === undefined || grade === undefined) {
@@ -691,7 +768,16 @@ if (usersNextPageBtn) {
                continue;
              }
  
-             studentsToRegister.push({ name, admission, grade, stream: stream || null, contact: contact || null, pathway: normalizedPathway });
+             studentsToRegister.push({
+               name,
+               admission,
+               grade,
+               stream: stream || null,
+               contact: contact || null,
+               pathway: normalizedPathway,
+               gender: gender || null,
+               dateOfBirth: dateOfBirth || null
+             });
            }
  
            if (studentsToRegister.length === 0) {

@@ -9,9 +9,15 @@ import { calculateBalance } from "../services/balanceService.js";
 import FeeStructure from "../models/FeeStructure.js";
 import Setting from "../models/Setting.js";
 import cache from "../utils/cacheManager.js";
+import { buildGradeMatch } from "../utils/accountsQueryHelpers.js";
 
 const escapeRegex = (text) => {
   return text.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, "\\$&");
+};
+
+const invalidateSchoolFinanceCaches = (schoolId) => {
+  cache.clearByPattern(String(schoolId));
+  cache.clearByPattern('outstanding_');
 };
 
 export const recordPayment = async (req, res) => {
@@ -107,8 +113,7 @@ export const recordPayment = async (req, res) => {
       await processTermPayment("Term 2", term2.balance, "T2");
       await processTermPayment("Term 3", term3.balance, "T3"); // T3 absorbs any excess
 
-      // Invalidate cache for this school
-      cache.clearByPattern(req.user.schoolId);
+      invalidateSchoolFinanceCaches(req.user.schoolId);
 
       return res.status(201).json({
         message: "Payment auto-allocated successfully",
@@ -131,8 +136,7 @@ export const recordPayment = async (req, res) => {
       recordedByRole: "accounts"
     });
 
-    // Invalidate cache for this school
-    cache.clearByPattern(req.user.schoolId);
+    invalidateSchoolFinanceCaches(req.user.schoolId);
 
     res.status(201).json({
       message: "Payment recorded successfully",
@@ -190,6 +194,100 @@ export const getStudentLedger = async (req, res) => {
       currentPage: page
     });
   } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+export const getStudentFeeStatement = async (req, res) => {
+  try {
+    const { admission } = req.params;
+    const academicYear = Number(req.query.academicYear) || new Date().getFullYear();
+    const gradeFilter = req.query.grade || req.query.class || "";
+
+    if (!admission) {
+      return res.status(400).json({ message: "Admission is required" });
+    }
+
+    const cacheKey = `student-fee-statement_${req.user.schoolId}_${admission}_${academicYear}_${gradeFilter}`;
+    const cachedResult = cache.get(cacheKey);
+    if (cachedResult) {
+      return res.json(cachedResult);
+    }
+
+    const student = await Student.findOne({
+      admission,
+      schoolId: req.user.schoolId
+    }).select("name admission _id");
+
+    if (!student) {
+      return res.status(404).json({ message: "Student not found" });
+    }
+
+    let grade = gradeFilter || null;
+    if (!grade) {
+      const enrollment = await StudentEnrollment.findOne({
+        studentId: student._id,
+        schoolId: req.user.schoolId,
+        academicYear,
+        status: "active"
+      }).select("grade").lean();
+      grade = enrollment?.grade || null;
+    }
+
+    const feeStructure = grade
+      ? await FeeStructure.findOne({
+          schoolId: req.user.schoolId,
+          academicYear,
+          $or: [
+            { grade },
+            { grade: grade.replace(/^Grade\s+/i, "") },
+            { grade: `Grade ${grade}` }
+          ]
+        }).select("grade academicYear term1Fee term2Fee term3Fee totalFee").lean()
+      : null;
+
+    const payments = await Payment.find({
+      studentId: student._id,
+      academicYear,
+      isReversed: { $ne: true }
+    }).sort({ createdAt: -1, _id: -1 }).select("amount term reference method academicYear createdAt").lean();
+
+    const termPaid = { "Term 1": 0, "Term 2": 0, "Term 3": 0 };
+    payments.forEach((payment) => {
+      if (termPaid[payment.term] !== undefined) {
+        termPaid[payment.term] += Number(payment.amount || 0);
+      }
+    });
+
+    const totalPaid = payments.reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
+    const totalFee = feeStructure?.totalFee || 0;
+
+    const response = {
+      student: {
+        name: student.name,
+        admission: student.admission
+      },
+      grade: grade || "Not Enrolled",
+      academicYear,
+      feeStructure: feeStructure || {
+        term1Fee: 0,
+        term2Fee: 0,
+        term3Fee: 0,
+        totalFee: 0
+      },
+      payments,
+      totals: {
+        totalFee,
+        totalPaid,
+        totalBalance: totalFee - totalPaid,
+        termPaid
+      }
+    };
+
+    cache.set(cacheKey, response, 60);
+    res.json(response);
+  } catch (err) {
+    console.error("Get Student Fee Statement Error:", err);
     res.status(500).json({ message: err.message });
   }
 };
@@ -278,7 +376,7 @@ export const saveGlobalFeeNote = async (req, res) => {
       { upsert: true, new: true }
     );
 
-    cache.clearByPattern(req.user.schoolId);
+    invalidateSchoolFinanceCaches(req.user.schoolId);
     res.json({ message: "Global fee instructions updated" });
   } catch (err) {
     res.status(500).json({ message: err.message });
@@ -404,7 +502,7 @@ export const updateFeeStructure = async (req, res) => {
     fs.term3Fee = term3Fee !== undefined ? Number(term3Fee) : fs.term3Fee;
 
     await fs.save();
-    cache.clearByPattern(req.user.schoolId); // Invalidate cache
+    invalidateSchoolFinanceCaches(req.user.schoolId);
     res.json({ message: 'Fee structure updated', feeStructure: fs });
   } catch (err) {
     console.error('Update Fee Structure Error:', err);
@@ -426,7 +524,7 @@ export const deleteFeeStructure = async (req, res) => {
     if (String(fs.schoolId) !== String(req.user.schoolId)) return res.status(403).json({ message: 'Not allowed' });
 
     await FeeStructure.deleteOne({ _id: id });
-    cache.clearByPattern(req.user.schoolId); // Invalidate cache
+    invalidateSchoolFinanceCaches(req.user.schoolId);
     res.json({ message: 'Fee structure deleted' });
   } catch (err) {
     console.error('Delete Fee Structure Error:', err);
@@ -459,7 +557,7 @@ export const reversePayment = async (req, res) => {
     payment.isReversed = true;
     await payment.save();
 
-    cache.clearByPattern(req.user.schoolId); // Invalidate cache
+    invalidateSchoolFinanceCaches(req.user.schoolId);
     res.json({ message: "Payment reversed and removed from ledger successfully" });
   } catch (err) {
     res.status(500).json({ message: err.message });
@@ -490,32 +588,26 @@ export const getAllStudentAccounts = async (req, res) => {
     const gradeFilter = req.query.class || "";
     const academicYear = parseInt(req.query.academicYear) || new Date().getFullYear();
     const skip = (page - 1) * limit;
+    const schoolId = new mongoose.Types.ObjectId(req.user.schoolId);
 
     // 🔎 Get school type to restrict grades if no specific class filter is provided
     const school = await User.findById(req.user.id).select('schoolId').populate('schoolId', 'schoolType');
     const schoolType = school?.schoolId?.schoolType || 'full';
-    const SCHOOL_TYPES = {
-      full: { gradeOptions: ["PP1", "PP2", "Grade 1","Grade 2","Grade 3","Grade 4","Grade 5","Grade 6","Grade 7","Grade 8","Grade 9","Grade 10","Grade 11","Grade 12"] },
-      primary_junior: { gradeOptions: ["PP1", "PP2", "Grade 1","Grade 2","Grade 3","Grade 4","Grade 5","Grade 6","Grade 7","Grade 8","Grade 9"] },
-      senior: { gradeOptions: ["Grade 10","Grade 11","Grade 12"] }
-    };
-    const allowedGrades = SCHOOL_TYPES[schoolType].gradeOptions;
+    const gradeMatch = buildGradeMatch(schoolType, gradeFilter);
 
     // 🆕 Smart filtering: exact match for numeric admission, regex for names
     const isNumericSearch = /^\d+$/.test(search);
 
     // Aggregation Pipeline for efficient Filtering, Searching & Pagination
     const pipeline = [
-      // 1. Match Active Enrollments for School/Year
       { 
         $match: {
-          schoolId: new mongoose.Types.ObjectId(req.user.schoolId),
-          academicYear: academicYear,
+          schoolId,
+          academicYear,
           status: "active",
-          grade: gradeFilter ? gradeFilter : { $in: allowedGrades }
+          grade: gradeMatch
         }
       },
-      // 2. Join Student Data
       {
         $lookup: {
           from: "users",
@@ -525,13 +617,12 @@ export const getAllStudentAccounts = async (req, res) => {
         }
       },
       { $unwind: "$student" },
-      // 3. Match Student Role & Search Criteria (Multi-field search)
       {
         $match: {
           "student.role": "student",
           ...(search ? {
             ...(isNumericSearch ? 
-              { "student.admission": search } // Exact match for numeric
+              { "student.admission": search }
               : {
                 $or: [
                   { "student.name": { $regex: escapeRegex(search), $options: "i" } },
@@ -542,7 +633,106 @@ export const getAllStudentAccounts = async (req, res) => {
           } : {})
         }
       },
-      // 4. Facet for Total Count & Paginated Data
+      {
+        $lookup: {
+          from: "feestructures",
+          let: { eGrade: "$grade" },
+          pipeline: [
+            {
+              $match: {
+                $expr: {
+                  $and: [
+                    { $eq: ["$schoolId", schoolId] },
+                    { $eq: ["$academicYear", academicYear] },
+                    { $eq: ["$grade", "$$eGrade"] }
+                  ]
+                }
+              }
+            }
+          ],
+          as: "feeStructure"
+        }
+      },
+      { $unwind: { path: "$feeStructure", preserveNullAndEmptyArrays: true } },
+      {
+        $lookup: {
+          from: "payments",
+          let: { studentId: "$studentId" },
+          pipeline: [
+            {
+              $match: {
+                $expr: {
+                  $and: [
+                    { $eq: ["$studentId", "$$studentId"] },
+                    { $eq: ["$schoolId", schoolId] },
+                    { $eq: ["$academicYear", academicYear] },
+                    { $ne: ["$isReversed", true] }
+                  ]
+                }
+              }
+            },
+            {
+              $group: {
+                _id: "$term",
+                totalAmount: { $sum: "$amount" },
+                broughtForwardAmount: {
+                  $sum: { $cond: [{ $eq: ["$method", "fund_transfer"] }, "$amount", 0] }
+                }
+              }
+            }
+          ],
+          as: "paymentSummaries"
+        }
+      },
+      {
+        $addFields: {
+          term1Paid: {
+            $reduce: {
+              input: "$paymentSummaries",
+              initialValue: 0,
+              in: {
+                $cond: [{ $eq: ["$$this._id", "Term 1"] }, { $add: ["$$value", "$$this.totalAmount"] }, "$$value"]
+              }
+            }
+          },
+          term2Paid: {
+            $reduce: {
+              input: "$paymentSummaries",
+              initialValue: 0,
+              in: {
+                $cond: [{ $eq: ["$$this._id", "Term 2"] }, { $add: ["$$value", "$$this.totalAmount"] }, "$$value"]
+              }
+            }
+          },
+          term3Paid: {
+            $reduce: {
+              input: "$paymentSummaries",
+              initialValue: 0,
+              in: {
+                $cond: [{ $eq: ["$$this._id", "Term 3"] }, { $add: ["$$value", "$$this.totalAmount"] }, "$$value"]
+              }
+            }
+          },
+          broughtForwardAmount: {
+            $reduce: {
+              input: "$paymentSummaries",
+              initialValue: 0,
+              in: { $add: ["$$value", "$$this.broughtForwardAmount"] }
+            }
+          }
+        }
+      },
+      {
+        $addFields: {
+          totalPaid: { $add: ["$term1Paid", "$term2Paid", "$term3Paid"] },
+          totalFee: { $ifNull: ["$feeStructure.totalFee", 0] },
+          term1Fee: { $ifNull: ["$feeStructure.term1Fee", 0] },
+          term2Fee: { $ifNull: ["$feeStructure.term2Fee", 0] },
+          term3Fee: { $ifNull: ["$feeStructure.term3Fee", 0] },
+          balance: { $subtract: [{ $ifNull: ["$feeStructure.totalFee", 0] }, { $add: ["$term1Paid", "$term2Paid", "$term3Paid"] }] },
+          hasBroughtForward: { $gt: ["$broughtForwardAmount", 0] }
+        }
+      },
       {
         $facet: {
           metadata: [{ $count: "total" }],
@@ -556,7 +746,29 @@ export const getAllStudentAccounts = async (req, res) => {
                 name: "$student.name",
                 admission: "$student.admission",
                 schoolId: "$student.schoolId",
-                grade: "$grade" // Direct grade from enrollment
+                grade: "$grade",
+                expected: "$totalFee",
+                paid: "$totalPaid",
+                balance: "$balance",
+                termBalances: {
+                  term1: {
+                    fee: "$term1Fee",
+                    paid: "$term1Paid",
+                    balance: { $subtract: ["$term1Fee", "$term1Paid"] }
+                  },
+                  term2: {
+                    fee: "$term2Fee",
+                    paid: "$term2Paid",
+                    balance: { $subtract: ["$term2Fee", "$term2Paid"] }
+                  },
+                  term3: {
+                    fee: "$term3Fee",
+                    paid: "$term3Paid",
+                    balance: { $subtract: ["$term3Fee", "$term3Paid"] }
+                  }
+                },
+                hasBroughtForward: 1,
+                broughtForwardAmount: 1
               }
             }
           ]
@@ -567,75 +779,8 @@ export const getAllStudentAccounts = async (req, res) => {
     const aggResult = await StudentEnrollment.aggregate(pipeline);
     const metadata = aggResult[0].metadata[0];
     const total = metadata ? metadata.total : 0;
-    const students = aggResult[0].data;
+    const accounts = aggResult[0].data;
     const totalPages = Math.ceil(total / limit);
-
-    // Batch fetch data to avoid N+1 queries
-    const studentIds = students.map(s => s._id);
-
-    // 1. Batch fetch Payments & Fee Structures
-    const allPagePayments = await Payment.find({
-      studentId: { $in: studentIds },
-      academicYear,
-      isReversed: { $ne: true }
-    }).select("studentId amount term method").lean();
-
-    // Resolve enrollments map (using data already fetched in aggregation)
-    const enrollmentMap = new Map();
-    const gradesToFetch = new Set();
-
-    students.forEach(s => {
-      const sId = String(s._id);
-      // Use the grade directly from the aggregation pipeline result
-      enrollmentMap.set(sId, { grade: s.grade });
-      gradesToFetch.add(s.grade);
-    });
-
-    const feeStructures = await FeeStructure.find({
-      schoolId: req.user.schoolId,
-      grade: { $in: Array.from(gradesToFetch) },
-      academicYear
-    }).lean();
-
-    // 2. Map data in-memory (No DB calls inside loop)
-    const accounts = students.map((student) => {
-        const sId = String(student._id);
-        const enrollment = enrollmentMap.get(sId);
-        const sPayments = allPagePayments.filter(p => String(p.studentId) === sId);
-        
-        // Calculate Balance
-        const fee = enrollment ? feeStructures.find(f => f.grade === enrollment.grade) : null;
-        const term1Paid = sPayments.filter(p => p.term === 'Term 1').reduce((sum, p) => sum + p.amount, 0);
-        const term2Paid = sPayments.filter(p => p.term === 'Term 2').reduce((sum, p) => sum + p.amount, 0);
-        const term3Paid = sPayments.filter(p => p.term === 'Term 3').reduce((sum, p) => sum + p.amount, 0);
-        const totalPaid = term1Paid + term2Paid + term3Paid;
-
-        const t1Fee = fee?.term1Fee || 0;
-        const t2Fee = fee?.term2Fee || 0;
-        const t3Fee = fee?.term3Fee || 0;
-        const totalFee = fee?.totalFee || 0;
-
-        // Check for brought forward balance
-        const broughtForwardPayment = sPayments.find(p => p.method === 'fund_transfer');
-
-        return {
-          studentId: student._id,
-          admission: student.admission,
-          className: enrollment ? enrollment.grade : "Not Enrolled",
-          studentName: student.name,
-          academicYear,
-          expected: totalFee,
-          paid: totalPaid,
-          balance: totalFee - totalPaid,
-          termBalances: {
-            term1: { fee: t1Fee, paid: term1Paid, balance: t1Fee - term1Paid },
-            term2: { fee: t2Fee, paid: term2Paid, balance: t2Fee - term2Paid },
-            term3: { fee: t3Fee, paid: term3Paid, balance: t3Fee - term3Paid }
-          },
-          hasBroughtForward: !!broughtForwardPayment, // Add this flag
-          broughtForwardAmount: broughtForwardPayment ? broughtForwardPayment.amount : 0 // Include amount
-        };
-    });
 
     const responseData = { accounts, total, totalPages, currentPage: page };
     cache.set(cacheKey, responseData, 60); // Cache for 60 seconds
@@ -678,7 +823,7 @@ export const upsertFeeStructure = async (req, res) => {
 
     const fs = await FeeStructure.findOneAndUpdate(query, update, opts);
 
-    cache.clearByPattern(req.user.schoolId); // Invalidate cache
+    invalidateSchoolFinanceCaches(req.user.schoolId);
     res.json({ message: 'Fee structure saved', feeStructure: fs });
   } catch (err) {
     console.error('Upsert Fee Structure Error:', err);

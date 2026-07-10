@@ -7,6 +7,7 @@
   <title>User Management</title>
   <link rel="stylesheet" href="css/admin.css" />
   <link rel="stylesheet" href="css/announcements.css">
+  <link rel="stylesheet" href="css/learner-demographics.css" />
   <link rel="icon" type="image/png" href="/images/favicon.png"/> 
 </head>
 <body>
@@ -21,6 +22,7 @@
       <li data-section="userManagement">📋 Registered Users</li>
       <!-- NEW TAB FOR CSV DOWNLOAD -->
       <li data-section="downloadStudentDataTab">⬇️ Download Student Data</li>
+      <li data-section="learnerDemographicsTab">📊 Learner Demographics</li>
     </ul>
     
     <a href="/admin" class="btn primary-btn" style="width: 100%; text-align: center; margin-top: auto;">← Back to Admin</a>
@@ -50,23 +52,23 @@
             </div>
 
             <div class="form-group">
-              <label>Full Name</label>
+              <label>Full Name <span style="color:red">*</span></label>
               <input type="text" id="userName" placeholder="e.g. Emmanuel Mutegi">
             </div>
 
             <div class="form-group" id="emailGroup">
-              <label>Email Address</label>
+              <label>Email Address <span style="color:red">*</span></label>
               <input type="email" id="userEmail" placeholder="e.g. muts@gmail.com">
             </div>
 
             <div class="flex-row" id="studentFields" style="display:none;">
               <div class="col form-group">
-                <label>Admission Number</label>
+                <label>Admission Number <span style="color:red">*</span></label>
                 <input type="text" id="userAdmission" placeholder="e.g.4521">
               </div>
               
               <div class="col form-group">
-                <label>Grade</label>
+                <label>Grade <span style="color:red">*</span></label>
                 <select id="studentGrade">
                   <option value="">-- Select --</option>
                 </select>
@@ -82,11 +84,25 @@
               </select>
                 </div>
               <div class="col form-group">
-                <label>Stream (Optional)</label>
+                <label>Stream </label>
                 <input type="text" id="studentStream" placeholder="e.g. B">
               </div>
               <div class="col form-group">
-                <label>Parent Contact (Optional)</label>
+                <label>Gender </label>
+                <select id="studentGender">
+                  <option value="">-- Select --</option>
+                  <option value="Male">Male</option>
+                  <option value="Female">Female</option>
+                  <option value="Other">Other</option>
+                  <option value="Prefer not to say">Prefer not to say</option>
+                </select>
+              </div>
+              <div class="col form-group">
+                <label>Date of Birth </label>
+                <input type="text" id="studentDob" placeholder="dd/mm/yyyy">
+              </div>
+              <div class="col form-group">
+                <label>Parent Contact </label>
                 <input type="text" id="studentContact" placeholder="e.g. 0712 345 678">
               </div>
             </div>
@@ -177,6 +193,38 @@
           </button>
         </div>
       </div>
+
+      <!-- NEW: LEARNER DEMOGRAPHICS TAB -->
+      <div id="learnerDemographicsTab" class="tab-section" style="display:none;">
+        <div class="card">
+          <h3>📊 Learner Demographics Analytics</h3>
+          
+          <div style="display: flex; gap: 15px; margin-bottom: 20px; flex-wrap: wrap;">
+            <div class="col form-group" style="flex: 1; min-width: 200px;">
+              <label for="gradeFilter">Filter by Grade</label>
+              <select id="gradeFilter" style="width: 100%;">
+                <option value="">-- All Grades --</option>
+              </select>
+            </div>
+            <div class="col form-group" style="flex: 1; min-width: 200px;">
+              <label for="streamFilter">Filter by Stream</label>
+              <select id="streamFilter" style="width: 100%;">
+                <option value="">-- All Streams --</option>
+              </select>
+            </div>
+            <div style="display: flex; gap: 10px; align-items: flex-end;">
+              <button id="refreshDemographicsBtn" class="btn secondary-btn">🔄 Refresh</button>
+              <button id="exportDemographicsBtn" class="btn primary-btn">⬇️ Export CSV</button>
+            </div>
+          </div>
+
+          <div id="demographicsContainer">
+            <div style="text-align: center; padding: 40px; color: #999;">
+              <p>Loading demographics data...</p>
+            </div>
+          </div>
+        </div>
+      </div>
     </section>
   </main>
 </div>
@@ -193,5 +241,6 @@
  <script src="js/Utility/spinner.js"></script>
 <script src="js/ui.js"></script>
 <script src="js/users.js"></script>
+<script src="js/admin/learner-demographics.js"></script>
 </body>
 </html>

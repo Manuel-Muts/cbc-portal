@@ -60,6 +60,17 @@ const userSchema = new mongoose.Schema({
     default: null
   },
 
+  gender: {
+    type: String,
+    default: null,
+    trim: true
+  },
+
+  dateOfBirth: {
+    type: Date,
+    default: null
+  },
+
   // ------------------------------------
   // PASSWORDS
   // ------------------------------------

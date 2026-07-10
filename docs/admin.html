@@ -47,9 +47,9 @@
         <section id="contentArea">
     <!-- 1. Subject Allocation Tab -->
     <div id="subjectAllocSection" class="tab-section">
-      <div class="card">
+      <div class="card allocation-card">
         <h3>Subject Allocation</h3>
-        <form id="subjectAllocForm">
+        <form id="subjectAllocForm" class="allocation-form">
             <div class="flex-row">
                 <div class="col form-group">
                     <label>Teacher</label>
@@ -74,7 +74,8 @@
                 </div>
                 <div class="col form-group">
                     <label>Stream (Optional)</label>
-                   <select id="streamInput" class="form-control"></select>.
+                    <div id="streamInputDisplay" class="form-control" style="min-height: 38px; display: flex; align-items: center; color: #64748b;">No stream</div>
+                    <select id="streamInput" class="form-control" style="display: none;"></select>
                 </div>
                 <div class="col form-group">
                     <label>Subject(s)</label>
@@ -85,7 +86,7 @@
         </form>
 
         <hr>
-        <div class="flex-row" style="justify-content: space-between; align-items: center; margin-top: 15px;">
+        <div class="allocation-toolbar">
             <h4>Allocations List</h4>
             <div class="flex-row">
                 <input type="text" id="subjectSearchInput" placeholder="Filter subjects...">
@@ -213,9 +214,9 @@
 
     <!-- 2. Class Teacher Tab -->
     <div id="classAllocSection" class="tab-section" style="display:none;">
-      <div class="card">
+      <div class="card allocation-card">
         <h3>Class Teacher Allocation</h3>
-        <form id="classAllocForm">
+        <form id="classAllocForm" class="allocation-form">
             <div class="flex-row">
                 <div class="col form-group">
                     <label>Teacher</label>
@@ -240,14 +241,15 @@
                 </div>
                 <div class="col form-group">
                     <label>Stream (Optional)</label>
-                    <select id="classStreamInput" class="form-control"></select>.
+                    <div id="classStreamInputDisplay" class="form-control" style="min-height: 38px; display: flex; align-items: center; color: #64748b;">No stream</div>
+                    <select id="classStreamInput" class="form-control" style="display: none;"></select>
                 </div>
             </div>
             <button type="submit" class="btn primary-btn">Assign Class Teacher</button>
         </form>
 
         <hr>
-        <div class="flex-row" style="justify-content: space-between; align-items: center; margin-top: 15px;">
+        <div class="allocation-toolbar">
             <h4>Allocations List</h4>
             <div class="flex-row">
                 <input type="text" id="classSearchInput" placeholder="Filter classes...">

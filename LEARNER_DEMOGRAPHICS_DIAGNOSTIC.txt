@@ -1,0 +1,31 @@
+// Quick Diagnostic Checklist for Learner Demographics Module
+
+// BACKEND SETUP ✅
+// 1. getLearnerDemographics() added to reportsController.js - ✅
+// 2. Route added to reportsRoutes.js with adminOrAccounts middleware - ✅
+// 3. Allows both "admin" and "accounts" roles - ✅
+
+// FRONTEND SETUP ✅
+// 1. learner-demographics.js created with proper auth - ✅
+// 2. learner-demographics.css with responsive design - ✅
+// 3. users.html updated with new sidebar tab - ✅
+// 4. Script properly loaded - ✅
+
+// AUTHENTICATION FIX ✅
+// 1. Now uses authService.getToken() for proper authentication
+// 2. Includes proper error handling for 401 errors
+// 3. Checks for both admin and accounts roles on backend
+
+// NEXT STEPS FOR USER:
+// 1. Restart the Node.js backend server
+// 2. Clear browser cache (or use Ctrl+Shift+Delete)
+// 3. Log in as Admin or Accounts staff user
+// 4. Navigate to /users
+// 5. Click "📊 Learner Demographics" in the sidebar
+// 6. Verify data loads successfully
+
+// ERROR TROUBLESHOOTING:
+// - Still 401? → Check if user has "admin" or "accounts" role
+// - Data not loading? → Check browser console for errors (F12 → Console tab)
+// - Token issue? → Try logging out and back in
+// - CORS error? → Check backend is running and accessible

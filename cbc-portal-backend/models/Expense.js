@@ -48,4 +48,8 @@ const ExpenseSchema = new mongoose.Schema({
   },
 }, { timestamps: true });
 
+ExpenseSchema.index({ schoolId: 1, academicYear: 1, term: 1, date: 1 });
+ExpenseSchema.index({ schoolId: 1, category: 1, date: 1 });
+ExpenseSchema.index({ recordedBy: 1, date: -1 });
+
 export const Expense = mongoose.model('Expense', ExpenseSchema);

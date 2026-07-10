@@ -29,6 +29,50 @@ const formatContact = (contact) => {
   return formattedContact;
 };
 
+const normalizeGenderValue = (value) => {
+  if (!value) return null;
+
+  const normalized = String(value).trim().toLowerCase();
+  if (["male", "m", "boy", "man"].includes(normalized)) return "Male";
+  if (["female", "f", "girl", "woman"].includes(normalized)) return "Female";
+  if (["other", "others", "nonbinary", "non-binary", "prefer not to say", "prefer not to say", "prefer not say", "not say"].includes(normalized)) return "Prefer not to say";
+  return String(value).trim();
+};
+
+const normalizeOptionalDate = (value) => {
+  if (!value) return null;
+  if (value instanceof Date) {
+    if (Number.isNaN(value.getTime())) return null;
+    const year = value.getFullYear();
+    const month = value.getMonth();
+    const day = value.getDate();
+    return new Date(Date.UTC(year, month, day));
+  }
+
+  const raw = String(value).trim();
+  if (!raw) return null;
+
+  const compact = raw.replace(/\s+/g, " ");
+  const isoMatch = compact.match(/^\d{4}-\d{2}-\d{2}(?:[T\s].*)?$/);
+  if (isoMatch) {
+    const [year, month, day] = compact.slice(0, 10).split('-').map(Number);
+    return new Date(Date.UTC(year, month - 1, day));
+  }
+
+  const slashMatch = compact.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (slashMatch) {
+    const [, day, month, year] = slashMatch;
+    return new Date(Date.UTC(Number(year), Number(month) - 1, Number(day)));
+  }
+
+  const parsed = new Date(compact);
+  if (!Number.isNaN(parsed.getTime())) {
+    return new Date(Date.UTC(parsed.getFullYear(), parsed.getMonth(), parsed.getDate()));
+  }
+
+  return null;
+};
+
 // 🆕 Helper to normalize grade strings consistently across the module
 const normalizeGrade = (grade) => {
   if (!grade) return null;
@@ -80,9 +124,15 @@ export const registerUser = async (req, res) => {
     // roles that MUST belong to a school
     const rolesNeedingSchool = ["admin", "accounts","teacher", "student", "parent", "classteacher"];
 
-    let { name, email, role, admission, schoolId, grade, academicYear, stream, contact, pathway } = req.body;
+    let { name, email, role, admission, schoolId, grade, academicYear, stream, contact, pathway, gender, dateOfBirth } = req.body;
     const normalizedEmail = email ? String(email).trim().toLowerCase() : undefined;
     const formattedContact = formatContact(contact);
+    const normalizedGender = gender ? String(gender).trim() : null;
+    const normalizedDateOfBirth = normalizeOptionalDate(dateOfBirth);
+
+    if (dateOfBirth && !normalizedDateOfBirth) {
+      return res.status(400).json({ msg: "Date of birth must be in dd/mm/yyyy or yyyy-mm-dd format" });
+    }
 
     if (!name || !role)
       return res.status(400).json({ msg: "Name and role are required" });
@@ -186,6 +236,8 @@ export const registerUser = async (req, res) => {
         if (name) existingStudent.name = name;
         if (grade) existingStudent.grade = normalizeGrade(grade);
         if (pathway) existingStudent.pathway = normalizePathway(pathway);
+        if (normalizedGender !== null) existingStudent.gender = normalizedGender;
+        if (normalizedDateOfBirth !== null) existingStudent.dateOfBirth = normalizedDateOfBirth;
 
         // 🆕 Sync Enrollment record for the current academic year to ensure class list consistency
         const currentYear = academicYear || new Date().getFullYear();
@@ -239,6 +291,8 @@ export const registerUser = async (req, res) => {
         pathway: normalizePathway(pathway) || null,
         password: hashedPassword,
         contact: formattedContact,
+        gender: normalizedGender,
+        dateOfBirth: normalizedDateOfBirth,
         passwordMustChange: false,
         schoolId: schoolIdToAssign,
         createdBy: admin._id
@@ -1457,7 +1511,7 @@ export const updateUser = async (req, res) => {
     }
 
     // Assign allowed fields
-    let allowed = ["name", "email", "role", "contact", "pathway"];
+    let allowed = ["name", "email", "role", "contact", "pathway", "gender", "dateOfBirth"];
 
     // 🆕 Determine the role we are dealing with (current or newly assigned)
     const effectiveRole = req.body.role || targetUser.role;
@@ -1484,6 +1538,14 @@ export const updateUser = async (req, res) => {
         // 🆕 Normalize grade if it's a student field being updated
         if (key === 'grade' && effectiveRole === "student") {
           value = normalizeGrade(value);
+        }
+
+        if (key === 'dateOfBirth' && value) {
+          const parsedDate = normalizeOptionalDate(value);
+          if (!parsedDate) {
+            return res.status(400).json({ message: "Date of birth must be in dd/mm/yyyy or yyyy-mm-dd format" });
+          }
+          value = parsedDate;
         }
 
         targetUser[key] = value;
@@ -1834,7 +1896,7 @@ export const bulkRegisterUsers = async (req, res) => {
 
     for (const studentData of studentsToProcess) {
       try {
-        const { name, admission, grade, stream, contact, pathway } = studentData;
+        const { name, admission, grade, stream, contact, pathway, gender, dateOfBirth } = studentData;
 
         if (!name || !admission || !grade) {
           throw new Error("Missing required fields (Name, Admission, or Grade)");
@@ -1842,6 +1904,8 @@ export const bulkRegisterUsers = async (req, res) => {
 
         const normalizedGrade = normalizeGrade(grade); // Reuse existing helper
         const formattedContact = formatContact(contact); // Reuse existing helper
+        const normalizedGender = normalizeGenderValue(gender);
+        const normalizedDateOfBirth = normalizeOptionalDate(dateOfBirth);
 
         let student = existingStudentMap.get(admission);
 
@@ -1873,6 +1937,8 @@ export const bulkRegisterUsers = async (req, res) => {
             contact: formattedContact,
             grade: normalizedGrade,
             pathway: normalizePathway(pathway) || null,
+            gender: normalizedGender,
+            dateOfBirth: normalizedDateOfBirth,
             enrollmentId: enrollment._id
           });
           
@@ -1889,6 +1955,8 @@ export const bulkRegisterUsers = async (req, res) => {
             grade: normalizedGrade,
             pathway: normalizePathway(pathway) || null,
             contact: formattedContact,
+            gender: normalizedGender,
+            dateOfBirth: normalizedDateOfBirth,
             password: hashedPassword,
             schoolId: schoolIdToAssign,
             createdBy: admin._id

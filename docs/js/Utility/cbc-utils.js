@@ -459,17 +459,22 @@ window.cbcUtils = {
 
       // Kiswahili specific remarks
       if (normalizedSubject.includes("kiswahili")) {
-        if (numScore >= 75) return "Nzuri Sana";
-        if (numScore >= 41) return "Nzuri";
-        if (numScore >= 21) return "Inahitaji Kazi Zaidi";
-        return "Jitahadie Zaidi";
+        if (numScore >= 90) return "Hongera";
+        if (numScore >= 75) return "Vizuri Sana";
+        if (numScore >= 58) return "Vizuri";
+        if (numScore >= 41) return"Wastani";
+        if (numScore >= 31) return "Tia bidii Zaidi";
+        return "Jitahidi";
       }
 
-      // Default English remarks
-      if (numScore >= 75) return "Excellent";
-      if (numScore >= 41) return "Good";
-      if (numScore >= 21) return "Average";
-      return "Needs Improvement";
+ // Default English remarks
+       if (numScore >= 90) return "Excellent";
+        if (numScore >= 75) return "Very Good";
+        if (numScore >= 58) return "Good";
+        if (numScore >= 41) return"Fair";
+        if (numScore >= 31) return "Can Do Better";
+        return "Needs Improvement";
+    
     }
 };
 
