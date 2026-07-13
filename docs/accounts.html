@@ -194,6 +194,14 @@
                 <select id="outstandingYearFilter" class="form-control" style="padding: 8px; border: 1px solid #ddd; border-radius: 4px; min-width: 120px;"></select>
             </div>
             <div class="filter-item">
+                <label for="outstandingTermFilter" style="font-size: 13px; font-weight: 600; color: #555;">Term</label>
+                <select id="outstandingTermFilter" class="form-control" style="padding: 8px; border: 1px solid #ddd; border-radius: 4px; min-width: 120px;">
+                    <option value="Term 1">Term 1</option>
+                    <option value="Term 2">Term 2</option>
+                    <option value="Term 3">Term 3</option>
+                </select>
+            </div>
+            <div class="filter-item">
                 <label for="outstandingGradeFilter" style="font-size: 13px; font-weight: 600; color: #555;">Grade</label>
                 <select id="outstandingGradeFilter" class="form-control" style="padding: 8px; border: 1px solid #ddd; border-radius: 4px; min-width: 150px;">
                     <option value="">All Grades</option>
@@ -342,7 +350,10 @@
                         <option value="Other">Other</option>
                     </select>
                 </div>
-                <button id="openExpenseModal" class="btn primary-btn">➕ Record New Expense</button>
+                <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
+                    <button id="openExpenseModal" class="btn primary-btn">➕ Record New Expense</button>
+                    <button id="openBalanceSheetModal" class="btn secondary-btn">📄 Balance Sheet</button>
+                </div>
             </div>
 
             <table id="expensesTable">
@@ -373,13 +384,27 @@
         </div>
     </div>
 
+    <!-- BALANCE SHEET MODAL -->
+    <div id="balanceSheetModal" class="confirm-overlay" style="display:none;">
+        <div class="confirm-box" style="max-width: 850px; width: 95%;">
+            <div style="display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:12px;">
+                <h4 style="margin:0;">School Balance Sheet</h4>
+                <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                    <button id="dlBalanceSheetBtn" class="btn secondary-btn">📄 Download PDF</button>
+                    <button id="closeBalanceSheetModal" class="btn secondary-btn">Close</button>
+                </div>
+            </div>
+            <div id="balanceSheetModalBody" style="max-height: 70vh; overflow:auto; padding-right: 10px;"></div>
+        </div>
+    </div>
+
     <!-- RECORD EXPENSE MODAL -->
     <div id="expenseModal" class="confirm-overlay" style="display:none;">
         <div class="confirm-box">
             <h4>Record School Expense</h4>
             <div class="form-group">
-                <label>Category</label>
-                <select id="expCategory" class="form-control">
+                <label>Category <span style="color:red">*</span></label>
+                <select id="expCategory" class="form-control" required>
                     <option value="Salaries">Salaries & Wages</option>
                     <option value="Utilities">Utilities (Water/Electricity)</option>
                     <option value="Trip">Trip & Transport</option>
@@ -389,20 +414,20 @@
                     <option value="Other">Other</option>
                 </select>
             </div>
-            <div class="form-group"><label>Description</label><input type="text" id="expDesc" placeholder="e.g. Electricity bill for March"></div>
-            <div class="form-group"><label>Amount (KES)</label><input type="number" id="expAmount" placeholder="e.g. 15000"></div>
-            <div class="form-group"><label>Date</label><input type="date" id="expDate"></div>
+            <div class="form-group"><label>Description <span style="color:red">*</span></label><input type="text" id="expDesc" placeholder="e.g. Electricity bill for March" required></div>
+            <div class="form-group"><label>Amount (KES) <span style="color:red">*</span></label><input type="number" id="expAmount" placeholder="e.g. 15000" required></div>
+            <div class="form-group"><label>Date <span style="color:red">*</span></label><input type="date" id="expDate" required></div>
             <div class="form-group">
-                <label>Term</label>
-                <select id="expTerm" class="form-control">
+                <label>Term <span style="color:red">*</span></label>
+                <select id="expTerm" class="form-control" required>
                     <option value="Term 1">Term 1</option>
                     <option value="Term 2">Term 2</option>
                     <option value="Term 3">Term 3</option>
                 </select>
             </div>
             <div class="confirm-buttons">
-                <button id="closeExpenseModal" class="btn secondary-btn">Cancel</button>
-                <button id="saveExpenseBtn" class="btn primary-btn">Save Expense</button>
+                <button type="button" id="closeExpenseModal" class="btn secondary-btn">Cancel</button>
+                <button type="button" id="saveExpenseBtn" class="btn primary-btn">Save Expense</button>
             </div>
         </div>
     </div>
@@ -450,8 +475,8 @@
         <h4>Post Fee Structure</h4>
 
         <div class="form-group">
-          <label>Grade</label>
-          <select id="feeGrade" class="form-control" style="padding: 8px; border: 1px solid #ddd; border-radius: 4px; min-width: 150px;">
+          <label>Grade <span style="color:red">*</span></label>
+          <select id="feeGrade" class="form-control" style="padding: 8px; border: 1px solid #ddd; border-radius: 4px; min-width: 150px;" required>
               <option value="">Select Grade</option>
               <option value="Grade 1">Grade 1</option>
               <option value="Grade 2">Grade 2</option>
@@ -469,23 +494,23 @@
         </div>
 
         <div class="form-group">
-          <label>Academic Year</label>
-          <input type="number" id="feeYear" placeholder="2026" />
+          <label>Academic Year <span style="color:red">*</span></label>
+          <input type="number" id="feeYear" placeholder="2026" required />
         </div>
 
         <div class="form-group">
-          <label>Term 1 Fee (KES)</label>
-          <input type="number" id="feeTerm1" placeholder="e.g. 15000" />
+          <label>Term 1 Fee (KES) <span style="color:red">*</span></label>
+          <input type="number" id="feeTerm1" placeholder="e.g. 15000" required />
         </div>
 
         <div class="form-group">
-          <label>Term 2 Fee (KES)</label>
-          <input type="number" id="feeTerm2" placeholder="e.g. 15000" />
+          <label>Term 2 Fee (KES) <span style="color:red">*</span></label>
+          <input type="number" id="feeTerm2" placeholder="e.g. 15000" required />
         </div>
 
         <div class="form-group">
-          <label>Term 3 Fee (KES)</label>
-          <input type="number" id="feeTerm3" placeholder="e.g. 20000" />
+          <label>Term 3 Fee (KES) <span style="color:red">*</span></label>
+          <input type="number" id="feeTerm3" placeholder="e.g. 20000" required />
         </div>
 
         <div class="confirm-buttons">
@@ -504,28 +529,28 @@
         <input type="hidden" id="editFeeId" />
 
         <div class="form-group">
-          <label>Grade</label>
-          <input type="text" id="editFeeGrade" placeholder="e.g. Grade 4" />
+          <label>Grade <span style="color:red">*</span></label>
+          <input type="text" id="editFeeGrade" placeholder="e.g. Grade 4" required />
         </div>
 
         <div class="form-group">
-          <label>Academic Year</label>
-          <input type="number" id="editFeeYear" placeholder="2026" />
+          <label>Academic Year <span style="color:red">*</span></label>
+          <input type="number" id="editFeeYear" placeholder="2026" required />
         </div>
 
         <div class="form-group">
-          <label>Term 1 Fee (KES)</label>
-          <input type="number" id="editFeeTerm1" />
+          <label>Term 1 Fee (KES) <span style="color:red">*</span></label>
+          <input type="number" id="editFeeTerm1" required />
         </div>
 
         <div class="form-group">
-          <label>Term 2 Fee (KES)</label>
-          <input type="number" id="editFeeTerm2" />
+          <label>Term 2 Fee (KES) <span style="color:red">*</span></label>
+          <input type="number" id="editFeeTerm2" required />
         </div>
 
         <div class="form-group">
-          <label>Term 3 Fee (KES)</label>
-          <input type="number" id="editFeeTerm3" />
+          <label>Term 3 Fee (KES) <span style="color:red">*</span></label>
+          <input type="number" id="editFeeTerm3" required />
         </div>
 
         <div class="confirm-buttons">
@@ -573,7 +598,7 @@
       </div>
       <div style="display: flex; gap: 10px; margin-bottom: 15px;">
         <button id="dlStructureBtn" class="btn secondary-btn">📄 Download Structure</button>
-        <button id="dlStatementBtn" class="btn secondary-btn">📄 Download Statement</button>
+        <!-- <button id="dlStatementBtn" class="btn secondary-btn">📄 Download Statement</button> -->
       </div>
       <div id="studentFeeModalBody" style="max-height: 70vh; overflow-y: auto;"></div>
     </div>
@@ -590,6 +615,6 @@
    <script src="js/Utility/announcements.js"></script>
     <script src="js/Utility/spinner.js"></script>
   <script src="js/ui.js"></script>
-  <script src="js/accounts.js"></script>
+  <script type="module" src="js/accounts.js"></script>
 </body>
 </html>

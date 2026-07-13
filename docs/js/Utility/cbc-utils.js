@@ -15,6 +15,33 @@ window.cbcUtils = {
     customGradingConfig: null,
 
     /**
+     * Shared defaults for the grading scale modal and report calculations.
+     */
+    DEFAULT_GRADING_CONFIG: {
+        primary: [
+            { min: 75, max: 100, label: "EE", points: 4 },
+            { min: 41, max: 74, label: "ME", points: 3 },
+            { min: 21, max: 40, label: "AE", points: 2 },
+            { min: 0, max: 20, label: "BE", points: 1 }
+        ],
+        secondary: [
+            { min: 90, max: 100, label: "EE1", points: 8 },
+            { min: 75, max: 89, label: "EE2", points: 7 },
+            { min: 58, max: 74, label: "ME1", points: 6 },
+            { min: 41, max: 57, label: "ME2", points: 5 },
+            { min: 31, max: 40, label: "AE1", points: 4 },
+            { min: 21, max: 30, label: "AE2", points: 3 },
+            { min: 11, max: 20, label: "BE1", points: 2 },
+            { min: 0, max: 10, label: "BE2", points: 1 }
+        ]
+    },
+
+    getDefaultGradingConfig: function(type) {
+        const config = this.DEFAULT_GRADING_CONFIG?.[type];
+        return config ? JSON.parse(JSON.stringify(config)) : [];
+    },
+
+    /**
      * Standards for subdivisions
      */
     LEVEL_LABELS: {
@@ -30,16 +57,7 @@ window.cbcUtils = {
     get PERFORMANCE_KEY() {
         // Prioritize custom secondary scale for general report legends
         const custom = window.cbcUtils.customGradingConfig?.secondary;
-        const config = (custom && custom.length > 0) ? custom : [
-            { min: 90, max: 100, label: "EE1", points: 8 },
-            { min: 75, max: 89, label: "EE2", points: 7 },
-            { min: 58, max: 74, label: "ME1", points: 6 },
-            { min: 41, max: 57, label: "ME2", points: 5 },
-            { min: 31, max: 40, label: "AE1", points: 4 },
-            { min: 21, max: 30, label: "AE2", points: 3 },
-            { min: 11, max: 20, label: "BE1", points: 2 },
-            { min: 0, max: 10, label: "BE2", points: 1 }
-        ];
+        const config = (custom && custom.length > 0) ? custom : window.cbcUtils.getDefaultGradingConfig('secondary');
         return [...config].sort((a, b) => b.min - a.min).map(c => ({
             subdivision: c.label,
             range: `${c.min}-${c.max}`,
@@ -54,21 +72,7 @@ window.cbcUtils = {
         const isPrimary = window.cbcUtils.isPrimaryGrade(grade);
         const custom = isPrimary ? window.cbcUtils.customGradingConfig?.primary : window.cbcUtils.customGradingConfig?.secondary;
 
-        const config = (custom && custom.length > 0) ? custom : (isPrimary ? [
-            { min: 75, max: 100, label: "EE", points: 4 },
-            { min: 41, max: 74, label: "ME", points: 3 },
-            { min: 21, max: 40, label: "AE", points: 2 },
-            { min: 0, max: 20, label: "BE", points: 1 }
-        ] : [
-            { min: 90, max: 100, label: "EE1", points: 8 },
-            { min: 75, max: 89, label: "EE2", points: 7 },
-            { min: 58, max: 74, label: "ME1", points: 6 },
-            { min: 41, max: 57, label: "ME2", points: 5 },
-            { min: 31, max: 40, label: "AE1", points: 4 },
-            { min: 21, max: 30, label: "AE2", points: 3 },
-            { min: 11, max: 20, label: "BE1", points: 2 },
-            { min: 0, max: 10, label: "BE2", points: 1 }
-        ]);
+        const config = (custom && custom.length > 0) ? custom : window.cbcUtils.getDefaultGradingConfig(isPrimary ? 'primary' : 'secondary');
         return [...config].sort((a, b) => b.min - a.min).map(c => ({
             subdivision: c.label,
             range: `${c.min}-${c.max}`,
@@ -493,5 +497,9 @@ window.cbcUtils.SCHOOL_TYPES = {
     senior: {
         label: "Senior School (Grades 10-12)",
         gradeOptions: ["10","11","12"]
+    },
+    early_years: {
+        label: "Early Years (Grades PG-PP2)",
+        gradeOptions: ["PG", "PP1", "PP2"]
     }
 };

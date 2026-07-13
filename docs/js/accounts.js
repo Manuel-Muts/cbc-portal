@@ -1,4 +1,5 @@
 
+import { formatDate } from './Utility/date-utils.js';
 
 (function () {
   const API_BASE = config.api.baseURL;
@@ -22,20 +23,323 @@
   // ---------------------------
   // Ensure jsPDF and autoTable are loaded for PDF exports
   // ---------------------------
+  function resolvePdfLibrary() {
+    const jsPDFClass = window.jspdf?.jsPDF || window.jsPDF || null;
+    if (!jsPDFClass || typeof jsPDFClass !== 'function') {
+      return { jsPDFClass: null, hasAutoTable: false };
+    }
+
+    try {
+      const tempDoc = new jsPDFClass({ orientation: 'p', unit: 'mm', format: 'a4' });
+      return {
+        jsPDFClass,
+        hasAutoTable: typeof tempDoc?.autoTable === 'function'
+      };
+    } catch (error) {
+      return { jsPDFClass, hasAutoTable: false };
+    }
+  }
+
   function isPdfAutoTableReady() {
-    if (typeof window.jspdf === 'undefined' || typeof window.jspdf.jsPDF === 'undefined') {
+    return resolvePdfLibrary().hasAutoTable;
+  }
+
+  function collectTableData(table) {
+    const headers = [];
+    const rows = [];
+    const headerRow = table.querySelector('thead tr');
+    if (headerRow) {
+      headerRow.querySelectorAll('th').forEach((th) => {
+        headers.push(th.textContent.trim());
+      });
+    }
+
+    table.querySelectorAll('tbody tr').forEach((tr) => {
+      const row = [];
+      tr.querySelectorAll('td').forEach((td) => {
+        row.push(td.textContent.trim());
+      });
+      if (row.length) rows.push(row);
+    });
+
+    return { headers, rows };
+  }
+
+  function getSectionTitleForTable(table) {
+    const previous = table.previousElementSibling;
+    if (previous && /^H[1-6]$/.test(previous.tagName)) {
+      return previous.textContent.trim();
+    }
+    if (table.closest('#fee-structure-for-pdf')) return 'Fee Structure & Status';
+    if (table.closest('#payment-statement-for-pdf')) return 'Payment History';
+    return null;
+  }
+
+  function drawAccountsWatermark(pdf) {
+    const brandingSource = accountsProfileData.schoolLogoBase64 || accountsProfileData.logoSrc || window.schoolInfo?.logo;
+    const watermarkSrc = brandingSource;
+    if (!watermarkSrc) return;
+
+    try {
+      const format = accountsProfileData.logoFormat || 'PNG';
+      const imgProps = accountsProfileData.logoProps || pdf.getImageProperties(watermarkSrc);
+      const pageWidth = pdf.internal.pageSize.getWidth();
+      const pageHeight = pdf.internal.pageSize.getHeight();
+      const width = 90;
+      const height = (imgProps.height * width) / imgProps.width;
+
+      pdf.saveGraphicsState();
+      pdf.setGState(new pdf.GState({ opacity: 0.05 }));
+      pdf.addImage(watermarkSrc, format, (pageWidth - width) / 2, (pageHeight - height) / 2, width, height, undefined, 'FAST');
+      pdf.restoreGraphicsState();
+    } catch (e) {
+      console.warn('Watermark rendering failed', e);
+    }
+  }
+
+  function getPdfSummaryLines(contentElement) {
+    if (!contentElement) return [];
+
+    return Array.from(contentElement.querySelectorAll('.pdf-summary-card')).map((card) => {
+      const title = card.querySelector('.pdf-card-title')?.textContent?.trim();
+      const value = card.querySelector('.pdf-card-value')?.textContent?.trim();
+      if (title && value) return `${title}: ${value}`;
+      return title || '';
+    }).filter(Boolean);
+  }
+
+  function drawPdfSummaryCards(pdf, contentElement, pageWidth, margin, currentY) {
+    const cards = Array.from(contentElement.querySelectorAll('.pdf-summary-card')).map((card) => ({
+      title: card.querySelector('.pdf-card-title')?.textContent?.trim(),
+      caption: card.querySelector('.pdf-card-caption')?.textContent?.trim(),
+      value: card.querySelector('.pdf-card-value')?.textContent?.trim()
+    })).filter((card) => card.title && card.value);
+
+    if (!cards.length) return currentY;
+
+    const innerWidth = pageWidth - margin * 2;
+    const spacing = 4;
+    const halfWidth = (innerWidth - spacing) / 2;
+    const fullWidth = innerWidth;
+
+    const bgColor = (title) => {
+      if (/receipts|income/i.test(title)) return [219, 234, 254];
+      if (/expenses/i.test(title)) return [254, 226, 226];
+      if (/net cash/i.test(title)) return [254, 249, 195];
+      return [243, 244, 246];
+    };
+
+    const textColor = [15, 23, 42];
+
+    const drawCard = (card, x, width, y) => {
+      const hasCaption = Boolean(card.caption);
+      const cardHeight = hasCaption ? 28 : 22;
+      const captionY = y + 18;
+      const titleY = y + 8;
+      const [r, g, b] = bgColor(card.title);
+
+      pdf.setFillColor(r, g, b);
+      pdf.setDrawColor(203, 213, 225);
+      pdf.setLineWidth(0.3);
+      pdf.rect(x, y, width, cardHeight, 'FD');
+
+      pdf.setFontSize(8.5);
+      pdf.setFont('helvetica', 'bold');
+      pdf.setTextColor(textColor[0], textColor[1], textColor[2]);
+      pdf.text(card.title, x + 6, titleY);
+      pdf.text(card.value, x + width - 6, titleY, { align: 'right' });
+
+      if (hasCaption) {
+        pdf.setFontSize(7);
+        pdf.setFont('helvetica', 'normal');
+        pdf.setTextColor(71, 85, 105);
+        pdf.text(card.caption, x + 6, captionY);
+      }
+
+      return cardHeight;
+    };
+
+    if (cards.length >= 2) {
+      const firstHeight = drawCard(cards[0], margin, halfWidth, currentY);
+      const secondHeight = drawCard(cards[1], margin + halfWidth + spacing, halfWidth, currentY);
+      const rowHeight = Math.max(firstHeight, secondHeight);
+      currentY += rowHeight + spacing;
+      if (cards[2]) {
+        const thirdHeight = drawCard(cards[2], margin, fullWidth, currentY);
+        currentY += thirdHeight + spacing;
+      }
+    } else {
+      const height = drawCard(cards[0], margin, fullWidth, currentY);
+      currentY += height + spacing;
+    }
+
+    return currentY;
+  }
+
+  async function generatePdfFromTables(jsPDFClass, contentElement, titleSuffix, customTitle, schoolName) {
+    try {
+      if (typeof jsPDFClass !== 'function' || !contentElement) return null;
+
+      const pdf = new jsPDFClass('p', 'mm', 'a4');
+      const hasAutoTable = typeof pdf.autoTable === 'function';
+      const pageWidth = pdf.internal.pageSize.getWidth();
+      const margin = 14;
+      let yPos = 18;
+
+      pdf.setFontSize(18);
+      pdf.setFont('helvetica', 'bold');
+      pdf.setTextColor(15, 23, 42);
+      pdf.text(schoolName, pageWidth / 2, yPos, { align: 'center' });
+      yPos += 8;
+
+      const headerTitleText = contentElement.querySelector('.report-header h2')?.textContent?.trim();
+      const titleText = (headerTitleText || customTitle || titleSuffix || 'DOCUMENT').toUpperCase();
+      pdf.setFontSize(13);
+      pdf.setFont('helvetica', 'normal');
+      pdf.text(titleText, pageWidth / 2, yPos, { align: 'center' });
+      yPos += 8;
+
+      // Try to extract a dedicated student info block first (preferred),
+      // otherwise fall back to any paragraph inside the report header.
+      const studentInfoElement = contentElement.querySelector('.report-header .pdf-student-info');
+      const studentInfoText = studentInfoElement?.textContent?.trim()
+        || contentElement.querySelector('.report-header p')?.textContent?.trim();
+      if (studentInfoText) {
+        const normalizedText = studentInfoText.replace(/\s+/g, ' ');
+        pdf.setFontSize(11);
+        pdf.setFont('helvetica', 'bold');
+        pdf.setTextColor(17, 24, 39);
+
+        const textWidth = pdf.getTextWidth(normalizedText);
+        const padding = 4;
+        const boxWidth = textWidth + padding * 2;
+        const boxHeight = 8;
+        const boxX = (pageWidth - boxWidth) / 2;
+        const boxY = yPos - 4;
+
+        pdf.setFillColor(227, 242, 253);
+        pdf.rect(boxX, boxY, boxWidth, boxHeight, 'F');
+
+        pdf.text(normalizedText, pageWidth / 2, yPos, { align: 'center' });
+        yPos += 10;
+      }
+
+      const summaryCardCount = contentElement.querySelectorAll('.pdf-summary-card').length;
+      if (summaryCardCount) {
+        yPos = drawPdfSummaryCards(pdf, contentElement, pageWidth, margin, yPos);
+      } else {
+        const summaryLines = getPdfSummaryLines(contentElement);
+        if (summaryLines.length) {
+          pdf.setFontSize(10);
+          pdf.setTextColor(30, 41, 59);
+          summaryLines.forEach((line) => {
+            if (yPos > 280) {
+              pdf.addPage();
+              yPos = 20;
+            }
+            pdf.text(line, margin, yPos);
+            yPos += 5;
+          });
+          yPos += 3;
+        }
+      }
+
+      const tables = Array.from(contentElement.querySelectorAll('table'));
+      if (!tables.length) return null;
+
+      tables.forEach((table, index) => {
+        const sectionTitle = getSectionTitleForTable(table);
+        const { headers, rows } = collectTableData(table);
+        if (!headers.length || !rows.length) return;
+
+        if (sectionTitle) {
+          if (yPos > 250) {
+            pdf.addPage();
+            yPos = 18;
+          }
+          pdf.setFontSize(12);
+          pdf.setFont('helvetica', 'bold');
+          pdf.setTextColor(15, 23, 42);
+          pdf.text(sectionTitle, margin, yPos);
+          yPos += 7;
+        }
+
+        if (hasAutoTable) {
+          pdf.autoTable({
+            startY: yPos,
+            head: [headers],
+            body: rows,
+            theme: 'grid',
+            headStyles: { fillColor: [37, 99, 235], textColor: 255, fontStyle: 'bold', fontSize: 9 },
+            styles: { fontSize: 9, cellPadding: 3, halign: 'right', textColor: [15, 23, 42], lineColor: [226, 232, 240], lineWidth: 0.2 },
+            columnStyles: { 0: { halign: 'left' } },
+            margin: { left: margin, right: margin },
+            didDrawPage: () => {
+              drawAccountsWatermark(pdf);
+            }
+          });
+
+          yPos = pdf.lastAutoTable.finalY + 8;
+        } else {
+          pdf.setFontSize(9);
+          pdf.setTextColor(15, 23, 42);
+          if (sectionTitle) {
+            pdf.text(sectionTitle, margin, yPos);
+            yPos += 5;
+          }
+          pdf.text(headers.join(' | '), margin, yPos);
+          yPos += 5;
+          rows.forEach((row) => {
+            if (yPos > 285) {
+              pdf.addPage();
+              yPos = 20;
+            }
+            pdf.text(row.join(' | '), margin, yPos);
+            yPos += 4.5;
+          });
+          yPos += 6;
+        }
+        if (index < tables.length - 1 && yPos > 240) {
+          pdf.addPage();
+          yPos = 18;
+        }
+      });
+
+      const pageCount = pdf.internal.getNumberOfPages();
+      const servedBy = (userProfile?.name || userProfile?.username || userProfile?.email || 'Unknown').trim();
+      const servedText = `Served by: ${servedBy}`;
+
+      for (let page = 1; page <= pageCount; page += 1) {
+        pdf.setPage(page);
+        pdf.setFontSize(8);
+        pdf.setTextColor(100);
+        const footerY = pdf.internal.pageSize.getHeight() - 10;
+        pdf.text(`Generated: ${formatDate(new Date(), { withTime: true })}`, margin, footerY);
+        pdf.text(servedText, pageWidth / 2, footerY, { align: 'center' });
+        pdf.text(`Page ${page} of ${pageCount}`, pageWidth - margin, footerY, { align: 'right' });
+      }
+
+      const baseName = (customTitle || currentStudentDetails?.name || titleSuffix || 'Document').replace(/\s+/g, '_');
+      pdf.save(`${baseName}_${titleSuffix}.pdf`);
+      return true;
+    } catch (e) {
+      console.warn('Direct PDF export failed', e);
       return false;
     }
-    if (typeof window.jspdf.jsPDF.API !== 'undefined' && typeof window.jspdf.jsPDF.API.autoTable !== 'undefined') {
-      return true;
-    }
-    return typeof window.jspdf.autoTable === 'function';
   }
 
   // ---------------------------
   // Cache State - All as Maps
   // ---------------------------
   let userProfile = null;
+  let schoolInfoBootstrapPromise = null;
+  let accountsLogoBootstrapPromise = null;
+  // Precomputed assets for accounts PDF (logo base64, format, image properties)
+  let accountsProfileData = {
+    schoolLogoBase64: null,
+    logoFormat: null,
+    logoProps: null
+  };
   let statsCache = new Map();
   let statsLastFetch = 0;
   let feeStructuresCache = new Map();
@@ -60,6 +364,15 @@
   let expensesTotalPages = 1;
   let expensesTotalCount = 0;
   const EXPENSES_LIMIT = 50;
+  let currentExpenseBalanceSheetData = {
+    academicYear: new Date().getFullYear(),
+    term: '',
+    category: '',
+    totalIncome: 0,
+    totalExpenses: 0,
+    netCash: 0,
+    expenses: []
+  };
 
   // DOM Elements
   const refreshBtn = document.getElementById("refreshBtn");
@@ -69,6 +382,7 @@
   const outstandingTableBody = document.getElementById("outstandingFeesTableBody");
   const outstandingGradeFilter = document.getElementById("outstandingGradeFilter");
   const outstandingYearFilter = document.getElementById("outstandingYearFilter");
+  const outstandingTermFilter = document.getElementById("outstandingTermFilter");
   const outstandingSortFilter = document.getElementById("outstandingSortFilter");
   const outstandingSearchInput = document.getElementById("outstandingSearchInput");
   const outstandingPageInfo = document.getElementById("outstandingPageInfo");
@@ -105,6 +419,11 @@
   const expensePageInfo = document.getElementById("expensePageInfo");
   const expensePrevBtn = document.getElementById("expensePrevBtn");
   const expenseNextBtn = document.getElementById("expenseNextBtn");
+  const openBalanceSheetModalBtn = document.getElementById("openBalanceSheetModal");
+  const balanceSheetModal = document.getElementById("balanceSheetModal");
+  const closeBalanceSheetModalBtn = document.getElementById("closeBalanceSheetModal");
+  const dlBalanceSheetBtn = document.getElementById("dlBalanceSheetBtn");
+  const balanceSheetModalBody = document.getElementById("balanceSheetModalBody");
 
   // Student Fee Details Modal Elements
   const studentFeeDetailsModal = document.getElementById("studentFeeDetailsModal");
@@ -253,29 +572,128 @@
   }
 
   async function getSchoolInfo(options = {}) {
-    const fieldsQuery = options.fields || 'all';
-    const cacheKey = `school-${fieldsQuery}`;
+    const includeLogo = !!options.includeLogo;
+    const fieldsQuery = options.fields && options.fields !== 'all' ? options.fields : '';
+    const includeLogoFlag = includeLogo ? '_logo' : '';
+    const cacheKey = `school-${fieldsQuery || 'default'}${includeLogoFlag}`;
     if (schoolInfoCache.has(cacheKey)) {
       const cached = schoolInfoCache.get(cacheKey);
       if (Date.now() - cached.timestamp < CACHE_TTL) {
         return cached.data;
       }
     }
-    
+
+    if (!schoolInfoBootstrapPromise) {
+      schoolInfoBootstrapPromise = (async () => {
+        try {
+          const queryParams = { includeLogo: 'true' };
+          const schoolData = await secureFetch(`${API_BASE}/my-school`, { query: queryParams });
+          schoolInfoCache.set('school-default_logo', { timestamp: Date.now(), data: schoolData });
+          schoolInfoCache.set('school-default', { timestamp: Date.now(), data: schoolData });
+          schoolInfoCache.set('school-name,schoolType', { timestamp: Date.now(), data: schoolData });
+          window.schoolInfo = schoolData;
+          return schoolData;
+        } catch (e) {
+          console.error("School info fetch failed", e);
+          const fallback = { name: "SCHOOL NAME", schoolType: "full" };
+          schoolInfoCache.set('school-default_logo', { timestamp: Date.now(), data: fallback });
+          schoolInfoCache.set('school-default', { timestamp: Date.now(), data: fallback });
+          schoolInfoCache.set('school-name,schoolType', { timestamp: Date.now(), data: fallback });
+          window.schoolInfo = fallback;
+          return fallback;
+        }
+      })();
+    }
+
+    const bootstrapped = await schoolInfoBootstrapPromise;
+    const requestedCacheKey = `school-${fieldsQuery || 'default'}${includeLogoFlag}`;
+    if (!schoolInfoCache.has(requestedCacheKey)) {
+      schoolInfoCache.set(requestedCacheKey, { timestamp: Date.now(), data: bootstrapped });
+    }
+    return schoolInfoCache.get(requestedCacheKey)?.data || bootstrapped;
+  }
+
+  // Preload and normalize logo for PDF embedding (similar to `dean.js` logic)
+  async function preloadAccountsLogo() {
     try {
-      const queryParams = options.fields ? { fields: options.fields } : {};
-      const schoolData = await secureFetch(`${API_BASE}/my-school`, { query: queryParams });
-      schoolInfoCache.set(cacheKey, { timestamp: Date.now(), data: schoolData });
-      return schoolData;
+      const school = await getSchoolInfo({ fields: 'name,status,logo,logoMimeType,schoolType,', includeLogo: 'true' });
+      const brandingSource = school || window.schoolInfo || {};
+      const logoCandidate = brandingSource.logo || window.schoolInfo?.logo;
+      if (!brandingSource || !logoCandidate) return;
+
+      let logoSrc = logoCandidate;
+      if (!logoSrc.startsWith('http') && !logoSrc.startsWith('/') && !logoSrc.startsWith('data:')) {
+        const mimeType = school.logoMimeType || 'image/png';
+        logoSrc = `data:${mimeType};base64,${logoSrc}`;
+      }
+
+      accountsProfileData.logoSrc = logoSrc.startsWith('data:') ? logoSrc : normalizeLogoSrc(logoSrc);
+
+      const base64 = await (async () => {
+        if (!accountsProfileData.logoSrc) return null;
+        if (accountsProfileData.logoSrc.startsWith('data:')) return accountsProfileData.logoSrc;
+
+        try {
+          const response = await fetch(accountsProfileData.logoSrc);
+          const blob = await response.blob();
+          return await new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onloadend = () => resolve(reader.result);
+            reader.onerror = reject;
+            reader.readAsDataURL(blob);
+          });
+        } catch (error) {
+          console.warn('Logo conversion failed', error);
+          return null;
+        }
+      })();
+
+      if (!base64) return;
+
+      accountsProfileData.schoolLogoBase64 = base64;
+      accountsProfileData.logoFormat = /data:image\/([a-zA-Z+]+);base64,/i.test(base64)
+        ? (base64.match(/^data:image\/([a-zA-Z+]+);base64,/i)[1].toUpperCase() === 'JPG' ? 'JPEG' : base64.match(/^data:image\/([a-zA-Z+]+);base64,/i)[1].toUpperCase())
+        : 'PNG';
+
+      if (window.jspdf && window.jspdf.jsPDF) {
+        try {
+          const tempDoc = new window.jspdf.jsPDF();
+          accountsProfileData.logoProps = tempDoc.getImageProperties(base64);
+        } catch (e) {
+          console.warn('Failed to get logo image properties for accounts PDF', e);
+        }
+      }
     } catch (e) {
-      console.error("School info fetch failed", e);
-      return { name: "SCHOOL NAME", schoolType: "full" };
+      console.warn('preloadAccountsLogo failed', e);
+    }
+  }
+
+  function normalizeLogoSrc(logoSrc) {
+    if (!logoSrc) return null;
+    if (logoSrc.startsWith('data:')) return logoSrc;
+    if (logoSrc.startsWith('http')) return logoSrc;
+    const BACKEND_URL = config.api.baseURL.replace('/api', '');
+    return `${BACKEND_URL}${logoSrc.startsWith('/') ? '' : '/'}${logoSrc}`;
+  }
+
+  async function bootstrapAccountsSharedData() {
+    try {
+      const school = await getSchoolInfo({ includeLogo: 'true' });
+      if (school?.logo && !accountsProfileData.schoolLogoBase64 && !accountsLogoBootstrapPromise) {
+        accountsLogoBootstrapPromise = preloadAccountsLogo();
+        await accountsLogoBootstrapPromise;
+      }
+      return school;
+    } catch (error) {
+      console.warn('Shared accounts bootstrap failed', error);
+      return null;
     }
   }
 
   // ---------------------------
   // HELPERS - NOTIFICATIONS
   // ---------------------------
+  bootstrapAccountsSharedData();
   function showToast(message, type = "info") {
     const toast = document.createElement("div");
     toast.style.cssText = `
@@ -286,8 +704,9 @@
       border-radius: 4px;
       color: white;
       font-size: 14px;
-      z-index: 10000;
+      z-index: 999999;
       animation: slideIn 0.3s ease-out;
+      pointer-events: none;
     `;
     
     if (type === "success") {
@@ -409,6 +828,16 @@
         balanceEl.textContent = `KES ${balance.toLocaleString()}`;
         balanceEl.style.color = balance < 0 ? "#dc3545" : "#28a745";
       }
+
+      currentExpenseBalanceSheetData = {
+        academicYear: Number(year),
+        term,
+        category,
+        totalIncome,
+        totalExpenses: totalExp,
+        netCash: balance,
+        expenses
+      };
     } catch (err) {
       console.error(err);
       expenseTableBody.innerHTML = '<tr><td colspan="5" style="text-align:center; color:red;">Error loading expenses.</td></tr>';
@@ -429,16 +858,34 @@
   };
 
   if (saveExpenseBtn) {
-    saveExpenseBtn.addEventListener('click', async () => {
+    saveExpenseBtn.addEventListener('click', async (event) => {
+      event.preventDefault();
+      const categoryEl = document.getElementById("expCategory");
+      const descriptionEl = document.getElementById("expDesc");
+      const amountEl = document.getElementById("expAmount");
+      const dateEl = document.getElementById("expDate");
+      const termEl = document.getElementById("expTerm");
+      const yearEl = document.getElementById("expenseYearFilter");
+
       const payload = {
-        category: document.getElementById("expCategory")?.value,
-        description: document.getElementById("expDesc")?.value,
-        amount: Number(document.getElementById("expAmount")?.value),
-        date: document.getElementById("expDate")?.value,
-        academicYear: document.getElementById("expenseYearFilter")?.value,
-        term: document.getElementById("expTerm")?.value
+        category: categoryEl?.value,
+        description: descriptionEl?.value,
+        amount: Number(amountEl?.value),
+        date: dateEl?.value,
+        academicYear: Number(yearEl?.value) || new Date().getFullYear(),
+        term: termEl?.value
       };
-      
+
+      if (!payload.category || !payload.description || !payload.amount || !payload.date || !payload.academicYear || !payload.term) {
+        showToast("Please fill in all required expense fields.", "error");
+        return;
+      }
+
+      if (payload.amount <= 0) {
+        showToast("Expense amount must be greater than zero.", "error");
+        return;
+      }
+
       try {
         await secureFetch(`${API_BASE}/expenses`, {
           method: 'POST',
@@ -450,10 +897,10 @@
           setTimeout(() => expenseModal.style.display = 'none', 200);
         }
         // Reset form fields
-        document.getElementById("expCategory").value = "Salaries";
-        document.getElementById("expDesc").value = "";
-        document.getElementById("expAmount").value = "";
-        document.getElementById("expDate").value = "";
+        if (categoryEl) categoryEl.value = "Salaries";
+        if (descriptionEl) descriptionEl.value = "";
+        if (amountEl) amountEl.value = "";
+        if (dateEl) dateEl.value = "";
         loadExpenses(true, 1); // Reset to page 1 after adding
       } catch (err) {
         showToast("Error: " + err.message, "error");
@@ -487,9 +934,107 @@
 
   if (closeExpenseModalBtn) {
     closeExpenseModalBtn.addEventListener('click', () => {
-      expenseModal.classList.remove('visible');
-      setTimeout(() => expenseModal.style.display = 'none', 200);
+      if (expenseModal) {
+        expenseModal.classList.remove('visible');
+        setTimeout(() => expenseModal.style.display = 'none', 200);
+      }
     });
+  }
+
+  if (openBalanceSheetModalBtn) {
+    openBalanceSheetModalBtn.addEventListener('click', () => {
+      if (!balanceSheetModal || !balanceSheetModalBody) return;
+      renderBalanceSheetModal();
+      balanceSheetModal.style.display = 'flex';
+      requestAnimationFrame(() => balanceSheetModal.classList.add('visible'));
+    });
+  }
+
+  if (closeBalanceSheetModalBtn) {
+    closeBalanceSheetModalBtn.addEventListener('click', () => {
+      balanceSheetModal.classList.remove('visible');
+      setTimeout(() => balanceSheetModal.style.display = 'none', 200);
+    });
+  }
+
+  if (dlBalanceSheetBtn) {
+    dlBalanceSheetBtn.addEventListener('click', () => {
+      runDownloadWithSpinner(dlBalanceSheetBtn, 'balance-sheet-for-pdf', 'Balance_Sheet', 'SCHOOL BALANCE SHEET');
+    });
+  }
+
+  function renderBalanceSheetModal() {
+    if (!balanceSheetModalBody) return;
+    const data = currentExpenseBalanceSheetData;
+    const categoryLabel = data.category || 'All Categories';
+    const termLabel = data.term || 'All Terms';
+    const currentDateLabel = formatDate(new Date());
+
+    const expensesRows = data.expenses.map((e) => `
+      <tr>
+        <td style="padding:8px; border-bottom:1px solid #e2e8f0;">${formatDate(e.date)}</td>
+        <td style="padding:8px; border-bottom:1px solid #e2e8f0;">${e.category}</td>
+        <td style="padding:8px; border-bottom:1px solid #e2e8f0;">${e.description || '—'}</td>
+        <td style="padding:8px; text-align:right; border-bottom:1px solid #e2e8f0;">${formatCurrency(e.amount)}</td>
+      </tr>
+    `).join('');
+
+    const content = `
+      <div id="balance-sheet-for-pdf" class="pdf-report-shell" style="font-family:Arial, sans-serif; color:#1f2937;">
+        <div class="report-header pdf-report-header" style="text-align:center; margin-bottom:24px; border-bottom:2px solid #e5e7eb; padding-bottom:12px;">
+          <h2 style="margin:0; font-size:22px; letter-spacing:0.03em; white-space:nowrap;">
+            SCHOOL BALANCE SHEET&nbsp;<small style="font-size:14px; font-weight:600; color:#4b5563;">AS AT ${currentDateLabel}</small>
+          </h2>
+          <p style="margin:6px 0 0; font-size:13px;">${data.academicYear} | ${termLabel} | ${categoryLabel}</p>
+        </div>
+
+        <div class="pdf-summary-grid" style="margin-bottom:24px;">
+          <div class="pdf-summary-card receipt-card" style="padding:16px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:10px;">
+            <div class="pdf-summary-card-row">
+              <h4 class="pdf-card-title" style="margin:0; font-size:16px; color:#111827;">Receipts / Income</h4>
+              <div class="pdf-card-value" style="font-size:20px; font-weight:700; margin:0;">${formatCurrency(data.totalIncome)}</div>
+            </div>
+            <p class="pdf-card-caption" style="margin:8px 0 0; font-size:14px; color:#6b7280;">Total fees received for this selection.</p>
+          </div>
+          <div class="pdf-summary-card expense-card" style="padding:16px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:10px;">
+            <div class="pdf-summary-card-row">
+              <h4 class="pdf-card-title" style="margin:0; font-size:16px; color:#111827;">Expenses</h4>
+              <div class="pdf-card-value" style="font-size:20px; font-weight:700; margin:0;">${formatCurrency(data.totalExpenses)}</div>
+            </div>
+            <p class="pdf-card-caption" style="margin:8px 0 0; font-size:14px; color:#6b7280;">Total expenses recorded for this selection.</p>
+          </div>
+        </div>
+
+        <div class="pdf-summary-card net-cash" style="padding:16px; background:#ffffff; border:1px solid #e2e8f0; border-radius:10px; margin-bottom:24px;">
+          <div class="pdf-summary-card-row" style="justify-content:space-between; align-items:center; gap:12px;">
+            <div>
+              <h4 class="pdf-card-title" style="margin:0; font-size:16px; color:#111827;">Net Cash Position</h4>
+              <p class="pdf-card-caption" style="margin:8px 0 0; font-size:14px; color:#6b7280;">Income minus expenses.</p>
+            </div>
+            <div class="pdf-card-value" style="font-size:24px; font-weight:800; color:${data.netCash < 0 ? '#b91c1c' : '#047857'};">${formatCurrency(data.netCash)}</div>
+          </div>
+        </div>
+
+        <div style="margin-bottom:16px;">
+          <h4 style="margin:0 0 12px; font-size:16px; color:#111827;">Expense Breakdown</h4>
+          <table class="pdf-export-table" style="width:100%; border-collapse:collapse; font-size:13px;">
+            <thead>
+              <tr style="background:#f3f4f6; color:#374151; text-align:left;">
+                <th style="padding:10px; border:1px solid #e5e7eb;">Date</th>
+                <th style="padding:10px; border:1px solid #e5e7eb;">Category</th>
+                <th style="padding:10px; border:1px solid #e5e7eb;">Description</th>
+                <th style="padding:10px; border:1px solid #e5e7eb; text-align:right;">Amount</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${expensesRows || '<tr><td colspan="4" style="padding:14px; text-align:center; color:#6b7280;">No expenses recorded for this selection.</td></tr>'}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    `;
+
+    balanceSheetModalBody.innerHTML = content;
   }
 
   // ---------------------------
@@ -513,7 +1058,7 @@
       const cached = statsCache.get(cacheKey);
       if (Date.now() - cached.timestamp < CACHE_TTL) {
         updateOverviewCards(cached.data, {
-          grade: grade || "All Grades",
+           grade: grade || "All Grades",
           year: year,
           term: term || "Annual"
         });
@@ -719,10 +1264,11 @@
     
     const grade = outstandingGradeFilter?.value || "";
     const year = outstandingYearFilter?.value || new Date().getFullYear();
+    const term = outstandingTermFilter?.value || getCurrentTerm();
     const sort = outstandingSortFilter?.value || "balance_desc";
     const search = outstandingSearchInput?.value.trim() || "";
     
-    const cacheKey = `outstanding_${grade}_${year}_${sort}_${search}_p${page}`;
+    const cacheKey = `outstanding_${grade}_${year}_${term}_${sort}_${search}_p${page}`;
     
     if (!forceRefresh && outstandingCache.has(cacheKey)) {
       const cached = outstandingCache.get(cacheKey);
@@ -738,6 +1284,7 @@
     
     const query = new URLSearchParams({ academicYear: year, limit: outstandingLimit, page });
     if (grade) query.append("class", grade);
+    if (term) query.append("term", term);
     if (sort) query.append("sort", sort);
     if (search) query.append("name", search);
     // Add cache-busting parameter if force refresh
@@ -770,30 +1317,36 @@
       outstandingTableBody.innerHTML = '<tr><td colspan="6" style="text-align: center;">No students with outstanding balances found.</td></tr>';
       return;
     }
-    
+    const selectedTerm = outstandingTermFilter?.value || '';
+    const selectedTermKey = selectedTerm ? selectedTerm.toLowerCase().replace(/\s+/g, '') : null;
+
     outstandingTableBody.innerHTML = accounts.map(s => {
       const totalFee = Number(s.expected ?? s.totalFee ?? 0);
       const paidAmount = Number(s.totalPaid ?? s.paid ?? 0);
       let balance = Number(s.balance ?? (totalFee - paidAmount));
       if (!Number.isFinite(balance)) balance = 0;
-      if (balance <= 0) return '';
-      
+
+      const termFee = selectedTermKey ? getNumeric(s.termBalances?.[selectedTermKey]?.fee ?? 0) : totalFee;
+      const termPaid = selectedTermKey ? getNumeric(s.termBalances?.[selectedTermKey]?.paid ?? 0) : paidAmount;
+      const termBalance = selectedTermKey ? getNumeric(s.termBalances?.[selectedTermKey]?.balance ?? 0) : balance;
+      if (termBalance <= 0) return '';
+
       const safeName = (s.studentName || s.name || 'Unknown').replace(/'/g, "&apos;");
       let studentId = s.studentId;
       if (studentId && typeof studentId === 'object') studentId = studentId._id;
       if (!studentId) studentId = s._id;
-      
+
       const admission = s.admission || s.admissionNo || '';
       let statusBadge = '';
-      
-      if (balance <= 0) {
+
+      if (termBalance <= 0) {
         statusBadge = `<span class="status-badge status-paid" style="background:#d1fae5; color:#065f46;">Paid</span>`;
-      } else if (paidAmount > 0 && balance > 0) {
+      } else if (termPaid > 0 && termBalance > 0) {
         statusBadge = `<span class="status-badge status-partial" style="background:#fef3c7; color:#92400e;">Partial</span>`;
       } else {
         statusBadge = `<span class="status-badge status-unpaid" style="background:#fee2e2; color:#991b1b;">Unpaid</span>`;
       }
-      
+
       const term1Fee = getNumeric(s.termBalances?.term1?.fee ?? s.termBalances?.term1?.amount ?? 0);
       const term2Fee = getNumeric(s.termBalances?.term2?.fee ?? s.termBalances?.term2?.amount ?? 0);
       const term3Fee = getNumeric(s.termBalances?.term3?.fee ?? s.termBalances?.term3?.amount ?? 0);
@@ -803,9 +1356,9 @@
           <td>${admission}</td>
           <td>${safeName}</td>
           <td>${s.className || s.grade || '-'}</td>
-          <td style="text-align: right; font-weight: bold; color: #dc3545;">KES ${balance.toLocaleString()}</td>
+          <td style="text-align: right; font-weight: bold; color: #dc3545;">KES ${termBalance.toLocaleString()}</td>
           <td style="text-align: center;">${statusBadge}</td>
-          <td style="text-align: center;"><button class="btn secondary-btn view-fee-btn" data-id="${studentId}" data-admission="${admission}" data-name="${safeName}" data-grade="${s.className || s.grade || ''}" data-expected="${totalFee}" data-paid="${paidAmount}" data-balance="${balance}" data-term1fee="${term1Fee}" data-term2fee="${term2Fee}" data-term3fee="${term3Fee}" data-totalfee="${totalFeeValue}">View</button></td>
+          <td style="text-align: center;"><button class="btn secondary-btn view-fee-btn" data-id="${studentId}" data-admission="${admission}" data-name="${safeName}" data-grade="${s.className || s.grade || ''}" data-expected="${termFee}" data-paid="${termPaid}" data-balance="${termBalance}" data-term1fee="${term1Fee}" data-term2fee="${term2Fee}" data-term3fee="${term3Fee}" data-totalfee="${totalFeeValue}">View</button></td>
         </tr>
       `;
     }).join('');
@@ -865,7 +1418,8 @@
     requestAnimationFrame(() => studentFeeDetailsModal.classList.add('visible'));
     
     const year = outstandingYearFilter?.value || new Date().getFullYear();
-    currentStudentDetails = { name: studentName, year };
+    // Store full student details for use in exports and metadata
+    currentStudentDetails = { name: studentName, adm: admission, grade: grade, year };
     
     if (!admission) {
       studentFeeModalBody.innerHTML = '<div style="color:red; text-align:center;">Error: Missing Admission Number</div>';
@@ -983,86 +1537,89 @@
 
       const paymentTotal = payments.reduce((sum, payment) => sum + Number(payment.amount || payment.totalAmount || 0), 0);
       const totalPaid = Number(summaryData.paid ?? totals.totalPaid ?? paymentTotal ?? 0);
-      const totalFee = Number(summaryData.expected ?? totals.totalFee ?? normalizedFees.totalFee ?? 0);
-      const totalBalance = Number(summaryData.balance ?? totals.totalBalance ?? totals.balance ?? (totalFee - totalPaid));
-      const unpaidAmount = Math.max(totalFee - totalPaid, 0);
+      const totalPaidFromTerms = termPaid["Term 1"] + termPaid["Term 2"] + termPaid["Term 3"];
+      const calculatedTotalFee = normalizedFees.term1Fee + normalizedFees.term2Fee + normalizedFees.term3Fee;
+      const totalBalance = calculatedTotalFee - totalPaidFromTerms;
+      const unpaidAmount = Math.max(totalBalance, 0);
       
       let content = `
-        <div id="fee-details-content">
-          <div class="report-header" style="text-align:center; margin-bottom:20px; border-bottom: 2px solid #eee; padding-bottom: 10px;">
-            <h2 style="margin:0;">FEE STATEMENT</h2>
-            <p style="margin:5px 0;"><strong>Learner:</strong> ${studentName} <strong>(ADM ${admission})</strong></p>
-            <p style="margin:0;"><strong>Grade:</strong> ${grade} | <strong>Year:</strong> ${year}</p>
+        <div id="fee-details-content" class="pdf-report-shell">
+          <div class="report-header pdf-report-header" style="text-align:center; margin-bottom:24px; border-bottom: 2px solid #d1d5db; padding-bottom: 12px;">
+            <h2 style="margin:0; font-size:24px; letter-spacing:0.05em; color:#111827;">FEE STATEMENT</h2>
+            <div class="pdf-student-info" style="margin:8px 0 4px; font-size:14px; color:#374151;">
+              <strong class="pdf-student-name">${studentName}</strong>
+              <span class="pdf-student-meta"> | Adm: ${admission} |  ${grade} |  ${year}</span>
+            </div>
           </div>
 
-          <div id="fee-structure-for-pdf" style="margin-bottom: 25px;">
-            <h4 style="border-bottom: 1px solid #ccc; padding-bottom: 5px; margin-bottom: 10px;">Fee Structure & Status</h4>
-            <table style="width:100%; border-collapse:collapse; font-size: 13px; margin-bottom: 15px;">
+          <div id="fee-structure-for-pdf" style="margin-bottom: 28px;">
+            <h4 class="pdf-section-title" style="border-bottom: 1px solid #d1d5db; padding-bottom: 8px; margin-bottom: 14px; font-size:16px; color:#111827;">Fee Structure & Status</h4>
+            <table class="pdf-export-table" style="width:100%; border-collapse:collapse; font-size: 15px; margin-bottom: 18px;">
               <thead>
-                <tr style="background:#e9ecef;">
-                  <th style="padding:8px; text-align:left; border:1px solid #ddd;">Term</th>
-                  <th style="padding:8px; text-align:right; border:1px solid #ddd;">Fee</th>
-                  <th style="padding:8px; text-align:right; border:1px solid #ddd;">Paid</th>
-                  <th style="padding:8px; text-align:right; border:1px solid #ddd;">Balance</th>
+                <tr style="background:#f3f4f6;">
+                  <th style="padding:10px; text-align:left; border:1px solid #d1d5db; font-size:14px;">Term</th>
+                  <th style="padding:10px; text-align:right; border:1px solid #d1d5db; font-size:14px;">Fee</th>
+                  <th style="padding:10px; text-align:right; border:1px solid #d1d5db; font-size:14px;">Paid</th>
+                  <th style="padding:10px; text-align:right; border:1px solid #d1d5db; font-size:14px;">Balance</th>
                 </tr>
               </thead>
               <tbody>
                 <tr>
-                  <td style="padding:8px; border:1px solid #ddd;">Term 1</td>
-                  <td style="padding:8px; text-align:right; border:1px solid #ddd;">${formatCurrency(normalizedFees.term1Fee || 0)}</td>
-                  <td style="padding:8px; text-align:right; border:1px solid #ddd;">${formatCurrency(termPaid["Term 1"])}</td>
-                  <td style="padding:8px; text-align:right; border:1px solid #ddd; font-weight:bold;">${formatCurrency((normalizedFees.term1Fee || 0) - termPaid["Term 1"])}</td>
+                  <td style="padding:12px; border:1px solid #d1d5db; font-size:14px;">Term 1</td>
+                  <td style="padding:12px; text-align:right; border:1px solid #d1d5db; font-size:14px;">${formatCurrency(normalizedFees.term1Fee || 0)}</td>
+                  <td style="padding:12px; text-align:right; border:1px solid #d1d5db; font-size:14px;">${formatCurrency(termPaid["Term 1"])}</td>
+                  <td style="padding:12px; text-align:right; border:1px solid #d1d5db; font-weight:700; font-size:14px;">${formatCurrency((normalizedFees.term1Fee || 0) - termPaid["Term 1"])}</td>
                 </tr>
                 <tr>
-                  <td style="padding:8px; border:1px solid #ddd;">Term 2</td>
-                  <td style="padding:8px; text-align:right; border:1px solid #ddd;">${formatCurrency(normalizedFees.term2Fee || 0)}</td>
-                  <td style="padding:8px; text-align:right; border:1px solid #ddd;">${formatCurrency(termPaid["Term 2"])}</td>
-                  <td style="padding:8px; text-align:right; border:1px solid #ddd; font-weight:bold;">${formatCurrency((normalizedFees.term2Fee || 0) - termPaid["Term 2"])}</td>
+                  <td style="padding:12px; border:1px solid #d1d5db; font-size:14px;">Term 2</td>
+                  <td style="padding:12px; text-align:right; border:1px solid #d1d5db; font-size:14px;">${formatCurrency(normalizedFees.term2Fee || 0)}</td>
+                  <td style="padding:12px; text-align:right; border:1px solid #d1d5db; font-size:14px;">${formatCurrency(termPaid["Term 2"])}</td>
+                  <td style="padding:12px; text-align:right; border:1px solid #d1d5db; font-weight:700; font-size:14px;">${formatCurrency((normalizedFees.term2Fee || 0) - termPaid["Term 2"])}</td>
                 </tr>
                 <tr>
-                  <td style="padding:8px; border:1px solid #ddd;">Term 3</td>
-                  <td style="padding:8px; text-align:right; border:1px solid #ddd;">${formatCurrency(normalizedFees.term3Fee || 0)}</td>
-                  <td style="padding:8px; text-align:right; border:1px solid #ddd;">${formatCurrency(termPaid["Term 3"])}</td>
-                  <td style="padding:8px; text-align:right; border:1px solid #ddd; font-weight:bold;">${formatCurrency((normalizedFees.term3Fee || 0) - termPaid["Term 3"])}</td>
+                  <td style="padding:12px; border:1px solid #d1d5db; font-size:14px;">Term 3</td>
+                  <td style="padding:12px; text-align:right; border:1px solid #d1d5db; font-size:14px;">${formatCurrency(normalizedFees.term3Fee || 0)}</td>
+                  <td style="padding:12px; text-align:right; border:1px solid #d1d5db; font-size:14px;">${formatCurrency(termPaid["Term 3"])}</td>
+                  <td style="padding:12px; text-align:right; border:1px solid #d1d5db; font-weight:700; font-size:14px;">${formatCurrency((normalizedFees.term3Fee || 0) - termPaid["Term 3"])}</td>
                 </tr>
-                <tr style="background:#f8f9fa; font-weight:bold;">
-                  <td style="padding:8px; border:1px solid #ddd;">TOTAL</td>
-                  <td style="padding:8px; text-align:right; border:1px solid #ddd;">${formatCurrency(normalizedFees.totalFee || 0)}</td>
-                  <td style="padding:8px; text-align:right; border:1px solid #ddd;">${formatCurrency(totalPaid)}</td>
-                  <td style="padding:8px; text-align:right; border:1px solid #ddd; color:${totalBalance > 0 ? '#dc3545' : '#28a745'};">${formatCurrency(totalBalance)}</td>
+                <tr style="background:#f3f4f6; font-weight:700;">
+                  <td style="padding:12px; border:1px solid #d1d5db; font-size:14px;">TOTAL</td>
+                  <td style="padding:12px; text-align:right; border:1px solid #d1d5db; font-size:14px;">${formatCurrency(calculatedTotalFee)}</td>
+                  <td style="padding:12px; text-align:right; border:1px solid #d1d5db; font-size:14px;">${formatCurrency(totalPaidFromTerms)}</td>
+                  <td style="padding:12px; text-align:right; border:1px solid #d1d5db; color:${totalBalance > 0 ? '#dc3545' : '#16a34a'}; font-size:14px;">${formatCurrency(totalBalance)}</td>
                 </tr>
               </tbody>
             </table>
           </div>
           
-          <div id="payment-statement-for-pdf" style="margin-bottom: 25px;">
-            <h4 style="border-bottom: 1px solid #ccc; padding-bottom: 5px; margin-bottom: 10px;">Payment History</h4>
-            <table style="width:100%; border-collapse:collapse; font-size: 13px;">
+          <div id="payment-statement-for-pdf" style="margin-bottom: 28px;">
+            <h4 class="pdf-section-title" style="border-bottom: 1px solid #d1d5db; padding-bottom: 8px; margin-bottom: 14px; font-size:16px; color:#111827;">Payment History</h4>
+            <table class="pdf-export-table" style="width:100%; border-collapse:collapse; font-size: 15px;">
               <thead>
-                <tr style="background:#f8f9fa;">
-                  <th style="padding:8px; text-align:left; border-bottom:1px solid #ddd;">Date</th>
-                  <th style="padding:8px; text-align:left; border-bottom:1px solid #ddd;">Reference</th>
-                  <th style="padding:8px; text-align:left; border-bottom:1px solid #ddd;">Method</th>
-                  <th style="padding:8px; text-align:left; border-bottom:1px solid #ddd;">Term</th>
-                  <th style="padding:8px; text-align:right; border-bottom:1px solid #ddd;">Amount</th>
+                <tr style="background:#f3f4f6;">
+                  <th style="padding:10px; text-align:left; border-bottom:1px solid #d1d5db; font-size:14px;">Date</th>
+                  <th style="padding:10px; text-align:left; border-bottom:1px solid #d1d5db; font-size:14px;">Reference</th>
+                  <th style="padding:10px; text-align:left; border-bottom:1px solid #d1d5db; font-size:14px;">Method</th>
+                  <th style="padding:10px; text-align:left; border-bottom:1px solid #d1d5db; font-size:14px;">Term</th>
+                  <th style="padding:10px; text-align:right; border-bottom:1px solid #d1d5db; font-size:14px;">Amount</th>
                 </tr>
               </thead>
               <tbody>
       `;
       
       if (payments.length === 0) {
-        content += `<tr><td colspan="5" style="text-align:center; padding:10px;">No payments recorded for this year.</td></tr>`;
+        content += `<tr><td colspan="5" style="text-align:center; padding:14px; font-size:14px;">No payments recorded for this year.</td></tr>`;
       } else {
         payments.forEach((payment) => {
-          const paymentDate = payment.createdAt ? new Date(payment.createdAt).toLocaleDateString() : '—';
+          const paymentDate = payment.createdAt ? formatDate(payment.createdAt) : '—';
           const paymentAmount = Number(payment.amount || payment.totalAmount || 0);
           content += `
             <tr>
-              <td style="padding:8px; border-bottom:1px solid #eee;">${paymentDate}</td>
-              <td style="padding:8px; border-bottom:1px solid #eee;">${payment.reference || '—'}</td>
-              <td style="padding:8px; border-bottom:1px solid #eee;">${payment.method || '—'}</td>
-              <td style="padding:8px; border-bottom:1px solid #eee;">${payment.term || '—'}</td>
-              <td style="padding:8px; border-bottom:1px solid #eee; text-align:right;">${formatCurrency(paymentAmount)}</td>
+              <td style="padding:12px; border-bottom:1px solid #e5e7eb;">${paymentDate}</td>
+              <td style="padding:12px; border-bottom:1px solid #e5e7eb;">${payment.reference || '—'}</td>
+              <td style="padding:12px; border-bottom:1px solid #e5e7eb;">${payment.method || '—'}</td>
+              <td style="padding:12px; border-bottom:1px solid #e5e7eb;">${payment.term || '—'}</td>
+              <td style="padding:12px; border-bottom:1px solid #e5e7eb; text-align:right;">${formatCurrency(paymentAmount)}</td>
             </tr>
           `;
         });
@@ -1113,69 +1670,29 @@
   }
 
   async function generateModalPDF(elementId, titleSuffix, customTitle) {
-    const contentElement = document.getElementById(elementId);
-    const headerElement = document.querySelector('#studentFeeModalBody .report-header');
+    // Prefer using the fully-rendered modal wrapper so the student header is included
+    const modalWrapper = document.getElementById(elementId)?.closest('.confirm-box') || document.getElementById(elementId);
+    const contentElement = modalWrapper || document.getElementById(elementId);
+    const { jsPDFClass } = resolvePdfLibrary();
 
-    if (!contentElement || !headerElement || !window.html2canvas || !window.jspdf) {
-      showToast("PDF generation components not ready.", "error");
+    if (!contentElement || !jsPDFClass) {
+      showToast("PDF generation libraries are not ready.", "error");
       return;
     }
-    
-    // 1. Fetch school info to get the name
-    const school = await getSchoolInfo({ fields: 'name' });
-    const schoolName = (school.name || "SCHOOL NAME").toUpperCase();
-
-    // 2. Create a temporary, off-screen container for printing
-    const printContainer = document.createElement('div');
-    printContainer.style.position = 'absolute';
-    printContainer.style.left = '-9999px';
-    printContainer.style.width = '800px';
-    printContainer.style.padding = '20px';
-    printContainer.style.background = 'white';
-    printContainer.style.fontFamily = 'Arial, sans-serif';
-
-    // 3. Construct the printable content
-    printContainer.innerHTML = `
-        <div style="text-align:center; margin-bottom:20px;">
-            <h1 style="margin:0; font-size:22px;">${schoolName}</h1>
-        </div>
-    `;
-    
-    const clonedHeader = headerElement.cloneNode(true);
-    if (customTitle) {
-        const h2 = clonedHeader.querySelector('h2');
-        if (h2) h2.textContent = customTitle;
-    }
-    printContainer.appendChild(clonedHeader);
-    printContainer.appendChild(contentElement.cloneNode(true));
-    document.body.appendChild(printContainer);
 
     try {
-      const canvas = await html2canvas(printContainer, { scale: 2, useCORS: true });
-      const imgData = canvas.toDataURL('image/png');
-      const { jsPDF } = window.jspdf;
-      const pdf = new jsPDF('p', 'mm', 'a4');
-      const imgWidth = 190;
-      const imgHeight = (canvas.height * imgWidth) / canvas.width;
-      
-      pdf.addImage(imgData, 'PNG', 10, 10, imgWidth, imgHeight);
+      const school = await bootstrapAccountsSharedData();
+      await preloadAccountsLogo();
+      const resolvedSchool = school || await getSchoolInfo({ includeLogo: 'true' });
+      const schoolName = (resolvedSchool?.name || window.schoolInfo?.name || "SCHOOL NAME").toUpperCase();
 
-      // Add footer with current date and right-side metadata
-      const dateStr = `Generated: ${new Date().toLocaleString()}`;
-      const servedBy = userProfile?.name || userProfile?.fullName || userProfile?.username || userProfile?.email || 'Unknown';
-      pdf.setFontSize(8);
-      pdf.setTextColor(100);
-      pdf.text(dateStr, 10, pdf.internal.pageSize.getHeight() - 10);
-      pdf.text(`Page 1 of 1  |  Served by: ${servedBy}`, pdf.internal.pageSize.getWidth() - 10, pdf.internal.pageSize.getHeight() - 10, { align: 'right' });
-
-      const fname = `${currentStudentDetails?.name || 'Student'}_${titleSuffix}.pdf`;
-      pdf.save(fname);
-    } catch(e) { 
-        console.error(e); 
-        showToast("PDF generation failed", "error"); 
-    } finally {
-        // 4. Clean up the temporary container
-        document.body.removeChild(printContainer);
+      const exported = await generatePdfFromTables(jsPDFClass, contentElement, titleSuffix, customTitle, schoolName);
+      if (!exported) {
+        showToast("PDF generation failed", "error");
+      }
+    } catch (e) {
+      console.error(e);
+      showToast("PDF generation failed", "error");
     }
   }
 
@@ -1451,6 +1968,27 @@
     });
   }
 
+  function getCurrentTerm() {
+    const month = new Date().getMonth() + 1;
+    if (month <= 4) return 'Term 1';
+    if (month <= 8) return 'Term 2';
+    return 'Term 3';
+  }
+
+  function applyCurrentTermFilters() {
+    const currentTerm = getCurrentTerm();
+    if (overviewTermFilter) {
+      overviewTermFilter.value = currentTerm;
+    }
+    const expenseTermSelect = document.getElementById('expenseTermFilter');
+    if (expenseTermSelect) {
+      expenseTermSelect.value = currentTerm;
+    }
+    if (outstandingTermFilter) {
+      outstandingTermFilter.value = currentTerm;
+    }
+  }
+
   if (refreshBtn) {
     refreshBtn.addEventListener('click', async () => {
       refreshBtn.disabled = true;
@@ -1482,6 +2020,7 @@
 
   // Filter listeners
   outstandingGradeFilter?.addEventListener('change', () => loadOutstandingFees(1, true));
+  outstandingTermFilter?.addEventListener('change', () => loadOutstandingFees(1, true));
   outstandingSortFilter?.addEventListener('change', () => loadOutstandingFees(1));
   overviewClassFilter?.addEventListener('change', () => loadStats(true));
   overviewYearFilter?.addEventListener('change', () => loadStats(true));
@@ -1600,6 +2139,7 @@
     await getSchoolInfo({ fields: 'name,schoolType' });
     populateYearFilters();
     populateGradeFilters();
+    applyCurrentTermFilters();
     setupSidebarNavigation();
     
     let initialActiveSidebarItem = document.querySelector(".sidebar .menu li.active[data-section]");

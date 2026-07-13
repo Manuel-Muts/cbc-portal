@@ -2,7 +2,7 @@ import mongoose from 'mongoose';
 import Announcement from '../models/Announcement.js';
 import { User } from '../models/User.js';
 import { School } from '../models/school.js';
-import sendSMS, { countSMSSegments } from '../utils/sendSMS.js';
+import sendSMS, { countSMSSegments, classifySmsProviderResponse } from '../utils/sendSMS.js';
 import cacheManager from '../utils/cacheManager.js';
 import StudentEnrollment from '../models/StudentEnrollment.js';
 import SMSLog from '../models/SMSLog.js';
@@ -100,9 +100,8 @@ export const createAnnouncement = async (req, res) => {
           const batchLogs = await Promise.all(batch.map(async (r) => {
             const response = await sendSMS(r.contact, smsText);
             
-            // 🆕 Only count as success if at least one recipient status is 'Success' or 'Sent'
-            const isActualSuccess = response?.SMSMessageData?.Recipients?.some(recp => ['Success', 'Sent'].includes(recp.status));
-            if (isActualSuccess) actualSentCount++;
+            const status = classifySmsProviderResponse(response);
+            if (status === 'Sent') actualSentCount++;
 
             return {
               schoolId: req.user.schoolId,
@@ -110,7 +109,7 @@ export const createAnnouncement = async (req, res) => {
               recipient: r.contact,
               studentName: r.role === 'student' ? r.name : `Staff: ${r.name}`,
               content: smsText,
-              status: isActualSuccess ? "Sent" : "Failed",
+              status,
               providerResponse: response
             };
           }));
@@ -381,10 +380,9 @@ export const retryFailedSMS = async (req, res) => {
 
         const response = await sendSMS(log.recipient, log.content);
         
-        // Only count as success if status is 'Success' or 'Sent' (matching AT response structure)
-        const isActualSuccess = response?.SMSMessageData?.Recipients?.some(recp => ['Success', 'Sent'].includes(recp.status));
+        const status = classifySmsProviderResponse(response);
 
-        if (isActualSuccess) {
+        if (status === 'Sent') {
           successCount++;
           await SMSLog.findByIdAndUpdate(log._id, {
             status: "Sent",

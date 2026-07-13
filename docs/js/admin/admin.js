@@ -94,7 +94,7 @@
     overlay.innerHTML = `
       <div style="text-align: center; padding: 40px 30px; background: #fff; border-radius: 20px; box-shadow: 0 24px 55px rgba(15, 23, 42, 0.12); border: 1px solid rgba(148, 163, 184, 0.2); max-width: 420px; width: 90%;">
         <div class="spinner" style="width: 50px; height: 50px; border-width: 5px; border-top-color: #2b6cb0; border-right-color: #2b6cb0; display: inline-block; margin-bottom: 18px;"></div>
-        <h2 style="margin: 0 0 10px; color: #1e293b; font-size: 1.5rem; font-weight: 800; letter-spacing: -0.03em;">Admin Dashboard</h2>
+        <h2 style="margin: 0 0 10px; color: #1e293b; font-size: 1.5rem; font-weight: 800; letter-spacing: -0.03em;">Admin Panel</h2>
         <p style="margin: 0; color: #64748b; font-size: 0.95rem; line-height: 1.75;">Loading school data and preparing the portal. Please wait...</p>
       </div>
     `;
@@ -211,7 +211,7 @@ function getDisplaySchoolName(info) {
   return name ? String(name).trim() : "";
 }
 
-async function loadSchoolInfo() {
+async function loadSchoolInfo(forceRefresh = false) {
   const fields = "name,allowSignatureUpload,schoolType,headteacherSignatureUrl,status,smsCredits";
 
   const getFallbackProfileName = async () => {
@@ -239,7 +239,7 @@ async function loadSchoolInfo() {
     const token = authService.getToken();
     if (!token) return;
 
-    const res = await fetch(`${API_BASE}/my-school?fields=${fields}`, {
+    const res = await fetch(`${API_BASE}/users/my-school?includeLogo=false&fields=${fields}`, {
       headers: { Authorization: `Bearer ${token}` }
     });
 
@@ -338,20 +338,22 @@ function renderSchoolInfo() {
   const smsBalanceBadge = document.getElementById("smsBalanceBadge");
   const currentSmsCredits = document.getElementById("currentSmsCredits");
   if (smsBalanceBadge && currentSmsCredits) {
-    currentSmsCredits.textContent = schoolInfo.smsCredits || 0;
+    const credits = Number(schoolInfo?.smsCredits ?? 0);
+    currentSmsCredits.textContent = Number.isFinite(credits) ? credits : 0;
     smsBalanceBadge.style.display = "block";
     
     // 🆕 Add Buy Button if not already there
     if (!document.getElementById("buySmsBtn")) {
       const buyBtn = document.createElement("button");
       buyBtn.id = "buySmsBtn";
-      buyBtn.innerHTML = '<i class="fas fa-plus-circle"></i> Buy Credits';
+      //buyBtn.innerHTML = '<i class="fas fa-plus-circle"></i> Buy Credits';
       buyBtn.style.cssText = "margin-left: 10px; background: #2b6cb0; color: white; border: none; padding: 4px 10px; border-radius: 15px; cursor: pointer; font-size: 0.7rem; font-weight: 700;";
       buyBtn.onclick = handleSmsTopup;
       smsBalanceBadge.appendChild(buyBtn);
     }
-  }
+ }
 }
+
 
 /**
  * 🆕 Handle SMS Top-up via IntaSend
@@ -3427,9 +3429,10 @@ if (announcementForm) {
     targetGradeSelect.innerHTML = '<option value="all">All Grades</option>';
     const grades = s.config.gradeOptions;
     grades.forEach(g => {
+      const normalized = normalizeGrade(g);
       const opt = document.createElement("option");
-      opt.value = `Grade ${g}`;
-      opt.textContent = `Grade ${g}`;
+      opt.value = normalized;
+      opt.textContent = normalized;
       targetGradeSelect.appendChild(opt);
     });
   };

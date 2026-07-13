@@ -9,9 +9,17 @@ import { calculateBalance } from "../services/balanceService.js";
 import PDFDocument from 'pdfkit';
 import axios from "axios"; // Import axios
 import Payment from "../models/Payment.js";
+import { Expense } from '../models/Expense.js';
 import { PassThrough } from 'stream';
 import cache from "../utils/cacheManager.js";
 import { buildGradeMatch, getAllowedGradesForSchoolType } from "../utils/accountsQueryHelpers.js";
+
+const getCurrentTerm = () => {
+  const month = new Date().getMonth() + 1;
+  if (month <= 4) return 'Term 1';
+  if (month <= 8) return 'Term 2';
+  return 'Term 3';
+};
 
 const getImageBase64FromUrl = async (url) => {
   try {
@@ -488,7 +496,8 @@ export const getOutstandingFees = async (req, res) => {
     const school = await School.findById(req.user.schoolId).select('schoolType').lean();
     if (!school) return res.status(404).json({ message: 'School not found' });
 
-    const { name, class: classFilter, academicYear, term, page: pageQuery, limit: limitQuery, sort } = req.query;
+    const { name, class: classFilter, academicYear, term: rawTerm, page: pageQuery, limit: limitQuery, sort } = req.query;
+    const term = (rawTerm || getCurrentTerm()).trim();
     const schoolType = school.schoolType || 'full';
     const gradeMatch = buildGradeMatch(schoolType, classFilter);
 
@@ -1308,6 +1317,108 @@ export const getSchoolTotals = async (req, res) => {
     res.json({ totalPaid });
   } catch (err) {
     console.error('Get School Totals Error:', err);
+    res.status(500).json({ message: err.message });
+  }
+};
+
+// ---------------------------
+// GET BALANCE SHEET SUMMARY
+// ---------------------------
+export const getBalanceSheet = async (req, res) => {
+  try {
+    if (!req.user || !req.user.schoolId) {
+      return res.status(400).json({ message: 'No school assigned' });
+    }
+
+    const academicYear = parseInt(req.query.academicYear) || new Date().getFullYear();
+    const term = req.query.term?.trim();
+    const category = req.query.category?.trim();
+    const page = Math.max(1, parseInt(req.query.page) || 1);
+    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 50));
+    const schoolId = new mongoose.Types.ObjectId(req.user.schoolId);
+
+    const school = await School.findById(req.user.schoolId).select('schoolType').lean();
+    if (!school) return res.status(404).json({ message: 'School not found' });
+
+    const schoolType = school.schoolType || 'full';
+    const gradeMatch = buildGradeMatch(schoolType, null);
+
+    const enrollments = await StudentEnrollment.find({
+      schoolId: schoolId,
+      academicYear,
+      status: 'active',
+      grade: gradeMatch
+    }).select('studentId').lean();
+
+    const activeStudentIds = enrollments.map(e => e.studentId);
+
+    const incomeMatch = {
+      schoolId,
+      academicYear,
+      isReversed: { $ne: true },
+      studentId: { $in: activeStudentIds }
+    };
+    if (term) incomeMatch.term = term;
+
+    const totalIncomeResult = await Payment.aggregate([
+      { $match: incomeMatch },
+      { $group: { _id: null, totalIncome: { $sum: '$amount' } } }
+    ]);
+
+    const totalIncome = totalIncomeResult.length > 0 ? totalIncomeResult[0].totalIncome : 0;
+
+    const expenseMatch = {
+      schoolId,
+      academicYear
+    };
+    if (term) expenseMatch.term = term;
+    if (category) expenseMatch.category = category;
+
+    const totalExpensesResult = await Expense.aggregate([
+      { $match: expenseMatch },
+      { $group: { _id: null, totalExpenses: { $sum: '$amount' } } }
+    ]);
+
+    const totalExpenses = totalExpensesResult.length > 0 ? totalExpensesResult[0].totalExpenses : 0;
+    const netCash = totalIncome - totalExpenses;
+
+    const expenseCount = await Expense.countDocuments(expenseMatch);
+    const expenses = await Expense.find(expenseMatch)
+      .sort({ date: -1, createdAt: -1 })
+      .skip((page - 1) * limit)
+      .limit(limit)
+      .lean();
+
+    const categoryBreakdown = await Expense.aggregate([
+      { $match: expenseMatch },
+      { $group: { _id: '$category', total: { $sum: '$amount' }, count: { $sum: 1 } } },
+      { $sort: { total: -1 } }
+    ]);
+
+    res.json({
+      academicYear,
+      term: term || 'All Terms',
+      category: category || 'All Categories',
+      pagination: {
+        currentPage: page,
+        pageSize: limit,
+        totalCount: expenseCount,
+        totalPages: Math.ceil(expenseCount / limit),
+        hasNextPage: page * limit < expenseCount,
+        hasPreviousPage: page > 1
+      },
+      totals: {
+        totalIncome,
+        totalExpenses,
+        netCash
+      },
+      breakdown: {
+        categories: categoryBreakdown
+      },
+      expenses
+    });
+  } catch (err) {
+    console.error('Get Balance Sheet Error:', err);
     res.status(500).json({ message: err.message });
   }
 };

@@ -1,3 +1,5 @@
+import { formatDate } from './Utility/date-utils.js';
+
 const API_BASE = config.api.baseURL;
 const filterGradeEl = document.getElementById("filterGrade");
 const pageTitle = document.getElementById('pageTitle');
@@ -182,25 +184,13 @@ gradingConfigModal.innerHTML = `
 `;
 document.body.appendChild(gradingConfigModal);
 
-// 🆕 System Default Scales
-const SYSTEM_DEFAULTS = {
-  primary: [
-    { min: 75, max: 100, label: "EE", points: 4 },
-    { min: 41, max: 74, label: "ME", points: 3 },
-    { min: 21, max: 40, label: "AE", points: 2 },
-    { min: 0, max: 20, label: "BE", points: 1 }
-  ],
-  secondary: [
-    { min: 90, max: 100, label: "EE1", points: 8 },
-    { min: 75, max: 89, label: "EE2", points: 7 },
-    { min: 58, max: 74, label: "ME1", points: 6 },
-    { min: 41, max: 57, label: "ME2", points: 5 },
-    { min: 31, max: 40, label: "AE1", points: 4 },
-    { min: 21, max: 30, label: "AE2", points: 3 },
-    { min: 11, max: 20, label: "BE1", points: 2 },
-    { min: 0, max: 10, label: "BE2", points: 1 }
-  ]
-};
+// 🆕 System Default Scales (sourced from cbc-utils)
+const SYSTEM_DEFAULTS = window.cbcUtils?.getDefaultGradingConfig
+  ? {
+      primary: window.cbcUtils.getDefaultGradingConfig('primary'),
+      secondary: window.cbcUtils.getDefaultGradingConfig('secondary')
+    }
+  : { primary: [], secondary: [] };
 
 let currentGradingConfig = JSON.parse(JSON.stringify(SYSTEM_DEFAULTS));
 let activeGradeType = 'primary';
@@ -378,39 +368,20 @@ document.getElementById('primaryGradingPanel').classList.remove('hidden');
 // 🆕 Ensure cbcUtils namespace exists before any properties are attached
 window.cbcUtils = window.cbcUtils || {};
 
-// 🆕 Provide school type resolution for modules
-window.cbcUtils.getSchoolTypeKey = () => window.schoolInfo?.schoolType || 'full';
-
-// 🆕 Private school type configuration for grade options
-const DEAN_SCHOOL_TYPES = {
-  full: { gradeOptions: ["PG", "PP1", "PP2", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12"] },
-  primary_junior: { gradeOptions: ["PG", "PP1", "PP2", "1", "2", "3", "4", "5", "6", "7", "8", "9"] },
-  senior: { gradeOptions: ["10", "11", "12"] },
-  early_years: { gradeOptions: ["PG", "PP1", "PP2"] }
-};
-
-function getGradeOptionsForSchool() {
-  try {
-    const schoolType = window.cbcUtils?.getSchoolTypeKey() || 'full';
-    const typeConfig = DEAN_SCHOOL_TYPES[schoolType] || DEAN_SCHOOL_TYPES.full;
-    const mappedGrades = typeConfig.gradeOptions.map(g => (String(g).toUpperCase().startsWith("PP") || String(g).toUpperCase() === "PG") ? g : `Grade ${g}`);
-    console.log("DEBUG: getGradeOptionsForSchool returning:", mappedGrades);
-    return mappedGrades;
-  } catch (e) {
-    console.error("Error generating grade options:", e);
-    return [];
-  }
+// 🆕 Reuse the shared school-type helper from cbc-utils when available.
+if (!window.cbcUtils.getSchoolTypeKey) {
+  window.cbcUtils.getSchoolTypeKey = () => window.schoolInfo?.schoolType || 'full';
 }
 
-// 🆕 Export helper for use in external modules like SubmittedSubjectsModule
-window.cbcUtils.getGradeOptionsForSchool = getGradeOptionsForSchool;
-
-function getStudentRemark(score) {
-  if (score === null || score === undefined || isNaN(score)) return "N/A";
-  if (score >= 75) return "Excellent";
-  if (score >= 41) return "Good";
-  if (score >= 21) return "Average";
-  return "Needs Improvement";
+// 🆕 Provide a fallback grade option helper if the shared utility has not loaded yet.
+if (!window.cbcUtils.getGradeOptionsForSchool) {
+  window.cbcUtils.getGradeOptionsForSchool = function() {
+    const schoolType = window.cbcUtils?.getSchoolTypeKey?.() || 'full';
+    const typeConfig = window.cbcUtils?.SCHOOL_TYPES?.[schoolType] || window.cbcUtils?.SCHOOL_TYPES?.full;
+    return (typeConfig?.gradeOptions || []).map(g =>
+      (String(g).toUpperCase().startsWith("PP") || String(g).toUpperCase() === "PG") ? g : `Grade ${g}`
+    );
+  };
 }
 
 function buildStudentTermProgressSeries(student) {
@@ -582,7 +553,7 @@ function setupTabs() {
         // 🆕 Refresh SMS Data when SMS results tab is opened
         if (target === "smsResultsTab") {
            updateDeanSmsBalance();
-           fetchSmsHistorySummary();
+           fetchSmsHistorySummary(true);
         }
 
         // 🆕 Load rankings if the rankings tab is opened
@@ -2014,15 +1985,20 @@ function renderRankingTable(students, subjects, isSenior) {
   rankingTableWrap.innerHTML = html;
 }
 
-function drawDeanPdfHeader(doc, { schoolName, subheader, pageWidth, logoBase64, logoProps, logoFormat, logoWidth = 16, startY = 8 }) {
+function drawDeanPdfHeader(doc, { schoolName, subheader, pageWidth, logoBase64, logoProps, logoFormat, logoWidth = 32, maxLogoHeight = 32, startY = 8 }) {
   let yPos = startY;
 
   if (logoBase64) {
     try {
       const imgProps = logoProps || doc.getImageProperties(logoBase64);
       const format = logoFormat || cbcUtils.getImageFormat(logoBase64);
-      const imgWidth = logoWidth;
-      const imgHeight = Math.min(16, (imgProps.height * imgWidth) / imgProps.width);
+      let imgWidth = logoWidth;
+      let imgHeight = (imgProps.height * imgWidth) / imgProps.width;
+      if (imgHeight > maxLogoHeight) {
+        const scale = maxLogoHeight / imgHeight;
+        imgHeight = maxLogoHeight;
+        imgWidth = imgWidth * scale;
+      }
       doc.addImage(logoBase64, format, (pageWidth - imgWidth) / 2, yPos, imgWidth, imgHeight, undefined, 'FAST');
       yPos += imgHeight + 4;
     } catch (e) {
@@ -2080,7 +2056,7 @@ async function downloadRankingAsPDF() {
     logoBase64: deanProfileData?.schoolLogoBase64,
     logoProps: deanProfileData?.logoProps,
     logoFormat: deanProfileData?.logoFormat,
-    logoWidth: 16,
+    logoWidth: 32,
     startY: 8
   });
 
@@ -2605,7 +2581,7 @@ async function downloadMissingExamsAsPDF() {
       doc.setFontSize(8);
       doc.setTextColor(150);
       doc.text(`Page ${i} of ${totalPages}`, 14, pageHeight - 10);
-      doc.text(`Printed: ${new Date().toLocaleString()} | CompetenceHub`, pageWidth - 14, pageHeight - 10, { align: "right" });
+      doc.text(`Printed: ${formatDate(new Date(), { withTime: true })} | CompetenceHub`, pageWidth - 14, pageHeight - 10, { align: "right" });
     }
 
     doc.save(`Absent_Learners_${grade}_T${termVal}_${year}.pdf`);
@@ -2652,13 +2628,15 @@ async function downloadSubjectPerformanceAsPDF() {
       logoBase64: deanProfileData?.schoolLogoBase64,
       logoProps: deanProfileData?.logoProps,
       logoFormat: deanProfileData?.logoFormat,
-      logoWidth: 16,
-      startY: 8
+      logoWidth: 36,
+      maxLogoHeight: 36,
+      startY: 6
     });
 
   doc.setFontSize(14);
   doc.setFont("helvetica", "bold");
-  doc.text(`Subject Performance Analysis: ${grade}${selectedStream !== "all" ? ' - Stream ' + selectedStream : ''}`, 14, yPos + 9);
+  doc.text(`Subject Performance Analysis: ${grade}${selectedStream !== "all" ? ' - Stream ' + selectedStream : ''}`, 14, yPos);
+  yPos += 3;
 
   const rawHeaders = Array.from(table.querySelectorAll("thead th")).map(th => th.textContent.trim());
   const progressIdx = rawHeaders.indexOf("Progress");
@@ -2684,7 +2662,7 @@ async function downloadSubjectPerformanceAsPDF() {
   });
 
   doc.autoTable({ 
-    startY: yPos + 14, 
+    startY: yPos + 5, 
     head: [headers], 
     body: rows, 
     theme: 'grid', // Use 'grid' theme for borders
@@ -2748,7 +2726,7 @@ async function downloadSubjectPerformanceAsPDF() {
     doc.text(`Page ${i} of ${totalPagesCount}`, 14, pageHeight - 10);
     const genText = "CompetenceHub Analytics";
     doc.text(genText, pageWidth / 2, pageHeight - 10, { align: "center" });
-    doc.text(`Printed: ${new Date().toLocaleString()}`, pageWidth - 14, pageHeight - 10, { align: "right" });
+    doc.text(`Printed: ${formatDate(new Date(), { withTime: true })}`, pageWidth - 14, pageHeight - 10, { align: "right" });
   }
 
   const streamSuffix = selectedStream !== "all" ? `_S${selectedStream}` : "";
@@ -2934,8 +2912,8 @@ function initFilters() {
   // 🆕 Initialize Baseline Checkboxes
   renderBaselineCheckboxes();
 
-  // Populate school grades based on school type
-  const grades = getGradeOptionsForSchool(); // Use local function for grade options
+  // Populate school grades based on the shared cbc-utils school-type config
+  const grades = window.cbcUtils?.getGradeOptionsForSchool?.() || [];
   grades.forEach(g => { // Iterate over grades
     const opt = document.createElement("option"); opt.value = g; opt.textContent = g;
     filterGradeEl.appendChild(opt);
@@ -3397,7 +3375,7 @@ async function generateBulkReportCards() {
         const leftColX = 18;
         const centerColX = pageWidth / 2 - 10;
         const rightColX = pageWidth - 74;
-        doc.setDrawColor(200).setLineWidth(0.3).rect(15, infoBoxY, pageWidth - 30, 34);
+        doc.setFillColor(240, 245, 250).setDrawColor(200).setLineWidth(0.3).rect(15, infoBoxY, pageWidth - 30, 34, 'FD');
 
         doc.setFont("helvetica", "bold").setFontSize(8.5);
         doc.text(`Name: ${s.name}`, leftColX, infoBoxY + 7);
@@ -3471,7 +3449,7 @@ async function generateBulkReportCards() {
 
         // 4. Summary & Remarks
         const finalY = doc.lastAutoTable.finalY + 8; // Y position after table
-        const studentRemark = getStudentRemark(s.mean);
+        const studentRemark = window.cbcUtils?.getSubjectRemark?.(s.mean) || 'N/A';
         const metaX = 15; // Left Margin
         const metaX2 = pageWidth / 2 + 5;
         const labelOffset = 36; // Reduced from 45 to fix unnecessary spacing
@@ -3657,7 +3635,7 @@ async function generateBulkReportCards() {
         // Footer branding on every report page
         doc.setFontSize(8); // Set font size for footer
         doc.setTextColor(120);
-        const printedTimestamp = new Date().toLocaleString();
+        const printedTimestamp = formatDate(new Date(), { withTime: true });
         doc.text(`Printed: ${printedTimestamp}, CompetenceHub Analytics`, pageWidth / 2, pageHeight - 10, { align: "center" });
     }
 
@@ -3686,15 +3664,19 @@ async function generateBulkReportCards() {
  * 🆕 Updates the SMS balance display in the SMS tab
  */
 async function updateDeanSmsBalance() {
-  if (!deanSmsBalanceEl) return; // Check if element exists
+  if (!deanSmsBalanceEl) return;
   try {
-    // Get fresh balance from server
     const data = await fetchWithAuth(`${API_BASE}/users/my-school?includeLogo=false&fields=smsCredits`);
-    if (data && data.smsCredits !== undefined) {
-      deanSmsBalanceEl.textContent = data.smsCredits;
+    const credits = Number(data?.smsCredits ?? 0);
+
+    if (Number.isFinite(credits)) {
+      deanSmsBalanceEl.textContent = `${credits} SMS`;
+    } else {
+      deanSmsBalanceEl.textContent = 'Unavailable';
     }
   } catch (e) {
-    console.error("Failed to update SMS balance:", e);
+    console.error('Failed to update SMS balance:', e);
+    deanSmsBalanceEl.textContent = 'Unavailable';
   }
 }
 
@@ -3791,7 +3773,7 @@ function renderSmsSummary(data, statsGrid, logWrap) {
           <tr style="border-bottom: 1px solid #f1f5f9;">
             <td style="padding: 6px 0;"><strong>${log.studentName}</strong></td>
             <td>${log.recipient}</td>
-            <td style="color: #94a3b8;">${new Date(log.createdAt).toLocaleDateString()}</td>
+            <td style="color: #94a3b8;">${formatDate(log.createdAt)}</td>
           </tr>
         `;
       });
@@ -3866,9 +3848,11 @@ async function startSmsBroadcast() {
       if (smsBroadcastProgressWrap) smsBroadcastProgressWrap.style.display = "none";
     }, 4000);
 
-    // Refresh balance after broadcast
-    setTimeout(fetchSmsHistorySummary, 2500);
-    setTimeout(updateDeanSmsBalance, 2000);
+    // Refresh balance and history after broadcast
+    setTimeout(() => {
+      fetchSmsHistorySummary(true);
+      updateDeanSmsBalance();
+    }, 2500);
   } catch (err) { // Catch error
     clearInterval(progressInterval);
      // 🆕 Cleanup UI on error or cancellation

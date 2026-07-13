@@ -1,4 +1,4 @@
-import AfricasTalking from 'africastalking';
+import axios from 'axios';
 import dotenv from 'dotenv';
 
 dotenv.config();
@@ -14,83 +14,98 @@ export const countSMSSegments = (message) => {
   return Math.ceil(len / 153);
 };
 
+export const sanitizeRecipients = (to) => {
+  const recipientsArray = Array.isArray(to) ? to : [to];
+
+  const normalized = recipientsArray
+    .map(num => String(num || '').replace(/[^\d+]/g, '').trim())
+    .map(num => {
+      if (num.startsWith('0')) return '254' + num.substring(1);
+      if (num.startsWith('7') || num.startsWith('1')) return '254' + num;
+      return num;
+    })
+    .filter(num => num.length >= 12)
+    .map(num => num.startsWith('+') ? num : '+' + num);
+
+  return [...new Set(normalized)];
+};
+
+export const classifySmsProviderResponse = (response) => {
+  if (!response) return 'Failed';
+
+  const directStatus = String(response?.status || response?.message || '').toLowerCase();
+  if (['success', 'sent', 'accepted', 'queued', 'ok'].includes(directStatus)) return 'Sent';
+
+  const recipients = response?.SMSMessageData?.Recipients || response?.data?.recipients || response?.recipients || [];
+  const isSuccess = Array.isArray(recipients)
+    ? recipients.some((recipient) => {
+        const recipientStatus = String(recipient?.status || recipient?.state || recipient?.code || '').toLowerCase();
+        return ['success', 'sent', 'accepted', 'queued', 'ok', '200', '202'].includes(recipientStatus);
+      })
+    : false;
+
+  if (isSuccess) return 'Sent';
+
+  const summary = response?.data?.summary || response?.summary || {};
+  const successCount = Number(summary?.success || summary?.sent || summary?.accepted || 0);
+  const failedCount = Number(summary?.failed || summary?.error || summary?.rejected || 0);
+  if (successCount > 0 && failedCount === 0) return 'Sent';
+  if (successCount > 0 && failedCount > 0) return 'Sent';
+
+  return 'Failed';
+};
+
 /**
- * Utility to send SMS via Africa's Talking Gateway
+ * Utility to send SMS via Talksasa Gateway
  * @param {string|string[]} to - Recipient phone number(s) in international format (e.g. +254700000000)
  * @param {string} message - The message body
  */
 const sendSMS = async (to, message) => {
   try {
-    // 🆕 Initialize SDK inside the function to ensure fresh env variables
-    const username = (process.env.AT_USERNAME || process.env.AFRICASTALKING_USERNAME || 'sandbox').trim();
-    const apiKey = (process.env.AT_API_KEY || process.env.AFRICASTALKING_API_KEY || "").trim();
+    const apiKey = (process.env.TALKSASA_API_KEY || process.env.AT_API_KEY || process.env.AFRICASTALKING_API_KEY || '').trim();
+    const senderId = (process.env.TALKSASA_SENDER_ID || process.env.AT_SENDER_ID || '').trim();
+    const baseUrl = (process.env.TALKSASA_BASE_URL || 'https://bulksms.talksasa.com')
+      .trim()
+      .replace(/\/+$/, '')
+      .replace(/\/api\/v3\/sms\/(?:send|balance)$/, '');
 
     if (!apiKey) {
-      console.error("❌ AT Gateway Error: API Key missing in .env");
+      console.error('❌ Talksasa Gateway Error: API key missing in .env');
       return null;
     }
 
-    const isSandbox = username.toLowerCase() === 'sandbox';
-    const senderId = (process.env.AT_SENDER_ID || "").trim();
-
-    console.log(`📡 AT Gateway: Initializing as [${username}] in ${isSandbox ? 'SANDBOX' : 'PRODUCTION'} mode...`);
-    if (!isSandbox && !senderId) {
-      console.warn("⚠️ AT Gateway Warning: No AT_SENDER_ID found in .env. Transactional messages may be blocked by carrier DND filters.");
-    }
-
-    const sms = AfricasTalking({ username, apiKey }).SMS;
-
-    const recipientsArray = Array.isArray(to) ? to : [to];
-
-    // 🆕 Robust sanitization: Remove duplicates, spaces, and ensure +254 format
-    const cleanRecipients = [...new Set(recipientsArray)]
-      .map(num => String(num || "").replace(/[^\d+]/g, "").trim())
-      .map(num => {
-        // Handle Kenyan numbers starting with 0, 7, or 1
-        if (num.startsWith("0")) return "254" + num.substring(1);
-        if (num.startsWith("7") || num.startsWith("1")) return "254" + num;
-        return num;
-      })
-      .filter(num => num.length >= 12) // Ensure it looks like an international number (e.g. 254...)
-      .map(num => num.startsWith("+") ? num : "+" + num); // Prepend + for SDK compatibility
+    const cleanRecipients = sanitizeRecipients(to);
 
     if (cleanRecipients.length === 0) {
       console.warn(`⚠️ sendSMS: No valid recipients found after sanitizing: ${JSON.stringify(to)}`);
       return;
     }
 
-    console.log(`[AT Gateway] Attempting to send to: ${cleanRecipients.join(', ')}`);
+    console.log(`[Talksasa Gateway] Attempting to send to: ${cleanRecipients.join(', ')}`);
 
-    const options = {
-      to: cleanRecipients, // 🆕 Pass as Array to satisfy strict SDK type validation
-      message: message,
-      // Use Alphanumeric Sender ID only if it is explicitly set in the .env file
-      // This is REQUIRED to bypass DND for Transactional SMS (OTPs/Marks)
-      ...(senderId && { from: senderId })
+    const recipientList = cleanRecipients.join(',');
+
+    const payload = {
+      recipient: recipientList,
+      sender_id: senderId || 'TALKSASA',
+      type: 'plain',
+      message,
+      schedule_time: null
     };
 
-    // 🆕 Add a tiny delay for Sandbox to prevent 401 rate-limit errors
-    if (isSandbox) {
-      await new Promise(resolve => setTimeout(resolve, 150)); 
-    }
-
-    const response = await sms.send(options);
-    console.log(`[AT Gateway] Message sent to ${cleanRecipients.length} numbers. Response:`, JSON.stringify(response));
-
-    // 🆕 Detect DND/Blacklist status in the response to help troubleshooting
-    response.SMSMessageData.Recipients.forEach(recipient => {
-      if (recipient.statusCode === 406) {
-        console.error(`🚩 AT Gateway Warning: ${recipient.number} is blacklisted (DND).`);
-        console.error(`   Note: This parent has blocked shared shortcodes or is on the AT internal blacklist.`);
-        console.error(`   Solution: Use an Alphanumeric Sender ID or ask recipient to send 'START' to the shortcode.`);
+    const response = await axios.post(`${baseUrl}/api/v3/sms/send`, payload, {
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
       }
     });
 
-    return response;
+    console.log(`[Talksasa Gateway] Message sent to ${cleanRecipients.length} numbers. Response:`, JSON.stringify(response.data));
+    return response.data;
   } catch (err) {
-    // 🆕 Enhanced error reporting
     const errorMsg = err.response?.data || err.message;
-    console.error("❌ SMS Gateway Error:", {
+    console.error('❌ Talksasa SMS Gateway Error:', {
       status: err.response?.status,
       detail: errorMsg
     });

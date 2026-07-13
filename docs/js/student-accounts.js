@@ -623,7 +623,7 @@ const displayValue = (String(g).toUpperCase().startsWith("PP") || String(g).toUp
         <div id="fee-details-content">
           <div class="report-header" style="text-align:center; margin-bottom:20px; border-bottom: 2px solid #eee; padding-bottom: 10px;">
              <h2 style="margin:0;">FEE STATEMENT</h2>
-             <p style="margin:5px 0;"><strong>Learner:</strong> ${studentName} <strong>(ADM ${admission})</strong></p>
+             <p style="margin:5px 0;"><strong>Learner:</strong> ${studentName} <strong>| Adm: ${admission}</strong></p>
              <p style="margin:0;"><strong>Grade:</strong> ${grade} | <strong>Year:</strong> ${year}</p>
           </div>
 

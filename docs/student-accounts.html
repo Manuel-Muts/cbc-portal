@@ -171,31 +171,32 @@
     <p style="font-size:13px; color:#666; margin-bottom:15px;">Manually record an opening balance (Surplus or Arrears) for a learner.</p>
 
     <div class="form-group">
-      <label>Admission Number</label>
-      <input type="text" id="bfAdmission" placeholder="e.g. 1234">
+      <label>Admission Number <span style="color:red">*</span></label>
+      <input type="text" id="bfAdmission" placeholder="e.g. 1234" required>
     </div>
 
     <div class="form-group">
-      <label>Academic Year</label>
-      <input type="number" id="bfYear" placeholder="YYYY">
+      <label>Academic Year <span style="color:red">*</span></label>
+      <input type="number" id="bfYear" placeholder="YYYY" required>
     </div>
 
     <div class="form-group">
-      <label>Balance Type</label>
-      <select id="bfType">
+      <label>Balance Type <span style="color:red">*</span></label>
+      <select id="bfType" required>
+        <option value="">Select Type</option>
         <option value="surplus">Surplus / Credit (Positive)</option>
         <option value="arrears">Arrears / Debt (Negative)</option>
       </select>
     </div>
 
     <div class="form-group">
-      <label>Amount (KES)</label>
-      <input type="number" id="bfAmount" placeholder="e.g. 5000">
+      <label>Amount (KES) <span style="color:red">*</span></label>
+      <input type="number" id="bfAmount" placeholder="e.g. 5000" required>
     </div>
 
     <div class="confirm-buttons" style="margin-top: 20px;">
-      <button id="cancelBFBtn" class="btn secondary-btn">Cancel</button>
-      <button id="saveBFBtn" class="btn primary-btn">Save Balance</button>
+      <button type="button" id="cancelBFBtn" class="btn secondary-btn">Cancel</button>
+      <button type="button" id="saveBFBtn" class="btn primary-btn">Save Balance</button>
     </div>
   </div>
 </div>
@@ -209,7 +210,7 @@
     </div>
     <div class="confirm-buttons" style="display: flex; gap: 10px; margin-bottom: 15px; flex-wrap: wrap;">
       <button id="dlStructureBtn" class="btn secondary-btn">📄 Download Structure</button>
-      <button id="dlStatementBtn" class="btn secondary-btn">📄 Download Statement</button>
+      <!-- <button id="dlStatementBtn" class="btn secondary-btn">📄 Download Statement</button> -->
     </div>
     <div id="studentFeeModalBody" style="max-height: 70vh; overflow-y: auto;"></div>
   </div>
@@ -222,22 +223,22 @@
     <p id="modalStudentName" style="font-weight:bold; color:#0078D4; margin-bottom:15px;"></p>
     
     <div class="form-group">
-      <label>Amount (KES)</label>
+      <label>Amount (KES) <span style="color:red">*</span></label>
       <div style="display:flex; gap:10px;">
-      <input type="number" id="paymentAmount" placeholder="e.g. 5000">
+      <input type="number" id="paymentAmount" placeholder="e.g. 5000" required>
       <button id="payFullBalanceBtn" type="button" class="btn secondary-btn" style="padding: 8px 12px; font-size: 12px; white-space: nowrap;">Pay Full Arrears</button>
       </div>
     </div>
     
     <div class="form-group">
-      <label>Reference</label>
-      <input type="text" id="paymentReference" placeholder="e.g. Receipt No / M-Pesa Code">
+      <label>Reference <span style="color:red">*</span></label>
+      <input type="text" id="paymentReference" placeholder="e.g. Receipt No / M-Pesa Code" required>
     </div>
 
     <div class="flex-row">
       <div class="col form-group">
-        <label>Method</label>
-        <select id="paymentMethod">
+        <label>Method <span style="color:red">*</span></label>
+        <select id="paymentMethod" required>
           <option value="cash">Cash</option>
           <option value="mpesa">M-Pesa</option>
           <option value="bank">Bank Deposit</option>
@@ -245,8 +246,8 @@
         </select>
       </div>
       <div class="col form-group">
-        <label>Term</label>
-        <select id="paymentTerm">
+        <label>Term <span style="color:red">*</span></label>
+        <select id="paymentTerm" required>
           <option value="Term 1">Term 1</option>
           <option value="Term 2">Term 2</option>
           <option value="Term 3">Term 3</option>

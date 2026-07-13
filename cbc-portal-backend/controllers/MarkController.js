@@ -7,7 +7,7 @@ import StudentEnrollment from "../models/StudentEnrollment.js";
 import { School } from "../models/school.js";
 import Setting from "../models/Setting.js";
 import cache from "../utils/cacheManager.js";
-import sendSMS, { countSMSSegments } from "../utils/sendSMS.js";
+import sendSMS, { countSMSSegments, classifySmsProviderResponse } from "../utils/sendSMS.js";
 import SMSLog from "../models/SMSLog.js";
 
 // 🆕 Senior School Subject Definitions (Duplicated from frontend for backend validation)
@@ -1347,8 +1347,7 @@ export const broadcastResultsSMS = async (req, res) => {
       const batchResults = await Promise.all(batch.map(async (m) => {
         const response = await sendSMS(m.contact, m.content);
         
-        // 🆕 Only count as success if status is 'Success' or 'Sent'
-        const isActualSuccess = response?.SMSMessageData?.Recipients?.some(recp => ['Success', 'Sent'].includes(recp.status));
+        const status = classifySmsProviderResponse(response);
 
         return {
           schoolId,
@@ -1356,7 +1355,7 @@ export const broadcastResultsSMS = async (req, res) => {
           recipient: m.contact,
           studentName: m.studentName,
           content: m.content,
-          status: isActualSuccess ? "Sent" : "Failed",
+          status,
           providerResponse: response
         };
       }));

@@ -177,7 +177,14 @@ export const getMySchool = async (req, res) => {
     let projectionFields = "name address status allowSignatureUpload schoolType smsCredits";
 
     if (fields) {
-      projectionFields = fields;
+      const selectedFields = fields
+        .split(',')
+        .map((field) => field.trim())
+        .filter(Boolean);
+      if (includeLogo) {
+        selectedFields.push('logo', 'logoMimeType');
+      }
+      projectionFields = [...new Set(selectedFields)].join(' ');
     } else if (includeLogo) {
       projectionFields += " logo logoMimeType headteacherSignatureUrl paybill mpesaShortcode smsCredits";
     } else if (isStudentLiteFetch) {

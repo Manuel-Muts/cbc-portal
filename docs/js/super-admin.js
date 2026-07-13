@@ -533,19 +533,21 @@ setCache(cacheKey, metrics);
     const saveAnnBtn = document.getElementById("saveAnnBtn");
     let editingAnnId = null; // 🆕 Track editing state
 
-    // 🆕 Fetch Africa's Talking Balance
+    // 🆕 Fetch Talksasa SMS balance
     async function loadSmsProviderBalance() {
       const balEl = document.getElementById("atBalanceVal");
       if (!balEl) return;
       try {
         const res = await authFetch("/sms-provider-balance");
         if (res && res.ok) {
-          const data = await res.json();
+          const data = await res.json().catch(() => ({}));
+          const rawBalance = data.balance ?? 0;
+          const balance = Number(String(rawBalance).match(/-?\d+(?:\.\d+)?/)?.[0] ?? 0);
           const color = data.isSandbox ? "#f59e0b" : "#10b981";
           const label = data.isSandbox ? "SANDBOX" : "LIVE";
-          
-          // Format as currency (e.g. KES -43.00)
-          const formattedBalance = data.balance.toLocaleString('en-KE', { style: 'currency', currency: 'KES' });
+          const formattedBalance = Number.isFinite(balance)
+            ? `${balance} SMS`
+            : "Unavailable";
 
           balEl.innerHTML = `<strong>${formattedBalance}</strong> 
             <span style="background:${color}; color:white; padding:1px 6px; border-radius:4px; font-size:0.6rem; margin-left:6px; font-weight:700;">${label}</span>`;
@@ -554,7 +556,7 @@ setCache(cacheKey, metrics);
           balEl.textContent = errorData.msg || "Unavailable";
         }
       } catch (e) {
-        balEl.textContent = "Error";
+        balEl.textContent = "Unavailable";
       }
     }
 

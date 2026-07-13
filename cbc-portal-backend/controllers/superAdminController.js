@@ -697,11 +697,10 @@ export const toggleSchoolStatus = async (req, res) => {
 };
 
 /**
- * 🆕 Get Africa's Talking Master Wallet Balance
+ * 🆕 Get Talksasa SMS Balance / status
  */
 export const getSMSProviderBalance = async (req, res) => {
   try {
-    // Only super-admins can see the master wholesale balance
     if (req.user.role !== 'super_admin') {
       return res.status(403).json({ msg: 'Unauthorized' });
     }
@@ -710,37 +709,44 @@ export const getSMSProviderBalance = async (req, res) => {
     const cached = cache.get(cacheKey);
     if (cached) return res.json(cached);
 
-    // 🆕 Robust credential fetching (Matches sendSMS.js logic)
-    const username = (process.env.AT_USERNAME || process.env.AFRICASTALKING_USERNAME || 'sandbox').trim();
-    const apiKey = (process.env.AT_API_KEY || process.env.AFRICASTALKING_API_KEY || "").trim();
+    const apiKey = (process.env.TALKSASA_API_KEY || process.env.AT_API_KEY || process.env.AFRICASTALKING_API_KEY || '').trim();
+    const baseUrl = (process.env.TALKSASA_BASE_URL || 'https://bulksms.talksasa.com')
+      .trim()
+      .replace(/\/+$/, '')
+      .replace(/\/api\/v3\/sms\/(?:send|balance)$/, '');
 
     if (!apiKey) {
-      console.error("❌ SMS Balance Config Missing. Found:", { username: !!username, apiKey: !!apiKey });
-      return res.status(500).json({ msg: "Africa's Talking configuration (username or API key) is missing in .env" });
+      console.error('❌ SMS Balance Config Missing. Found:', { apiKey: !!apiKey });
+      return res.status(500).json({ msg: 'Talksasa SMS configuration (API key) is missing in .env' });
     }
 
-    const isSandbox = username.toLowerCase() === 'sandbox';
-    const finalUsername = isSandbox ? 'sandbox' : username;
+    let balance = 0;
+    let isSandbox = false;
 
-    // Determine URL based on sandbox vs live
-    const url = isSandbox 
-      ? `https://api.sandbox.africastalking.com/version1/user?username=${finalUsername}`
-      : `https://api.africastalking.com/version1/user?username=${finalUsername}`;
+    try {
+      const response = await axios.get(`${baseUrl}/api/v3/balance`, {
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          'Accept': 'application/json'
+        },
+        timeout: 10000
+      });
 
-    const response = await axios.get(url, {
-      headers: {
-        'apikey': apiKey,
-        'Accept': 'application/json'
-      }
-    });
+      const balanceValue = response.data?.data?.remaining_balance ?? response.data?.balance ?? response.data?.data?.balance ?? response.data?.credits ?? 0;
+      const parsedBalance = Number(String(balanceValue).match(/-?\d+(?:\.\d+)?/)?.[0] ?? 0);
+      balance = Number.isFinite(parsedBalance) ? parsedBalance : 0;
+    } catch (providerErr) {
+      console.warn('⚠️ Talksasa balance endpoint unavailable, returning fallback value.', providerErr.message);
+      balance = 0;
+      isSandbox = false;
+    }
 
-    res.json({ balance: response.data.UserData.balance, isSandbox });
+    res.json({ balance, isSandbox });
   } catch (err) {
     const errorDetail = err.response?.data;
-    // Africa's Talking sometimes returns errors as plain strings or objects
-    const errorMsg = typeof errorDetail === 'string' ? errorDetail : (errorDetail?.errorMessage || err.message);
-    
-    console.error("❌ SMS Balance Fetch Error:", {
+    const errorMsg = typeof errorDetail === 'string' ? errorDetail : (errorDetail?.errorMessage || errorDetail?.message || err.message);
+
+    console.error('❌ SMS Balance Fetch Error:', {
       status: err.response?.status,
       detail: errorMsg
     });

@@ -252,8 +252,8 @@ export const startCronJobs = () => {
             continue;
           }
 
-          // Increment school's smsCredits by usersCount
-          await School.findByIdAndUpdate(s._id, { $inc: { smsCredits: usersCount } });
+          // Reset the month's balance and assign a fresh allocation based on active users
+          await School.findByIdAndUpdate(s._id, { smsCredits: usersCount });
 
           // Record the allocation for auditing
           await SMSAllocation.create({
@@ -264,7 +264,7 @@ export const startCronJobs = () => {
             allocatedBy: 'system'
           });
 
-          console.log(`   [${s.name}] Allocated ${usersCount} SMS credits for ${monthStr}.`);
+          console.log(`   [${s.name}] Reset SMS balance to ${usersCount} credits for ${monthStr}.`);
         } catch (innerErr) {
           console.error(`   ❌ Allocation error for school ${s._id}:`, innerErr.message || innerErr);
         }

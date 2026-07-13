@@ -29,9 +29,74 @@ const TimetableModule = (function() {
         return ["pe", "physical education", "sports and physical education", "physical health education", "sports", "sports and recreation"].some(alias => name === alias || name.includes(alias));
     }
 
+    function isCreativeArtsOrSportsSubject(sub) {
+        const name = String(sub || "").trim().toLowerCase();
+        return [
+            "creative arts and sports",
+            "creative arts",
+            "sports c/a(s)",
+            "visual arts c/a(v)",
+            "performing arts c/a(p)",
+            "sports and physical education",
+            "sports and recreation",
+            "physical health education",
+            "physical education",
+            "pe",
+            "sports",
+            "music and dance",
+            "fine art",
+            "film & media studies",
+            "fashion & design",
+            "theatre and film"
+        ].some(alias => name === alias || name.includes(alias));
+    }
+
+    function getGradeBandKey(grade) {
+        const gradeText = String(grade || "");
+        const upper = gradeText.toUpperCase();
+        if (upper === "PG" || upper.includes("PP")) return "PG-PP2";
+
+        const gradeMatch = gradeText.match(/\d+/);
+        const gradeNum = gradeMatch ? parseInt(gradeMatch[0], 10) : 0;
+        if (gradeNum >= 1 && gradeNum <= 3) return "1-3";
+        if (gradeNum >= 4 && gradeNum <= 6) return "4-6";
+        if (gradeNum >= 7 && gradeNum <= 9) return "7-9";
+        if (gradeNum >= 10 && gradeNum <= 12) return "10-12";
+        return null;
+    }
+
+    function getPlacementMode(grade) {
+        const gradeBand = getGradeBandKey(grade);
+        if (gradeBand === "10-12") return "senior";
+        if (gradeBand === "7-9") return "junior";
+        return "primary";
+    }
+
+    function isSubjectAllowedForGrade(sub, grade) {
+        const subject = String(sub || "").trim();
+        if (!subject || subject === "PPI") return true;
+
+        const gradeBand = getGradeBandKey(grade);
+        if (!gradeBand) return true;
+
+        const normalizedSubject = window.SUBJECT_DATA?.normalizeSeniorSubjectName?.(subject) || subject;
+        const allowedSubjects = window.SUBJECT_DATA?.gradeSubjects?.[gradeBand] || [];
+        const allowedSet = new Set(allowedSubjects.map(s => String(s || "").trim().toLowerCase()));
+        const subjectCandidates = [subject, normalizedSubject].map(s => String(s || "").trim().toLowerCase());
+
+        if (subjectCandidates.some(candidate => allowedSet.has(candidate))) return true;
+
+        if (gradeBand === "10-12") {
+            return Boolean(window.SUBJECT_DATA?.getSeniorPathway?.(normalizedSubject));
+        }
+
+        return false;
+    }
+
     function isSubjectAllowedForPathway(sub, grade, pathway = "") {
         const subject = String(sub || "").trim();
         if (!subject || subject === "PPI") return true;
+        if (!isSubjectAllowedForGrade(subject, grade)) return false;
         if (!window.cbcUtils?.isSeniorGrade?.(grade)) return true;
 
         const selectedPathway = window.cbcUtils?.normalizePathway?.(pathway) || (String(pathway || "").trim());
@@ -46,6 +111,24 @@ const TimetableModule = (function() {
         }
 
         return pathwayForSubjectNorm === "Core" || pathwayForSubjectNorm === selectedPathway;
+    }
+
+    function filterSubjectsForGrade(subjectMap, grade, pathway = "") {
+        return Object.fromEntries(
+            Object.entries(subjectMap || {}).filter(([sub]) => isSubjectAllowedForPathway(sub, grade, pathway))
+        );
+    }
+
+    function getPlacementPreference(grade, subject) {
+        return (subjectPlacements[grade] || {})[subject] || "any";
+    }
+
+    function isPlacementPreferenceSatisfied(grade, subject, lessonNumber) {
+        const pref = getPlacementPreference(grade, subject);
+        if (pref === "before4" && lessonNumber > 4) return false;
+        if (pref === "before6" && lessonNumber > 6) return false;
+        if (pref === "after6" && lessonNumber <= 6) return false;
+        return true;
     }
 
     function getDoubleLessonBlockCount(subName) {
@@ -107,7 +190,8 @@ const TimetableModule = (function() {
         if (!lessonFrequencies[grade]) lessonFrequencies[grade] = {};
 
         Object.keys(lessonFrequencies[grade]).forEach(sub => {
-            if (!allocated.includes(sub) && sub !== "PPI") {
+            const allowedForGrade = isSubjectAllowedForPathway(sub, grade, pathway);
+            if ((!allocated.includes(sub) && sub !== "PPI") || !allowedForGrade) {
                 delete lessonFrequencies[grade][sub];
             }
         });
@@ -1503,6 +1587,10 @@ const TimetableModule = (function() {
                         return;
                     }
 
+                    if (!isSubjectAllowedForGrade(normalizedSubject, grade)) {
+                        return;
+                    }
+
                     if (!isSenior) {
                         subjects.add(normalizedSubject);
                         return;
@@ -1522,7 +1610,8 @@ const TimetableModule = (function() {
             });
         });
 
-        if (grade) {
+        const isPrimaryGrade = getGradeBandKey(grade) === "PG-PP2" || getGradeBandKey(grade) === "1-3" || getGradeBandKey(grade) === "4-6";
+        if (isPrimaryGrade && grade) {
             subjects.add("PPI");
         }
 
@@ -3048,7 +3137,7 @@ const eyBreaks = [
         const subjectsScheduledThisDay = new Set();
 
         // 3a. Pre-place double lessons if any double-eligible subjects have 2+ lessons today
-        if (placementRules.doubleLessons.enabled) {
+        if (placementMode === 'senior' && placementRules.doubleLessons.enabled) {
             const doublesCandidates = placementRules.doubleLessons.subjects;
             let doublePlacedToday = false;
 
@@ -3116,7 +3205,7 @@ const eyBreaks = [
         }
 
         // Step 3.2: Core Priority for Morning Slots (L1-L3)
-        if (placementRules.coreSubjectsPreference.enabled) {
+        if (placementMode !== 'senior' && placementRules.coreSubjectsPreference.enabled) {
             const coreSubjects = placementRules.coreSubjectsPreference.subjects;
             const morningSlots = [0, 1, 2].filter(l => l < settings.lessonsPerDay && !dayColumn[l]);
             
@@ -3159,6 +3248,8 @@ const eyBreaks = [
                     // Inhibit repeating a subject already placed today if its frequency is standard
                     if (subjectsScheduledThisDay.has(candidate) && (currentTimetableData.lessonFrequencies[candidate] || 0) <= 5) continue;
 
+                    if (isCreativeArtsOrSportsSubject(candidate) && lesson <= 3) continue;
+
                     const teacherInfo = getTeacherForSubject(grade, stream, candidate);
                     if (isTeacherBusy(teacherInfo?.id, dayIdx, lIdx, grade, stream)) continue;
 
@@ -3174,7 +3265,7 @@ const eyBreaks = [
                     }
 
                     // 🆕 Technical Subjects Preference: Morning Priority & Mid-day Avoidance
-                    if (placementRules.technicalSubjectsPreference.enabled) {
+                    if (placementMode !== 'senior' && placementRules.technicalSubjectsPreference.enabled) {
                         const isMorning = lesson <= 4;
                         if (placementRules.technicalSubjectsPreference.preferMorning && isMorning && cType !== "TECHNICAL" && cType !== "CORE") {
                             if (dayPool.some(p => getSubjectType(p) === "TECHNICAL" || getSubjectType(p) === "CORE")) continue;
@@ -3186,7 +3277,7 @@ const eyBreaks = [
 
                     // 🆕 Constraint: Core subjects never after Lesson 3
                     const isCore = placementRules.coreSubjectsPreference.subjects.some(c => candidate.toLowerCase().includes(c.toLowerCase()));
-                    if (placementRules.coreSubjectsPreference.enabled && isCore && lesson >= 4) continue;
+                    if (placementMode !== 'senior' && placementRules.coreSubjectsPreference.enabled && isCore && lesson >= 4) continue;
 
                     // 🆕 Constraint: No Technical subjects immediately after Sports/PE
                     if (lIdx > 0 && cType === "TECHNICAL") {
@@ -3706,6 +3797,7 @@ const eyBreaks = [
         const output = document.getElementById('timetableOutput');
         const days = ["MON", "TUE", "WED", "THU", "FRI"];
         const isSenior = window.cbcUtils && window.cbcUtils.isSeniorGrade(grade);
+        const placementMode = getPlacementMode(grade);
         const pathwayFromUI = window.cbcUtils?.normalizePathway?.(document.getElementById('ttPathwaySelect')?.value || "") || (document.getElementById('ttPathwaySelect')?.value || "");
         const pathwayValue = isSenior ? (window.cbcUtils?.normalizePathway?.(pathway) || pathwayFromUI || window.cbcUtils?.normalizePathway?.(currentTimetableData?.pathway || "") || (currentTimetableData?.pathway || "")) : "";
         const academicYear = document.getElementById('ttYearSelect').value;
@@ -3719,9 +3811,7 @@ const eyBreaks = [
         const isJunior = gradeNum >= 7 && gradeNum <= 9;
 
         // Get frequencies for this grade and strictly filter them to the selected pathway
-        const freqs = Object.fromEntries(
-            Object.entries(lessonFrequencies[grade] || {}).filter(([sub]) => isSubjectAllowedForPathway(sub, grade, pathwayValue))
-        );
+        const freqs = filterSubjectsForGrade(lessonFrequencies[grade] || {}, grade, pathwayValue);
 
         // 1. GENERATE ASSIGNMENTS (Skip if just refreshing for a manual edit)
         if (generateNew) selectedSwapSlot = null; // 🆕 Clear swap selection on fresh generation
@@ -3738,7 +3828,7 @@ const eyBreaks = [
             const daysWithDoubles = new Set(); // Track days that already received a double lesson
 
             // 🆕 Strict Double Lesson Rule: Only ONE double block per subject per week
-            if (placementRules.doubleLessons.enabled) {
+            if (placementMode === 'senior' && placementRules.doubleLessons.enabled) {
                 const subjectsWithDoubles = placementRules.doubleLessons.subjects;
 
                 subjectsWithDoubles.forEach(subName => {
@@ -3767,6 +3857,7 @@ const eyBreaks = [
                         for (const [l1, l2] of validPairs) {
                             if (l1 >= settings.lessonsPerDay || l2 >= settings.lessonsPerDay) continue;
                             if (grid[l1][d] || grid[l2][d]) continue; // Ensure slots are empty
+                            if (!isPlacementPreferenceSatisfied(grade, subName, l1 + 1) || !isPlacementPreferenceSatisfied(grade, subName, l2 + 1)) continue;
 
                             const t = getTeacherForSubject(grade, stream, subName);
                             if (!isTeacherBusy(t?.id, d, l1, grade, stream) && !isTeacherBusy(t?.id, d, l2, grade, stream)) {
@@ -3790,6 +3881,7 @@ const eyBreaks = [
                 const possible = [{l:0, d:4}, {l:1, d:4}, {l:2, d:4}, {l:3, d:4}]; // Friday L1-L4
                 for(const slot of possible) {
                     if (slot.l >= settings.lessonsPerDay) continue;
+                    if (!isPlacementPreferenceSatisfied(grade, "PPI", slot.l + 1)) continue;
                     if (!isTeacherBusy(t?.id, slot.d, slot.l, grade, stream)) {
                         grid[slot.l][slot.d] = "PPI";
                         subjectsScheduledToday[slot.d].add("PPI");
@@ -3800,9 +3892,9 @@ const eyBreaks = [
             }
 
             // 🆕 Step 2.2: Priority placement for PE / Sports in morning slots
-            if (placementRules.sportsPreference.enabled) {
+            if (placementMode !== 'senior' && placementRules.sportsPreference.enabled) {
                 const preferredMorningSubjects = Object.keys(freqsCopy)
-                    .filter(sub => isMorningPreferredSubject(sub))
+                    .filter(sub => isMorningPreferredSubject(sub) && !isCreativeArtsOrSportsSubject(sub))
                     .sort((a, b) => freqsCopy[b] - freqsCopy[a]);
 
                 preferredMorningSubjects.forEach(subName => {
@@ -3818,6 +3910,7 @@ const eyBreaks = [
                     const teacherInfo = getTeacherForSubject(grade, stream, subName);
                     for (const slot of morningSlots) {
                         if (freqsCopy[subName] <= 0) break;
+                        if (!isPlacementPreferenceSatisfied(grade, subName, slot.l + 1)) continue;
                         if (subjectsScheduledToday[slot.d].has(subName) && freqs[subName] <= 5) continue;
                         if (isTeacherBusy(teacherInfo?.id, slot.d, slot.l, grade, stream)) continue;
 
@@ -3829,7 +3922,7 @@ const eyBreaks = [
             }
 
             // 🆕 Step 2.3: Priority placement for Core Subjects (Guarantees frequencies)
-            if (placementRules.coreSubjectsPreference.enabled) {
+            if (placementMode !== 'senior' && placementRules.coreSubjectsPreference.enabled) {
                 const coreSubjects = placementRules.coreSubjectsPreference.subjects;
                 // Identify core subjects in the remaining frequencies
                 const coreSubList = Object.keys(freqsCopy).filter(sub => 
@@ -3838,6 +3931,7 @@ const eyBreaks = [
 
                 coreSubList.forEach(subName => {
                     const teacherInfo = getTeacherForSubject(grade, stream, subName);
+                    const isCoreSubject = placementRules.coreSubjectsPreference.subjects.some(c => subName.toLowerCase().includes(c.toLowerCase()));
                     
                     // Priority slots: Morning (L1-L3)
                     let morningSlots = [];
@@ -3852,6 +3946,7 @@ const eyBreaks = [
                     for (const slot of morningSlots) {
                         if (freqsCopy[subName] <= 0) break;
                         if (grid[slot.l][slot.d]) continue;
+                        if (!isPlacementPreferenceSatisfied(grade, subName, slot.l + 1)) continue;
                         if (subjectsScheduledToday[slot.d].has(subName) && freqs[subName] <= 5) continue;
                         if (isTeacherBusy(teacherInfo?.id, slot.d, slot.l, grade, stream)) continue;
                         
@@ -3874,6 +3969,8 @@ const eyBreaks = [
                         for (const slot of otherSlots) {
                             if (freqsCopy[subName] <= 0) break;
                             if (grid[slot.l][slot.d]) continue;
+                            if (!isPlacementPreferenceSatisfied(grade, subName, slot.l + 1)) continue;
+                            if (placementRules.coreSubjectsPreference.enabled && isCoreSubject && slot.l + 1 >= 4) continue;
                             if (isTeacherBusy(teacherInfo?.id, slot.d, slot.l, grade, stream)) continue;
                             
                             grid[slot.l][slot.d] = subName;
@@ -3927,6 +4024,10 @@ const eyBreaks = [
                         if (placementRules.ppiPreference.fridayMorningOnly && !isFridayMorning) continue;
                     }
 
+                    if (!isPlacementPreferenceSatisfied(grade, candidate, lesson)) continue;
+
+                    if (isCreativeArtsOrSportsSubject(candidate) && lesson <= 3) continue;
+
                     if (placementRules.creativePreference.enabled && cType === "ACTIVITY") {
                         if (placementRules.creativePreference.afternoonOnly && isMorning) continue;
                         if (subjectsScheduledToday[day].has(candidate)) continue;
@@ -3934,7 +4035,7 @@ const eyBreaks = [
                     
                     // 🆕 STRICT Core subjects constraint (Never after Lesson 3) - case insensitive
                     const isCoreSubject = placementRules.coreSubjectsPreference.subjects.some(c => candidate.toLowerCase().includes(c.toLowerCase()));
-                    if (placementRules.coreSubjectsPreference.enabled && isCoreSubject && lesson >= 4) continue;
+                    if (placementMode !== 'senior' && placementRules.coreSubjectsPreference.enabled && isCoreSubject && lesson >= 4) continue;
 
                     if (freq <= 5 && subjectsScheduledToday[day].has(candidate)) continue;
 
@@ -3951,7 +4052,7 @@ const eyBreaks = [
                     if (isTeacherBusy(teacherInfo?.id, day, lesson - 1, grade, stream)) continue;
 
                     // 🆕 Refined Core & Technical Subjects Logic:
-                    if (placementRules.technicalSubjectsPreference.enabled) {
+                    if (placementMode !== 'senior' && placementRules.technicalSubjectsPreference.enabled) {
                         // 1. Morning Priority (L1-4): Prioritize "High Focus" (Core & Technical) subjects.
                         // Skip Standard/Creative types if these are still available in the pool.
                         if (placementRules.technicalSubjectsPreference.preferMorning && isMorning && cType !== "TECHNICAL" && cType !== "CORE") {
@@ -3980,12 +4081,13 @@ const eyBreaks = [
                     const fallbackIdx = pool.findIndex(p => {
                         // 1. Prevent non-essential repeats (The "Once a day" logic)
                         const freq = freqs[p] || 0;
+                        if (!isPlacementPreferenceSatisfied(grade, p, lesson)) return false;
                         if (freq <= 5 && subjectsScheduledToday[day].has(p)) return false;
                         if (freq <= 5 && subjectsScheduledToday[day].has(p)) return false;
 
                         // 2. Respect Core Subject placement rules (No core subjects in the afternoon)
                         const isCore = placementRules.coreSubjectsPreference.subjects.some(c => p.toLowerCase().includes(c.toLowerCase()));
-                        if (placementRules.coreSubjectsPreference.enabled && isCore && isAfterLesson3) return false;
+                        if (placementMode !== 'senior' && placementRules.coreSubjectsPreference.enabled && isCore && isAfterLesson3) return false;
 
                         // 3. Prevent teacher clashes in fallback
                         const teacherInfo = getTeacherForSubject(grade, stream, p);

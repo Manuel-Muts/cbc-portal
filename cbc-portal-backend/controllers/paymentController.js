@@ -10,6 +10,11 @@ import FeeStructure from "../models/FeeStructure.js";
 import Setting from "../models/Setting.js";
 import cache from "../utils/cacheManager.js";
 import { buildGradeMatch } from "../utils/accountsQueryHelpers.js";
+import {
+  getOrCreateBalanceSummary,
+  refreshBalanceSummaryForStudent,
+  resolveStudentGradeForBalance
+} from "../services/balanceSummaryService.js";
 
 const escapeRegex = (text) => {
   return text.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, "\\$&");
@@ -114,6 +119,12 @@ export const recordPayment = async (req, res) => {
       await processTermPayment("Term 3", term3.balance, "T3"); // T3 absorbs any excess
 
       invalidateSchoolFinanceCaches(req.user.schoolId);
+      await refreshBalanceSummaryForStudent({
+        studentId: student._id,
+        schoolId: req.user.schoolId,
+        academicYear: currentYear,
+        grade
+      });
 
       return res.status(201).json({
         message: "Payment auto-allocated successfully",
@@ -124,6 +135,12 @@ export const recordPayment = async (req, res) => {
     // ---------------------------
     // STANDARD SINGLE TERM PAYMENT
     // ---------------------------
+    const grade = await resolveStudentGradeForBalance({
+      studentId: student._id,
+      schoolId: req.user.schoolId,
+      academicYear: currentYear
+    });
+
     const payment = await Payment.create({
       studentId: student._id,
       schoolId: req.user.schoolId,
@@ -137,6 +154,12 @@ export const recordPayment = async (req, res) => {
     });
 
     invalidateSchoolFinanceCaches(req.user.schoolId);
+    await refreshBalanceSummaryForStudent({
+      studentId: student._id,
+      schoolId: req.user.schoolId,
+      academicYear: currentYear,
+      grade
+    });
 
     res.status(201).json({
       message: "Payment recorded successfully",
@@ -246,21 +269,12 @@ export const getStudentFeeStatement = async (req, res) => {
         }).select("grade academicYear term1Fee term2Fee term3Fee totalFee").lean()
       : null;
 
-    const payments = await Payment.find({
+    const balanceSummary = await getOrCreateBalanceSummary({
       studentId: student._id,
+      schoolId: req.user.schoolId,
       academicYear,
-      isReversed: { $ne: true }
-    }).sort({ createdAt: -1, _id: -1 }).select("amount term reference method academicYear createdAt").lean();
-
-    const termPaid = { "Term 1": 0, "Term 2": 0, "Term 3": 0 };
-    payments.forEach((payment) => {
-      if (termPaid[payment.term] !== undefined) {
-        termPaid[payment.term] += Number(payment.amount || 0);
-      }
+      grade
     });
-
-    const totalPaid = payments.reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
-    const totalFee = feeStructure?.totalFee || 0;
 
     const response = {
       student: {
@@ -269,20 +283,33 @@ export const getStudentFeeStatement = async (req, res) => {
       },
       grade: grade || "Not Enrolled",
       academicYear,
-      feeStructure: feeStructure || {
-        term1Fee: 0,
-        term2Fee: 0,
-        term3Fee: 0,
-        totalFee: 0
+      feeStructure: {
+        term1Fee: balanceSummary.term1Fee,
+        term2Fee: balanceSummary.term2Fee,
+        term3Fee: balanceSummary.term3Fee,
+        totalFee: balanceSummary.totalFee
       },
-      payments,
+      payments: [],
       totals: {
-        totalFee,
-        totalPaid,
-        totalBalance: totalFee - totalPaid,
-        termPaid
+        totalFee: balanceSummary.totalFee,
+        totalPaid: balanceSummary.totalPaid,
+        totalBalance: balanceSummary.balance,
+        termPaid: {
+          "Term 1": balanceSummary.term1Paid,
+          "Term 2": balanceSummary.term2Paid,
+          "Term 3": balanceSummary.term3Paid
+        }
       }
     };
+
+    // keep the original payment history list for the fee statement
+    const payments = await Payment.find({
+      studentId: student._id,
+      academicYear,
+      isReversed: { $ne: true }
+    }).sort({ createdAt: -1, _id: -1 }).select("amount term reference method academicYear createdAt").lean();
+
+    response.payments = payments;
 
     cache.set(cacheKey, response, 60);
     res.json(response);
@@ -409,8 +436,35 @@ export const getMyBalance = async (req, res) => {
       grade = enrollment?.grade || null;
     }
 
-    // Use the balance service to calculate balance even if grade is not available
-    const balanceData = await calculateBalance(req.user, grade, year);
+    const balanceSummary = await getOrCreateBalanceSummary({
+      studentId: req.user.id,
+      schoolId: req.user.schoolId,
+      academicYear: year,
+      grade
+    });
+
+    const balanceData = {
+      totalFee: balanceSummary.totalFee,
+      totalPaid: balanceSummary.totalPaid,
+      balance: balanceSummary.balance,
+      termBalances: {
+        term1: {
+          fee: balanceSummary.term1Fee,
+          paid: balanceSummary.term1Paid,
+          balance: balanceSummary.term1Balance
+        },
+        term2: {
+          fee: balanceSummary.term2Fee,
+          paid: balanceSummary.term2Paid,
+          balance: balanceSummary.term2Balance
+        },
+        term3: {
+          fee: balanceSummary.term3Fee,
+          paid: balanceSummary.term3Paid,
+          balance: balanceSummary.term3Balance
+        }
+      }
+    };
 
     res.json(balanceData);
   } catch (err) {
@@ -558,6 +612,12 @@ export const reversePayment = async (req, res) => {
     await payment.save();
 
     invalidateSchoolFinanceCaches(req.user.schoolId);
+    await refreshBalanceSummaryForStudent({
+      studentId: payment.studentId,
+      schoolId: req.user.schoolId,
+      academicYear: payment.academicYear,
+      grade: null
+    });
     res.json({ message: "Payment reversed and removed from ledger successfully" });
   } catch (err) {
     res.status(500).json({ message: err.message });
@@ -656,81 +716,58 @@ export const getAllStudentAccounts = async (req, res) => {
       { $unwind: { path: "$feeStructure", preserveNullAndEmptyArrays: true } },
       {
         $lookup: {
-          from: "payments",
-          let: { studentId: "$studentId" },
+          from: "balancesummaries",
+          let: { studentId: "$studentId", schoolId: "$schoolId", academicYear: academicYear },
           pipeline: [
             {
               $match: {
                 $expr: {
                   $and: [
                     { $eq: ["$studentId", "$$studentId"] },
-                    { $eq: ["$schoolId", schoolId] },
-                    { $eq: ["$academicYear", academicYear] },
-                    { $ne: ["$isReversed", true] }
+                    { $eq: ["$schoolId", "$$schoolId"] },
+                    { $eq: ["$academicYear", "$$academicYear"] }
                   ]
-                }
-              }
-            },
-            {
-              $group: {
-                _id: "$term",
-                totalAmount: { $sum: "$amount" },
-                broughtForwardAmount: {
-                  $sum: { $cond: [{ $eq: ["$method", "fund_transfer"] }, "$amount", 0] }
                 }
               }
             }
           ],
-          as: "paymentSummaries"
+          as: "balanceSummary"
+        }
+      },
+      { $unwind: { path: "$balanceSummary", preserveNullAndEmptyArrays: true } },
+      {
+        $addFields: {
+          term1Paid: { $ifNull: ["$balanceSummary.term1Paid", 0] },
+          term2Paid: { $ifNull: ["$balanceSummary.term2Paid", 0] },
+          term3Paid: { $ifNull: ["$balanceSummary.term3Paid", 0] },
+          totalPaid: { $ifNull: ["$balanceSummary.totalPaid", 0] },
+          totalFee: { $ifNull: ["$balanceSummary.totalFee", { $ifNull: ["$feeStructure.totalFee", 0] }] },
+          term1Fee: { $ifNull: ["$balanceSummary.term1Fee", { $ifNull: ["$feeStructure.term1Fee", 0] }] },
+          term2Fee: { $ifNull: ["$balanceSummary.term2Fee", { $ifNull: ["$feeStructure.term2Fee", 0] }] },
+          term3Fee: { $ifNull: ["$balanceSummary.term3Fee", { $ifNull: ["$feeStructure.term3Fee", 0] }] },
+          balance: { $ifNull: ["$balanceSummary.balance", { $subtract: [{ $ifNull: ["$feeStructure.totalFee", 0] }, { $ifNull: ["$balanceSummary.totalPaid", 0] }] }] },
+          hasBroughtForward: { $gt: [{ $ifNull: ["$balanceSummary.broughtForwardAmount", 0] }, 0] }
         }
       },
       {
         $addFields: {
-          term1Paid: {
-            $reduce: {
-              input: "$paymentSummaries",
-              initialValue: 0,
-              in: {
-                $cond: [{ $eq: ["$$this._id", "Term 1"] }, { $add: ["$$value", "$$this.totalAmount"] }, "$$value"]
-              }
-            }
-          },
-          term2Paid: {
-            $reduce: {
-              input: "$paymentSummaries",
-              initialValue: 0,
-              in: {
-                $cond: [{ $eq: ["$$this._id", "Term 2"] }, { $add: ["$$value", "$$this.totalAmount"] }, "$$value"]
-              }
-            }
-          },
-          term3Paid: {
-            $reduce: {
-              input: "$paymentSummaries",
-              initialValue: 0,
-              in: {
-                $cond: [{ $eq: ["$$this._id", "Term 3"] }, { $add: ["$$value", "$$this.totalAmount"] }, "$$value"]
-              }
-            }
-          },
-          broughtForwardAmount: {
-            $reduce: {
-              input: "$paymentSummaries",
-              initialValue: 0,
-              in: { $add: ["$$value", "$$this.broughtForwardAmount"] }
+          termBalances: {
+            term1: {
+              fee: "$term1Fee",
+              paid: "$term1Paid",
+              balance: { $subtract: ["$term1Fee", "$term1Paid"] }
+            },
+            term2: {
+              fee: "$term2Fee",
+              paid: "$term2Paid",
+              balance: { $subtract: ["$term2Fee", "$term2Paid"] }
+            },
+            term3: {
+              fee: "$term3Fee",
+              paid: "$term3Paid",
+              balance: { $subtract: ["$term3Fee", "$term3Paid"] }
             }
           }
-        }
-      },
-      {
-        $addFields: {
-          totalPaid: { $add: ["$term1Paid", "$term2Paid", "$term3Paid"] },
-          totalFee: { $ifNull: ["$feeStructure.totalFee", 0] },
-          term1Fee: { $ifNull: ["$feeStructure.term1Fee", 0] },
-          term2Fee: { $ifNull: ["$feeStructure.term2Fee", 0] },
-          term3Fee: { $ifNull: ["$feeStructure.term3Fee", 0] },
-          balance: { $subtract: [{ $ifNull: ["$feeStructure.totalFee", 0] }, { $add: ["$term1Paid", "$term2Paid", "$term3Paid"] }] },
-          hasBroughtForward: { $gt: ["$broughtForwardAmount", 0] }
         }
       },
       {
