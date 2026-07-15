@@ -2953,15 +2953,15 @@ async function loadDeanProfile() {
   const overlay = document.createElement('div');
   overlay.id = 'deanInitOverlay';
   overlay.style.cssText = `
-    position: fixed; inset: 0; background: rgba(255, 255, 255, 0.96); 
-    z-index: 20000; display: flex; align-items: center; justify-content: center; 
-    backdrop-filter: blur(6px); transition: opacity 0.4s ease;
+    position: fixed; inset: 0; background: linear-gradient(135deg, rgba(219, 234, 254, 0.82) 0%, rgba(191, 219, 254, 0.7) 100%);
+    z-index: 20000; display: flex; align-items: center; justify-content: center;
+    backdrop-filter: blur(8px); transition: opacity 0.4s ease;
   `;
   overlay.innerHTML = `
-    <div style="text-align: center; padding: 45px; background: white; border-radius: 24px; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.15); border: 1px solid #e2e8f0; max-width: 420px; width: 92%;">
-      <div class="spinner" style="width: 50px; height: 50px; border-width: 5px; border-top-color: #2b6cb0; border-right-color: #2b6cb0; display: inline-block; margin-right: 0;"></div>
+    <div style="text-align: center; padding: 45px; background: rgba(255, 255, 255, 0.9); border-radius: 24px; box-shadow: 0 25px 50px -12px rgba(37, 99, 235, 0.14); border: 1px solid rgba(147, 197, 253, 0.45); max-width: 420px; width: 92%;">
+      <div class="spinner" style="width: 50px; height: 50px; border-width: 5px; border-top-color: #2563eb; border-right-color: #2563eb; display: inline-block; margin-right: 0;"></div>
       <h2 style="margin: 25px 0 10px 0; color: #1e293b; font-size: 1.6rem; font-weight: 800; letter-spacing: -0.025em; text-transform: uppercase;">Dean's Panel</h2>
-      <p style="color: #64748b; font-size: 1rem; font-weight: 500; line-height: 1.6; margin: 0;">Authenticating session and synchronizing academic analytics...</p>
+      <p style="color: #475569; font-size: 1rem; font-weight: 500; line-height: 1.6; margin: 0;">Authenticating session and synchronizing academic analytics...</p>
     </div>
   `;
   document.body.appendChild(overlay);

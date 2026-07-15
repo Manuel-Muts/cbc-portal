@@ -21,14 +21,45 @@
   
   <header class="teacher-header">
     <div class="header-left">
-      <h1>WELCOME, <span id="teacherName"></span></h1>
-      <span id="schoolName" class="school-pill"></span> 
+      <span id="schoolName" class="school-pill"></span>
     </div>
     <div class="header-right">
+      <button id="headerRefreshBtn" class="btn refresh-btn" type="button" title="Refresh Dashboard">🔄</button>
       <a href="/dean" id="deanDashboardBtn" class="btn dean-btn" style="display:none;">🎓 Dean Dashboard</a>
-      <button id="logoutBtn" class="btn secondary-btn">Logout</button>
+      <div class="profile-menu">
+        <button class="profile-trigger" id="teacherProfileTrigger" type="button" aria-expanded="false">
+          <span class="profile-avatar" id="teacherProfileAvatar">T</span>
+          <span class="profile-meta">
+            <strong id="teacherProfileName">Teacher</strong>
+            <small id="teacherProfileRole">Teacher</small>
+          </span>
+          <span class="profile-caret">▾</span>
+        </button>
+        <div class="profile-dropdown" id="teacherProfileDropdown">
+          <div class="profile-card">
+            <div class="profile-card-title">Teacher Profile</div>
+            <div class="profile-card-user">
+              <div class="profile-avatar large" id="teacherProfileAvatarLarge">T</div>
+              <div class="profile-detail">
+                <strong id="teacherProfileNameDetail">Teacher</strong>
+                <span id="teacherProfileEmailDetail">teacher@example.com</span>
+              </div>
+            </div>
+            <button class="profile-logout-btn" id="teacherLogoutBtn" type="button">Log out</button>
+          </div>
+        </div>
+      </div>
     </div>
   </header>
+
+  <nav class="teacher-subnav">
+    <div class="subnav-left">
+      <button class="subnav-btn active" data-tab="enterMarks">📊 Enter Marks</button>
+      <button class="subnav-btn" data-tab="submittedMarks">📋 Submitted Marks</button>
+      <button class="subnav-btn" data-tab="studyMaterials">📚 Study Materials</button>
+      <button class="subnav-btn" data-tab="digitalSignature">🖊️ Digital Signature</button>
+    </div>
+  </nav>
 
 <div id="toastContainer"></div>
   <main>
@@ -36,13 +67,6 @@
     <section class="allocations-section">
       <div id="allocationsContainer" class="allocations-grid"></div>
     </section>
-
-    <!-- TABS NAVIGATION -->
-    <div class="tabs-nav">
-      <button class="tab-btn active" data-tab="enterMarks">📊 Enter Marks</button>
-      <button class="tab-btn" data-tab="submittedMarks">📋 Submitted Marks</button>
-      <button class="tab-btn" data-tab="studyMaterials">📚 Study Materials</button>
-    </div>
 
     <div id="enterMarks" class="tab-pane active">
     <!-- =================== MARKS ENTRY (TABLE-BASED) =================== -->
@@ -147,6 +171,14 @@
         <a href="/teacher-materials" class="btn primary-btn big-btn">🚀 Go to Materials Dashboard</a>
       </div>
     </section>
+    </div>
+
+    <div id="digitalSignature" class="tab-pane">
+      <section class="signature-section">
+        <div id="digitalSignatureContent" class="signature-card-placeholder">
+          <!-- Digital signature interface will be rendered here -->
+        </div>
+      </section>
     </div>
   </main>
 

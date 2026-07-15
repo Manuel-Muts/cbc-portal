@@ -16,32 +16,62 @@
     <!-- Sidebar Navigation -->
     <aside class="sidebar">
         <div class="sidebar-brand">
-            <h2 class="logo">Loading...</h2>
+            <div class="brand-mark">AP</div>
+            <div class="brand-copy">
+                <div class="logo">Loading...</div>
+            </div>
         </div>
-        
-        <ul class="menu">
-            <li data-section="announcementSection">📢 Announcements & SMS</li>
-            <li class="active" data-section="subjectAllocSection">Subject Allocations</li>
-            <li data-section="classAllocSection">Class Allocations</li>
-            <li data-section="searchSection">Learner Search</li>
-            <li data-section="promotionSection">Learner Promotion</li>
-            <li><a href="/users">👥 User Management</a></li> 
-            <li data-section="electivesSection">Electives Management</li>
-            <li data-section="signatureUploadSection">Digital Signature</li>
-            <li data-section="termLockManagementSection">
-                <a href="#">Term Lock Management</a>
-            </li>
-            
-        </ul>
-        
-        <button id="refreshBtn" class="refresh-btn">🔄 Refresh</button><br><br>
-        <button id="logoutBtn" class="logout-btn">Logout</button>
+
+        <div class="sidebar-scroll">
+            <ul class="menu">
+                <li data-section="announcementSection"><span class="menu-icon">📢</span><span>Announcements & SMS</span></li>
+                <li class="active" data-section="subjectAllocSection"><span class="menu-icon">🗂️</span><span>Subject Allocations</span></li>
+                <li data-section="classAllocSection"><span class="menu-icon">🏫</span><span>Class Allocations</span></li>
+                <li data-section="searchSection"><span class="menu-icon">🔎</span><span>Learner Search</span></li>
+                <li data-section="promotionSection"><span class="menu-icon">⬆️</span><span>Learner Promotion</span></li>
+                <li><a href="/users"><span class="menu-icon">👥</span><span>User Management</span></a></li>
+                <li data-section="electivesSection"><span class="menu-icon">⚙️</span><span>Electives Management</span></li>
+                <li data-section="signatureUploadSection"><span class="menu-icon">✍️</span><span>Digital Signature</span></li>
+                <li data-section="termLockManagementSection">
+                    <a href="#"><span class="menu-icon">🔒</span><span>Term Lock Management</span></a>
+                </li>
+            </ul>
+        </div>
     </aside>
 
     <!-- Main Content Area -->
     <main class="main">
         <header class="topbar">
-            <h1 id="pageTitle">Subject Allocations</h1>
+            <div class="topbar-main">
+                <span class="topbar-badge">Administration</span>
+                <h1 id="pageTitle">Subject Allocations</h1>
+            </div>
+            <div class="topbar-actions">
+                <button id="refreshBtn" class="topbar-refresh-btn" type="button">🔄 Refresh</button>
+                <div class="profile-menu">
+                    <button class="profile-trigger" id="profileMenuTrigger" type="button" aria-expanded="false">
+                        <span class="profile-avatar" id="profileAvatar">A</span>
+                        <span class="profile-meta">
+                            <strong id="profileName">Admin</strong>
+                            <small id="profileRole">Administrator</small>
+                        </span>
+                        <span class="profile-caret">▾</span>
+                    </button>
+                    <div class="profile-dropdown" id="profileDropdown">
+                        <div class="profile-card">
+                            <div class="profile-card-title">Admin Profile</div>
+                            <div class="profile-card-user">
+                                <div class="profile-avatar large" id="profileAvatarLarge">A</div>
+                                <div class="profile-detail">
+                                    <strong id="profileNameDetail">Admin</strong>
+                                    <span id="profileEmailDetail">admin@example.com</span>
+                                </div>
+                            </div>
+                            <button class="profile-logout-btn" id="profileLogoutBtn" type="button">Log out</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
         </header>
 
         <section id="contentArea">

@@ -74,6 +74,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const marksEntryTableBody = document.getElementById("marksEntryTableBody");
   const submitAllMarksBtn = document.getElementById("submitAllMarksBtn");
   const marksColumnHeader = document.getElementById("marksColumnHeader");
+  const teacherSubnavButtons = document.querySelectorAll(".subnav-btn");
   
   // Draft & Copy functionality
   const saveDraftBtn = document.getElementById("saveDraftBtn");
@@ -83,6 +84,17 @@ document.addEventListener("DOMContentLoaded", () => {
   
   const assessmentSelect = document.getElementById("assessmentSelect");
   const logoutBtn = document.getElementById("logoutBtn");
+  const teacherProfileTrigger = document.getElementById("teacherProfileTrigger");
+  const teacherProfileDropdown = document.getElementById("teacherProfileDropdown");
+  const teacherLogoutBtn = document.getElementById("teacherLogoutBtn");
+  const teacherProfileName = document.getElementById("teacherProfileName");
+  const teacherProfileRole = document.getElementById("teacherProfileRole");
+  const teacherProfileNameDetail = document.getElementById("teacherProfileNameDetail");
+  const teacherProfileEmailDetail = document.getElementById("teacherProfileEmailDetail");
+  const teacherProfileAvatar = document.getElementById("teacherProfileAvatar");
+  const teacherProfileAvatarLarge = document.getElementById("teacherProfileAvatarLarge");
+  const headerRefreshBtn = document.getElementById("headerRefreshBtn");
+  const digitalSignatureContent = document.getElementById("digitalSignatureContent");
   const submittedMarksContainer = document.getElementById("submittedMarksContainer");
   const submittedMarksStatusMessage = document.getElementById("submittedMarksStatusMessage");
 
@@ -92,25 +104,58 @@ document.addEventListener("DOMContentLoaded", () => {
   let submittedMarksTotalPages = 1;
   // To store the keys of all groups for pagination, populated after fetching all marks
   let submittedMarksGroupedKeys = [];
+
+  function setupTeacherProfileMenu() {
+    if (!teacherProfileTrigger || !teacherProfileDropdown) return;
+
+    const profileMenu = teacherProfileTrigger.closest(".profile-menu");
+
+    teacherProfileTrigger.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+
+      const isOpen = teacherProfileDropdown.classList.contains("show");
+      teacherProfileDropdown.classList.toggle("show", !isOpen);
+      teacherProfileTrigger.setAttribute("aria-expanded", String(!isOpen));
+    });
+
+    teacherProfileDropdown.addEventListener("click", (event) => {
+      event.stopPropagation();
+    });
+
+    document.addEventListener("click", (event) => {
+      if (!profileMenu || !profileMenu.contains(event.target)) {
+        teacherProfileDropdown.classList.remove("show");
+        teacherProfileTrigger.setAttribute("aria-expanded", "false");
+      }
+    });
+  }
  
   // ---------------------------
   // TAB LOGIC
   // ---------------------------
   function setupTabs() {
     const tabBtns = document.querySelectorAll(".tab-btn");
+    const subnavBtns = document.querySelectorAll(".subnav-btn");
     const tabPanes = document.querySelectorAll(".tab-pane");
 
+    const activateTab = (btn) => {
+      const target = btn.dataset.tab;
+      if (!target) return;
+      tabBtns.forEach(b => b.classList.remove("active"));
+      subnavBtns.forEach(b => b.classList.remove("active"));
+      tabPanes.forEach(p => p.classList.remove("active"));
+      btn.classList.add("active");
+      const activePane = document.getElementById(target);
+      if (activePane) activePane.classList.add("active");
+    };
+
     tabBtns.forEach(btn => {
-      btn.addEventListener("click", () => {
-        const target = btn.dataset.tab;
+      btn.addEventListener("click", () => activateTab(btn));
+    });
 
-        tabBtns.forEach(b => b.classList.remove("active"));
-        tabPanes.forEach(p => p.classList.remove("active"));
-
-        btn.classList.add("active");
-        const activePane = document.getElementById(target);
-        if (activePane) activePane.classList.add("active");
-      });
+    subnavBtns.forEach(btn => {
+      btn.addEventListener("click", () => activateTab(btn));
     });
   }
 
@@ -281,6 +326,8 @@ document.addEventListener("DOMContentLoaded", () => {
   let isLoadingStudents = false;
   const STUDENTS_PER_PAGE = 15;
 
+  setupTeacherProfileMenu();
+
   // ---------------------------
   // AUTHENTICATION
   // ---------------------------
@@ -299,21 +346,12 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
     function updateTeacherNameUI() {
-    const teacherNameEl = document.getElementById("teacherName");
-    if (teacherNameEl && teacher) {
-      teacherNameEl.innerHTML = `
-        <span style="font-weight: 600; color: #ffffff;">${(teacher.name || "TEACHER").toUpperCase()}</span>
-        ${teacher.isDean ? `
-          <a href="/dean" class="btn secondary-btn" style="font-size:0.7rem; padding:4px 8px; text-decoration:none; border-radius:6px; font-weight:600; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
-            🎓 DEAN PANEL
-          </a>
-        ` : ''}
-        <button id="headerRefreshBtn" title="Refresh Dashboard" style="background:none; border:none; cursor:pointer; font-size:1.1rem; color:#ffffff; transition: transform 0.5s ease; display: flex; align-items: center; padding: 0;">
-          🔄
-        </button>
-      `;
+    const isDean = Array.isArray(teacher.roles)
+      ? teacher.roles.includes("dean")
+      : (teacher.role === "dean" || teacher.role === "DeAn" || teacher.isDean);
 
-      document.getElementById("headerRefreshBtn")?.addEventListener("click", (e) => {
+    if (headerRefreshBtn) {
+      headerRefreshBtn.addEventListener("click", (e) => {
         const btn = e.currentTarget;
         btn.style.transform = "rotate(360deg)";
         
@@ -330,10 +368,40 @@ document.addEventListener("DOMContentLoaded", () => {
         }, 500);
       });
     }
+
+    const displayName = (teacher.name || teacher.fullName || teacher.username || "Teacher").toString().trim();
+    const roleLabel = Array.isArray(teacher.roles) ? teacher.roles[0] : (teacher.role || "Teacher");
+    const labelText = String(roleLabel || "Teacher").replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase());
+    const initial = displayName.charAt(0).toUpperCase() || "T";
+
+    if (teacherProfileName) teacherProfileName.textContent = displayName || "Teacher";
+    if (teacherProfileRole) teacherProfileRole.textContent = labelText;
+    if (teacherProfileNameDetail) teacherProfileNameDetail.textContent = displayName || "Teacher";
+    if (teacherProfileEmailDetail) teacherProfileEmailDetail.textContent = teacher.email || "teacher@example.com";
+    if (teacherProfileAvatar) teacherProfileAvatar.textContent = initial;
+    if (teacherProfileAvatarLarge) teacherProfileAvatarLarge.textContent = initial;
+
+    const deanDashboardBtn = document.getElementById("deanDashboardBtn");
+    if (deanDashboardBtn) {
+      deanDashboardBtn.style.display = isDean ? "inline-flex" : "none";
+    }
+
+    if (digitalSignatureContent && teacher) {
+      renderSignatureUI(teacher);
+    }
+
+    if (teacherLogoutBtn) {
+      teacherLogoutBtn.addEventListener("click", async () => {
+        const confirmed = await window.cbcUtils.showConfirmToast("Are you sure you want to log out of the Teacher's Panel?");
+        if (confirmed) {
+          authService.logout();
+        }
+      });
+    }
   }
 
   function renderSignatureUI(user) {
-    const container = document.getElementById("allocationsContainer");
+    const container = digitalSignatureContent || document.getElementById("allocationsContainer");
     if (!container || !user || !user.isClassTeacher) return; // Only show if user is a class teacher
 
     // Check if signature UI already exists
@@ -2307,14 +2375,8 @@ document.addEventListener("DOMContentLoaded", () => {
     console.log("📝 Step 1: Loading teacher profile...");
     await loadTeacherProfile();
 
-    // Add Logout listener with confirmation
     if (logoutBtn) {
-      logoutBtn.addEventListener("click", async () => {
-        const confirmed = await window.cbcUtils.showConfirmToast("Are you sure you want to log out of the Teacher's Panel?");
-        if (confirmed) {
-          authService.logout();
-        }
-      });
+      logoutBtn.style.display = "none";
     }
     console.log("✅ Step 1 complete");
 

@@ -13,6 +13,15 @@
   const sidebar = document.querySelector('.sidebar');
   const pageTitle = document.getElementById('pageTitle');
   const sidebarBrandLogo = document.querySelector('.sidebar-brand .logo'); // New shortcut
+  const profileMenuTrigger = document.getElementById('profileMenuTrigger');
+  const profileDropdown = document.getElementById('profileDropdown');
+  const profileLogoutBtn = document.getElementById('profileLogoutBtn');
+  const profileName = document.getElementById('profileName');
+  const profileRole = document.getElementById('profileRole');
+  const profileNameDetail = document.getElementById('profileNameDetail');
+  const profileEmailDetail = document.getElementById('profileEmailDetail');
+  const profileAvatar = document.getElementById('profileAvatar');
+  const profileAvatarLarge = document.getElementById('profileAvatarLarge');
 
   // Inject CSS for compactness of subject allocations table
   const compactStyle = document.createElement("style");
@@ -87,15 +96,15 @@
     const overlay = document.createElement('div');
     overlay.id = 'adminInitOverlay';
     overlay.style.cssText = `
-      position: fixed; inset: 0; background: rgba(255, 255, 255, 0.95);
+      position: fixed; inset: 0; background: linear-gradient(135deg, rgba(219, 234, 254, 0.82) 0%, rgba(191, 219, 254, 0.7) 100%);
       z-index: 20000; display: flex; align-items: center; justify-content: center;
-      backdrop-filter: blur(6px); transition: opacity 0.3s ease;
+      backdrop-filter: blur(8px); transition: opacity 0.3s ease;
     `;
     overlay.innerHTML = `
-      <div style="text-align: center; padding: 40px 30px; background: #fff; border-radius: 20px; box-shadow: 0 24px 55px rgba(15, 23, 42, 0.12); border: 1px solid rgba(148, 163, 184, 0.2); max-width: 420px; width: 90%;">
-        <div class="spinner" style="width: 50px; height: 50px; border-width: 5px; border-top-color: #2b6cb0; border-right-color: #2b6cb0; display: inline-block; margin-bottom: 18px;"></div>
+      <div style="text-align: center; padding: 40px 30px; background: rgba(255, 255, 255, 0.9); border-radius: 20px; box-shadow: 0 24px 55px rgba(37, 99, 235, 0.14); border: 1px solid rgba(147, 197, 253, 0.45); max-width: 420px; width: 90%;">
+        <div class="spinner" style="width: 50px; height: 50px; border-width: 5px; border-top-color: #2563eb; border-right-color: #2563eb; display: inline-block; margin-bottom: 18px;"></div>
         <h2 style="margin: 0 0 10px; color: #1e293b; font-size: 1.5rem; font-weight: 800; letter-spacing: -0.03em;">Admin Panel</h2>
-        <p style="margin: 0; color: #64748b; font-size: 0.95rem; line-height: 1.75;">Loading school data and preparing the portal. Please wait...</p>
+        <p style="margin: 0; color: #475569; font-size: 0.95rem; line-height: 1.75;">Loading school data and preparing the portal. Please wait...</p>
       </div>
     `;
     document.body.appendChild(overlay);
@@ -292,6 +301,26 @@ async function loadSchoolInfo(forceRefresh = false) {
 function renderSchoolInfo() {
   if (!schoolInfo) return;
 
+  if (profileMenuTrigger) {
+    profileMenuTrigger.addEventListener('click', (event) => {
+      event.stopPropagation();
+      const isOpen = profileDropdown?.classList.contains('show');
+      profileDropdown?.classList.toggle('show', !isOpen);
+      profileMenuTrigger.setAttribute('aria-expanded', String(!isOpen));
+    });
+  }
+
+  document.addEventListener('click', () => {
+    profileDropdown?.classList.remove('show');
+    profileMenuTrigger?.setAttribute('aria-expanded', 'false');
+  });
+
+  if (profileLogoutBtn) {
+    profileLogoutBtn.addEventListener('click', () => {
+      authService.logout();
+    });
+  }
+
   // Debug: show resolved schoolType and config to help diagnose dropdown population
   try { console.debug("renderSchoolInfo: schoolInfo.schoolType=", schoolInfo.schoolType, "getSchoolConfig=", getSchoolConfig()); } catch (e) {}
 
@@ -299,6 +328,19 @@ function renderSchoolInfo() {
   if (displayName && displayName !== "School Name") {
     applySidebarBrandName(displayName);
   }
+
+  const currentUser = window.currentAdminProfile || null;
+  const displayNameInitial = (currentUser?.name || currentUser?.fullName || currentUser?.username || "Admin").toString().trim();
+  const initial = displayNameInitial.charAt(0).toUpperCase() || "A";
+  const roleLabel = Array.isArray(currentUser?.roles) ? currentUser.roles[0] : (currentUser?.role || 'Administrator');
+  const labelText = String(roleLabel || 'Administrator').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+
+  if (profileName) profileName.textContent = displayNameInitial || 'Admin';
+  if (profileRole) profileRole.textContent = labelText;
+  if (profileNameDetail) profileNameDetail.textContent = displayNameInitial || 'Admin';
+  if (profileEmailDetail) profileEmailDetail.textContent = currentUser?.email || 'admin@example.com';
+  if (profileAvatar) profileAvatar.textContent = initial;
+  if (profileAvatarLarge) profileAvatarLarge.textContent = initial;
 
   // Replace "Admin Portal" branding with School Name at the top of the sidebar
   if (sidebarBrandLogo) {
@@ -2396,6 +2438,7 @@ window.addEventListener('beforeunload', () => {
   try { 
     const user = await authService.getUserProfile(["admin"]);
     if (!user) return;
+    window.currentAdminProfile = user;
     authService.initLogout();
 
     const profileSchoolName = user.schoolName || user.school?.name || user.school?.schoolName || "";

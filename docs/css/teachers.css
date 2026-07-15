@@ -1443,15 +1443,25 @@ header.teacher-header {
   align-items: center;
   justify-content: space-between;
   flex-wrap: nowrap;
-  gap: 16px;
-  padding: 0 5%;
-  height: 48px; /* Thinner header */
-  background: #2b6cb0;
-  border-bottom: 1px solid #1a4d8c;
+  gap: 8px;
+  padding: 4px 5%;
+  min-height: 34px;
+  background: linear-gradient(135deg, #1d4ed8 0%, #2563eb 100%);
+  border-bottom: 1px solid rgba(255,255,255,0.18);
   position: sticky;
   top: 0;
-  z-index: 100;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  z-index: 101;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.12);
+}
+
+.teacher-subnav {
+  margin-top: 0;
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
+}
+
+header.teacher-header + .teacher-subnav {
+  margin-top: -1px;
 }
 
 header.teacher-header .logo {
@@ -1465,45 +1475,46 @@ header.teacher-header .header-right {
   gap: 12px;
 }
 
+header.teacher-header .teacher-name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: white;
+  font-size: 0.86rem;
+  font-weight: 600;
+}
+
+header.teacher-header .teacher-name button {
+  background: rgba(255,255,255,0.16);
+  color: white;
+  border: 1px solid rgba(255,255,255,0.28);
+  padding: 4px 8px;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  cursor: pointer;
+}
+
+header.teacher-header .teacher-name button:hover {
+  background: rgba(255,255,255,0.24);
+}
+
 header.teacher-header .header-left {
   flex: 1;
   flex-wrap: nowrap;
   overflow: hidden;
 }
 
-header.teacher-header h1 {
-  margin: 0 !important;
-  font-size: 0.78rem !important; /* Reduced welcome message size */
-  line-height: 1;
-  color: rgba(255, 255, 255, 0.7) !important; /* Muted label color */
-  font-weight: 500 !important;
-  text-transform: uppercase;
-  letter-spacing: 0.8px;
-  font-family: 'Segoe UI', system-ui, sans-serif; /* Unique style for welcome text */
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  white-space: nowrap;
-}
-
-header.teacher-header #teacherName span {
-  font-size: 0.82rem !important; /* Name is slightly larger for visibility */
-  font-weight: 700 !important;
-  color: #ffffff !important;
-  letter-spacing: 0;
-}
-
 header.teacher-header .school-pill {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  background: #ebf8ff;
-  color: #2b6cb0;
-  padding: 6px 14px;
+  background: #eff6ff;
+  color: #1d4ed8;
+  padding: 3px 8px;
   border-radius: 999px;
-  font-size: 0.8rem;
-  font-weight: 600;
-  border: 1px solid #bee3f8;
+  font-size: 0.68rem;
+  font-weight: 700;
+  border: 1px solid rgba(255,255,255,0.6);
   text-transform: uppercase;
   white-space: nowrap;
 }
@@ -1514,15 +1525,129 @@ header.teacher-header .dean-btn {
   color: #fff;
 }
 
-header.teacher-header .secondary-btn {
-  background: #f8fafc;
-  border: 1px solid #cbd5e0;
-  color: #1f2937;
+header.teacher-header .profile-menu {
+  position: relative;
 }
 
-header.teacher-header .dean-btn:hover,
-header.teacher-header .secondary-btn:hover {
-  opacity: 0.95;
+header.teacher-header .profile-trigger {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border: 1px solid rgba(255,255,255,0.24);
+  background: rgba(255,255,255,0.14);
+  color: #fff;
+  border-radius: 999px;
+  cursor: pointer;
+  min-width: 150px;
+  justify-content: flex-start;
+}
+
+header.teacher-header .profile-avatar {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #60a5fa, #2563eb);
+  color: white;
+  display: grid;
+  place-items: center;
+  font-weight: 700;
+  font-size: 0.82rem;
+}
+
+header.teacher-header .profile-avatar.large {
+  width: 38px;
+  height: 38px;
+}
+
+header.teacher-header .profile-meta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+header.teacher-header .profile-meta strong,
+header.teacher-header .profile-detail strong {
+  font-size: 0.76rem;
+}
+
+header.teacher-header .profile-meta small,
+header.teacher-header .profile-detail span {
+  color: rgba(255,255,255,0.8);
+  font-size: 0.64rem;
+}
+
+header.teacher-header .profile-caret {
+  margin-left: auto;
+}
+
+header.teacher-header .profile-dropdown {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 2px);
+  display: none;
+  min-width: 180px;
+  z-index: 2000;
+}
+
+header.teacher-header .profile-dropdown.show {
+  display: block;
+}
+
+header.teacher-header .profile-card {
+  background: white;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.16);
+  padding: 8px;
+}
+
+header.teacher-header .profile-card-title {
+  font-size: 0.62rem;
+  font-weight: 700;
+  color: #2563eb;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  margin-bottom: 6px;
+}
+
+header.teacher-header .profile-card-user {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding-bottom: 6px;
+  margin-bottom: 6px;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+header.teacher-header .profile-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+header.teacher-header .profile-detail strong {
+  color: #0f172a;
+}
+
+header.teacher-header .profile-detail span {
+  color: #64748b;
+}
+
+header.teacher-header .profile-logout-btn {
+  width: 100%;
+  border: none;
+  padding: 6px 8px;
+  border-radius: 7px;
+  background: #ef4444;
+  color: white;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 0.76rem;
+}
+
+header.teacher-header .profile-logout-btn:hover {
+  background: #dc2626;
 }
 
 .allocations-section {
@@ -1538,14 +1663,89 @@ header.teacher-header .secondary-btn:hover {
   align-items: stretch;
 }
 
-.tabs-nav {
+.teacher-subnav {
   display: flex;
-  justify-content: center;
-  gap: 10px;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
   flex-wrap: wrap;
-  margin: 22px auto 0;
-  padding: 0 20px;
+  margin: 0 auto;
+  padding: 8px 16px;
   max-width: 1200px;
+  background: linear-gradient(180deg, #fbfdff 0%, #f6f9ff 100%);
+  border: 1px solid rgba(37,99,235,0.06);
+  border-top: none;
+  border-radius: 0 0 14px 14px;
+  box-shadow: none;
+}
+
+.teacher-subnav .subnav-left {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.subnav-btn {
+  padding: 8px 10px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: #ffffff;
+  color: #1f2937;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform 0.2s ease, background-color 0.2s ease, color 0.2s ease;
+  min-width: 100px;
+}
+
+.subnav-btn:hover {
+  background: #eef6ff;
+}
+
+.subnav-btn.active {
+  background: #2b6cb0;
+  color: white;
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,0.18);
+}
+
+.subnav-btn.sign-btn {
+  background: #f1f5f9;
+  color: #1f2937;
+}
+
+.subnav-btn.sign-btn:hover {
+  background: #e2e8f0;
+}
+
+@media (max-width: 640px) {
+  .teacher-subnav {
+    padding: 8px 12px;
+    gap: 6px;
+  }
+
+  .teacher-subnav .subnav-left {
+    gap: 2px;
+  }
+
+  .subnav-btn {
+    padding: 6px 8px;
+    min-width: 0;
+    flex: 1 1 auto;
+    font-size: 0.72rem;
+  }
+
+  .subnav-btn:not(.active) {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .teacher-subnav .subnav-left {
+    width: 100%;
+  }
+}
+
+.tabs-nav {
+  display: none;
 }
 
 .tab-btn {
