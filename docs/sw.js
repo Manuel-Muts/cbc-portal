@@ -50,12 +50,25 @@ self.addEventListener('activate', (event) => {
 });
 
 self.addEventListener('fetch', (event) => {
+    const requestUrl = new URL(event.request.url);
+
+    if (event.request.mode === 'navigate') {
+        event.respondWith(
+            fetch(event.request).catch(() => caches.match('/offline.html'))
+        );
+        return;
+    }
+
     event.respondWith(
         caches.match(event.request)
             .then((response) => {
-                // Cache hit - return response from cache
                 if (response) return response;
-                return fetch(event.request);
+                return fetch(event.request).catch(() => {
+                    if (event.request.destination === 'document') {
+                        return caches.match('/offline.html');
+                    }
+                    return null;
+                });
             })
     );
 });
