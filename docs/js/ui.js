@@ -4,6 +4,61 @@ document.addEventListener("DOMContentLoaded", () => {
 const menu = document.getElementById("navMenu");
 const overlay = document.getElementById("menuOverlay");
 
+    // --- 1A. OFFLINE / NO INTERNET FALLBACK ---
+    let offlineNoticeShown = false;
+    let offlineToastShown = false;
+
+    const offlineNotice = document.createElement('div');
+    offlineNotice.id = 'offlineNotice';
+    offlineNotice.setAttribute('role', 'status');
+    offlineNotice.innerHTML = `
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;">
+        <div>
+          <strong style="display:block;">No internet connection</strong>
+          <span style="font-size:0.92rem;opacity:0.95;">Some pages may load slowly or appear incomplete until you reconnect.</span>
+        </div>
+        <button type="button" id="offlineNoticeClose" style="border:none;background:rgba(255,255,255,0.18);color:white;border-radius:999px;padding:7px 10px;cursor:pointer;font-weight:700;">×</button>
+      </div>
+    `;
+    offlineNotice.style.cssText = 'position:fixed;top:12px;left:50%;transform:translateX(-50%);z-index:13000;width:min(92vw, 520px);background:linear-gradient(135deg,#b45309,#dc2626);color:white;padding:12px 14px;border-radius:14px;box-shadow:0 12px 30px rgba(0,0,0,0.25);display:none;';
+    document.body.appendChild(offlineNotice);
+
+    const showOfflineNotice = () => {
+        if (offlineNoticeShown) return;
+        offlineNoticeShown = true;
+        offlineNotice.style.display = 'block';
+        showToast('No internet connection. Some features may be unavailable.', 'warning');
+        offlineToastShown = true;
+    };
+
+    const hideOfflineNotice = () => {
+        offlineNoticeShown = false;
+        offlineNotice.style.display = 'none';
+    };
+
+    if (!navigator.onLine) {
+        showOfflineNotice();
+    }
+
+    window.addEventListener('offline', () => {
+        showOfflineNotice();
+    });
+
+    window.addEventListener('online', () => {
+        hideOfflineNotice();
+        if (!offlineToastShown) {
+            showToast('Connection restored.', 'success');
+        }
+        offlineToastShown = false;
+    });
+
+    const closeOfflineNoticeBtn = document.getElementById('offlineNoticeClose');
+    if (closeOfflineNoticeBtn) {
+        closeOfflineNoticeBtn.addEventListener('click', () => {
+            hideOfflineNotice();
+        });
+    }
+
     // --- 1A. PWA INSTALL PROMPT ---
     const installPromptState = {
         deferredPrompt: null,
