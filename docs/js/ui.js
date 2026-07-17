@@ -4,6 +4,118 @@ document.addEventListener("DOMContentLoaded", () => {
 const menu = document.getElementById("navMenu");
 const overlay = document.getElementById("menuOverlay");
 
+    // --- 1A. PWA INSTALL PROMPT ---
+    const installPromptState = {
+        deferredPrompt: null,
+        isInstalled: false,
+        dismissed: false,
+        bannerVisible: false
+    };
+
+    if (!document.querySelector('link[rel="manifest"]')) {
+        const manifestLink = document.createElement('link');
+        manifestLink.rel = 'manifest';
+        manifestLink.href = '/manifest.json';
+        document.head.appendChild(manifestLink);
+    }
+
+    if (!document.querySelector('meta[name="theme-color"]')) {
+        const themeMeta = document.createElement('meta');
+        themeMeta.name = 'theme-color';
+        themeMeta.content = '#0f766e';
+        document.head.appendChild(themeMeta);
+    }
+
+    const installBanner = document.createElement('div');
+    installBanner.id = 'pwaInstallBanner';
+    installBanner.innerHTML = `
+      <div class="pwa-install-card">
+        <div>
+          <strong>Install CompetenceHub</strong>
+          <p>Open it as an app for faster access on your device.</p>
+        </div>
+        <div class="pwa-install-actions">
+          <button id="pwaInstallBtn" class="pwa-install-btn">Install</button>
+          <button id="pwaDismissBtn" class="pwa-dismiss-btn">Later</button>
+        </div>
+      </div>
+    `;
+    installBanner.style.display = 'none';
+    document.body.appendChild(installBanner);
+
+    const installFab = document.createElement('button');
+    installFab.id = 'pwaInstallFab';
+    installFab.className = 'pwa-install-fab';
+    installFab.type = 'button';
+    installFab.textContent = '⬇ Install App';
+    installFab.style.display = 'none';
+    document.body.appendChild(installFab);
+
+    const showInstallBanner = () => {
+        if (installPromptState.isInstalled || installPromptState.dismissed || installPromptState.bannerVisible) return;
+        installPromptState.bannerVisible = true;
+        installBanner.style.display = 'block';
+        installFab.style.display = 'inline-flex';
+    };
+
+    const hideInstallBanner = () => {
+        installPromptState.bannerVisible = false;
+        installBanner.style.display = 'none';
+    };
+
+    const handleInstall = async () => {
+        if (installPromptState.deferredPrompt) {
+            installPromptState.deferredPrompt.prompt();
+            const { outcome } = await installPromptState.deferredPrompt.userChoice;
+            if (outcome === 'accepted') {
+                installPromptState.isInstalled = true;
+            }
+            installPromptState.deferredPrompt = null;
+            hideInstallBanner();
+            installFab.style.display = 'none';
+            return;
+        }
+
+        if (!installPromptState.isInstalled) {
+            showToast('Install is available from your browser menu when the app is ready.', 'info');
+        }
+    };
+
+    const installBtn = installBanner.querySelector('#pwaInstallBtn');
+    const dismissBtn = installBanner.querySelector('#pwaDismissBtn');
+    if (installBtn) installBtn.addEventListener('click', handleInstall);
+    if (dismissBtn) dismissBtn.addEventListener('click', () => {
+        installPromptState.dismissed = true;
+        hideInstallBanner();
+        installFab.style.display = 'none';
+    });
+
+    installFab.addEventListener('click', handleInstall);
+
+    window.addEventListener('beforeinstallprompt', (event) => {
+        event.preventDefault();
+        installPromptState.deferredPrompt = event;
+        installFab.style.display = 'inline-flex';
+        setTimeout(showInstallBanner, 1200);
+    });
+
+    window.addEventListener('appinstalled', () => {
+        installPromptState.isInstalled = true;
+        installFab.style.display = 'none';
+        hideInstallBanner();
+    });
+
+    document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible' && installPromptState.deferredPrompt && !installPromptState.isInstalled && !installPromptState.dismissed) {
+            installFab.style.display = 'inline-flex';
+            showInstallBanner();
+        }
+    });
+
+    if (window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone) {
+        installPromptState.isInstalled = true;
+    }
+
 if (toggle) {
   toggle.addEventListener("click", () => {
     if (menu) menu.classList.toggle("active");
@@ -176,6 +288,53 @@ if (overlay) {
       background-color: #f8fafc;
       font-weight: bold;
       border-top: 2px solid #cbd5e0;
+    }
+
+    /* PWA install banner */
+    #pwaInstallBanner {
+      position: fixed;
+      left: 50%;
+      top: 20px;
+      transform: translateX(-50%);
+      z-index: 12000;
+      width: min(92vw, 480px);
+    }
+    .pwa-install-card {
+      background: linear-gradient(135deg, #0f766e, #2563eb);
+      color: white;
+      border-radius: 14px;
+      padding: 14px 16px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      box-shadow: 0 12px 30px rgba(15, 23, 42, 0.25);
+    }
+    .pwa-install-card p { margin: 4px 0 0; font-size: 0.9rem; opacity: 0.95; }
+    .pwa-install-actions { display: flex; gap: 8px; }
+    .pwa-install-btn, .pwa-dismiss-btn {
+      border: none;
+      border-radius: 999px;
+      padding: 8px 12px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    .pwa-install-btn { background: white; color: #0f172a; }
+    .pwa-dismiss-btn { background: rgba(255,255,255,0.16); color: white; }
+
+    .pwa-install-fab {
+      position: fixed;
+      right: 18px;
+      bottom: 18px;
+      z-index: 12001;
+      border: none;
+      border-radius: 999px;
+      padding: 12px 16px;
+      background: linear-gradient(135deg, #0f766e, #2563eb);
+      color: white;
+      font-weight: 800;
+      box-shadow: 0 10px 25px rgba(15, 23, 42, 0.25);
+      cursor: pointer;
     }
 
     /* 🔐 Password Toggle Styles - Injected for Production Stability */

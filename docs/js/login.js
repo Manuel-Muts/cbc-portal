@@ -7,6 +7,7 @@ document.addEventListener("DOMContentLoaded", function () {
   if (!loginForm) return;
 
   const roleSelect = document.getElementById("role");
+  const isInstalledApp = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone || window.matchMedia('(display-mode: fullscreen)').matches;
 
   const firstnameField = document.getElementById("firstname");
   const firstnameLabel = document.getElementById("firstnameLabel");
@@ -121,6 +122,45 @@ document.addEventListener("DOMContentLoaded", function () {
       updatePwMeter(e.target.value, bar, text);
     });
   }
+
+  // ---------------------------
+  // ROLE LIST CONFIGURATION
+  // ---------------------------
+  function configureRoleOptions() {
+    if (!roleSelect) return;
+
+    const allRoles = [
+      { value: "learner", label: "Learner" },
+      { value: "teacher", label: "Teacher" },
+      { value: "classteacher", label: "Class Teacher" },
+      { value: "accounts", label: "Accounts" },
+      { value: "admin", label: "Admin" }
+    ];
+
+    const visibleRoles = isInstalledApp
+      ? allRoles.filter(role => ["learner", "teacher", "classteacher"].includes(role.value))
+      : allRoles;
+
+    const currentValue = roleSelect.value;
+    roleSelect.innerHTML = '<option value="">-- Select Role --</option>';
+
+    visibleRoles.forEach(role => {
+      const option = document.createElement('option');
+      option.value = role.value;
+      option.textContent = role.label;
+      roleSelect.appendChild(option);
+    });
+
+    if (currentValue && visibleRoles.some(role => role.value === currentValue)) {
+      roleSelect.value = currentValue;
+    } else if (isInstalledApp && ["accounts", "admin"].includes(currentValue)) {
+      roleSelect.value = "";
+    } else {
+      roleSelect.value = "";
+    }
+  }
+
+  configureRoleOptions();
 
   // ---------------------------
   // ROLE SWITCHING UI
