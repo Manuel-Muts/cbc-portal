@@ -5,6 +5,7 @@
  */
 
 const CACHE_NAME = 'cbc-portal-v1';
+const OFFLINE_URL = '/offline.html';
 
 // URLs of external libraries to pre-cache
 const EXTERNAL_LIBS = [
@@ -15,6 +16,7 @@ const EXTERNAL_LIBS = [
     // Add your local critical assets here
     '/',
     '/index.html',
+    '/offline.html',
     '/css/style.css',
     '/js/config.js'
 ];
@@ -49,26 +51,35 @@ self.addEventListener('activate', (event) => {
     );
 });
 
-self.addEventListener('fetch', (event) => {
-    const requestUrl = new URL(event.request.url);
+async function getOfflineFallback() {
+    const cachedFallback = await caches.match(OFFLINE_URL);
+    if (cachedFallback) return cachedFallback;
 
-    if (event.request.mode === 'navigate') {
-        event.respondWith(
-            fetch(event.request).catch(() => caches.match('/offline.html'))
-        );
+    return new Response(
+        `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8" /><meta name="viewport" content="width=device-width,initial-scale=1" /><title>CompetenceHub Offline</title><style>body{font-family:Arial,sans-serif;background:#f8fafc;color:#0f172a;display:grid;place-items:center;min-height:100vh;margin:0;padding:24px;} .card{background:white;padding:28px;border-radius:16px;box-shadow:0 12px 30px rgba(15,23,42,.15);max-width:520px;text-align:center;}h1{margin-top:0}</style></head><body><div class="card"><h1>No internet connection</h1><p>CompetenceHub is offline right now. Please check your connection and try again.</p></div></body></html>`,
+        { headers: { 'Content-Type': 'text/html; charset=utf-8' } }
+    );
+}
+
+self.addEventListener('fetch', (event) => {
+    const { request } = event;
+
+    if (request.mode === 'navigate' || request.destination === 'document') {
+        event.respondWith((async () => {
+            try {
+                const networkResponse = await fetch(request);
+                return networkResponse;
+            } catch (error) {
+                return getOfflineFallback();
+            }
+        })());
         return;
     }
 
     event.respondWith(
-        caches.match(event.request)
-            .then((response) => {
-                if (response) return response;
-                return fetch(event.request).catch(() => {
-                    if (event.request.destination === 'document') {
-                        return caches.match('/offline.html');
-                    }
-                    return null;
-                });
-            })
+        caches.match(request).then((cachedResponse) => {
+            if (cachedResponse) return cachedResponse;
+            return fetch(request).catch(() => null);
+        })
     );
 });
