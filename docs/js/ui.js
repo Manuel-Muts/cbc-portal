@@ -1,4 +1,26 @@
 document.addEventListener("DOMContentLoaded", () => {
+    const isInstalledApp = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone || window.location.search.includes('source=pwa');
+
+    if (isInstalledApp) {
+        const splash = document.createElement('div');
+        splash.id = 'appSplash';
+        splash.setAttribute('aria-hidden', 'true');
+        splash.innerHTML = `
+            <div class="app-splash-badge">CH</div>
+            <div class="app-splash-title">CompetenceHub</div>
+        `;
+        document.body.appendChild(splash);
+
+        requestAnimationFrame(() => {
+            splash.classList.add('visible');
+        });
+
+        setTimeout(() => {
+            splash.classList.remove('visible');
+            setTimeout(() => splash.remove(), 400);
+        }, 1400);
+    }
+
     // --- 1. MOBILE MENU ---
  const toggle = document.getElementById("menuToggle");
 const menu = document.getElementById("navMenu");
