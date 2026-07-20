@@ -47,6 +47,9 @@
     flex-direction: column !important;
     gap: 4px;
     flex-grow: 1;
+    overflow-y: auto;
+    max-height: calc(100vh - 200px);
+    padding-bottom: 20px;
 }
 
 .menu li {

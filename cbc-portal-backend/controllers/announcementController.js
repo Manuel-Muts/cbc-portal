@@ -130,6 +130,7 @@ export const createAnnouncement = async (req, res) => {
         
         // 🆕 Invalidate school profile cache to reflect new balance immediately
         cacheManager.clearPattern(String(req.user.schoolId));
+        cacheManager.clearPattern('super_schools');  // 🆕 Clear super admin school list cache
         console.log(`[SMS Broadcast] Finished. AT accepted ${actualSentCount}/${recipients.length} messages.`);
 
         // Set the lock only after successful validation and broadcast initiation
@@ -312,13 +313,14 @@ export const deleteAnnouncement = async (req, res) => {
 export const getSMSLogsSummary = async (req, res) => {
   try {
     const schoolId = new mongoose.Types.ObjectId(req.user.schoolId);
+    const senderId = req.user.id;  // 🆕 Only show logs from the current user
     
     // 1. Get counts for the last 30 days
-    const successCount = await SMSLog.countDocuments({ schoolId, status: "Sent" });
-    const failureCount = await SMSLog.countDocuments({ schoolId, status: "Failed" });
+    const successCount = await SMSLog.countDocuments({ schoolId, senderId, status: "Sent" });
+    const failureCount = await SMSLog.countDocuments({ schoolId, senderId, status: "Failed" });
 
     // 2. Fetch the most recent failures for action
-    const recentFailures = await SMSLog.find({ schoolId, status: "Failed" })
+    const recentFailures = await SMSLog.find({ schoolId, senderId, status: "Failed" })
       .sort({ createdAt: -1 })
       .limit(50)
       .select("recipient studentName content createdAt providerResponse")
@@ -340,6 +342,7 @@ export const getSMSLogsSummary = async (req, res) => {
 export const retryFailedSMS = async (req, res) => {
   try {
     const schoolId = new mongoose.Types.ObjectId(req.user.schoolId);
+    const senderId = req.user.id;  // 🆕 Only retry messages sent by the current user
 
     // Safeguard: Prevent duplicate retry within 2 minutes
     const lockKey = cacheManager.generateKey(`sms_retry_lock:${req.user.schoolId}`, {});
@@ -347,8 +350,8 @@ export const retryFailedSMS = async (req, res) => {
       return res.status(429).json({ message: "A retry operation is already in progress or was recently completed. Please wait 2 minutes." });
     }
 
-    // 1. Find all failed logs for this school
-    const failedLogs = await SMSLog.find({ schoolId, status: "Failed" });
+    // 1. Find all failed logs for this school sent by this user
+    const failedLogs = await SMSLog.find({ schoolId, senderId, status: "Failed" });
 
     if (!failedLogs.length) {
       return res.status(404).json({ message: "No failed SMS records found to retry." });

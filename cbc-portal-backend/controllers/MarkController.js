@@ -1374,6 +1374,7 @@ export const broadcastResultsSMS = async (req, res) => {
       
       // 🆕 Invalidate school profile cache to reflect new balance immediately
       cache.clearByPattern(String(schoolId));
+      cache.clearByPattern('super_schools');  // 🆕 Clear super admin school list cache
     }
 
     return res.json({ message: `Successfully initiated results SMS for ${messagesToSend.length} learners with complete records.` });
@@ -1390,13 +1391,14 @@ export const broadcastResultsSMS = async (req, res) => {
 export const getSMSLogsSummary = async (req, res) => {
   try {
     const schoolId = new mongoose.Types.ObjectId(req.user.schoolId);
+    const senderId = req.user.id;  // 🆕 Only show logs from the current user
     
     // 1. Get counts for the last 30 days
-    const successCount = await SMSLog.countDocuments({ schoolId, status: "Sent" });
-    const failureCount = await SMSLog.countDocuments({ schoolId, status: "Failed" });
+    const successCount = await SMSLog.countDocuments({ schoolId, senderId, status: "Sent" });
+    const failureCount = await SMSLog.countDocuments({ schoolId, senderId, status: "Failed" });
 
     // 2. Fetch the most recent failures for action
-    const recentFailures = await SMSLog.find({ schoolId, status: "Failed" })
+    const recentFailures = await SMSLog.find({ schoolId, senderId, status: "Failed" })
       .sort({ createdAt: -1 })
       .limit(50)
       .select("recipient studentName content createdAt providerResponse")

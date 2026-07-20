@@ -5,7 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Learner</title>
   <link rel="stylesheet" href="css/style.css" />
+  <link rel="stylesheet" href="css/sidebar.css" />
   <link rel="stylesheet" href="css/student.css" />
+  <link rel="stylesheet" href="css/modals/modal.css" />
   <link rel="stylesheet" href="css/announcements.css">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
 </head>
@@ -102,20 +104,19 @@
   <div id="feeModal" class="modal hidden">
     <div class="modal-backdrop"></div>
     <div class="modal-content fee-modal-content">
-      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem;">
+      <div class="fee-modal-header">
         <h3 style="margin:0;">My Fee Structure</h3>
-        <div>
-          <button id="downloadFeeStructurePDF" class="btn small" style="margin-right: 10px;">📄 Fee Structure PDF</button>
-          <button id="downloadFeeStatementPDF" class="btn small" style="margin-right: 10px;">📄 Fee Statement PDF</button>
+        <div class="fee-modal-actions">
+          <button id="downloadFeeStructurePDF" class="btn small">📄 Fee Structure</button>
+          <button id="downloadFeeStatementPDF" class="btn small">📄 Fee Statement</button>
           <button class="cancel-btn" onclick="document.getElementById('feeModal').classList.add('hidden')">Close</button>
         </div>
       </div>
-      <div style="margin-bottom: 15px;">
+      <div class="fee-modal-toolbar">
         <label for="feeYearFilter" style="font-weight: bold;">Academic Year:</label>
-        <select id="feeYearFilter" style="margin-left: 10px; padding: 5px;">
+        <select id="feeYearFilter">
           <!-- Populated dynamically via JS -->
         </select>
-        <button id="feeFilterBtn" class="btn small" style="margin-left: 10px;">Filter</button>
       </div>
       <div id="feeModalBody">Loading...</div>
     </div>

@@ -511,37 +511,64 @@ async function getImageBase64(url) {
   if (refreshBtn) refreshBtn.addEventListener("click", () => window.location.reload());
 
   if (downloadBtn) {
-    downloadBtn.addEventListener("click", () => {
-      document.querySelector(".report-controls").style.display = "none";
+    downloadBtn.addEventListener("click", async () => {
       const filename = `Report_${user.grade || "Grade"}_${latestMark.term || "Term"}_${currentYear}.pdf`;
+      const toolbar = document.querySelector(".report-toolbar");
 
-      const opt = {
-        margin: [8, 10, 12, 10], // Tightened margins to prevent unnecessary page breaks
-        filename,
-        image: { type: "png", quality: 1 },
-        html2canvas: { scale: 2, useCORS: true, scrollY: 0, logging: false, letterRendering: true },
-        jsPDF: { unit: "mm", format: "a4", orientation: "portrait" },
-        pagebreak: { mode: ["css", "legacy"] } // Removed avoid-all to prevent pushing the entire container to page 2
-      };
+      if (window.spinner) {
+        window.spinner.show(downloadBtn, "Generating PDF...");
+      }
 
-      // Use worker-based approach to inject CompetenceHub Analytics branding and page numbering into the PDF footer
-      html2pdf().set(opt).from(reportElement).toPdf().get('pdf').then((pdf) => {
-        const totalPages = pdf.internal.getNumberOfPages();
-        const pageHeight = pdf.internal.pageSize.getHeight();
-        const pageWidth = pdf.internal.pageSize.getWidth();
-        const marginX = 10;
+      try {
+        const opt = {
+          margin: [8, 10, 12, 10],
+          filename,
+          image: { type: "png", quality: 1 },
+          html2canvas: { scale: 2, useCORS: true, scrollY: 0, logging: false, letterRendering: true },
+          jsPDF: { unit: "mm", format: "a4", orientation: "portrait" },
+          pagebreak: { mode: ["css", "legacy"] }
+        };
 
-        for (let i = 1; i <= totalPages; i++) {
-          pdf.setPage(i);
-          pdf.setFontSize(8);
-          pdf.setTextColor(150); // Subtle gray color for footer text
-          const dateStr = `Printed: ${new Date().toLocaleString()} | CompetenceHub Analytics | ${reportGrade}`;
-          pdf.text(dateStr, marginX, pageHeight - 8);
-          pdf.text(`Page ${i} of ${totalPages}`, pageWidth - marginX, pageHeight - 8, { align: 'right' });
+        const pdf = await new Promise((resolve, reject) => {
+          html2pdf()
+            .set(opt)
+            .from(reportElement)
+            .toPdf()
+            .get('pdf')
+            .then((generatedPdf) => {
+              const totalPages = generatedPdf.internal.getNumberOfPages();
+              const pageHeight = generatedPdf.internal.pageSize.getHeight();
+              const pageWidth = generatedPdf.internal.pageSize.getWidth();
+              const marginX = 10;
+
+              for (let i = 1; i <= totalPages; i++) {
+                generatedPdf.setPage(i);
+                generatedPdf.setFontSize(8);
+                generatedPdf.setTextColor(150);
+                const dateStr = `Printed: ${new Date().toLocaleString()} | CompetenceHub Analytics | ${reportGrade}`;
+                generatedPdf.text(dateStr, marginX, pageHeight - 8);
+                generatedPdf.text(`Page ${i} of ${totalPages}`, pageWidth - marginX, pageHeight - 8, { align: 'right' });
+              }
+
+              resolve(generatedPdf);
+            })
+            .catch(reject);
+        });
+
+        if (pdf && typeof pdf.save === "function") {
+          pdf.save(filename);
         }
-      }).save().then(() => {
-        document.querySelector(".report-controls").style.display = "block";
-      });
+      } catch (error) {
+        console.error("PDF download failed:", error);
+        alert("Unable to download the report PDF right now. Please try again.");
+      } finally {
+        if (window.spinner) {
+          window.spinner.hide(downloadBtn);
+        }
+        if (toolbar) {
+          toolbar.style.display = "flex";
+        }
+      }
     });
   }
 });

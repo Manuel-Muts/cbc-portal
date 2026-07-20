@@ -59,116 +59,121 @@ const overlay = document.getElementById("menuOverlay");
         });
     }
 
-    // --- 1A. PWA INSTALL PROMPT ---
-    const installPromptState = {
-        deferredPrompt: null,
-        isInstalled: false,
-        dismissed: false,
-        bannerVisible: false
-    };
+    // --- 1A. PWA INSTALL PROMPT (Only on landing page) ---
+    // 🆕 Check if this is the landing page (/) to avoid showing on dashboards
+    const isLandingPage = window.location.pathname === '/' || window.location.pathname === '/index.html';
+    
+    if (isLandingPage) {
+        const installPromptState = {
+            deferredPrompt: null,
+            isInstalled: false,
+            dismissed: false,
+            bannerVisible: false
+        };
 
-    if (!document.querySelector('link[rel="manifest"]')) {
-        const manifestLink = document.createElement('link');
-        manifestLink.rel = 'manifest';
-        manifestLink.href = '/manifest.json';
-        document.head.appendChild(manifestLink);
-    }
+        if (!document.querySelector('link[rel="manifest"]')) {
+            const manifestLink = document.createElement('link');
+            manifestLink.rel = 'manifest';
+            manifestLink.href = '/manifest.json';
+            document.head.appendChild(manifestLink);
+        }
 
-    if (!document.querySelector('meta[name="theme-color"]')) {
-        const themeMeta = document.createElement('meta');
-        themeMeta.name = 'theme-color';
-        themeMeta.content = '#0f766e';
-        document.head.appendChild(themeMeta);
-    }
+        if (!document.querySelector('meta[name="theme-color"]')) {
+            const themeMeta = document.createElement('meta');
+            themeMeta.name = 'theme-color';
+            themeMeta.content = '#0f766e';
+            document.head.appendChild(themeMeta);
+        }
 
-    const installBanner = document.createElement('div');
-    installBanner.id = 'pwaInstallBanner';
-    installBanner.innerHTML = `
-      <div class="pwa-install-card">
-        <div>
-          <strong>Install CompetenceHub</strong>
-          <p>Open it as an app for faster access on your device.</p>
-        </div>
-        <div class="pwa-install-actions">
-          <button id="pwaInstallBtn" class="pwa-install-btn">Install</button>
-          <button id="pwaDismissBtn" class="pwa-dismiss-btn">Later</button>
-        </div>
-      </div>
-    `;
-    installBanner.style.display = 'none';
-    document.body.appendChild(installBanner);
-
-    const installFab = document.createElement('button');
-    installFab.id = 'pwaInstallFab';
-    installFab.className = 'pwa-install-fab';
-    installFab.type = 'button';
-    installFab.textContent = '⬇ Install App';
-    installFab.style.display = 'none';
-    document.body.appendChild(installFab);
-
-    const showInstallBanner = () => {
-        if (installPromptState.isInstalled || installPromptState.dismissed || installPromptState.bannerVisible) return;
-        installPromptState.bannerVisible = true;
-        installBanner.style.display = 'block';
-        installFab.style.display = 'inline-flex';
-    };
-
-    const hideInstallBanner = () => {
-        installPromptState.bannerVisible = false;
+        const installBanner = document.createElement('div');
+        installBanner.id = 'pwaInstallBanner';
+        installBanner.innerHTML = `
+          <div class="pwa-install-card">
+            <div>
+              <strong>Install CompetenceHub</strong>
+              <p>Open it as an app for faster access on your device.</p>
+            </div>
+            <div class="pwa-install-actions">
+              <button id="pwaInstallBtn" class="pwa-install-btn">Install</button>
+              <button id="pwaDismissBtn" class="pwa-dismiss-btn">Later</button>
+            </div>
+          </div>
+        `;
         installBanner.style.display = 'none';
-    };
+        document.body.appendChild(installBanner);
 
-    const handleInstall = async () => {
-        if (installPromptState.deferredPrompt) {
-            installPromptState.deferredPrompt.prompt();
-            const { outcome } = await installPromptState.deferredPrompt.userChoice;
-            if (outcome === 'accepted') {
-                installPromptState.isInstalled = true;
+        const installFab = document.createElement('button');
+        installFab.id = 'pwaInstallFab';
+        installFab.className = 'pwa-install-fab';
+        installFab.type = 'button';
+        installFab.textContent = '⬇ Install App';
+        installFab.style.display = 'none';
+        document.body.appendChild(installFab);
+
+        const showInstallBanner = () => {
+            if (installPromptState.isInstalled || installPromptState.dismissed || installPromptState.bannerVisible) return;
+            installPromptState.bannerVisible = true;
+            installBanner.style.display = 'block';
+            installFab.style.display = 'inline-flex';
+        };
+
+        const hideInstallBanner = () => {
+            installPromptState.bannerVisible = false;
+            installBanner.style.display = 'none';
+        };
+
+        const handleInstall = async () => {
+            if (installPromptState.deferredPrompt) {
+                installPromptState.deferredPrompt.prompt();
+                const { outcome } = await installPromptState.deferredPrompt.userChoice;
+                if (outcome === 'accepted') {
+                    installPromptState.isInstalled = true;
+                }
+                installPromptState.deferredPrompt = null;
+                hideInstallBanner();
+                installFab.style.display = 'none';
+                return;
             }
-            installPromptState.deferredPrompt = null;
+
+            if (!installPromptState.isInstalled) {
+                showToast('Install is available from your browser menu when the app is ready.', 'info');
+            }
+        };
+
+        const installBtn = installBanner.querySelector('#pwaInstallBtn');
+        const dismissBtn = installBanner.querySelector('#pwaDismissBtn');
+        if (installBtn) installBtn.addEventListener('click', handleInstall);
+        if (dismissBtn) dismissBtn.addEventListener('click', () => {
+            installPromptState.dismissed = true;
             hideInstallBanner();
             installFab.style.display = 'none';
-            return;
-        }
+        });
 
-        if (!installPromptState.isInstalled) {
-            showToast('Install is available from your browser menu when the app is ready.', 'info');
-        }
-    };
+        installFab.addEventListener('click', handleInstall);
 
-    const installBtn = installBanner.querySelector('#pwaInstallBtn');
-    const dismissBtn = installBanner.querySelector('#pwaDismissBtn');
-    if (installBtn) installBtn.addEventListener('click', handleInstall);
-    if (dismissBtn) dismissBtn.addEventListener('click', () => {
-        installPromptState.dismissed = true;
-        hideInstallBanner();
-        installFab.style.display = 'none';
-    });
-
-    installFab.addEventListener('click', handleInstall);
-
-    window.addEventListener('beforeinstallprompt', (event) => {
-        event.preventDefault();
-        installPromptState.deferredPrompt = event;
-        installFab.style.display = 'inline-flex';
-        setTimeout(showInstallBanner, 1200);
-    });
-
-    window.addEventListener('appinstalled', () => {
-        installPromptState.isInstalled = true;
-        installFab.style.display = 'none';
-        hideInstallBanner();
-    });
-
-    document.addEventListener('visibilitychange', () => {
-        if (document.visibilityState === 'visible' && installPromptState.deferredPrompt && !installPromptState.isInstalled && !installPromptState.dismissed) {
+        window.addEventListener('beforeinstallprompt', (event) => {
+            event.preventDefault();
+            installPromptState.deferredPrompt = event;
             installFab.style.display = 'inline-flex';
-            showInstallBanner();
-        }
-    });
+            setTimeout(showInstallBanner, 1200);
+        });
 
-    if (window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone) {
-        installPromptState.isInstalled = true;
+        window.addEventListener('appinstalled', () => {
+            installPromptState.isInstalled = true;
+            installFab.style.display = 'none';
+            hideInstallBanner();
+        });
+
+        document.addEventListener('visibilitychange', () => {
+            if (document.visibilityState === 'visible' && installPromptState.deferredPrompt && !installPromptState.isInstalled && !installPromptState.dismissed) {
+                installFab.style.display = 'inline-flex';
+                showInstallBanner();
+            }
+        });
+
+        if (window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone) {
+            installPromptState.isInstalled = true;
+        }
     }
 
 if (toggle) {
@@ -511,7 +516,7 @@ window.ASSESSMENT_MAPPING = ASSESSMENT_MAPPING;
 // Pre-caches external libraries to ensure they are available offline and speed up PDF generation.
 if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
-        navigator.serviceWorker.register('sw.js').then(registration => {
+        navigator.serviceWorker.register('/sw.js').then(registration => {
             console.log('🚀 Service Worker registered successfully');
         }).catch(err => {
             console.error('❌ Service Worker registration failed:', err);

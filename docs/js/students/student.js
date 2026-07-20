@@ -182,6 +182,203 @@ try {
 // ---------------------------
 // Fetch fee structure for current student
 // ---------------------------
+let currentFeePdfData = null;
+
+const formatCurrency = (value) => `KES ${Number(value || 0).toLocaleString()}`;
+const sanitizeFilename = (value) => String(value || 'student').replace(/[^a-z0-9]+/gi, '_').replace(/^_+|_+$/g, '').toLowerCase();
+
+const buildPremiumFeePdf = (type) => {
+  if (!currentFeePdfData) throw new Error('No fee data available for PDF generation.');
+
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ unit: 'pt', format: 'a4' });
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const pageHeight = doc.internal.pageSize.getHeight();
+  const margin = 42;
+  const lineHeight = 16;
+  let y = margin;
+
+  const wrapText = (text, maxWidth) => doc.splitTextToSize(text || '', maxWidth);
+  const ensureSpace = (requiredHeight) => {
+    if (y + requiredHeight > pageHeight - margin) {
+      doc.addPage();
+      y = margin;
+    }
+    return y;
+  };
+
+  const drawHeader = () => {
+    doc.setFillColor(248, 250, 252);
+    doc.roundedRect(margin - 10, y - 10, pageWidth - margin * 2 + 20, 92, 8, 8, 'F');
+    doc.setFillColor(37, 99, 235);
+    doc.roundedRect(margin - 10, y - 10, 6, 92, 3, 3, 'F');
+
+    doc.setTextColor(15, 23, 42);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(20);
+    doc.text(type === 'structure' ? 'FEE STRUCTURE REPORT' : 'FEE PAYMENT STATEMENT', margin, y + 22);
+
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(11);
+    doc.setTextColor(71, 85, 105);
+    doc.text(currentFeePdfData.schoolName || 'School Name', margin, y + 44);
+    doc.text(`${currentFeePdfData.studentName || 'Student'} • ${currentFeePdfData.admissionNo || 'N/A'}`, margin, y + 62);
+    doc.text(`Grade ${currentFeePdfData.grade || 'N/A'} • Academic Year ${currentFeePdfData.academicYear || currentFeePdfData.year || 'N/A'}`, margin, y + 80);
+
+    y += 112;
+  };
+
+  drawHeader();
+
+  doc.setTextColor(100, 116, 139);
+  doc.setFontSize(10);
+  doc.text(`Generated on ${currentFeePdfData.generatedAt || new Date().toLocaleString()}`, margin, y);
+  y += 20;
+
+  if (currentFeePdfData.note) {
+    ensureSpace(70);
+    doc.setFillColor(241, 245, 249);
+    doc.roundedRect(margin, y, pageWidth - margin * 2, 74, 8, 8, 'F');
+    doc.setTextColor(30, 41, 59);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(11);
+    doc.text('Payment Instructions', margin + 14, y + 20);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(10);
+    doc.setTextColor(71, 85, 105);
+    const noteLines = wrapText(currentFeePdfData.note, pageWidth - margin * 2 - 24);
+    noteLines.forEach((line, index) => doc.text(line, margin + 14, y + 40 + index * 12));
+    y += 90;
+  }
+
+  const cards = [
+    { label: 'Total Fee', value: formatCurrency(currentFeePdfData.summary.totalFee), color: [15, 23, 42] },
+    { label: 'Total Paid', value: formatCurrency(currentFeePdfData.summary.totalPaid), color: [22, 163, 74] },
+    { label: 'Outstanding', value: formatCurrency(currentFeePdfData.summary.outstanding), color: [220, 38, 38] }
+  ];
+
+  cards.forEach((card, index) => {
+    const cardWidth = (pageWidth - margin * 2 - 16) / 3;
+    const cardX = margin + index * (cardWidth + 8);
+    ensureSpace(58);
+    doc.setFillColor(255, 255, 255);
+    doc.roundedRect(cardX, y, cardWidth, 54, 7, 7, 'F');
+    doc.setDrawColor(226, 232, 240);
+    doc.roundedRect(cardX, y, cardWidth, 54, 7, 7, 'S');
+    doc.setTextColor(100, 116, 139);
+    doc.setFontSize(9);
+    doc.text(card.label.toUpperCase(), cardX + 14, y + 20);
+    doc.setTextColor(...card.color);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(12);
+    doc.text(card.value, cardX + 14, y + 38);
+  });
+  y += 70;
+
+  if (type === 'structure') {
+    ensureSpace(120);
+    doc.setTextColor(15, 23, 42);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(12);
+    doc.text('Term Breakdown', margin, y);
+    y += 8;
+
+    doc.setDrawColor(226, 232, 240);
+    doc.line(margin, y + 8, pageWidth - margin, y + 8);
+
+    const headers = ['Term', 'Fee', 'Paid', 'Balance'];
+    const rows = currentFeePdfData.terms.map(term => [term.name, formatCurrency(term.fee), formatCurrency(term.paid), formatCurrency(term.balance)]);
+    const colWidths = [90, 90, 90, 90];
+    const startX = margin;
+    let rowY = y + 20;
+    doc.setFillColor(248, 250, 252);
+    doc.rect(startX, rowY - 12, pageWidth - margin * 2, 24, 'F');
+    headers.forEach((header, index) => {
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(10);
+      doc.setTextColor(30, 41, 59);
+      doc.text(header, startX + 10 + colWidths.slice(0, index).reduce((a, b) => a + b, 0), rowY - 2);
+    });
+    rowY += 26;
+
+    rows.forEach((row, index) => {
+      if (rowY > pageHeight - margin - 26) {
+        doc.addPage();
+        rowY = margin + 20;
+      }
+      const isAlt = index % 2 === 0;
+      if (isAlt) {
+        doc.setFillColor(252, 253, 255);
+        doc.rect(startX, rowY - 10, pageWidth - margin * 2, 20, 'F');
+      }
+      row.forEach((cell, cellIndex) => {
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(10);
+        doc.setTextColor(51, 65, 85);
+        doc.text(cell, startX + 10 + colWidths.slice(0, cellIndex).reduce((a, b) => a + b, 0), rowY + 2);
+      });
+      rowY += 20;
+    });
+  } else {
+    ensureSpace(120);
+    doc.setTextColor(15, 23, 42);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(12);
+    doc.text('Payment History', margin, y);
+    y += 8;
+
+    doc.setDrawColor(226, 232, 240);
+    doc.line(margin, y + 8, pageWidth - margin, y + 8);
+
+    const headers = ['Date', 'Term', 'Method', 'Reference', 'Amount'];
+    const rows = currentFeePdfData.payments.map(payment => [
+      payment.date,
+      payment.term,
+      payment.method,
+      payment.reference,
+      formatCurrency(payment.amount)
+    ]);
+    const colWidths = [80, 70, 70, 110, 70];
+    const startX = margin;
+    let rowY = y + 20;
+    doc.setFillColor(248, 250, 252);
+    doc.rect(startX, rowY - 12, pageWidth - margin * 2, 24, 'F');
+    headers.forEach((header, index) => {
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(9);
+      doc.setTextColor(30, 41, 59);
+      doc.text(header, startX + 6 + colWidths.slice(0, index).reduce((a, b) => a + b, 0), rowY - 2);
+    });
+    rowY += 26;
+
+    rows.forEach((row, index) => {
+      if (rowY > pageHeight - margin - 26) {
+        doc.addPage();
+        rowY = margin + 20;
+      }
+      if (index % 2 === 0) {
+        doc.setFillColor(252, 253, 255);
+        doc.rect(startX, rowY - 10, pageWidth - margin * 2, 20, 'F');
+      }
+      row.forEach((cell, cellIndex) => {
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(9);
+        doc.setTextColor(51, 65, 85);
+        const text = String(cell || '').length > 24 ? String(cell || '').slice(0, 24) + '…' : String(cell || '');
+        doc.text(text, startX + 6 + colWidths.slice(0, cellIndex).reduce((a, b) => a + b, 0), rowY + 2);
+      });
+      rowY += 20;
+    });
+  }
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(9);
+  doc.setTextColor(100, 116, 139);
+  doc.text(`Prepared by finance | ${currentFeePdfData.studentName  || 'student'}`, margin, pageHeight - 42);
+  doc.text(`Page 1`, pageWidth - margin, pageHeight - 42, { align: 'right' });
+  return doc;
+};
+
 try {
   let f = getCached("feeInfo");
   if (!f) {
@@ -310,6 +507,35 @@ const loadFeeData = async (selectedYear) => {
       </div>
     `;
 
+    currentFeePdfData = {
+      type: 'structure',
+      schoolName,
+      studentName: window.currentUser?.name || user.name || 'Student',
+      admissionNo: window.currentUser?.admission || user.admission || 'N/A',
+      grade: feesData.grade,
+      academicYear: feesData.academicYear,
+      year: selectedYear,
+      generatedAt: new Date().toLocaleString(),
+      summary: {
+        totalFee: feesData.totalFee || 0,
+        totalPaid,
+        outstanding: (feesData.totalFee || 0) - totalPaid
+      },
+      terms: [
+        { name: 'Term 1', fee: feesData.term1Fee || 0, paid: term1Paid, balance: (feesData.term1Fee || 0) - term1Paid },
+        { name: 'Term 2', fee: feesData.term2Fee || 0, paid: term2Paid, balance: (feesData.term2Fee || 0) - term2Paid },
+        { name: 'Term 3', fee: feesData.term3Fee || 0, paid: term3Paid, balance: (feesData.term3Fee || 0) - term3Paid }
+      ],
+      note: globalFeeNote || '',
+      payments: paymentsData.payments.map(payment => ({
+        date: new Date(payment.createdAt).toLocaleDateString(),
+        term: payment.term,
+        method: payment.method,
+        reference: payment.reference,
+        amount: payment.amount
+      }))
+    };
+
     body.innerHTML = `<div id="feeStructureContent">
                       ${infoHeaderHtml}
                       <h4>Term Breakdown:</h4>
@@ -428,55 +654,25 @@ if (feeModal) {
   }
 }
 
-// Fee year filter button handler
-const feeFilterBtn = document.getElementById('feeFilterBtn');
-if (feeFilterBtn) {
-  feeFilterBtn.addEventListener('click', async () => {
-    const selectedYear = feeYearFilter ? feeYearFilter.value : new Date().getFullYear();
-    await loadFeeData(selectedYear);
-  });
-}
-
 // Download Fee Structure PDF
 const downloadFeeStructurePDF = document.getElementById('downloadFeeStructurePDF');
 if (downloadFeeStructurePDF) {
   downloadFeeStructurePDF.addEventListener('click', async () => {
-    // Provide immediate feedback to the user
     const originalHtml = downloadFeeStructurePDF.innerHTML;
     downloadFeeStructurePDF.disabled = true;
     downloadFeeStructurePDF.innerHTML = '<span class="spinner"></span> Processing...';
 
-    const { jsPDF } = window.jspdf;
-    const pdf = new jsPDF('p', 'mm', 'a4');
-    const element = document.getElementById('feeStructureContent');
-    const selectedYear = feeYearFilter ? feeYearFilter.value : new Date().getFullYear();
-    if (element) {
-      // Temporarily show instructions for PDF capture
-      const note = element.querySelector('.global-fee-note-pdf');
-      if (note) note.style.display = 'block';
-
-      // Optimized scale: 1.5 provides good clarity while being faster than 2.0
-      const canvas = await html2canvas(element, { scale: 1.5, useCORS: true });
-
-      if (note) note.style.display = 'none';
-
-      const imgData = canvas.toDataURL('image/png');
-      const imgWidth = 190;
-      const imgHeight = (canvas.height * imgWidth) / canvas.width;
-      pdf.addImage(imgData, 'PNG', 10, 10, imgWidth, imgHeight);
-      pdf.save(`fee_structure_${user.name}_${selectedYear}.pdf`);
-
-      // Add footer with current date
-      const dateStr = `Generated: ${new Date().toLocaleString()}`;
-      pdf.setFontSize(8);
-      pdf.setTextColor(100);
-      pdf.text(dateStr, 10, pdf.internal.pageSize.getHeight() - 10);
-      pdf.text(`Page 1 of 1`, pdf.internal.pageSize.getWidth() - 10, pdf.internal.pageSize.getHeight() - 10, { align: 'right' });
-
+    try {
+      const selectedYear = feeYearFilter ? feeYearFilter.value : new Date().getFullYear();
+      const pdf = buildPremiumFeePdf('structure');
+      pdf.save(`fee_structure_${sanitizeFilename(window.currentUser?.name || user.name || 'student')}_${selectedYear}.pdf`);
+    } catch (error) {
+      console.error('Fee structure PDF generation failed:', error);
+      alert('Unable to generate the fee structure PDF right now.');
+    } finally {
+      downloadFeeStructurePDF.disabled = false;
+      downloadFeeStructurePDF.innerHTML = originalHtml;
     }
-
-    downloadFeeStructurePDF.disabled = false;
-    downloadFeeStructurePDF.innerHTML = originalHtml;
   });
 }
 
@@ -484,41 +680,31 @@ if (downloadFeeStructurePDF) {
 const downloadFeeStatementPDF = document.getElementById('downloadFeeStatementPDF');
 if (downloadFeeStatementPDF) {
   downloadFeeStatementPDF.addEventListener('click', async () => {
-    // Provide immediate feedback to the user
     const originalHtml = downloadFeeStatementPDF.innerHTML;
     downloadFeeStatementPDF.disabled = true;
     downloadFeeStatementPDF.innerHTML = '<span class="spinner"></span> Processing...';
 
-    const { jsPDF } = window.jspdf;
-    const pdf = new jsPDF('p', 'mm', 'a4');
-    const element = document.getElementById('feeStatementContent');
-    const selectedYear = feeYearFilter ? feeYearFilter.value : new Date().getFullYear();
-    if (element) {
-      // Temporarily show instructions for PDF capture
-      const note = element.querySelector('.global-fee-note-pdf');
-      if (note) note.style.display = 'block';
-
-      const canvas = await html2canvas(element, { scale: 1.5, useCORS: true });
-
-      if (note) note.style.display = 'none';
-
-      const imgData = canvas.toDataURL('image/png');
-      const imgWidth = 190;
-      const imgHeight = (canvas.height * imgWidth) / canvas.width;
-      pdf.addImage(imgData, 'PNG', 10, 10, imgWidth, imgHeight);
-      pdf.save(`fee_statement_${user.name}_${selectedYear}.pdf`);
-
-      // Add footer with current date
-      const dateStr = `Generated: ${new Date().toLocaleString()}`;
-      pdf.setFontSize(8);
-      pdf.setTextColor(100);
-      pdf.text(dateStr, 10, pdf.internal.pageSize.getHeight() - 10);
-      pdf.text(`Page 1 of 1`, pdf.internal.pageSize.getWidth() - 10, pdf.internal.pageSize.getHeight() - 10, { align: 'right' });
-
+    try {
+      const selectedYear = feeYearFilter ? feeYearFilter.value : new Date().getFullYear();
+      currentFeePdfData = {
+        ...currentFeePdfData,
+        type: 'statement',
+        generatedAt: new Date().toLocaleString(),
+        summary: {
+          totalFee: currentFeePdfData?.summary?.totalFee || 0,
+          totalPaid: currentFeePdfData?.summary?.totalPaid || 0,
+          outstanding: currentFeePdfData?.summary?.outstanding || 0
+        }
+      };
+      const pdf = buildPremiumFeePdf('statement');
+      pdf.save(`fee_statement_${sanitizeFilename(window.currentUser?.name || user.name || 'student')}_${selectedYear}.pdf`);
+    } catch (error) {
+      console.error('Fee statement PDF generation failed:', error);
+      alert('Unable to generate the fee statement PDF right now.');
+    } finally {
+      downloadFeeStatementPDF.disabled = false;
+      downloadFeeStatementPDF.innerHTML = originalHtml;
     }
-
-    downloadFeeStatementPDF.disabled = false;
-    downloadFeeStatementPDF.innerHTML = originalHtml;
   });
 }
 

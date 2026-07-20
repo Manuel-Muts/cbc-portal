@@ -44,6 +44,7 @@ const smsLogSchema = new mongoose.Schema(
 );
 
 // Indexes for efficient history browsing
+smsLogSchema.index({ schoolId: 1, senderId: 1, createdAt: -1 });  // 🆕 For filtering by sender
 smsLogSchema.index({ schoolId: 1, createdAt: -1 });
 smsLogSchema.index({ recipient: 1 });
 

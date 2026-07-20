@@ -283,25 +283,39 @@ h2 {
 }
 
 /* Controls & Buttons */
-.report-controls {
-  text-align: center;
-  margin-bottom: 20px;
+.report-toolbar {
+  position: sticky;
+  top: 0;
+  z-index: 1000;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  margin: 0 auto 14px;
+  max-width: 860px;
+  background: rgba(255, 255, 255, 0.96);
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.08);
 }
 
 button,
-.report-controls button {
+.report-toolbar button {
   display: inline-block;
-  padding: 10px 20px;
+  padding: 10px 16px;
   font-size: 14px;
   border: none;
   border-radius: 6px;
   cursor: pointer;
   transition: all 0.3s ease;
   color: #fff;
-  margin: 6px;
+  margin: 0;
   font-weight: 500;
 }
 
+.back-btn { background: #2563eb; }
+.back-btn:hover { background: #1d4ed8; }
 .refresh-btn { background: #6c757d; }
 .refresh-btn:hover { background: #5a6268; }
 .download-btn { background: #28a745; }
@@ -328,7 +342,7 @@ button,
     height: auto !important;
     page-break-inside: avoid;
   }
-  .report-controls { display: none !important; }
+  .report-toolbar { display: none !important; }
   .marks-section table, .report-layout-container {
     page-break-inside: avoid;
   }
