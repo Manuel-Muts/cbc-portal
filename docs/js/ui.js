@@ -95,6 +95,39 @@ const overlay = document.getElementById("menuOverlay");
             installRequested: false
         };
 
+        const installStorage = {
+            installedKey: 'cbc-pwa-installed',
+            completionKey: 'cbc-pwa-install-complete-shown'
+        };
+
+        const persistInstallState = (installed = true, completionShown = false) => {
+            try {
+                localStorage.setItem(installStorage.installedKey, installed ? 'true' : 'false');
+                if (completionShown) {
+                    localStorage.setItem(installStorage.completionKey, 'true');
+                }
+            } catch (error) {
+                console.warn('Unable to persist PWA install state:', error);
+            }
+        };
+
+        const restoreInstallState = () => {
+            try {
+                const installed = localStorage.getItem(installStorage.installedKey) === 'true';
+                const completionShown = localStorage.getItem(installStorage.completionKey) === 'true';
+                if (installed || completionShown) {
+                    installPromptState.isInstalled = true;
+                    if (completionShown) {
+                        installPromptState.installCompleteNotified = true;
+                    }
+                }
+            } catch (error) {
+                console.warn('Unable to restore PWA install state:', error);
+            }
+        };
+
+        restoreInstallState();
+
         if (!document.querySelector('link[rel="manifest"]')) {
             const manifestLink = document.createElement('link');
             manifestLink.rel = 'manifest';
@@ -157,6 +190,7 @@ const overlay = document.getElementById("menuOverlay");
 
                 if (outcome === 'accepted') {
                     installPromptState.isInstalled = true;
+                    persistInstallState(true, false);
                 }
                 return;
             }
@@ -187,11 +221,13 @@ const overlay = document.getElementById("menuOverlay");
         const showInstallCompleteMessage = () => {
             if (installPromptState.installCompleteNotified) return;
             installPromptState.installCompleteNotified = true;
+            persistInstallState(true, true);
             showToast('Installation complete. Open the app anytime from your device home screen.', 'success');
         };
 
         window.addEventListener('appinstalled', () => {
             installPromptState.isInstalled = true;
+            persistInstallState(true, false);
             installFab.style.display = 'none';
             hideInstallBanner();
             if (installPromptState.installRequested || window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone) {
@@ -226,6 +262,7 @@ const overlay = document.getElementById("menuOverlay");
 
         if (window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone) {
             installPromptState.isInstalled = true;
+            persistInstallState(true, false);
         }
     }
 
