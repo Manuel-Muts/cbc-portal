@@ -91,7 +91,8 @@ const overlay = document.getElementById("menuOverlay");
             isInstalled: false,
             dismissed: false,
             bannerVisible: false,
-            installCompleteNotified: false
+            installCompleteNotified: false,
+            installRequested: false
         };
 
         if (!document.querySelector('link[rel="manifest"]')) {
@@ -147,14 +148,16 @@ const overlay = document.getElementById("menuOverlay");
 
         const handleInstall = async () => {
             if (installPromptState.deferredPrompt) {
+                installPromptState.installRequested = true;
                 installPromptState.deferredPrompt.prompt();
                 const { outcome } = await installPromptState.deferredPrompt.userChoice;
-                if (outcome === 'accepted') {
-                    installPromptState.isInstalled = true;
-                }
                 installPromptState.deferredPrompt = null;
                 hideInstallBanner();
                 installFab.style.display = 'none';
+
+                if (outcome === 'accepted') {
+                    installPromptState.isInstalled = true;
+                }
                 return;
             }
 
@@ -181,13 +184,33 @@ const overlay = document.getElementById("menuOverlay");
             setTimeout(showInstallBanner, 1200);
         });
 
+        const showInstallCompleteMessage = () => {
+            if (installPromptState.installCompleteNotified) return;
+            installPromptState.installCompleteNotified = true;
+            showToast('Installation complete. Open the app anytime from your device home screen.', 'success');
+        };
+
         window.addEventListener('appinstalled', () => {
             installPromptState.isInstalled = true;
             installFab.style.display = 'none';
             hideInstallBanner();
-            if (!installPromptState.installCompleteNotified) {
-                installPromptState.installCompleteNotified = true;
-                showToast('Installation complete. Open the app anytime from your device home screen.', 'success');
+            if (installPromptState.installRequested || window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone) {
+                showInstallCompleteMessage();
+            }
+        });
+
+        const checkStandaloneState = () => {
+            const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone;
+            if (isStandalone && !installPromptState.installCompleteNotified) {
+                installPromptState.isInstalled = true;
+                showInstallCompleteMessage();
+            }
+        };
+
+        window.addEventListener('focus', checkStandaloneState);
+        document.addEventListener('visibilitychange', () => {
+            if (document.visibilityState === 'visible') {
+                checkStandaloneState();
             }
         });
 
@@ -195,6 +218,9 @@ const overlay = document.getElementById("menuOverlay");
             if (document.visibilityState === 'visible' && installPromptState.deferredPrompt && !installPromptState.isInstalled && !installPromptState.dismissed) {
                 installFab.style.display = 'inline-flex';
                 showInstallBanner();
+            }
+            if (document.visibilityState === 'visible') {
+                checkStandaloneState();
             }
         });
 
