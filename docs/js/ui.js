@@ -68,7 +68,8 @@ const overlay = document.getElementById("menuOverlay");
             deferredPrompt: null,
             isInstalled: false,
             dismissed: false,
-            bannerVisible: false
+            bannerVisible: false,
+            installCompleteNotified: false
         };
 
         if (!document.querySelector('link[rel="manifest"]')) {
@@ -162,6 +163,10 @@ const overlay = document.getElementById("menuOverlay");
             installPromptState.isInstalled = true;
             installFab.style.display = 'none';
             hideInstallBanner();
+            if (!installPromptState.installCompleteNotified) {
+                installPromptState.installCompleteNotified = true;
+                showToast('Installation complete. Open the app anytime from your device home screen.', 'success');
+            }
         });
 
         document.addEventListener('visibilitychange', () => {
