@@ -1391,6 +1391,7 @@ function processAnalysisData(allRaw, isSenior, assessment, allPrevRaw = null, ro
     ? 'all'
     : (window.cbcUtils?.normalizePathway?.(selectedPathwayRaw) || selectedPathwayRaw);
   let pathwayFilteredRaw = streamFilteredRaw;
+  let overallPathwayFilteredRaw = allRaw;
   if (isSenior && selectedPathway && selectedPathway !== 'all') {
     try {
       const pathwayRoster = Array.isArray(roster) ? roster.filter(s => {
@@ -1399,6 +1400,7 @@ function processAnalysisData(allRaw, isSenior, assessment, allPrevRaw = null, ro
       }) : [];
       const pathwayAdms = new Set(pathwayRoster.map(s => (s.admissionNo || s.admission || (s.enrollmentId && s.enrollmentId.admissionNo) || '').toString()));
       pathwayFilteredRaw = streamFilteredRaw.filter(m => pathwayAdms.has(String(m.admissionNo)));
+      overallPathwayFilteredRaw = allRaw.filter(m => pathwayAdms.has(String(m.admissionNo)));
       // Replace roster with filtered roster for downstream logic (missing/ungrouped lists)
       roster = pathwayRoster;
     } catch (e) {
@@ -1749,35 +1751,64 @@ function processAnalysisData(allRaw, isSenior, assessment, allPrevRaw = null, ro
   const missingExamsList = Object.values(missingExamsMap);
   missingExamsList.sort((a, b) => a.name.localeCompare(b.name));
 
-  const overallRaw = isAll ? allRaw : allRaw.filter(m => String(m.assessment) === assessment);
-  const overallStudentsMap = {};
+  const overallRankRaw = isAll ? overallPathwayFilteredRaw : overallPathwayFilteredRaw.filter(m => String(m.assessment) === assessment);
+  const overallRankStudentMap = {};
 
-  overallRaw.forEach((m) => {
+  overallRankRaw.forEach((m) => {
     const key = isAll ? m.admissionNo : `${m.admissionNo}_${m.assessment}`;
-    if (!overallStudentsMap[key]) {
-      overallStudentsMap[key] = {
+    if (!overallRankStudentMap[key]) {
+      overallRankStudentMap[key] = {
         adm: m.admissionNo,
         name: m.studentName,
         grade: m.grade,
         stream: m.stream || "Unassigned",
-        subjects: {}
+        subjects: {},
+        hasAbsence: false
       };
     }
 
     m.subjects.forEach((sub) => {
       const subName = getAnalysisSubjectName(sub, isSenior);
       if (!subName || (isSenior && isExcludedSeniorSubject(subName))) return;
+      if (isSenior && !isSubjectEligibleForStudent(m.admissionNo, subName, isSenior, subjectEligibilityMap)) return;
 
       const score = isSenior ? getSeniorSubjectScore(sub) : sub.score;
+      const isMissing = score === undefined || score === null || score === "" || (typeof score === "string" && score.trim().toUpperCase() === "X");
+      if (isMissing) {
+        overallRankStudentMap[key].hasAbsence = true;
+      }
+
       if (score !== undefined && score !== null && score !== "" && !isNaN(score) && score !== "X" && score !== "x") {
-        if (overallStudentsMap[key].subjects[subName] === undefined) {
-          overallStudentsMap[key].subjects[subName] = Number(score);
+        if (overallRankStudentMap[key].subjects[subName] === undefined) {
+          overallRankStudentMap[key].subjects[subName] = Number(score);
         }
       }
     });
   });
 
-  const overallStudentArray = Object.values(overallStudentsMap)
+  Object.values(overallRankStudentMap).forEach((s) => {
+    const expectedSubjects = [];
+    if (isSenior) {
+      const eligibility = subjectEligibilityMap.get(String(s.adm)) || subjectEligibilityMap.get(String(s.adm || ""));
+      if (eligibility) Array.from(eligibility).forEach(sub => expectedSubjects.push(sub));
+      Object.keys(s.subjects || {}).forEach(sub => {
+        if (!expectedSubjects.includes(sub)) expectedSubjects.push(sub);
+      });
+    } else {
+      expectedSubjects.push(...(streamExpectedSubjectsMap[s.stream || "Unassigned"] || []));
+    }
+
+    expectedSubjects.forEach(subName => {
+      const score = s.subjects[subName];
+      const isMissing = score === undefined || score === null || (typeof score === "string" && score.trim().toUpperCase() === "X");
+      if (isMissing) {
+        s.hasAbsence = true;
+      }
+    });
+  });
+
+  const overallCompleteStudents = Object.values(overallRankStudentMap)
+    .filter(s => !s.hasAbsence)
     .map((s) => {
       const rawScores = Object.values(s.subjects);
       const validScores = rawScores.filter((v) => v !== null && v !== undefined && v !== "" && !isNaN(v) && v !== "X" && v !== "x").map(Number);
@@ -1789,7 +1820,7 @@ function processAnalysisData(allRaw, isSenior, assessment, allPrevRaw = null, ro
 
   let prevOverallMean = null;
   let prevOverallRank = 0;
-  overallStudentArray.forEach((s, idx) => {
+  overallCompleteStudents.forEach((s, idx) => {
     const currentMean = parseFloat(s.mean.toFixed(2));
     if (currentMean === prevOverallMean) {
       s.overallRank = prevOverallRank;
@@ -1797,16 +1828,18 @@ function processAnalysisData(allRaw, isSenior, assessment, allPrevRaw = null, ro
       s.overallRank = idx + 1;
       prevOverallRank = s.overallRank;
     }
-    s.overallRankTotal = overallStudentArray.length;
+    s.overallRankTotal = overallCompleteStudents.length;
     prevOverallMean = currentMean;
   });
 
-  const overallRankMap = Object.fromEntries(overallStudentArray.map((s) => [String(s.adm), s]));
+  const overallRankMap = Object.fromEntries(overallCompleteStudents.map((s) => [String(s.adm), s]));
   studentArray.forEach((s) => {
     const match = overallRankMap[String(s.adm)];
     if (match) {
+      s.overallRank = match.overallRank;
+      s.overallRankTotal = match.overallRankTotal;
       s.rank = match.overallRank;
-      s.rankTotal = match.overallRankTotal;
+      s.rankTotal = match.rankTotal;
     }
   });
 
@@ -1835,6 +1868,20 @@ function processAnalysisData(allRaw, isSenior, assessment, allPrevRaw = null, ro
       s.streamTotal = streamStudents.length;
     });
   });
+
+  studentArray.forEach((s) => {
+    if (selectedStream !== "all") {
+      s.displayRank = s.streamRank ?? s.overallRank ?? s.rank;
+      s.displayRankTotal = s.streamTotal ?? s.overallRankTotal ?? s.rankTotal;
+    } else {
+      s.displayRank = s.overallRank ?? s.rank;
+      s.displayRankTotal = s.overallRankTotal ?? s.rankTotal;
+    }
+  });
+
+  lastProcessedStudents = studentArray; // 🆕 Store for bulk reports after ranks are assigned
+  lastProcessedSubjects = sortedSubjects; // 🆕 Store for bulk reports
+  updateReportsActionState();
 
   // Identify top and lowest learners, handling ties
   const topMeanScore = studentArray.length > 0 ? studentArray[0].mean : -1;
@@ -1874,7 +1921,7 @@ function processAnalysisData(allRaw, isSenior, assessment, allPrevRaw = null, ro
   setText(passRateEl, `${passRate}%`);
   
   // Tables
-  renderRankingTable(studentArray, sortedSubjects, isSenior);
+  renderRankingTable(studentArray, sortedSubjects, isSenior, selectedStream);
   renderSubjectStats(sortedSubjects, subjectTotals, subjectCounts, prevSubjectMeans, subjectTermStats);
   renderMissingExamsTable(missingExamsList, streamDiscrepancies); // 🆕 Call renderer for missing exams
 }
@@ -1894,11 +1941,12 @@ function calculateStreamDiscrepancies(streamExpectedSubjectsMap, allSubjectsInGr
   return discrepancies;
 }
 
-function renderRankingTable(students, subjects, isSenior) {
-  // Identify tied ranks
+function renderRankingTable(students, subjects, isSenior, selectedStream = "all") {
+  // Identify tied ranks using the display rank shown in the table
   const rankCounts = {};
   students.forEach(s => {
-    rankCounts[s.rank] = (rankCounts[s.rank] || 0) + 1;
+    const rankValue = s.displayRank ?? s.rank;
+    rankCounts[rankValue] = (rankCounts[rankValue] || 0) + 1;
   });
 
   // const classMean = students.length ? students.reduce((acc, s) => acc + (s.mean || 0), 0) / students.length : 0; // Not used here
@@ -1909,12 +1957,14 @@ function renderRankingTable(students, subjects, isSenior) {
   }
 
   const totalHeader = !isSenior ? '<th class="total-column-header">Total</th>' : '';
+  const rankLabel = selectedStream && selectedStream !== "all" ? "Stream Rank" : "Overall Rank";
   let html = `<table class="marks-table" style="width:100%; border-collapse: collapse;">
-    <thead><tr><th>Rank</th><th>Name</th><th>Adm</th>${subjects.map(s => `<th>${s} <small style="display:block; font-size:0.6rem; font-weight:normal; opacity:0.7;">(Score & Pts)</small></th>`).join("")}${totalHeader}<th>Mean</th><th>Progress</th><th>Total Points</th><th>Level</th></tr></thead>
+    <thead><tr><th>${rankLabel}</th><th>Name</th><th>Adm</th>${subjects.map(s => `<th>${s} <small style="display:block; font-size:0.6rem; font-weight:normal; opacity:0.7;">(Score & Pts)</small></th>`).join("")}${totalHeader}<th>Mean</th><th>Progress</th><th>Total Points</th><th>Level</th></tr></thead>
     <tbody>`;
   
   students.forEach((s, idx) => {
-    const isTied = rankCounts[s.rank] > 1;
+    const rankValue = s.displayRank ?? s.rank;
+    const isTied = rankCounts[rankValue] > 1;
     const tiedClass = isTied ? ' class="tied-rank"' : '';
     const totalCell = !isSenior ? `<td>${s.total}</td>` : ''; // Total column for junior school
 
@@ -1927,7 +1977,7 @@ function renderRankingTable(students, subjects, isSenior) {
     }
     // Store progress value in a data attribute for PDF generation (used in PDF export)
     html += `<tr${tiedClass} data-progress="${s.progress !== null ? s.progress : ''}">
-      <td>${s.rank}</td><td>${s.name}</td><td>${s.adm}</td>
+      <td>${rankValue}</td><td>${s.name}</td><td>${s.adm}</td>
       ${subjects.map(sub => {
         const score = s.subjects[sub];
         const isAbs = score === undefined || score === null || String(score).toUpperCase() === "X";
@@ -2080,6 +2130,8 @@ async function downloadRankingAsPDF() {
   const admIdx = rawHeaders.findIndex(h => h.toLowerCase().includes("adm"));
   const progressIdx = rawHeaders.indexOf("Progress"); // Index of the progress column
   const levelIdx = rawHeaders.length - 1;
+  const rankHeaderIndex = rawHeaders.findIndex(h => /rank/i.test(h));
+  const isStreamFilter = selectedStream !== "all";
   const nameLabelForProgress = nameIdx !== -1 ? rawHeaders[nameIdx] : "Name";
 
   // Determine which columns to skip for PDF clarity
@@ -2094,7 +2146,19 @@ async function downloadRankingAsPDF() {
   }); 
   if (!hasMeaningfulProgress && progressIdx !== -1) skipIndices.add(progressIdx);
 
-  const headers = rawHeaders.filter((_, i) => !skipIndices.has(i));
+  const headers = [];
+  rawHeaders.forEach((header, idx) => {
+    if (skipIndices.has(idx)) return;
+    if (idx === rankHeaderIndex) {
+      if (isStreamFilter) {
+        headers.push("Overall Rank", "Stream Rank");
+      } else {
+        headers.push(header);
+      }
+    } else {
+      headers.push(header);
+    }
+  });
 
   // Single-pass row processing: Extract data, level counts, and metadata
   const tiedRowIndices = [];
@@ -2116,9 +2180,25 @@ async function downloadRankingAsPDF() {
     const levelStr = cells[levelIdx]?.textContent.trim();
     if (levelCounts[levelStr] !== undefined) levelCounts[levelStr]++;
 
-    return cells
-      .filter((_, colIdx) => !skipIndices.has(colIdx))
-      .map(td => td.textContent.trim());
+    const filteredCells = [];
+    cells.forEach((td, colIdx) => {
+      if (skipIndices.has(colIdx)) return;
+      if (colIdx === rankHeaderIndex) {
+        const student = lastProcessedStudents[rowIdx] || {};
+        if (isStreamFilter) {
+          const overallRankValue = student.overallRank ?? student.rank ?? '-';
+          const streamRankValue = student.streamRank ?? '-';
+          filteredCells.push(overallRankValue, streamRankValue);
+        } else {
+          const displayRankValue = student.displayRank ?? student.overallRank ?? student.rank ?? '-';
+          filteredCells.push(displayRankValue);
+        }
+      } else {
+        filteredCells.push(td.textContent.trim());
+      }
+    });
+
+    return filteredCells;
   });
 
   // Optimized Footer Extraction
@@ -2136,6 +2216,7 @@ async function downloadRankingAsPDF() {
     return rowData;
   });
 
+  const streamRankColIndex = headers.indexOf("Stream Rank");
   doc.autoTable({ 
     startY: yPos, // Use the updated yPos
     head: [headers], 
@@ -2148,14 +2229,25 @@ async function downloadRankingAsPDF() {
     showHead: 'everyPage', // Repeat table headers on every page
     showFoot: 'lastPage', // Only show totals/mean at the end of the ranking list
     rowPageBreak: 'avoid', // 🆕 Prevents a single student row from being split across two pages
-   
+    columnStyles: streamRankColIndex !== -1 ? {
+      [streamRankColIndex]: {
+        fillColor: [235, 245, 255],
+        textColor: [17, 77, 115],
+        fontStyle: 'bold',
+        halign: 'center'
+      }
+    } : {},
     margin: { left: 14, right: 14, bottom: 35 }, // 🆕 Leaves space for the signature and footer
     didParseCell: (data) => {
-       if (data.section === 'body') {
+      if (data.section === 'body') {
         // Make student name bold
         const nameColumnIndex = headers.indexOf("Name");
-        if (nameColumnIndex !== -1 && data.column.index === nameColumnIndex) { // Make student name bold
+        if (nameColumnIndex !== -1 && data.column.index === nameColumnIndex) {
           data.cell.styles.fontStyle = 'bold';
+        }
+        if (streamRankColIndex !== -1 && data.column.index === streamRankColIndex) {
+          data.cell.styles.fontStyle = 'bold';
+          data.cell.styles.textColor = [17, 77, 115];
         }
       }
       if (data.section === 'body' && tiedRowIndices.includes(data.row.index)) {
@@ -3018,7 +3110,6 @@ async function loadDeanProfile() {
       return;
     }
 
-    console.log("DEBUG: Dean Profile Data after authService.getUserProfile:", deanProfileData);
     console.log("DEBUG: Is Dean flag at redirection check:", deanProfileData.isDean);
 
     if (!deanProfileData.isDean) {
@@ -3391,7 +3482,7 @@ async function generateBulkReportCards() {
         doc.setFont("helvetica", "bold").setFontSize(8.2);
         doc.text(`Overall Rank:`, centerColX - 14, infoBoxY + 7, { align: "center" });
         doc.setFont("helvetica", "normal").setFontSize(8.2);
-        doc.text(`${s.rank || '-'} of ${s.rankTotal || lastProcessedStudents.length}`, centerColX + 10, infoBoxY + 7, { align: "center" });
+        doc.text(`${s.overallRank || s.rank || '-'} of ${s.overallRankTotal || s.rankTotal || lastProcessedStudents.length}`, centerColX + 10, infoBoxY + 7, { align: "center" });
         doc.setFont("helvetica", "bold").setFontSize(8.2);
         doc.text(`Stream Rank:`, centerColX - 14, infoBoxY + 13, { align: "center" });
         doc.setFont("helvetica", "normal").setFontSize(8.2);
@@ -3457,7 +3548,16 @@ async function generateBulkReportCards() {
 
         // Data definitions for 2-column layout
         const statLabels = ["Total Marks", "Total Points", "Overall Performance"];
-        const statValues = [`${s.total}`, `${s.points}`, cbcUtils.getSubdivision(s.mean, s.grade)];
+        // Compute max totals assuming 100 per subject shown in this report
+        const maxTotalMarks = subjectsToShow.length * 100;
+        const maxTotalPoints = subjectsToShow.reduce((acc, sub) => {
+          try {
+            return acc + (Number(cbcUtils.getPoints(100, gradeLabel)) || 0);
+          } catch (e) {
+            return acc;
+          }
+        }, 0);
+        const statValues = [`${s.total} / ${maxTotalMarks}`, `${s.points} / ${maxTotalPoints}`, cbcUtils.getSubdivision(s.mean, s.grade)];
         const remarkLabels = ["Learner Remark", "Class Teacher", "Headteacher"];
         const remarkValues = [studentRemark, cbcUtils.getTeacherComment(s.mean), cbcUtils.getHeadteacherComment(s.mean)];
 
@@ -3467,7 +3567,13 @@ async function generateBulkReportCards() {
             
             // Column 1: Performance Metrics
             doc.setFont("helvetica", "bold").text(`${statLabels[j]}:`, metaX, y);
-            doc.setFont("helvetica", "normal").text(statValues[j], metaX + labelOffset, y);
+            if (j === 0 || j === 1) {
+                const [labelValue, maxValue] = statValues[j].split(' / ');
+                doc.setFont("helvetica", "bold").text(labelValue, metaX + labelOffset, y);
+                doc.setFont("helvetica", "normal").text(` / ${maxValue}`, metaX + labelOffset + doc.getTextWidth(labelValue), y);
+            } else {
+                doc.setFont("helvetica", "normal").text(statValues[j], metaX + labelOffset, y);
+            }
 
             // Column 2: Comments (with wrapping to prevent overflow)
             doc.setFont("helvetica", "bold").text(`${remarkLabels[j]}:`, metaX2, y);
