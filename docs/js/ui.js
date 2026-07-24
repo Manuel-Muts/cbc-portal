@@ -587,14 +587,14 @@ function showConfirm(messageOrOptions, confirmText = 'Confirm', cancelText = 'Ca
 
 // --- 4. ASSESSMENT MAPPING ---
 const ASSESSMENT_MAPPING = {
-  1: "Opener",
-  2: "Assessment 2",
-  3: "Assessment 3",
-  4: "Assessment 4",
-  5: "Midterm",
-  6: "Assessment 6",
-  7: "Assessment 7",
-  8: "Endterm"
+  1: "𝐎𝐩𝐞𝐧𝐞𝐫",
+  // 2: "Assessment 2",
+  // 3: "Assessment 3",
+  // 4: "Assessment 4",
+  5: "𝐌𝐢𝐝𝐭𝐞𝐫𝐦",
+  // 6: "Assessment 6",
+  // 7: "Assessment 7",
+  8: "𝐄𝐧𝐝𝐭𝐞𝐫𝐦"
 };
 
 // Make functions global
