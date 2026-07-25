@@ -9,6 +9,7 @@ import { cleanOrphanedEnrollments } from '../controllers/enrollmentController.js
 import { School } from '../models/school.js';
 import { User } from '../models/User.js';
 import SMSAllocation from '../models/SMSAllocation.js';
+import { applyMonthlySmsAllocation } from '../utils/smsBalance.js';
 //import { S3Client } from '@aws-sdk/client-s3';
 //import { Upload } from '@aws-sdk/lib-storage';
 
@@ -246,14 +247,17 @@ export const startCronJobs = () => {
         try {
           // Count users in the school that have contact numbers (likely recipients)
           const usersCount = await User.countDocuments({ schoolId: s._id, contact: { $ne: null }, role: { $ne: 'super_admin' } });
+          const currentSchool = await School.findById(s._id).select('smsCredits');
+          const currentBalance = Number(currentSchool?.smsCredits || 0);
 
           if (usersCount <= 0) {
             console.log(`   [${s.name}] No users with contact numbers found. Skipping allocation.`);
             continue;
           }
 
-          // Reset the month's balance and assign a fresh allocation based on active users
-          await School.findByIdAndUpdate(s._id, { smsCredits: usersCount });
+          const nextBalance = applyMonthlySmsAllocation(currentBalance, usersCount);
+
+          await School.findByIdAndUpdate(s._id, { smsCredits: nextBalance });
 
           // Record the allocation for auditing
           await SMSAllocation.create({
@@ -264,7 +268,7 @@ export const startCronJobs = () => {
             allocatedBy: 'system'
           });
 
-          console.log(`   [${s.name}] Reset SMS balance to ${usersCount} credits for ${monthStr}.`);
+          console.log(`   [${s.name}] Updated SMS balance to ${nextBalance} credits for ${monthStr}.`);
         } catch (innerErr) {
           console.error(`   ❌ Allocation error for school ${s._id}:`, innerErr.message || innerErr);
         }

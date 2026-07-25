@@ -426,7 +426,7 @@ function buildStudentTermProgressSeries(student) {
     .map(([assessment, data]) => ({
       assessment,
       mean: data.count ? data.total / data.count : 0,
-      label: window.ASSESSMENT_MAPPING?.[assessment] || `A${assessment}`
+      label: sanitizePdfText(window.ASSESSMENT_MAPPING?.[assessment] || `A${assessment}`)
     }));
 }
 
@@ -881,7 +881,7 @@ async function downloadSchoolWideRankingAsPDF(rankings) {
   try {
     const doc = new jsPDFClass();
     const pageWidth = doc.internal.pageSize.getWidth();
-    const schoolName = (schoolInfo?.name || "SCHOOL NAME").toUpperCase();
+    const schoolName = sanitizePdfText((schoolInfo?.name || "SCHOOL NAME").toUpperCase());
     const sections = getSchoolRankingSections(rankings);
 
     const drawSchoolRankingWatermark = () => {
@@ -909,10 +909,10 @@ async function downloadSchoolWideRankingAsPDF(rankings) {
     
     doc.setFontSize(10);
     doc.setFont("helvetica", "normal");
-    const term = filterTermEl.value;
-    const year = filterYearEl.value;
-    const assess = filterAssessmentEl.options[filterAssessmentEl.selectedIndex].text;
-    doc.text(`${year} | Term ${term} | ${assess}`, pageWidth / 2, 38, { align: "center" });
+    const term = sanitizePdfText(filterTermEl.value);
+    const year = sanitizePdfText(filterYearEl.value);
+    const assess = sanitizePdfText(filterAssessmentEl.options[filterAssessmentEl.selectedIndex].text);
+    doc.text(sanitizePdfText(`${year} | Term ${term} | ${assess}`), pageWidth / 2, 38, { align: "center" });
 
     let yPos = 48;
 
@@ -2058,13 +2058,13 @@ function drawDeanPdfHeader(doc, { schoolName, subheader, pageWidth, logoBase64, 
 
   doc.setFontSize(18);
   doc.setFont("helvetica", "bold");
-  doc.text(schoolName, pageWidth / 2, yPos, { align: "center" });
+  doc.text(sanitizePdfText(schoolName), pageWidth / 2, yPos, { align: "center" });
   yPos += 6;
 
   doc.setFontSize(12);
   doc.setFont("helvetica", "normal");
   if (subheader) {
-    doc.text(subheader, pageWidth / 2, yPos, { align: "center" });
+    doc.text(sanitizePdfText(subheader), pageWidth / 2, yPos, { align: "center" });
     yPos += 8;
   }
 
@@ -2082,20 +2082,20 @@ async function downloadRankingAsPDF() {
   // Allow UI to render spinner before heavy PDF task blocks the thread
   await new Promise(resolve => setTimeout(resolve, 50)); // Shorter delay
 
-  const schoolName = deanProfileData?.schoolName || "SCHOOL NAME";
+  const schoolName = sanitizePdfText(deanProfileData?.schoolName || "SCHOOL NAME");
 
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF({ orientation: 'landscape' });
   const pageWidth = doc.internal.pageSize.getWidth();
   const pageHeight = doc.internal.pageSize.getHeight();
 
-  const grade = filterGradeEl.value;
+  const grade = sanitizePdfText(filterGradeEl.value);
   const isPrimary = cbcUtils.isPrimaryGrade(grade);
-  const termVal = filterTermEl.value;
+  const termVal = sanitizePdfText(filterTermEl.value);
   const termLabel = termVal === "all" ? "Full Year" : `Term ${termVal}`;
-  const year = filterYearEl.value;
-  const assessLabel = filterAssessmentEl.options[filterAssessmentEl.selectedIndex]?.text || "Report";
-  const selectedStream = filterStreamEl?.value || "all";
+  const year = sanitizePdfText(filterYearEl.value);
+  const assessLabel = sanitizePdfText(filterAssessmentEl.options[filterAssessmentEl.selectedIndex]?.text || "Report");
+  const selectedStream = sanitizePdfText(filterStreamEl?.value || "all");
   const streamInfo = selectedStream !== "all" ? ` | Stream: ${selectedStream}` : "";
   const passRate = document.getElementById("passRate")?.textContent || "N/A"; // Retrieve pass rate from UI
 
@@ -2114,13 +2114,13 @@ async function downloadRankingAsPDF() {
   // 3. Title Line
   doc.setFontSize(14);
   doc.setFont("helvetica", "bold");
-  doc.text(`CLASS GRADING REPORT: ${grade}${selectedStream !== "all" ? ' - Stream ' + selectedStream : ''}`, 14, yPos);
+  doc.text(sanitizePdfText(`CLASS GRADING REPORT: ${grade}${selectedStream !== "all" ? ' - Stream ' + selectedStream : ''}`), 14, yPos);
   yPos += 6; // Spacing after title
 
   // 🆕 Add Pass Rate
   doc.setFontSize(10);
   doc.setFont("helvetica", "normal");
-  doc.text(`Pass Rate: ${passRate}`, 14, yPos);
+  doc.text(sanitizePdfText(`Pass Rate: ${passRate}`), 14, yPos);
   yPos += 2; // Reduced spacing before the table begins
 
   // OPTIMIZATION: Extract column mapping once to avoid repeated indexOf lookups
@@ -2699,18 +2699,18 @@ async function downloadSubjectPerformanceAsPDF() {
   await new Promise(resolve => setTimeout(resolve, 50));
 
   try {
-    const schoolName = deanProfileData?.schoolName || "SCHOOL NAME";
+    const schoolName = sanitizePdfText(deanProfileData?.schoolName || "SCHOOL NAME");
     const jsPDFClass = (window.jspdf && window.jspdf.jsPDF) ? window.jspdf.jsPDF : window.jsPDF;
     const doc = new jsPDFClass({ orientation: 'landscape' });
     const pageWidth = doc.internal.pageSize.getWidth();
     const pageHeight = doc.internal.pageSize.getHeight();
 
-    const grade = filterGradeEl.value;
-    const termVal = filterTermEl.value;
+    const grade = sanitizePdfText(filterGradeEl.value);
+    const termVal = sanitizePdfText(filterTermEl.value);
     const termLabel = termVal === "all" ? "Full Year" : `Term ${termVal}`;
-    const year = filterYearEl.value;
-    const assessLabel = filterAssessmentEl.options[filterAssessmentEl.selectedIndex]?.text || "Report";
-    const selectedStream = filterStreamEl?.value || "all";
+    const year = sanitizePdfText(filterYearEl.value);
+    const assessLabel = sanitizePdfText(filterAssessmentEl.options[filterAssessmentEl.selectedIndex]?.text || "Report");
+    const selectedStream = sanitizePdfText(filterStreamEl?.value || "all");
     const streamInfo = selectedStream !== "all" ? ` | Stream: ${selectedStream}` : "";
 
     let yPos = drawDeanPdfHeader(doc, {
@@ -2727,7 +2727,7 @@ async function downloadSubjectPerformanceAsPDF() {
 
   doc.setFontSize(14);
   doc.setFont("helvetica", "bold");
-  doc.text(`Subject Performance Analysis: ${grade}${selectedStream !== "all" ? ' - Stream ' + selectedStream : ''}`, 14, yPos);
+  doc.text(sanitizePdfText(`Subject Performance Analysis: ${grade}${selectedStream !== "all" ? ' - Stream ' + selectedStream : ''}`), 14, yPos);
   yPos += 3;
 
   const rawHeaders = Array.from(table.querySelectorAll("thead th")).map(th => th.textContent.trim());
@@ -3299,6 +3299,20 @@ async function loadDeanProfile() {
   }
 }
 
+function sanitizePdfText(value) {
+    if (value === null || value === undefined) return "";
+
+    return String(value)
+        .replace(/[’‘]/g, "'")
+        .replace(/[“”]/g, '"')
+        .replace(/[–—]/g, "-")
+        .replace(/\u00A0/g, " ")
+        .normalize("NFKD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .replace(/[^\x00-\x7F]/g, "")
+        .trim();
+}
+
 /**
  * Generates a high-quality merged PDF for all students in the grade.
  * This logic uses data already in memory to avoid extra database costs.
@@ -3335,12 +3349,12 @@ async function generateBulkReportCards() {
 
     // const teacherSigCache = new Map(); // Store {base64, format} by streamKey // Not used
     
-    const schoolName = deanProfileData?.schoolName || "SCHOOL NAME";
-    const termVal = filterTermEl.value;
-    const year = filterYearEl.value;
-    const assessLabel = filterAssessmentEl.options[filterAssessmentEl.selectedIndex]?.text || "Report";
-    const selectedStream = filterStreamEl?.value || "all";
-    const gradeLabel = filterGradeEl.value;
+    const schoolName = sanitizePdfText(deanProfileData?.schoolName || "SCHOOL NAME");
+    const termVal = sanitizePdfText(filterTermEl.value);
+    const year = sanitizePdfText(filterYearEl.value);
+    const assessLabel = sanitizePdfText(filterAssessmentEl.options[filterAssessmentEl.selectedIndex]?.text || "Report");
+    const selectedStream = sanitizePdfText(filterStreamEl?.value || "all");
+    const gradeLabel = sanitizePdfText(filterGradeEl.value);
     
     // 🆕 Pre-map static Performance Key to avoid repeated calculations in the loop
     // 🆕 Batch fetch all class teachers for all unique grade/stream combinations
@@ -3393,7 +3407,11 @@ async function generateBulkReportCards() {
         localStorage.setItem(TEACHER_CACHE_KEY, JSON.stringify(teacherCache));
     }
 
-    const perfKeyBody = cbcUtils.getPerformanceKey(gradeLabel).map(item => [item.subdivision, item.range, item.points]);
+    const perfKeyBody = cbcUtils.getPerformanceKey(gradeLabel).map(item => [
+        sanitizePdfText(item.subdivision),
+        sanitizePdfText(item.range),
+        sanitizePdfText(item.points)
+    ]);
 
     for (let i = 0; i < lastProcessedStudents.length; i++) {
         const s = lastProcessedStudents[i];
@@ -3454,14 +3472,17 @@ async function generateBulkReportCards() {
             headerY += 6;
         }
 
-        doc.setFont("helvetica", "normal").setFontSize(10).text("LEARNER'S PROGRESS REPORT", pageWidth / 2, headerY, { align: "center" });
+        const reportTitle = sanitizePdfText("LEARNERS PROGRESS REPORT");
+        const reportSubtitle = sanitizePdfText(`${assessLabel} - Term ${termVal}, ${year}`);
+
+        doc.setFont("helvetica", "normal").setFontSize(10).text(reportTitle, pageWidth / 2, headerY, { align: "center" });
         headerY += 5; // Spacing after report title
-        doc.setFontSize(9).text(`${assessLabel} - Term ${termVal}, ${year}`, pageWidth / 2, headerY, { align: "center" });
+        doc.setFontSize(9).text(reportSubtitle, pageWidth / 2, headerY, { align: "center" });
         headerY += 6;
 
         // 2. Student Info Box
-        const studentStream = s.stream || "N/A";
-        const studentPathway = s.pathway || "";
+        const studentStream = sanitizePdfText(s.stream || "N/A");
+        const studentPathway = sanitizePdfText(s.pathway || "");
         const infoBoxY = headerY + 2;
         const leftColX = 18;
         const centerColX = pageWidth / 2 - 10;
@@ -3469,10 +3490,10 @@ async function generateBulkReportCards() {
         doc.setFillColor(240, 245, 250).setDrawColor(200).setLineWidth(0.3).rect(15, infoBoxY, pageWidth - 30, 34, 'FD');
 
         doc.setFont("helvetica", "bold").setFontSize(8.5);
-        doc.text(`Name: ${s.name}`, leftColX, infoBoxY + 7);
+        doc.text(`Name: ${sanitizePdfText(s.name)}`, leftColX, infoBoxY + 7);
 
         doc.setFont("helvetica", "normal").setFontSize(8.5);
-        doc.text(`ADM: ${s.adm}`, leftColX, infoBoxY + 13);
+        doc.text(`ADM: ${sanitizePdfText(s.adm)}`, leftColX, infoBoxY + 13);
 
         if (studentPathway) {
           doc.setFont("helvetica", "bold").setFontSize(8.5);
@@ -3491,7 +3512,7 @@ async function generateBulkReportCards() {
         doc.setFont("helvetica", "bold").setFontSize(8.2);
         doc.text(`Grade:`, rightColX - 6, infoBoxY + 7, { align: "right" });
         doc.setFont("helvetica", "normal").setFontSize(8.2);
-        doc.text(`${filterGradeEl.value}`, rightColX + 18, infoBoxY + 7, { align: "right" });
+        doc.text(`${sanitizePdfText(filterGradeEl.value)}`, rightColX + 18, infoBoxY + 7, { align: "right" });
         doc.setFont("helvetica", "bold").setFontSize(8.2);
         doc.text(`Stream:`, rightColX - 6, infoBoxY + 13, { align: "right" });
         doc.setFont("helvetica", "normal").setFontSize(8.2);
@@ -3557,9 +3578,17 @@ async function generateBulkReportCards() {
             return acc;
           }
         }, 0);
-        const statValues = [`${s.total} / ${maxTotalMarks}`, `${s.points} / ${maxTotalPoints}`, cbcUtils.getSubdivision(s.mean, s.grade)];
+        const statValues = [
+          sanitizePdfText(`${s.total} / ${maxTotalMarks}`),
+          sanitizePdfText(`${s.points} / ${maxTotalPoints}`),
+          sanitizePdfText(cbcUtils.getSubdivision(s.mean, s.grade))
+        ];
         const remarkLabels = ["Learner Remark", "Class Teacher", "Headteacher"];
-        const remarkValues = [studentRemark, cbcUtils.getTeacherComment(s.mean), cbcUtils.getHeadteacherComment(s.mean)];
+        const remarkValues = [
+          sanitizePdfText(studentRemark),
+          sanitizePdfText(cbcUtils.getTeacherComment(s.mean)),
+          sanitizePdfText(cbcUtils.getHeadteacherComment(s.mean))
+        ];
 
         doc.setFontSize(8);
         for (let j = 0; j < 3; j++) { // Iterate for 3 rows of stats/remarks
@@ -3581,7 +3610,7 @@ async function generateBulkReportCards() {
         }
 
         const keyStartY = finalY + 20; // Y position for performance key
-        doc.setFont("helvetica", "bold").setFontSize(7.5).text("Performance Key", metaX, keyStartY);
+        doc.setFont("helvetica", "bold").setFontSize(7.5).text(sanitizePdfText("Performance Key"), metaX, keyStartY);
         doc.autoTable({
             startY: keyStartY + 2.5,
             head: [["Level", "Range", "Pts"]],
@@ -3600,7 +3629,7 @@ async function generateBulkReportCards() {
         const chartH = 34;
         if (progressSeries.length >= 2) {
             doc.setFont("helvetica", "bold").setFontSize(8).setTextColor(0, 0, 0);
-            doc.text("Term Progress", chartX, chartY);
+            doc.text(sanitizePdfText("Term Progress"), chartX, chartY);
             doc.setDrawColor(203, 213, 225).setLineWidth(0.25).rect(chartX, chartY + 2, chartW, chartH);
 
             const plotX = chartX + 6;
@@ -3632,8 +3661,8 @@ async function generateBulkReportCards() {
                 doc.text(String(step), plotX - 2, y + 0.8, { align: "right" });
             });
 
-            doc.text("Mean", plotX - 8, plotY + plotH / 2, { align: "center", angle: -90 });
-            doc.text("Assessments", plotX + plotW / 2, plotY + plotH + 8, { align: "center" });
+            doc.text(sanitizePdfText("Mean"), plotX - 8, plotY + plotH / 2, { align: "center", angle: -90 });
+            doc.text(sanitizePdfText("Assessments"), plotX + plotW / 2, plotY + plotH + 8, { align: "center" });
 
             doc.setDrawColor(37, 99, 235).setLineWidth(0.4);
             points.forEach((point, index) => {
@@ -3648,14 +3677,14 @@ async function generateBulkReportCards() {
             doc.setFont("helvetica", "bold").setFontSize(5.8);
             progressSeries.forEach((point, index) => {
                 const pointX = points[index].x;
-                const label = point.label || `A${index + 1}`;
+                const label = sanitizePdfText(point.label || `A${index + 1}`);
                 doc.text(label, pointX, plotY + plotH + 4, { align: "center" });
             });
 
             doc.setFont("helvetica", "bold").setFontSize(6.2);
             progressSeries.forEach((point, index) => {
                 const pointX = points[index].x;
-                const valueText = `${Math.round(point.mean)}%`;
+                const valueText = sanitizePdfText(`${Math.round(point.mean)}%`);
                 doc.text(valueText, pointX, points[index].y - 2, { align: "center" });
             });
         }
@@ -3772,7 +3801,7 @@ async function generateBulkReportCards() {
 async function updateDeanSmsBalance() {
   if (!deanSmsBalanceEl) return;
   try {
-    const data = await fetchWithAuth(`${API_BASE}/users/my-school?includeLogo=false&fields=smsCredits`);
+    const data = await fetchWithAuth(`${API_BASE}/users/my-school?includeLogo=false&fields=smsCredits&refresh=true`);
     const credits = Number(data?.smsCredits ?? 0);
 
     if (Number.isFinite(credits)) {

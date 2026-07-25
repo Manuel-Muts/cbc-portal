@@ -1,6 +1,7 @@
 //schoolController.js
 import { School } from '../models/school.js';
 import cache from "../utils/cacheManager.js";
+import { shouldBypassSchoolProfileCache } from '../utils/smsBalance.js';
 import axios from 'axios';
 import crypto from 'crypto';
 
@@ -153,6 +154,7 @@ export const getMySchool = async (req, res) => {
     const includeLogoParam = typeof query.includeLogo === 'string' ? query.includeLogo : '';
     const includeLogo = includeLogoParam.toLowerCase() === 'true';
     const rawFields = typeof query.fields === 'string' ? query.fields : '';
+    const bypassCache = shouldBypassSchoolProfileCache(query);
     const fields = rawFields
       .split(',')
       .map((field) => field.trim())
@@ -169,7 +171,7 @@ export const getMySchool = async (req, res) => {
     else cacheSuffix = '_full_no_logo';
 
     const cacheKey = `school_profile_${schoolId}${cacheSuffix}`;
-    const cached = cache.get(cacheKey);
+    const cached = bypassCache ? null : cache.get(cacheKey);
     if (cached) {
       return res.json(cached);
     }
