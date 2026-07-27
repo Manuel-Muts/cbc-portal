@@ -2201,20 +2201,62 @@ async function downloadRankingAsPDF() {
     return filteredCells;
   });
 
-  // Optimized Footer Extraction
-  const foot = Array.from(table.querySelectorAll("tfoot tr")).map(tr => { // Extract footer rows
-    let colCounter = 0;
-    const rowData = [];
-    tr.querySelectorAll("td").forEach(td => {
-      const colspan = td.colSpan || 1;
-      const text = td.textContent.trim();
-      for(let i=0; i<colspan; i++) {
-        if (!skipIndices.has(colCounter)) rowData.push(i === 0 ? text : "");
-        colCounter++;
-      }
+  const specialHeaderNames = new Set(["Overall Rank", "Stream Rank", "Rank", "Name", "Student Name", "Adm", "Admission No", "Total", "Mean", "Progress", "Total Points", "Level"]);
+  const subjectColumns = headers.reduce((acc, header, idx) => {
+    if (!specialHeaderNames.has(header)) acc.push({ idx, header });
+    return acc;
+  }, []);
+
+  const groupCount = lastProcessedStudents?.length || 1;
+  const groupTotalMarks = (lastProcessedStudents || []).reduce((acc, s) => acc + (s.total || 0), 0);
+  const groupTotalPoints = (lastProcessedStudents || []).reduce((acc, s) => acc + (s.points || 0), 0);
+  const groupMeanSum = (lastProcessedStudents || []).reduce((acc, s) => acc + (s.mean || 0), 0);
+
+  const buildFooterRow = (label, type) => {
+    const row = [];
+    const prefixSpan = headers.findIndex(header => !specialHeaderNames.has(header));
+    const labelSpan = prefixSpan >= 0 ? prefixSpan : 1;
+    row.push({ content: label, colSpan: Math.max(1, labelSpan) });
+
+    subjectColumns.forEach((subjectCol, subjectIndex) => {
+      const subjectName = lastProcessedSubjects?.[subjectIndex] || subjectCol.header;
+      const subjectSum = (lastProcessedStudents || []).reduce((acc, s) => acc + (Number(s.subjects?.[subjectName]) || 0), 0);
+      const subjectCount = (lastProcessedStudents || []).filter(s => s.subjects?.[subjectName] !== undefined && s.subjects?.[subjectName] !== null && s.subjects?.[subjectName] !== "" && s.subjects?.[subjectName] !== "X" && s.subjects?.[subjectName] !== "x").length || 1;
+      const value = type === "total"
+        ? subjectSum.toFixed(0)
+        : (subjectSum / subjectCount).toFixed(2);
+      row.push(value);
     });
-    return rowData;
-  });
+
+    const totalColIndex = headers.indexOf("Total");
+    if (totalColIndex !== -1) {
+      row.push(type === "total" ? groupTotalMarks.toFixed(0) : (groupTotalMarks / groupCount).toFixed(2));
+    }
+
+    const meanColIndex = headers.indexOf("Mean");
+    if (meanColIndex !== -1) {
+      row.push(type === "total" ? "" : `${(groupMeanSum / groupCount).toFixed(2)}%`);
+    }
+
+    const progressColIndex = headers.indexOf("Progress");
+    if (progressColIndex !== -1) {
+      row.push("");
+    }
+
+    const pointsColIndex = headers.indexOf("Total Points");
+    if (pointsColIndex !== -1) {
+      row.push(type === "total" ? groupTotalPoints.toFixed(0) : (groupTotalPoints / groupCount).toFixed(2));
+    }
+
+    const levelColIndex = headers.indexOf("Level");
+    if (levelColIndex !== -1) {
+      row.push(type === "total" ? "" : window.cbcUtils.getSubdivision(groupMeanSum / groupCount, grade));
+    }
+
+    return row;
+  };
+
+  const foot = [buildFooterRow("TOTAL:", "total"), buildFooterRow("MEAN:", "mean")];
 
   const streamRankColIndex = headers.indexOf("Stream Rank");
   doc.autoTable({ 
