@@ -2333,7 +2333,6 @@ async function loadTermLockStatus() {
     const res = await secureFetch(`${API_BASE}/settings/term-lock?year=${year}&term=${term}`);
     if (res) {
       const isLocked = res.isLocked;
-      // Default: edits disabled unless explicitly enabled by admin
       const allowTeacherSubmittedMarkEdits = res.allowTeacherSubmittedMarkEdits === true;
       termLockStatusDisplay.textContent = isLocked ? "LOCKED" : "UNLOCKED";
       termLockStatusDisplay.style.color = isLocked ? "red" : "green";

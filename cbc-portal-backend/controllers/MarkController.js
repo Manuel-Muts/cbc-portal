@@ -7,6 +7,7 @@ import StudentEnrollment from "../models/StudentEnrollment.js";
 import { School } from "../models/school.js";
 import Setting from "../models/Setting.js";
 import cache from "../utils/cacheManager.js";
+import { buildTeacherMarksQuery } from "../utils/academicTerm.js";
 import sendSMS, { countSMSSegments, classifySmsProviderResponse } from "../utils/sendSMS.js";
 import SMSLog from "../models/SMSLog.js";
 
@@ -551,7 +552,7 @@ export const bulkAddUpdateMarks = async (req, res) => {
     if (isLocked?.value === true && req.user.role !== 'super_admin') {
       return res.status(403).json({ message: `Year ${sample.year} Term ${sample.term} is locked.` });
     }
-    const allowTeacherSubmittedMarkEdits = editSetting ? editSetting.value !== false : true;
+    const allowTeacherSubmittedMarkEdits = editSetting && editSetting.value === true;
 
     // 2. Pre-fetch students and enrollments to avoid N+1 queries
     const admissions = [...new Set(marksArray.map(m => m.admissionNo).filter(Boolean))];
@@ -713,10 +714,16 @@ export const getMarks = async (req, res) => {
     const limit = parseInt(req.query.limit) || 20;
     const skip = (page - 1) * limit;
 
-    const query = {
-      teacherId: req.user.id,
-      schoolId: req.user.schoolId
-    };
+    const query = buildTeacherMarksQuery(
+      {
+        teacherId: req.user.id,
+        schoolId: req.user.schoolId
+      },
+      {
+        year: req.query.year,
+        term: req.query.term
+      }
+    );
 
     const total = await Mark.countDocuments(query);
     const marks = await Mark.find(query)
@@ -807,13 +814,13 @@ export const bulkDeleteMarks = async (req, res) => {
         Setting.find({ key: { $in: termKeys.map(k => k.replace('term_lock_', 'submitted_marks_edits_allowed_')) } }).lean()
       ]);
 
-      // For submitted mark edits, require explicit true for each term; missing setting means disabled.
-      const missingOrDisabledEditKey = termKeys.map(k => k.replace('term_lock_', 'submitted_marks_edits_allowed_')).find(editKey => {
+      // For submitted mark edits, only block when an explicit false value exists for a term.
+      const disabledEditKey = termKeys.map(k => k.replace('term_lock_', 'submitted_marks_edits_allowed_')).find(editKey => {
         const found = editSettings.find(e => e.key === editKey);
-        return !found || found.value !== true;
+        return found?.value === false;
       });
-      if (missingOrDisabledEditKey) {
-        const parts = missingOrDisabledEditKey.split('_');
+      if (disabledEditKey) {
+        const parts = disabledEditKey.split('_');
         const disabledYear = parts[4];
         const disabledTerm = parts[5];
         return res.status(403).json({

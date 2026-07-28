@@ -105,7 +105,7 @@ const authService = {
                     throw new Error("Unauthorized Session or API Error");
                 }
 
-                const user = await res.json();     console.log("DEBUG: authService.getUserProfile fetched user from API:", user);
+                const user = await res.json();
 
                 // School suspension check
                 if (

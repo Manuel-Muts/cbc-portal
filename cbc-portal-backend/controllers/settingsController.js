@@ -39,13 +39,10 @@ export const updateTermLockStatus = async (req, res) => {
     }
 
     const isAdmin = req.user.role === 'admin' || req.user.role === 'super_admin';
-    const isTeacher = req.user.role === 'teacher' || req.user.role === 'classteacher';
 
-    // Teachers are allowed only to disable edit permission after submitting marks.
+    // Only admins can manage term locks and submitted-mark edit permissions.
     if (!isAdmin) {
-      if (!isTeacher || isLocked !== undefined || allowTeacherSubmittedMarkEdits !== false) {
-        return res.status(403).json({ message: "Unauthorized: Only admins can manage term locks." });
-      }
+      return res.status(403).json({ message: "Unauthorized: Only admins can manage term locks and submitted-mark edit permissions." });
     }
 
 

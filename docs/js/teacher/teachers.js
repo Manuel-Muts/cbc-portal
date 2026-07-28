@@ -5,8 +5,6 @@ document.addEventListener("DOMContentLoaded", () => {
   // ---------------------------
   // API_BASE is now loaded from config.js
   // To change the API endpoint, update config.js
-  console.log("🔧 Teachers.js loading...");
-  console.log("📦 Window.config available:", !!window.config);
   
   const API_BASE = config.api.baseURL;
 
@@ -179,7 +177,6 @@ document.addEventListener("DOMContentLoaded", () => {
       if (!res.ok) throw new Error("Failed to fetch term lock status");
       const data = await res.json();
       currentTermLocked = data.isLocked;
-      // Default: edits disabled unless explicitly enabled by admin
       teacherSubmittedMarkEditsAllowed = data.allowTeacherSubmittedMarkEdits === true;
       updateUIForTermLock();
     } catch (err) {
@@ -209,36 +206,6 @@ document.addEventListener("DOMContentLoaded", () => {
     submittedMarksStatusMessage.style.border = canEdit ? "1px solid #34d399" : "1px solid #f87171";
     submittedMarksStatusMessage.style.borderRadius = "10px";
     submittedMarksStatusMessage.style.padding = "12px 14px";
-  }
-
-  // ---------------------------
-  // NEW: UPDATE TERM EDIT PERMISSION FROM TEACHER ACTIONS
-  // ---------------------------
-  async function updateTeacherEditPermissionForTerm(allowEdits) {
-    const year = marksYearInput?.value;
-    const term = marksTermSelect?.value;
-
-    if (!year || !term) return null;
-
-    try {
-      const res = await fetchWithAuth(`${API_BASE}/settings/term-lock`, {
-        method: "PUT",
-        body: JSON.stringify({
-          year: Number(year),
-          term: Number(term),
-          allowTeacherSubmittedMarkEdits: allowEdits
-        })
-      });
-
-      const data = await res.json();
-      // Default: edits disabled unless explicitly enabled by admin
-      teacherSubmittedMarkEditsAllowed = data.allowTeacherSubmittedMarkEdits === true;
-      updateSubmittedMarksEditStatus();
-      return data;
-    } catch (err) {
-      console.error("Error updating submitted marks edit permission:", err);
-      return null;
-    }
   }
 
   // ---------------------------
@@ -299,16 +266,17 @@ document.addEventListener("DOMContentLoaded", () => {
     if (month >= 5 && month <= 8) currentTerm = "2";
     else if (month >= 9) currentTerm = "3";
     marksTermSelect.value = currentTerm;
+    marksTermSelect.disabled = true; // Make term read-only (current term only)
   }
 
   // 🆕 Reset table when context changes to prevent data pollution across terms/assessments
-  [marksTermSelect, marksAssessmentSelect, marksYearInput].forEach(el => {
+  [marksAssessmentSelect, marksYearInput].forEach(el => {
     el?.addEventListener("change", () => {
       if (marksEntryTableBody && marksEntryTableBody.innerHTML !== "") {
         resetMarksTable();
       }
-      // 🆕 Re-check lock status when term or year changes
-      if (el === marksTermSelect || el === marksYearInput) {
+      // 🆕 Re-check lock status when year changes
+      if (el === marksYearInput) {
         checkTermLockStatus();
       }
     });
@@ -335,7 +303,6 @@ document.addEventListener("DOMContentLoaded", () => {
     teacher = await authService.getUserProfile(["teacher", "classteacher"]);
     if (!teacher) return;
 
-    console.log("✅ Teacher authenticated:", teacher.name);
     window.currentTeacher = teacher;
     updateTeacherNameUI();
 
@@ -563,7 +530,6 @@ document.addEventListener("DOMContentLoaded", () => {
         try {
           const { timestamp, data } = JSON.parse(cached);
           if (Date.now() - timestamp < CACHE_DURATION) {
-            console.log("✅ Using cached teacher allocations");
             processAllocationsData(data);
             return;
           }
@@ -572,11 +538,7 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     try {
-      console.log("🔍 Starting to load teacher allocations...");
-      console.log("📡 API Base URL:", API_BASE);
       const res = await fetchWithAuth(`${API_BASE}/users/subjects/my-allocations`);
-      
-      console.log("📨 API Response Status:", res.status);
       
       if (!res.ok) {
         const errorData = await res.json().catch(() => ({}));
@@ -585,7 +547,6 @@ document.addEventListener("DOMContentLoaded", () => {
       }
       
       const data = await res.json();
-      console.log("✅ Allocations data received:", data);
       
       // Cache the result
       localStorage.setItem(CACHE_KEY, JSON.stringify({
@@ -626,7 +587,6 @@ document.addEventListener("DOMContentLoaded", () => {
         return { ...alloc, subjects: normalizedSubjects };
       });
 
-      console.log(`📚 Loaded ${teacherAllocations.length} allocations (Normalized for mark entry)`);
       populateSubjectAllocations(teacherAllocations);
     } else {
       console.warn("⚠️ No subjectAllocations in response");
@@ -735,7 +695,6 @@ document.addEventListener("DOMContentLoaded", () => {
       selectedSubject = selectedOption.dataset.subject; // 🆕 Get selected subject
       
       allMarksEntered = new Map(); // Clear marks when subject/class changes
-      console.log(`✅ Selected: Class="${selectedAllocationData.classLabel}", Subject="${selectedSubject}"`);
       
       resetMarksTable();
       if (marksTableContainer) marksTableContainer.style.display = "block";
@@ -827,7 +786,6 @@ document.addEventListener("DOMContentLoaded", () => {
   // ---------------------------
   async function loadStudentsForSubject(classLabel, page = 1, forceRefresh = false) {
     try {
-      console.log(`📚 Loading students for class: ${classLabel} (Page ${page})`);
 
       const electiveParams = getSeniorElectiveQueryParams(selectedSubject, classLabel);
       const electiveScope = electiveParams
@@ -843,7 +801,6 @@ document.addEventListener("DOMContentLoaded", () => {
           try {
             const { timestamp, data } = JSON.parse(cached);
             if (data && (Date.now() - timestamp < CACHE_DURATION)) {
-              console.log("✅ Using cached student list");
               // 🆕 FIX: data.students now contains the FULL list of students, not paginated
               const cachedStudents = Array.isArray(data?.students) ? data.students : Array.isArray(data) ? data : [];
               let filteredStudents = cachedStudents;
@@ -870,7 +827,6 @@ document.addEventListener("DOMContentLoaded", () => {
             // If cache is stale or invalid, remove it
             else {
               localStorage.removeItem(CACHE_KEY);
-              console.log("Cache for students is stale or invalid, fetching new data.");
             }
           } catch (e) {
             console.warn("Student cache parse error:", e);
@@ -878,22 +834,13 @@ document.addEventListener("DOMContentLoaded", () => {
         }
       }
 
-      console.log("📝 Academic Year:", new Date().getFullYear());
       
       const isElectiveLoad = Boolean(electiveParams);
       // 🆕 FIX: Always fetch all students at once (limit=1000) instead of paginating per API call
       const limit = 1000; // Fetch all students for this class
       const fetchPage = 1; // Always fetch from page 1 since we want all data
       const queryString = buildClassStudentsQuery(fetchPage, limit, electiveParams);
-      console.log("📡 Elective load debug:", {
-        selectedSubject,
-        classLabel,
-        electiveParams,
-        queryString
-      });
       const res = await fetchWithAuth(`${API_BASE}/enrollments/class/${encodeURIComponent(classLabel)}?${queryString}`);
-      
-      console.log("📨 API Response Status:", res.status);
       
       if (!res.ok) {
         const errorData = await res.json().catch(() => ({}));
@@ -903,19 +850,6 @@ document.addEventListener("DOMContentLoaded", () => {
       
       const data = await res.json();
       const rawStudents = Array.isArray(data?.students) ? data.students : Array.isArray(data) ? data : [];
-      console.log("📨 API Response Data:", {
-        classLabel,
-        selectedSubject,
-        isElectiveLoad,
-        electiveParams,
-        dataType: Array.isArray(data) ? "array" : typeof data,
-        hasStudentsField: Array.isArray(data?.students),
-        rawStudentsCount: rawStudents.length,
-        total: data?.total,
-        totalPages: data?.totalPages,
-        currentPage: data?.currentPage,
-        studentsSample: rawStudents.slice(0, 10)
-      });
 
       let filteredStudents = rawStudents;
 
@@ -943,11 +877,6 @@ document.addEventListener("DOMContentLoaded", () => {
 
       loadedStudents = pagedStudents;
       currentStudentPage = currentPage;
-      
-      console.log(`✅ Loaded ${pagedStudents.length} student(s) from ${classLabel} (Page ${currentPage} of ${totalPages})`);
-      pagedStudents.forEach((s, idx) => {
-        console.log(`   ${idx + 1}. ${s.name} (ADM: ${s.admissionNo || s.admission}) - Grade: ${s.grade}`);
-      });
       
       return {
         students: pagedStudents,
@@ -1433,12 +1362,6 @@ document.addEventListener("DOMContentLoaded", () => {
       isLoadingStudents = true;
       loadStudentsBtn.disabled = true;
 
-      console.log("🔄 Loading Learners...");
-      console.log(`   Class: ${selectedAllocationData.classLabel}`);
-      console.log(`   Subject: ${selectedSubject}`);
-      console.log(`   Term: ${marksTermSelect.options[marksTermSelect.selectedIndex].text}`);
-      console.log(`   Assessment: ${marksAssessmentSelect.options[marksAssessmentSelect.selectedIndex].text}`);
-      console.log(`   Year: ${marksYearInput.value}`);
 
       isSingleEditMode = false;
 
@@ -1710,9 +1633,6 @@ document.addEventListener("DOMContentLoaded", () => {
       }
 
       if (result.successCount > 0) { // Check result.successCount from backend
-        // 🆕 If marks are submitted, immediately disable teacher edits for this term in the database
-        await updateTeacherEditPermissionForTerm(false);
-
         // 🆕 Clear roster cache for this class to ensure fresh data for next load
         const classLabel = selectedAllocationData?.classLabel;
         if (classLabel) {
@@ -1755,19 +1675,27 @@ document.addEventListener("DOMContentLoaded", () => {
 
   async function loadSubmittedMarks(forceRefresh = false) {
     const CACHE_KEY = "teacher_marks_cache";
+    const currentDate = new Date();
+    const currentYear = currentDate.getFullYear();
+    const month = currentDate.getMonth() + 1;
+    let currentTerm = "1";
+    if (month >= 5 && month <= 8) currentTerm = "2";
+    else if (month >= 9) currentTerm = "3";
+    const currentAcademicContext = { year: currentYear, term: currentTerm };
 
     // 🆕 Reset to first page when forcing a refresh (e.g., after submission)
     if (forceRefresh) submittedMarksCurrentPage = 1;
 
     const CACHE_DURATION = 15 * 60 * 1000; // 15 minutes
 
+    const cacheKeyWithContext = `${CACHE_KEY}_${currentAcademicContext.year}_${currentAcademicContext.term}`;
+
     if (!forceRefresh) {
-      const cached = localStorage.getItem(CACHE_KEY);
+      const cached = localStorage.getItem(cacheKeyWithContext);
       if (cached) {
         try {
           const { timestamp, data } = JSON.parse(cached);
           if (Date.now() - timestamp < CACHE_DURATION) {
-            console.log("✅ Using cached submitted marks");
             // Handle both legacy array cache and new paginated object structure
             submittedMarks = Array.isArray(data) ? data : (data.marks || []);
             window.currentMarks = submittedMarks; // Keep for compatibility if needed elsewhere
@@ -1784,9 +1712,8 @@ document.addEventListener("DOMContentLoaded", () => {
 
     try {
       // 🚀 Fetch with a high limit (1000) to ensure multiple class groups are captured for the accordions
-      console.log("Fetching marks from:", `${API_BASE}/marks/teacher?limit=1000`);
-      const res = await fetchWithAuth(`${API_BASE}/marks/teacher?limit=1000`);
-      console.log("Response status:", res.status);
+      const requestUrl = `${API_BASE}/marks/teacher?limit=1000&year=${currentAcademicContext.year}&term=${currentAcademicContext.term}`;
+      const res = await fetchWithAuth(requestUrl);
       
       if (res.status === 403) {
         alert("You are not authorized to view marks.");
@@ -1797,18 +1724,14 @@ document.addEventListener("DOMContentLoaded", () => {
       const data = await res.json();
       // Extract the marks array from the paginated object returned by the backend
       submittedMarks = Array.isArray(data) ? data : (data.marks || []);
-      console.log("Loaded marks:", submittedMarks);
       subTablePageMap.clear(); // Reset sub-pagination on fresh load
       subSearchMap.clear(); // Reset searches on fresh load
 
-      localStorage.setItem(CACHE_KEY, JSON.stringify({
+      localStorage.setItem(cacheKeyWithContext, JSON.stringify({
         timestamp: Date.now(),
         data: submittedMarks
       }));
 
-      console.log("Marks array type:", Array.isArray(submittedMarks));
-      console.log("Marks count:", submittedMarks.length);
-      
       window.currentMarks = submittedMarks; // Keep for compatibility if needed elsewhere
       displayPaginatedMarksGroups(submittedMarksCurrentPage); // Call new function
     } catch (err) {
@@ -1840,12 +1763,10 @@ document.addEventListener("DOMContentLoaded", () => {
   
   // Renamed from displayMarks to displayPaginatedMarksGroups
   function displayPaginatedMarksGroups(page) {
-    console.log("Displaying paginated marks groups for page:", page);
-    console.log("Total submitted marks:", submittedMarks ? submittedMarks.length : 0);
+
     
     if (!submittedMarks || !Array.isArray(submittedMarks)) {
       submittedMarksContainer.innerHTML = '<p style="text-align:center;color:#777;">No marks data available.</p>';
-      console.log("DEBUG: submittedMarks is not an array or is empty.");
       return;
     }
 
@@ -1862,8 +1783,6 @@ document.addEventListener("DOMContentLoaded", () => {
         ? (m.course ? String(m.course) : 'no-course') 
         : (m.subject ? String(m.subject) : 'no-subject');
       
-      console.log(`DEBUG: Processing mark for student ${m.studentName || m.admissionNo}. Components: Grade=${grade}, Term=${term}, Year=${year}, Assessment=${assessment}, SubjectKey=${subjectKey}`);
-      
       // Normalize grade (e.g., "5" vs "Grade 5") to ensure consistent grouping
       const gradeNorm = window.cbcUtils.normalizeGrade(grade);
       const streamVal = m.stream || '';
@@ -1874,17 +1793,33 @@ document.addEventListener("DOMContentLoaded", () => {
       grouped[key].push(m);
     });
     
-    console.log("Grouped marks:", grouped); // DEBUG
     
-    // Sort keys descending so newest years/terms appear at the top (Note: Alphabetical sort by subject name first)
-    submittedMarksGroupedKeys = Object.keys(grouped).sort().reverse(); 
+    // 🆕 Sort by assessment hierarchy: EndTerm (top) > MidTerm (middle) > Opener (bottom)
+    // Assessment IDs: Opener=1 (first submitted), MidTerm=2, EndTerm=3 (last submitted)
+    // We sort descending by assessment ID so EndTerm (3) appears first
+    submittedMarksGroupedKeys = Object.keys(grouped).sort((keyA, keyB) => {
+      // Extract assessment ID from key (format: subjectKey_assessmentID_grade_stream_term_year)
+      const partsA = keyA.split('_');
+      const partsB = keyB.split('_');
+      
+      // Assessment is the 2nd element (index 1) in the key
+      const assessmentA = parseInt(partsA[1]) || 0;
+      const assessmentB = parseInt(partsB[1]) || 0;
+      
+      // Sort descending by assessment ID so higher IDs (EndTerm=3) appear first
+      if (assessmentA !== assessmentB) {
+        return assessmentB - assessmentA;
+      }
+      
+      // If same assessment, fall back to alphabetical by full key
+      return keyA.localeCompare(keyB);
+    }); 
     const totalGroups = submittedMarksGroupedKeys.length;
     submittedMarksTotalPages = Math.ceil(totalGroups / SUBMITTED_MARKS_LIMIT);
     submittedMarksCurrentPage = page;
 
     if (page > submittedMarksTotalPages && totalGroups > 0) {
       displayPaginatedMarksGroups(1);
-      console.log("DEBUG: Page out of bounds, resetting to page 1.");
       return;
     }
 
@@ -1894,7 +1829,6 @@ document.addEventListener("DOMContentLoaded", () => {
     
     submittedMarksContainer.innerHTML = '';
     if (!keysForCurrentPage.length) {
-      console.log("DEBUG: No keys for current page.");
       submittedMarksContainer.innerHTML = '<p style="text-align:center;color:#777;">No marks submitted yet.</p>';
       renderSubmittedMarksPaginationControls();
       return;
@@ -1992,7 +1926,7 @@ document.addEventListener("DOMContentLoaded", () => {
     });
 
     const canEditSubmittedGroup = teacherSubmittedMarkEditsAllowed && !currentTermLocked;
-    const editHint = canEditSubmittedGroup ? 'Use the pencil icon to edit records. After submission, this group will be locked again.' : 'Editing submitted marks is disabled for this term.';
+    const editHint = canEditSubmittedGroup ? 'Use the pencil icon to edit records. Submitted-mark editing is controlled by the admin dashboard for this term.' : 'Editing submitted marks is disabled for this term.';
 
     const hintMessage = document.createElement('div');
     hintMessage.textContent = editHint;
@@ -2371,20 +2305,15 @@ document.addEventListener("DOMContentLoaded", () => {
   // INITIAL LOAD
   // ---------------------------
   (async function init() {
-    console.log("🚀 Dashboard initialization started");
-    console.log("📝 Step 1: Loading teacher profile...");
     await loadTeacherProfile();
 
     if (logoutBtn) {
       logoutBtn.style.display = "none";
     }
-    console.log("✅ Step 1 complete");
 
     // Initialize Tabs
     setupTabs();
     
-    console.log("📝 Step 2: Loading school name...");
-
     // 🆕 Move termLockMessageEl to the desired position
     const marksControls = document.querySelector('.marks-controls');
     const step1Heading = marksControls?.querySelector('h3'); // Assuming "Step 1" is an h3
@@ -2409,23 +2338,15 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     await loadSchoolName();
-    console.log("✅ Step 2 complete");
 
     // Step 2.5: Render signature UI now that school info is available
     renderSignatureUI(teacher);
     
-    console.log("📝 Step 3: Loading teacher allocations...");
     await loadTeacherAllocations();
-    console.log("✅ Step 3 complete");
     
-    console.log("📝 Step 4: Loading submitted marks...");
     await loadSubmittedMarks();
-    console.log("✅ Step 4 complete (Materials dashboard separated)");
     
     // 🆕 Initial check for term lock status
-    console.log("📝 Step 5: Checking term lock status...");
     await checkTermLockStatus();
-    console.log("✅ Step 5 complete");
-    console.log("🎉 Dashboard initialization complete!");
   })();
 });

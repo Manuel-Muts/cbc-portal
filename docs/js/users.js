@@ -270,7 +270,7 @@
       const tr = document.createElement("tr");
       if (isStudentView) {
         // 🧪 DEBUG LOG: Check console to see the available properties
-        console.log(`[DEBUG] Raw Learner Data (${u.admission || u.name}):`, u);
+
 
         // Ultra-Robust Grade Detection: Check every possible field and variation used in the system
         let rawGrade = u.grade || u.currentGrade || u.classGrade || u.assignedClass || u.className || u.assignedGrade || u.classLabel || u.gradeName || u['class'] || u.assignedGradeLevel || "";
@@ -1010,7 +1010,7 @@ if (usersNextPageBtn) {
         }
 
         // Define CSV headers
-        const headers = ["Name", "Grade"]; // Only Name and Grade
+        const headers = ["Admission", "Name", "Grade"];
         let csvContent = headers.map(h => `"${h}"`).join(",") + "\n"; // Add quotes for CSV safety
 
         // Generate CSV rows
@@ -1042,6 +1042,7 @@ if (usersNextPageBtn) {
             }
           }
           const row = [
+            u.admission || u.admissionNo || "",
             u.name,
             finalGradeOutput
           ];
@@ -1141,7 +1142,7 @@ if (usersNextPageBtn) {
           return;
         }
         // Define CSV headers
-        const headers = ["Name", "Grade"]; // Only Name and Grade
+        const headers = ["Admission", "Name", "Grade"];
         let csvContent = headers.map(h => `"${h}"`).join(",") + "\n"; // Add quotes for CSV safety
 
         // Generate CSV rows
@@ -1173,6 +1174,7 @@ if (usersNextPageBtn) {
             }
           }
           const row = [
+            u.admission || u.admissionNo || "",
             u.name,
             finalGradeOutput
           ];
