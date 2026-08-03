@@ -107,6 +107,10 @@
               <label>Grade</label>
               <select id="filterGrade"><option value="">-- Select Grade --</option></select>
             </div>
+              <div class="filter-group">
+              <label>Assessment</label>
+              <select id="filterAssessment"></select>
+            </div>
             <div class="filter-group">
               <label>Term</label>
               <select id="filterTerm">
@@ -115,10 +119,7 @@
                 <option value="3">Term 3</option>
               </select>
             </div>
-            <div class="filter-group">
-              <label>Assessment</label>
-              <select id="filterAssessment"></select>
-            </div>
+          
             <div class="filter-group">
               <label>Year</label>
               <select id="filterYear"></select>
@@ -269,20 +270,16 @@
                   <select id="lmGradeSelect" class="form-control"></select>
                 </div>
                 <div class="filter-group">
-                  <label for="lmTermSelect">Term</label>
-                  <select id="lmTermSelect" class="form-control"></select>
-                </div>
-                <div class="filter-group">
                   <label for="lmAssessmentSelect">Assessment</label>
                   <select id="lmAssessmentSelect" class="form-control"></select>
                 </div>
                 <div class="filter-group">
-                  <label for="lmYearSelect">Year</label>
-                  <select id="lmYearSelect" class="form-control"></select>
+                  <label for="lmTermSelect">Term</label>
+                  <select id="lmTermSelect" class="form-control"></select>
                 </div>
                 <div class="filter-group">
-                  <label for="lmSubjectSelect">Subject</label>
-                  <select id="lmSubjectSelect" class="form-control"></select>
+                  <label for="lmYearSelect">Year</label>
+                  <select id="lmYearSelect" class="form-control"></select>
                 </div>
               </div>
             </div>
@@ -303,6 +300,7 @@
                 <div id="lmSearchResults" style="display: grid; gap: 12px;"></div>
               </div>
 
+              <div id="lmSubjectsTableWrap" style="margin-top: 20px;"></div>
               <div id="lmMarkForm"></div>
 
               <div style="margin-top: 16px; text-align: right;">

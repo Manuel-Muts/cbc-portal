@@ -107,6 +107,10 @@ const normalizePathway = (p) => {
   return map[key] || raw;
 };
 
+const canBypassMarkLocks = (reqUser = {}) => {
+  return reqUser?.role === 'super_admin' || reqUser?.role === 'dean' || reqUser?.isDean === true;
+};
+
 const getSeniorPathway = (subjectName) => {
   const sub = normalizeSeniorSubjectName(subjectName);
   if (SENIOR_COMPULSORY_SUBJECTS.some(s => s.toLowerCase() === sub.toLowerCase())) return "Core";
@@ -315,14 +319,14 @@ const processSingleMark = async (markData, reqUser, isNew = true, cachedContext 
   if (!cachedContext?.lockChecked) {
     const lockKey = `term_lock_${reqUser.schoolId}_${year}_${term}`;
     const isLocked = await Setting.findOne({ key: lockKey }).lean();
-    if (isLocked?.value === true && reqUser.role !== 'super_admin') {
+    if (isLocked?.value === true && !canBypassMarkLocks(reqUser)) {
       throw new Error(`Action denied: Year ${year} Term ${term} is officially locked.`);
     }
   }
 
   if (!isNew) {
     const allowTeacherSubmittedMarkEdits = cachedContext?.allowTeacherSubmittedMarkEdits;
-    if (allowTeacherSubmittedMarkEdits === false && reqUser.role !== 'super_admin') {
+    if (allowTeacherSubmittedMarkEdits === false && !canBypassMarkLocks(reqUser)) {
       throw new Error(`Action denied: Teacher edits for submitted marks are disabled by admin for Year ${year} Term ${term}.`);
     }
   }
@@ -426,7 +430,7 @@ const processSingleMark = async (markData, reqUser, isNew = true, cachedContext 
     term,
     year,
     assessment,
-    teacherId: reqUser.id,
+    teacherId: markData.teacherId || reqUser.id,
     schoolId: reqUser.schoolId,
     enrollmentId: enrollment ? enrollment._id : (markData.enrollmentId || null)
   };
@@ -488,18 +492,27 @@ export const updateMark = async (req, res) => {
     const mark = await Mark.findById(id);
     if (!mark) return res.status(404).json({ message: "Mark not found" });
 
-    if (mark.teacherId.toString() !== req.user.id) {
+    const isDeanUser = req.user.isDean === true || req.user.role === 'dean';
+    const isSuperAdmin = req.user.role === 'super_admin';
+    const isAuthor = mark.teacherId && mark.teacherId.toString() === req.user.id;
+
+    if (!isAuthor && !isDeanUser && !isSuperAdmin) {
       return res.status(403).json({ message: "Unauthorized" });
     }
 
-    if (req.user.role !== 'super_admin') {
+    if (!isDeanUser && !isSuperAdmin) {
       const editPermissionKey = `submitted_marks_edits_allowed_${req.user.schoolId}_${mark.year}_${mark.term}`;
       const editSetting = await Setting.findOne({ key: editPermissionKey }).lean();
       if (!editSetting || editSetting.value !== true) {
         return res.status(403).json({ message: "Teacher edits for submitted marks are disabled by admin for this term." });
       }
     }
-    const processedFields = await processSingleMark({ ...req.body, _id: id, admissionNo: mark.admissionNo }, req.user, false); // Pass _id and admissionNo for context, isNew=false
+    const processedFields = await processSingleMark({
+      ...req.body,
+      _id: id,
+      admissionNo: mark.admissionNo,
+      teacherId: mark.teacherId
+    }, req.user, false); // Pass _id and admissionNo for context, isNew=false
     const updatedMark = await Mark.findByIdAndUpdate(
       id,
       { $set: processedFields },
@@ -549,7 +562,7 @@ export const bulkAddUpdateMarks = async (req, res) => {
       Setting.findOne({ key: lockKey }).lean(),
       Setting.findOne({ key: editPermissionKey }).lean()
     ]);
-    if (isLocked?.value === true && req.user.role !== 'super_admin') {
+    if (isLocked?.value === true && !canBypassMarkLocks(req.user)) {
       return res.status(403).json({ message: `Year ${sample.year} Term ${sample.term} is locked.` });
     }
     const allowTeacherSubmittedMarkEdits = editSetting && editSetting.value === true;
@@ -714,6 +727,10 @@ export const getMarks = async (req, res) => {
     const limit = parseInt(req.query.limit) || 20;
     const skip = (page - 1) * limit;
 
+    if (req.user.role === 'dean' || req.user.isDean === true) {
+      return res.json({ marks: [], total: 0, totalPages: 0, currentPage: page });
+    }
+
     const query = buildTeacherMarksQuery(
       {
         teacherId: req.user.id,
@@ -758,10 +775,10 @@ export const deleteMark = async (req, res) => {
       Setting.findOne({ key: editPermissionKey }).lean()
     ]);
 
-    if (lockSetting?.value === true && req.user.role !== 'super_admin') {
+    if (lockSetting?.value === true && !canBypassMarkLocks(req.user)) {
       return res.status(403).json({ message: "Cannot delete marks: This academic term is officially locked." });
     }
-    if ((!editSetting || editSetting.value !== true) && req.user.role !== 'super_admin') {
+    if ((!editSetting || editSetting.value !== true) && !canBypassMarkLocks(req.user)) {
       return res.status(403).json({ message: "Cannot delete marks: Teacher edits for submitted marks are disabled by admin for this term." });
     }
 
@@ -807,7 +824,7 @@ export const bulkDeleteMarks = async (req, res) => {
     // Collect all unique (year, term) combinations for the marks to be deleted.
     // Use req.user.schoolId and req.user.role.
     const termKeys = [...new Set(marksToDelete.map(m => `term_lock_${req.user.schoolId}_${m.year}_${m.term}`))];
-    if (req.user.role !== 'super_admin') {
+    if (!canBypassMarkLocks(req.user)) {
       // Optimized: Fetch all relevant lock settings in one go
       const [lockedSettings, editSettings] = await Promise.all([
         Setting.find({ key: { $in: termKeys }, value: true }).lean(),
@@ -1153,30 +1170,45 @@ export const getClassMarks = async (req, res) => {
 // ---------------------------
 export const getMarksByGradeAndStudents = async (req, res) => {
   try {
-    const { grade, term, year, assessment, subject, course, admissionNos } = req.query;
+    const { grade, term, year, assessment, subject, course, admissionNos, classContext, stream } = req.query;
     const schoolId = req.user.schoolId;
 
-    if (!grade || !term || !year || !assessment || (!subject && !course) || !admissionNos) {
+    if (!grade || !term || !year || !assessment) {
       return res.status(400).json({ message: "Missing required query parameters for fetching existing marks." });
     }
 
-    const admissionsArray = admissionNos.split(',');
-
     const query = {
       schoolId: new mongoose.Types.ObjectId(schoolId),
+      grade: String(grade).trim(),
       term: Number(term),
       year: Number(year),
-      assessment: Number(assessment),
-      admissionNo: { $in: admissionsArray }
+      assessment: Number(assessment)
     };
+
+    if (stream && stream !== "" && stream !== "all") {
+      query.stream = String(stream).trim();
+    }
 
     const gradeNum = parseInt(String(grade).replace(/\D/g, ""), 10);
     const isSeniorSchool = gradeNum >= 10 && gradeNum <= 12;
 
+    if (classContext === "true") {
+      // Return all marks for the selected grade/stream context so the frontend can compare classmate submissions.
+      const marks = await Mark.find(query).lean();
+      return res.json(marks);
+    }
+
+    if (!admissionNos) {
+      return res.status(400).json({ message: "Missing admission numbers for fetching learner marks." });
+    }
+
+    const admissionsArray = admissionNos.split(',');
+    query.admissionNo = { $in: admissionsArray };
+
     if (isSeniorSchool) {
-      query.course = course;
+      if (course) query.course = course;
     } else {
-      query.subject = subject;
+      if (subject) query.subject = subject;
     }
 
     const marks = await Mark.find(query).lean();
