@@ -17,6 +17,17 @@ const TimetableModule = (function() {
     let activeEditSlot = null; // 🆕 Tracks { dayIdx, lessonIdx } during manual edits
     let subjectPlacements = {}; // 🆕 Tracks placement preferences [grade][subject]
 
+    function getActivityCellLabel(dayIdx, extraActivities = getSharedActivityOrder()) {
+        return dayIdx === 4 ? 'GENERAL CLEANING' : (extraActivities[dayIdx] || 'GAMES & SPORTS');
+    }
+
+    function renderActivityCellHtml(activityName) {
+        return `
+            <td style="padding:4px 2px; text-align:center; border:1px solid #cbd5e1; background:#f1f5f9; min-width:90px; vertical-align:middle;">
+                <div style="font-weight:900; font-size:0.72rem; color:#0f172a; text-transform:uppercase; letter-spacing:0.4px; line-height:1.25;">${activityName}</div>
+            </td>`;
+    }
+
     /**
      * 🆕 Categorizes subjects for intelligent placement
      */
@@ -312,6 +323,40 @@ const TimetableModule = (function() {
         return SCHOOL_TYPES[schoolType].gradeOptions.map(g => (g.startsWith('PP') || g.toUpperCase() === 'PG') ? g : `Grade ${g}`);
     }
 
+    // Safe access to centralized break defaults with fallbacks in case scripts load out of order
+    function getDefaultBreaks(key) {
+        const fallbackBreaks = {
+            pp: [
+                { name: "SHORT BREAK", afterLesson: 2, duration: 30 },
+                { name: "LONG BREAK", afterLesson: 4, duration: 30 }
+            ],
+            primary: [
+                { name: "SHORT BREAK", afterLesson: 2, duration: 20 },
+                { name: "LONG BREAK", afterLesson: 4, duration: 30 },
+                { name: "LUNCH", afterLesson: 6, duration: 80 },
+                { name: "WRAP UP", afterLesson: 8, duration: 5 }
+            ],
+            junior: [
+                { name: "SHORT BREAK", afterLesson: 2, duration: 10 },
+                { name: "LONG BREAK", afterLesson: 4, duration: 20 },
+                { name: "LUNCH", afterLesson: 6, duration: 70 },
+                { name: "WRAP UP", afterLesson: 8, duration: 5 }
+            ],
+            senior: [
+                { name: "BREAK", afterLesson: 2, duration: 30 },
+                { name: "BREAK", afterLesson: 4, duration: 10 },
+                { name: "LUNCH", afterLesson: 6, duration: 60 }
+            ]
+        };
+
+        const centralized = window?.TimetableCommon?.getDefaultBreaks?.(key);
+        if (Array.isArray(centralized) && centralized.length) {
+            return centralized.slice();
+        }
+
+        return Array.isArray(fallbackBreaks[key]) ? fallbackBreaks[key].slice() : [];
+    }
+
     function isGradeSupportedBySchoolType(grade) {
         const schoolType = getSchoolTypeKey();
         if (schoolType === 'primary_junior') {
@@ -334,7 +379,7 @@ const TimetableModule = (function() {
         const isJunior = gradeNum >= 7 && gradeNum <= 9;
         const isSenior = gradeNum >= 10 && gradeNum <= 12;
 
-        if (isPrimary) {
+            if (isPrimary) {
             const gUpper = (grade || "").toUpperCase();
             if (gUpper === 'PG' || gUpper === 'PP1') {
                 // 🆕 Playgroup & PP1: 5 lessons, 30 mins each, 30 min break
@@ -342,54 +387,34 @@ const TimetableModule = (function() {
                 settings.lessonDuration = 30;
                 settings.lessonsPerDay = 5;
                 settings.schoolDayEnd = "11:40";
-                settings.breaks = [
-                    { name: "SHORT BREAK", afterLesson: 2, duration: 30 },
-                    { name: "LONG BREAK", afterLesson: 4, duration: 30 }
-                ];
+                settings.breaks = getDefaultBreaks('pp');
             } else if (gUpper === 'PP2') {
                 // 🆕 PP2: 6 lessons, 35 mins each
                 settings.startTime = "08:20";
                 settings.lessonDuration = 35;
                 settings.lessonsPerDay = 6;
                 settings.schoolDayEnd = "12:40";
-                settings.breaks = [
-                    { name: "SHORT BREAK", afterLesson: 2, duration: 30 },
-                    { name: "LONG BREAK", afterLesson: 4, duration: 30 }
-                ];
+                settings.breaks = getDefaultBreaks('pp');
             } else {
                 // Standard Primary (Grade 1-6)
                 settings.startTime = "08:20";
                 settings.lessonDuration = 35;
                 settings.lessonsPerDay = 8;
                 settings.schoolDayEnd = "15:30";
-                settings.breaks = [
-                    { name: "SHORT BREAK", afterLesson: 2, duration: 20 },
-                    { name: "LONG BREAK", afterLesson: 4, duration: 30 },
-                    { name: "LUNCH", afterLesson: 6, duration: 80 },
-                    { name: "WRAP UP", afterLesson: 8, duration: 5 }
-                ];
+                settings.breaks = getDefaultBreaks('primary');
             }
         } else if (isJunior) {
             settings.startTime = "08:20";
             settings.lessonDuration = 40;
             settings.lessonsPerDay = 8;
             settings.schoolDayEnd = "15:30";
-            settings.breaks = [
-                { name: "SHORT BREAK", afterLesson: 2, duration: 10 },
-                { name: "LONG BREAK", afterLesson: 4, duration: 20 },
-                { name: "LUNCH", afterLesson: 6, duration: 70 },
-                { name: "WRAP UP", afterLesson: 8, duration: 5 }
-            ];
+            settings.breaks = getDefaultBreaks('junior');
         } else if (isSenior) {
             settings.startTime = "08:20";
             settings.lessonDuration = 40;
             settings.lessonsPerDay = 9;
             settings.schoolDayEnd = "17:05";
-            settings.breaks = [
-                { name: "BREAK", afterLesson: 2, duration: 30 },
-                { name: "BREAK", afterLesson: 4, duration: 10 },
-                { name: "LUNCH", afterLesson: 6, duration: 60 }
-            ];
+            settings.breaks = getDefaultBreaks('senior');
         }
     }
 
@@ -617,6 +642,9 @@ const TimetableModule = (function() {
                         <!-- <button id="downloadPdfTimetableBtn" class="btn secondary-btn" style="width:100%; text-align:left;">
                             <i class="fas fa-file-pdf"></i> Download PDF Timetable
                         </button> -->
+                        <a href="timetable-downloads.html" target="_blank" id="openTimetableDownloadsBtn" class="btn secondary-btn" style="width:100%; text-align:left;">
+                            <i class="fas fa-download"></i>Download Saved Class Timetbles 
+                        </a>
 
                         <hr>
                         <button id="generateTimetableBtn" class="btn primary-btn">
@@ -814,13 +842,20 @@ const TimetableModule = (function() {
         const termSelect = document.getElementById('ttTermSelect');
     
         if (gradeSelect) {
-            // Clear existing options first
+            const previousGrade = gradeSelect.value;
             gradeSelect.innerHTML = '';
             getGradeOptionsForSchool().forEach(g => {
                 const opt = document.createElement('option');
                 opt.value = g; opt.textContent = g;
                 gradeSelect.appendChild(opt);
             });
+
+            const currentOption = Array.from(gradeSelect.options).find(opt => opt.value === previousGrade);
+            if (currentOption) {
+                gradeSelect.value = previousGrade;
+            } else {
+                gradeSelect.value = gradeSelect.options[0]?.value || '';
+            }
         }
     
         if (yearSelect) {
@@ -1153,6 +1188,13 @@ const TimetableModule = (function() {
         }
     }
 
+    function updateTeacherBulkDownloadButtonVisibility() {
+        const button = document.getElementById('downloadAllTeacherTimetablesBtn');
+        if (!button) return;
+        const mode = document.getElementById('ttViewMode')?.value || 'class';
+        button.style.display = mode === 'teacher' ? 'inline-flex' : 'none';
+    }
+
     function attachEventListeners() {
         // Utility to safely attach listeners
         const listen = (id, evt, fn, useCapture = false) => {
@@ -1179,6 +1221,7 @@ const TimetableModule = (function() {
             document.getElementById('ttTeacherFiltersGroup').style.display = isTeacherMode ? 'block' : 'none';
             document.getElementById('ttBlockInfoGroup').style.display = isBlockMode ? 'block' : 'none';
             document.getElementById('ttBtnText').textContent = isTeacherMode ? 'View Teacher Schedule' : (isBlockMode ? 'View Block Timetable' : 'Generate Timetable');
+            updateTeacherBulkDownloadButtonVisibility();
 
             // Hide class-only controls for teacher/block views
             document.querySelectorAll('.tt-class-only').forEach(el => {
@@ -1204,6 +1247,9 @@ const TimetableModule = (function() {
 
             const downloadPdfBtn = e.target.closest('#downloadTimetablePDFBtn');
             if (downloadPdfBtn) downloadTimetablePDF(); // Handles button inside the generated grid
+
+            const downloadAllTeacherBtn = e.target.closest('#downloadAllTeacherTimetablesBtn');
+            if (downloadAllTeacherBtn) downloadAllTeacherTimetablesPDF();
 
             const reshuffleActivitiesBtn = e.target.closest('#reshuffleActivitiesBtn');
             if (reshuffleActivitiesBtn) {
@@ -2351,6 +2397,73 @@ const TimetableModule = (function() {
         }
     }
 
+    const addPdfFooter = (doc, pageWidth) => {
+        const pageCount = doc.internal.getNumberOfPages();
+        for (let page = 1; page <= pageCount; page += 1) {
+            doc.setPage(page);
+            const pageHeight = doc.internal.pageSize.getHeight();
+            doc.setFontSize(8);
+            doc.setTextColor(120, 120, 120);
+            const printedStr = `Printed: ${new Date().toLocaleString()}`;
+            const brandStr = 'CompetenceHub Timetables';
+            doc.text(printedStr, 40, pageHeight - 20);
+            doc.text(brandStr, pageWidth / 2, pageHeight - 20, { align: 'center' });
+            doc.text(`Page ${page} of ${pageCount}`, pageWidth - 40, pageHeight - 20, { align: 'right' });
+        }
+    };
+
+    async function downloadAllTeacherTimetablesPDF() {
+        const btn = document.getElementById('downloadAllTeacherTimetablesBtn');
+        const originalHTML = btn ? btn.innerHTML : null;
+        if (btn) {
+            btn.disabled = true;
+            btn.innerHTML = '<span class="spinner"></span> Preparing...';
+        }
+
+        try {
+            await fetchSchedulingContext();
+            const academicYear = document.getElementById('ttYearSelect')?.value || new Date().getFullYear();
+            const term = document.getElementById('ttTermSelect')?.value || 'Term 1';
+
+            const jsPDFClass = (window.jspdf && window.jspdf.jsPDF) ? window.jspdf.jsPDF : window.jsPDF;
+            if (!jsPDFClass) {
+                window.showToast('PDF library not detected.', 'error');
+                return;
+            }
+
+            const doc = new jsPDFClass({ orientation: 'landscape', unit: 'pt', format: 'a4' });
+            const pageWidth = doc.internal.pageSize.getWidth();
+
+            const teacherSchedules = (schoolAllocations || [])
+                .map(teacher => buildTeacherScheduleForPdf(teacher._id || teacher.id, teacher.name, term, academicYear))
+                .filter(schedule => schedule && schedule.grid.some(row => row.some(slot => slot && slot.subject)));
+
+            if (!teacherSchedules.length) {
+                window.showToast('No teacher schedules were found for the selected filters.', 'info');
+                return;
+            }
+
+            teacherSchedules.forEach((schedule, index) => {
+                if (index > 0) doc.addPage();
+                renderTeacherSchedulePdfPage(doc, pageWidth, schedule, term, academicYear);
+            });
+
+            addPdfFooter(doc, pageWidth);
+
+            const filename = `All_Teacher_Schedules_${term.replace(/\s+/g, '')}_${academicYear}.pdf`;
+            doc.save(filename);
+            window.showToast('All teacher timetable PDFs generated successfully.', 'success');
+        } catch (err) {
+            console.error('Bulk teacher PDF export error:', err);
+            window.showToast('Failed to generate all teacher timetable PDFs.', 'error');
+        } finally {
+            if (btn) {
+                btn.disabled = false;
+                btn.innerHTML = originalHTML;
+            }
+        }
+    }
+
     /**
      * 🆕 Generates and downloads the timetable as a PDF file.
      */
@@ -2392,6 +2505,7 @@ const TimetableModule = (function() {
         const pathwaySuffix = (!isBlock && !isTeacher && currentTimetableData.pathway) ? ` (${currentTimetableData.pathway})` : "";
         const title = isBlock ? "MASTER BLOCK TIMETABLE" : (viewMode === 'teacher' ? `${currentTimetableData.grade} SCHEDULE` : `${currentTimetableData.grade}${streamSuffix} WEEKLY TIMETABLE${pathwaySuffix}`);
         const filename = `${title.replace(/\s+/g, '_')}_${term.replace(/\s+/g, '')}_${academicYear}.pdf`;
+        const classTeacher = getClassTeacherForGrade(currentTimetableData.grade, currentTimetableData.stream);
 
         // Shared Header Drawing logic
         const drawDocHeader = (pageTitle) => {
@@ -2403,13 +2517,31 @@ const TimetableModule = (function() {
             doc.text(`${pageTitle} - ${term} ${academicYear}`, pageWidth / 2, 58, { align: "center" });
         };
 
+        const mergeBreaks = (breaksA, breaksB) => {
+            const normalized = [];
+            const source = Array.isArray(breaksA) && breaksA.length ? breaksA.slice() : [];
+            const fallback = Array.isArray(breaksB) ? breaksB : [];
+            fallback.forEach(fb => {
+                const name = String(fb?.name || '').trim().toUpperCase();
+                const afterLesson = Number(fb?.afterLesson || 0);
+                const exists = source.some(sb => String(sb?.afterLesson || '').trim() === String(afterLesson) && String(sb?.name || '').trim().toUpperCase() === name);
+                if (!exists) source.push(fb);
+            });
+            return source.sort((a, b) => Number(a.afterLesson || 0) - Number(b.afterLesson || 0));
+        };
+
         if (isBlock) {
                 const schoolType = getSchoolTypeKey();
+                const pdfPrimaryBreaks = getDefaultBreaks('primary');
+                const pdfJuniorBreaks = getDefaultBreaks('junior');
+                const pdfSeniorBreaks = getDefaultBreaks('senior');
                 // Re-calculating column structure for PDF
                  const getBlockColsForPDF = (duration, lessonCount, customBreaks = null) => {
                     const cols = [];
                     let cur = currentTimetableData.settings?.startTime || settings.startTime;
-                    const usedBreaks = customBreaks || (currentTimetableData.settings?.breaks || settings.breaks);
+                    const savedBreaks = Array.isArray(currentTimetableData.settings?.breaks) ? currentTimetableData.settings.breaks : [];
+                    const fallbackBreaks = Array.isArray(settings.breaks) ? settings.breaks : [];
+                    const usedBreaks = Array.isArray(customBreaks) && customBreaks.length ? customBreaks.slice() : savedBreaks.length ? savedBreaks.slice() : fallbackBreaks.slice();
                     for (let l = 1; l <= lessonCount; l++) {
                         const end = addMinutes(cur, duration);
                         cols.push({ type: 'LESSON', lesson: l, startTime: cur, endTime: end });
@@ -2422,7 +2554,7 @@ const TimetableModule = (function() {
                     return cols;
                 };
 
-        const sorted = currentTimetableData.timetables.sort((a, b) => {
+                const sorted = currentTimetableData.timetables.sort((a, b) => {
             const orderA = window.cbcUtils.GRADE_ORDER.indexOf(window.cbcUtils.normalizeGrade(a.grade));
             const orderB = window.cbcUtils.GRADE_ORDER.indexOf(window.cbcUtils.normalizeGrade(b.grade));
             if (orderA !== -1 && orderB !== -1 && orderA !== orderB) return orderA - orderB;
@@ -2434,38 +2566,46 @@ const TimetableModule = (function() {
 
                 chunks.forEach((chunk, cIdx) => {
                     if (cIdx > 0) doc.addPage();
-                    drawDocHeader(`MASTER BLOCK TIMETABLE (PART ${cIdx + 1}/${chunks.length})`);
+                    drawDocHeader(`MASTER BLOCK TIMETABLE `);
+const TEACHER_LINE_PREFIX = "___TEACHER___";
 const eyBreaks = [
                         { name: "SHORT BREAK", afterLesson: 2, duration: 30 },
                         { name: "LONG BREAK", afterLesson: 4, duration: 30 }
                     ];
                     const eyCols = getBlockColsForPDF(30, 5, eyBreaks);
-                    const pCols = getBlockColsForPDF(35, 8);
+                    const pCols = getBlockColsForPDF(35, 8, pdfPrimaryBreaks);
                     const hasSeniorClasses = currentTimetableData.timetables.some(tt => window.cbcUtils?.isSeniorGrade(tt.grade));
-                    const jCols = getBlockColsForPDF(40, (schoolType === 'primary_junior' || !hasSeniorClasses) ? 8 : 9);
+                    const jCols = getBlockColsForPDF(40, (schoolType === 'primary_junior' || !hasSeniorClasses) ? 8 : 9, (schoolType === 'primary_junior' || !hasSeniorClasses) ? pdfJuniorBreaks : pdfSeniorBreaks);
                     const maxCols = Math.max(eyCols.length, pCols.length, jCols.length);
                     const headers = Array.from({ length: maxCols }, (_, i) => ({ ey: eyCols[i], p: pCols[i], j: jCols[i] }));
 
                     const head = [["DAY", ...headers.map(h => {
-                        const eyT = h.ey?.startTime || '--';
-                        const pT = h.p?.startTime || '--';
-                        const jT = h.j?.startTime || '--';
+                        const eyLabel = h.ey?.type === 'LESSON' ? `${h.ey?.startTime || '--'}-${h.ey?.endTime || '--'}` : (h.ey?.startTime || '--');
+                        const pLabel = h.p?.type === 'LESSON' ? `${h.p?.startTime || '--'}-${h.p?.endTime || '--'}` : (h.p?.startTime || '--');
+                        const jLabel = h.j?.type === 'LESSON' ? `${h.j?.startTime || '--'}-${h.j?.endTime || '--'}` : (h.j?.startTime || '--');
                         if (h.ey?.type === 'BREAK' || h.p?.type === 'BREAK' || h.j?.type === 'BREAK') {
-                            return `${eyT}\n${pT}\n${jT}`; 
+                            const breakLabel = (h.ey?.name || h.p?.name || h.j?.name || 'BREAK').toUpperCase();
+                            return `${breakLabel}\n${eyLabel}\n${pLabel}\n${jLabel}`;
                         }
                         const lNum = h.ey?.lesson || h.p?.lesson || h.j?.lesson;
-                        return `Lesson ${lNum}\n${eyT} (EY)\n${pT} (P)\n${jT} (J)`;
+                        return `Lesson ${lNum}\n${eyLabel}(EY)\n${pLabel}(P)\n${jLabel}(J)`;
                     }), "ACTIVITIES"]];
 
-                    const columnStyles = { 0: { fontStyle: 'bold', width: 60, fillColor: [248, 250, 252] } };
+                    const activityColIndex = headers.length + 1;
+                    const columnStyles = {
+                        0: { fontStyle: 'bold', width: 68, overflow: 'visible', fillColor: [248, 250, 252], lineWidth: 0.7, lineColor: [96, 116, 132] },
+                        [activityColIndex]: { overflow: 'linebreak', halign: 'center', width: 98, lineWidth: 0.7, lineColor: [96, 116, 132] }
+                    };
                     headers.forEach((h, hIdx) => {
                          const lessonNum = h.ey?.lesson || h.p?.lesson || h.j?.lesson;
                         if (lessonNum === 1 || lessonNum === 2) {
-                            columnStyles[hIdx + 1] = { width: 100 }; // 🆕 Wider for first two lessons in PDF
+                            columnStyles[hIdx + 1] = { width: 112, lineWidth: 0.7, lineColor: [96, 116, 132] };
+                        } else {
+                            columnStyles[hIdx + 1] = { width: 98, lineWidth: 0.7, lineColor: [96, 116, 132] };
                         }
                     });
 
-                    const body = ["MON", "TUE", "WED", "THU", "FRI"].map((dayName, dIdx) => {
+                    const bodyRows = ["MON", "TUE", "WED", "THU", "FRI"].map((dayName, dIdx) => {
                         const rowData = [dayName];
                         headers.forEach((h) => {
                             if (h.ey?.type === 'BREAK' || h.p?.type === 'BREAK' || h.j?.type === 'BREAK') { 
@@ -2476,84 +2616,135 @@ const eyBreaks = [
                             const entries = [];
                             chunk.forEach(tt => {
                                 const subject = tt.grid[lNum - 1]?.[dIdx];
-                                    if (subject) { // Abbreviate subject for PDF display
+                                if (subject) { // Abbreviate subject for PDF display
                                     const teacher = getTeacherForSubject(tt.grade, tt.stream, subject);
+                                    const teacherNameRaw = teacher?.name || 'Unassigned';
+                                    let teacherName = String(teacherNameRaw)
+                                        .replace(/^(?:Tr\.?|Teacher|Mr\.?|Mrs\.?|Ms\.? )\s*/i, '')
+                                        .replace(/^\.*(.*?)\.*$/, '$1')
+                                        .replace(/\s+/g, ' ')
+                                        .trim();
+                                    if (!teacherName) teacherName = 'Unassigned';
                                     const gLabel = (tt.grade || '').toUpperCase().startsWith('PP') ? tt.grade : ((tt.grade || '').match(/\d+/)?.[0] || tt.grade);
                                     const subAbbr = window.cbcUtils.getAbbreviatedSubjectName(subject);
                                     const isSpecial = subject.toUpperCase() === "PE" || subject.toUpperCase() === "PPI";
-                                    
                                     const line = `${gLabel}${tt.stream || ''}: ${subAbbr}`;
-                                    entries.push(isSpecial ? line : `${line}\n(${teacher?.name || 'Unassigned'})`);
+
+                                    entries.push(line);
+                                    if (!isSpecial) {
+                                        entries.push(teacherName);
+                                    }
                                 }
                             });
-                            rowData.push(entries.join("\n") || "-");
+                            rowData.push(entries.length ? entries.join("\n") : "-");
                         });
                         const shared = getSharedActivityOrder();
-                        rowData.push(dIdx === 4 ? "GENERAL CLEANING" : (shared[dIdx] || "SPORTS"));
+                        const activityText = String(dIdx === 4 ? "GENERAL CLEANING" : (shared[dIdx] || "SPORTS")).toUpperCase().trim();
+                        let activityCellText = activityText;
+                        if (activityText.includes('&')) {
+                            const [left, right] = activityText.split(/\s*&\s*/);
+                            const leftLine = left.trim();
+                            const rightLine = right.trim();
+                            activityCellText = `${leftLine}\n&\n${rightLine}`;
+                        } else {
+                            const words = activityText.split(/\s+/);
+                            if (words.length > 2) {
+                                const half = Math.ceil(words.length / 2);
+                                activityCellText = `${words.slice(0, half).join(' ')}\n${words.slice(half).join(' ')}`;
+                            }
+                        }
+                        rowData.push(activityCellText);
                         return rowData;
                     });
 
-                    doc.autoTable({
-                        startY: 70,
-                        head,
-                        body,
-                        theme: 'grid',
-                        styles: { fontSize: 7, cellPadding: 4, overflow: 'linebreak', valign: 'middle', lineWidth: 0.5, lineColor: [40, 40, 40] },
-                        headStyles: { fillColor: [51, 65, 85], textColor: 255, halign: 'center', fontSize: 6.5 },
-                        showHead: 'everyPage', // Repeat time/lesson headers on every page
-                        rowPageBreak: 'avoid', // 🆕 Ensures a single day (e.g. Friday) is never split across pages
-                        columnStyles: columnStyles,
-                        didParseCell: (data) => { 
-                            const isBreak = data.cell.text[0] && (data.cell.text[0].toUpperCase().includes("BREAK") || data.cell.text[0].toUpperCase().includes("LUNCH"));
-                            if(data.section === 'body' && isBreak) {
-                                data.cell.styles.fillColor = [241, 245, 249];
-                                data.cell.styles.textColor = [15, 23, 42]; // slate-900 (Darker)
+                    bodyRows.forEach((rowData, dayIdx) => {
+                        if (cIdx > 0 || dayIdx > 0) doc.addPage();
+                        drawDocHeader(`MASTER BLOCK TIMETABLE`);
+
+                        doc.autoTable({
+                            startY: 70,
+                            head,
+                            body: [rowData],
+                            theme: 'grid',
+                            styles: { fontSize: 7, cellPadding: 4, overflow: 'ellipsize', valign: 'middle', halign: 'left', lineWidth: 0.5, lineColor: [40, 40, 40] },
+                            headStyles: { fillColor: [51, 65, 85], textColor: 255, halign: 'center', fontSize: 6.5 },
+                            showHead: 'everyPage', // Repeat time/lesson headers on every page
+                            columnStyles: columnStyles,
+                            didParseCell: (data) => { 
+const isBreak = data.cell.text[0] && (data.cell.text[0].toUpperCase().includes("BREAK") || data.cell.text[0].toUpperCase().includes("LUNCH"));
+                            if (data.section === 'body' && data.column.index === activityColIndex) {
+                                data.cell.styles.fontStyle = 'bold';
+                                data.cell.styles.fontSize = 7;
                                 data.cell.styles.halign = 'center';
                                 data.cell.styles.valign = 'middle';
-                                data.cell.styles.fontStyle = 'bold';
-                                data.cell.styles.fontSize = 6.5;
-                                const rawTxt = String(data.cell.text[0] || "").toUpperCase();
-                                data.cell.text = [rawTxt.includes("LUNCH") ? "LUNCH" : "BREAK"];
-                            }
-                            // Apply custom text styling markers
-                            if(data.section === 'body' && data.column.index > 0 && !isBreak && data.cell.text[0] !== '-') {
-                                data.cell.styles.textColor = [255, 255, 255]; // Hidden default text
-                            }
-                        },
-                        didDrawCell: (data) => {
-                            const isBreak = data.cell.text[0] && (data.cell.text[0].toUpperCase().includes("BREAK") || data.cell.text[0].toUpperCase().includes("LUNCH"));
-                            if(data.section === 'body' && data.column.index > 0 && !isBreak && data.cell.text[0] !== '-') {
-                                const doc = data.doc;
-                                const cell = data.cell;
-                                // Robust padding detection to avoid NaN in text coordinates
-                                const p = cell.styles.cellPadding;
-                                const pTop = (typeof p === 'number' ? p : (p.top || 0));
-                                const pLeft = (typeof p === 'number' ? p : (p.left || 0));
-                                
-                                let y = cell.y + pTop + 6;
-                                const x = cell.x + pLeft;
+                                data.cell.styles.overflow = 'linebreak';
+                                    return;
+                                }
 
-                                let inTeacherName = false; // 🆕 Track if currently drawing wrapped teacher name
+                                if (data.section === 'body' && isBreak) {
+                                    data.cell.styles.fillColor = [241, 245, 249];
+                                    data.cell.styles.textColor = [15, 23, 42]; // slate-900 (Darker)
+                                    data.cell.styles.halign = 'center';
+                                    data.cell.styles.valign = 'middle';
+                                    data.cell.styles.fontStyle = 'bold';
+                                    data.cell.styles.fontSize = 6.5;
+                                    const rawTxt = String(data.cell.text[0] || "").toUpperCase();
+                                    data.cell.text = [rawTxt.includes("LUNCH") ? "LUNCH" : "BREAK"];
+                                    return;
+                                }
 
-                                data.cell.text.forEach(line => {
-                                    const trimmed = line.trim();
-                                    if (trimmed.startsWith('(')) inTeacherName = true;
-                                    
-                                    const isTeacher = inTeacherName;
-                                    doc.setFont("helvetica", isTeacher ? "normal" : "bold");
-                                    doc.setFontSize(isTeacher ? 5.5 : 7); // Reduced font for block grid
-                                    doc.setTextColor(isTeacher ? 100 : 15, isTeacher ? 116 : 23, isTeacher ? 139 : 42);
-                                    // 🆕 Robust Wrapping: Handle long lines by splitting and incrementing Y accordingly
-                                    const wrappedLines = doc.splitTextToSize(line, cell.width - 6);
-                                    wrappedLines.forEach(l => {
-                                        doc.text(l, x, y);
-                                        y += (isTeacher ? 6.5 : 7.5);
+                                if (data.section === 'body' && data.column.index > 0 && !isBreak) {
+                                    let lines = [];
+                                    if (Array.isArray(data.cell.text)) {
+                                        lines = data.cell.text;
+                                    } else if (typeof data.cell.text === 'string') {
+                                        lines = data.cell.text.split(/\r?\n/);
+                                    }
+
+                                    if (lines.length > 1) {
+                                        data.cell._originalTextLines = lines;
+                                        data.cell.styles.textColor = [255, 255, 255];
+                                    }
+                                }
+                            },
+                            didDrawCell: (data) => {
+                                const originalLines = data.cell._originalTextLines;
+                                const isBreak = data.cell.text[0] && (data.cell.text[0].toUpperCase().includes("BREAK") || data.cell.text[0].toUpperCase().includes("LUNCH"));
+                                if (data.section === 'body' && data.column.index > 0 && !isBreak && Array.isArray(originalLines) && originalLines.length > 1) {
+                                    const docRef = data.doc;
+                                    const cell = data.cell;
+                                    const p = cell.styles.cellPadding;
+                                    const pTop = typeof p === 'number' ? p : (p.top || 0);
+                                    const pLeft = typeof p === 'number' ? p : (p.left || 0);
+                                    const pRight = typeof p === 'number' ? p : (p.right || 0);
+                                    const x = cell.x + pLeft;
+                                    let y = cell.y + pTop + 7;
+                                    const fontSize = cell.styles.fontSize || 7;
+
+                                    originalLines.forEach((line, idx) => {
+                                        const isTeacherLine = idx % 2 === 1;
+                                        let textToDraw = String(line || '');
+
+                                        if (isTeacherLine) {
+                                            const maxTextWidth = cell.width - pLeft - pRight;
+                                            docRef.setFont('helvetica', 'normal');
+                                            docRef.setFontSize(fontSize);
+                                            while (textToDraw.split(/\s+/).length > 1 && docRef.getTextWidth(textToDraw) > maxTextWidth) {
+                                                const pieces = textToDraw.split(/\s+/);
+                                                pieces.pop();
+                                                textToDraw = pieces.join(' ');
+                                            }
+                                        }
+
+                                        docRef.setFont('helvetica', isTeacherLine ? 'normal' : 'bold');
+                                        docRef.setFontSize(fontSize);
+                                        docRef.setTextColor(isTeacherLine ? 80 : 15, isTeacherLine ? 80 : 23, isTeacherLine ? 80 : 42);
+                                        docRef.text(textToDraw, x, y, { align: 'left', maxWidth: cell.width - pLeft - pRight });
+                                        y += 7.5;
                                     });
-
-                                    if (trimmed.endsWith(')')) inTeacherName = false;
-                                });
+                                }
                             }
-                        }
+                        });
                     });
                 });
 
@@ -2622,6 +2813,8 @@ const eyBreaks = [
                         }
                     }
                 }
+
+                addPdfFooter(doc, pageWidth);
             } else if (isTeacher) { // Individual Teacher Timetable PDF Generation
                 drawDocHeader(`${currentTimetableData.grade} PERSONAL SCHEDULE`);
                 const tSettings = currentTimetableData.settings || settings;
@@ -2746,6 +2939,8 @@ const eyBreaks = [
                         margin: { left: 85 } // Align with the start of the schedule columns
                     });
                 }
+
+                addPdfFooter(doc, pageWidth);
             } else { // Individual Class Timetable PDF Generation
                 // Individual Class or Teacher View
                 // 🆕 Use the 'title' variable already correctly constructed at the top of the function
@@ -2770,13 +2965,14 @@ const eyBreaks = [
                 if (!isSenior) colDefs.push({ type: 'A', label: "ACTIVITIES" });
 
                 const head = [["DAY / TIME", ...colDefs.map(c => c.label)]];
+                const startPageCount = doc.internal.getNumberOfPages();
                 const body = ["MON", "TUE", "WED", "THU", "FRI"].map((dayName, dIdx) => {
                     const row = [dayName];
                     colDefs.forEach(col => {
                         if (col.type === 'B') row.push(col.breakName || "BREAK"); // 🆕 Use actual breakName
                         else if (col.type === 'A') {
                             const act = currentTimetableData.extraActivities || getSharedActivityOrder();
-                            row.push(dIdx === 4 ? "GENERAL CLEANING" : (act[dIdx] || "SPORTS"));
+                            row.push(getActivityCellLabel(dIdx, act));
                         } else {
                             const sub = currentTimetableData.grid[col.lNum - 1]?.[dIdx];
                             if (!sub) row.push("-");
@@ -2796,92 +2992,89 @@ const eyBreaks = [
                     body,
                     theme: 'grid',
                     styles: {
-                        fontSize: 7, 
-                        cellPadding: 6, 
-                        minCellHeight: 65, 
-                        halign: 'center', 
-                        valign: 'top', 
+                        fontSize: 9,
+                        cellPadding: 6,
+                        minCellHeight: 72,
+                        halign: 'center',
+                        valign: 'top',
                         overflow: 'linebreak',
                         lineWidth: 0.5,
                         lineColor: [40, 40, 40]
                     },
-                    headStyles: { fillColor: [51, 65, 85], halign: 'center', fontSize: 8, minCellHeight: 25 },
+                    headStyles: { fillColor: [51, 65, 85], halign: 'center', fontSize: 10, minCellHeight: 24 },
                     showHead: 'everyPage',
                     rowPageBreak: 'auto',
-                    columnStyles: { 0: { fontStyle: 'bold', halign: 'left', width: 85, fillColor: [248, 250, 252] } },
-                    didParseCell: (data) => { 
-                        const isBreak = data.cell.text[0] && (data.cell.text[0].toUpperCase().includes("BREAK") || data.cell.text[0].toUpperCase().includes("LUNCH"));
-                        if(data.section === 'body' && isBreak) { 
-                            data.cell.styles.fillColor = [241, 245, 249]; 
-                            data.cell.styles.textColor = [148, 163, 184]; // gray-400
+                    columnStyles: { 0: { fontStyle: 'bold', halign: 'left', width: 92, fillColor: [248, 250, 252] } },
+                    didParseCell: (data) => {
+                        const cellText = Array.isArray(data.cell.text) ? data.cell.text.join(' ').trim() : String(data.cell.text || '');
+                        const text = cellText.trim();
+                        const upperText = text.toUpperCase();
+                        const isBreak = upperText.includes('BREAK') || upperText.includes('LUNCH');
+                        const isActivity = data.section === 'body' && data.column.index > 0 && /CLEANING|SPORTS|GUIDANCE|CLUBS|CAREER|ACTIVITIES/.test(upperText);
+
+                        if (data.section === 'body' && isBreak) {
+                            data.cell.styles.fillColor = [241, 245, 249];
+                            data.cell.styles.textColor = [148, 163, 184];
                             data.cell.styles.halign = 'center';
                             data.cell.styles.valign = 'middle';
-                            const rawTxt = String(data.cell.text[0] || "").toUpperCase();
-                            data.cell.text = [rawTxt.includes("LUNCH") ? "LUNCH" : "BREAK"];
-                        } 
-                        if(data.section === 'body' && data.column.index > 0 && data.cell.text.length > 1 && !isBreak && !data.cell.text.join(' ').toUpperCase().match(/CLEANING|SPORTS|GUIDANCE|CLUBS|CAREER|ACTIVITIES/)) {
-                            data.cell.styles.textColor = [255, 255, 255]; // Invisible for manual drawing
+                            data.cell.text = [upperText.includes('LUNCH') ? 'LUNCH' : 'BREAK'];
+                        }
+
+                        if (data.section === 'body' && isActivity) {
+                            data.cell.styles.fillColor = [241, 245, 249];
+                            data.cell.styles.textColor = [15, 23, 42];
+                            data.cell.styles.halign = 'left';
+                            data.cell.styles.valign = 'top';
+                            data.cell.styles.fontStyle = 'bold';
+                            data.cell.text = [text];
+                        }
+
+                        if (data.section === 'body' && data.column.index > 0 && !isBreak && !isActivity && data.cell.text.length > 1) {
+                            data.cell.styles.textColor = [255, 255, 255];
                         }
                     },
                     didDrawCell: (data) => {
-                        const isBreak = data.cell.text[0] && (data.cell.text[0].toUpperCase().includes("BREAK") || data.cell.text[0].toUpperCase().includes("LUNCH"));
-                        if(data.section === 'body' && data.column.index > 0 && data.cell.text.length > 1 && !isBreak && !data.cell.text.join(' ').toUpperCase().match(/CLEANING|SPORTS|GUIDANCE|CLUBS|CAREER|ACTIVITIES/)) {
+                        const cellText = Array.isArray(data.cell.text) ? data.cell.text.join(' ').trim() : String(data.cell.text || '');
+                        const text = cellText.trim();
+                        const upperText = text.toUpperCase();
+                        const isBreak = upperText.includes('BREAK') || upperText.includes('LUNCH');
+                        const isActivity = data.section === 'body' && data.column.index > 0 && /CLEANING|SPORTS|GUIDANCE|CLUBS|CAREER|ACTIVITIES/.test(upperText);
+
+                        if (data.section === 'body' && data.column.index > 0 && data.cell.text.length > 1 && !isBreak && !isActivity) {
                             const doc = data.doc;
                             const cell = data.cell;
                             const p = cell.styles.cellPadding;
                             const pTop = (typeof p === 'number' ? p : (p.top || 0));
                             const centerX = cell.x + cell.width / 2;
-                            let y = cell.y + pTop + 12; 
-
+                            let y = cell.y + pTop + 12;
                             let inTeacherName = false;
+
                             data.cell.text.forEach(line => {
-                                const trimmed = line.trim();
+                                const trimmed = String(line).trim();
                                 if (trimmed.startsWith('(')) inTeacherName = true;
-                                
                                 const isTeacher = inTeacherName;
-                                doc.setFont("helvetica", isTeacher ? "normal" : "bold");
-                                doc.setFontSize(isTeacher ? 5.5 : 7); 
+                                doc.setFont('helvetica', isTeacher ? 'normal' : 'bold');
+                                doc.setFontSize(isTeacher ? 7.5 : 9);
                                 doc.setTextColor(isTeacher ? 37 : 15, isTeacher ? 99 : 23, isTeacher ? 235 : 42);
-                                
-                                // Robust Wrapping: Handle long lines by splitting and incrementing Y accordingly
-                                const wrappedLines = doc.splitTextToSize(line, cell.width - 6);
+                                const wrappedLines = doc.splitTextToSize(line, cell.width - 10);
                                 wrappedLines.forEach(l => {
                                     doc.text(l, centerX, y, { align: 'center' });
-                                    y += (isTeacher ? 6.5 : 8);
+                                    y += isTeacher ? 8.2 : 10.0;
                                 });
-
                                 if (trimmed.endsWith(')')) inTeacherName = false;
-                                if (!inTeacherName) y += 2; // Extra spacer after subject
+                                if (!isTeacher) y += 2;
                             });
                         }
                     }
                 });
 
-                // 🆕 Add Class Teacher at the bottom of the individual class timetable
-                const classTeacherName = getClassTeacherForGrade(currentTimetableData.grade, currentTimetableData.stream);
-                if (classTeacherName) {
-                    const finalY = doc.lastAutoTable.finalY + 25;
-                    doc.setFontSize(10);
-                    doc.setFont("helvetica", "bold");
-                    doc.setTextColor(15, 23, 42); // slate-900
-                    doc.text(`CLASS TEACHER: ${classTeacherName.toUpperCase()}`, 40, finalY); 
-                }
-            }
+                const classTeacherText = String(classTeacher || 'UNASSIGNED').toUpperCase();
+                doc.setFont('helvetica', 'bold');
+                doc.setFontSize(9);
+                doc.setTextColor(15, 23, 42);
+                doc.text(`CLASSTEACHER: ${classTeacherText}`, 40, doc.lastAutoTable.finalY + 14, { align: 'left' });
 
-            // 🆕 Add Footer to every page (Printed date/time + Branding)
-            const totalPagesCount = doc.internal.getNumberOfPages();
-            for (let i = 1; i <= totalPagesCount; i++) {
-                doc.setPage(i);
-                const pageHeightForFooter = doc.internal.pageSize.getHeight();
-                doc.setFontSize(8);
-                doc.setTextColor(120, 120, 120); // Professional subtle gray
-
-                const printedStr = `Printed: ${new Date().toLocaleString()}`;
-                const brandStr = "CompetenceHub Timetables";
-
-                doc.text(printedStr, 40, pageHeightForFooter - 20);
-                doc.text(brandStr, pageWidth / 2, pageHeightForFooter - 20, { align: "center" });
-                doc.text(`Page ${i} of ${totalPagesCount}`, pageWidth - 40, pageHeightForFooter - 20, { align: "right" });
+                addPdfFooter(doc, pageWidth);
             }
 
             doc.save(filename);
@@ -3349,6 +3542,208 @@ const eyBreaks = [
         });
     }
 
+    function buildTeacherDisplayColumns() {
+        const getTimeline = (start, dur, count, bks) => {
+            const list = [];
+            let cur = start;
+            for (let l = 1; l <= count; l++) {
+                const end = addMinutes(cur, dur);
+                list.push({ type: 'LESSON', lesson: l, start: cur, end: end });
+                cur = end;
+                bks.filter(b => b.afterLesson === l && b.name !== 'WRAP UP').forEach(b => {
+                    list.push({ type: 'BREAK', name: b.name, start: cur, end: addMinutes(cur, b.duration) });
+                    cur = addMinutes(cur, b.duration);
+                });
+            }
+            return list;
+        };
+
+        const startTime = settings.startTime || "08:20";
+        const pTime = getTimeline(startTime, 35, 8, getDefaultBreaks('primary'));
+        const jTime = getTimeline(startTime, 40, settings.lessonsPerDay || 8, getDefaultBreaks('junior'));
+
+        const columns = [];
+        const maxLen = Math.max(pTime.length, jTime.length);
+        for (let i = 0; i < maxLen; i++) {
+            const p = pTime[i];
+            const j = jTime[i];
+            columns.push({
+                type: p?.type || j?.type,
+                name: p?.name || j?.name,
+                index: (p?.lesson || j?.lesson) - 1,
+                pStart: p?.start || '--',
+                pEnd: p?.end || '--',
+                jStart: j?.start || '--',
+                jEnd: j?.end || '--',
+                startTime: p?.start === j?.start ? p?.start : `${p?.start || '--'} / ${j?.start || '--'}`,
+                endTime: p?.end === j?.end ? p?.end : `${p?.end || '--'} / ${j?.end || '--'}`
+            });
+        }
+        columns.push({ type: 'ACTIVITY', name: 'ACTIVITIES', pStart: '15:30', jStart: '15:30', startTime: '15:30' });
+        return columns;
+    }
+
+    function buildTeacherScheduleForPdf(teacherId, teacherName, term, academicYear) {
+        const maxPossibleLessons = 12;
+        const personalGrid = Array.from({ length: maxPossibleLessons }, () => Array(5).fill(""));
+
+        allSavedTimetables.forEach(tt => {
+            const ttYear = tt.academicYear || tt.year;
+            if (ttYear && academicYear && Number(ttYear) !== Number(academicYear)) return;
+            if (tt.term && term && tt.term !== term) return;
+            if (!tt.grid || !Array.isArray(tt.grid)) return;
+
+            const displayGrade = tt.grade;
+            const displayStream = tt.stream ? tt.stream.trim() : "";
+            const gradeShort = (displayGrade.toUpperCase().startsWith('PP') || displayGrade.toUpperCase() === 'PG') ? displayGrade : (displayGrade.match(/\d+/)?.[0] || displayGrade);
+            const classLabel = `${gradeShort}${displayStream}`;
+
+            tt.grid.forEach((row, lIdx) => {
+                row.forEach((subject, dIdx) => {
+                    if (!subject) return;
+                    const teacherAtSlot = getTeacherForSubject(tt.grade, tt.stream, subject);
+                    if (teacherAtSlot && teacherAtSlot.id === teacherId && personalGrid[lIdx]) {
+                        personalGrid[lIdx][dIdx] = { subject, classLabel };
+                    }
+                });
+            });
+        });
+
+        return {
+            id: teacherId,
+            name: teacherName,
+            grid: personalGrid,
+            term,
+            academicYear: Number(academicYear),
+            settings: JSON.parse(JSON.stringify(settings)),
+            columns: buildTeacherDisplayColumns()
+        };
+    }
+
+    function renderTeacherSchedulePdfPage(doc, pageWidth, schedule, term, academicYear) {
+        const schoolName = (schoolInfo?.name || 'SCHOOL NAME').toUpperCase();
+        doc.setFontSize(18);
+        doc.setFont('helvetica', 'bold');
+        doc.text(schoolName, pageWidth / 2, 40, { align: 'center' });
+        doc.setFontSize(11);
+        doc.setFont('helvetica', 'normal');
+        doc.text(`${schedule.name.toUpperCase()} PERSONAL SCHEDULE - ${term} ${academicYear}`, pageWidth / 2, 58, { align: 'center' });
+
+        const head = [['DAY / TIME', ...schedule.columns.map(col => {
+            if (col.type === 'ACTIVITY') return col.name.toUpperCase();
+            if (col.type === 'BREAK') return `${col.pStart} / ${col.jStart}`;
+            return `Lesson ${col.index + 1}\n${col.pStart}-${col.pEnd}\n${col.jStart}-${col.jEnd}`;
+        })]];
+
+        const body = ['MON', 'TUE', 'WED', 'THU', 'FRI'].map((dayName, dIdx) => {
+            const row = [dayName];
+            schedule.columns.forEach(col => {
+                if (col.type === 'ACTIVITY') {
+                    row.push('ACTIVITIES');
+                } else if (col.type === 'BREAK') {
+                    row.push(col.name || 'BREAK');
+                } else if (col.type === 'LESSON') {
+                    const content = schedule.grid[col.index]?.[dIdx];
+                    if (content && content.subject) {
+                        row.push(`${window.cbcUtils.getAbbreviatedSubjectName(content.subject)}\n${content.classLabel}`);
+                    } else {
+                        row.push('-');
+                    }
+                }
+            });
+            return row;
+        });
+
+        doc.autoTable({
+            startY: 80,
+            head,
+            body,
+            theme: 'grid',
+            styles: {
+                fontSize: 7.5,
+                cellPadding: 5,
+                halign: 'center',
+                valign: 'middle',
+                overflow: 'linebreak',
+                lineWidth: 0.5,
+                lineColor: [40, 40, 40]
+            },
+            headStyles: { fillColor: [51, 65, 85], halign: 'center', fontSize: 8.5 },
+            showHead: 'everyPage',
+            rowPageBreak: 'avoid',
+            columnStyles: { 0: { fontStyle: 'bold', halign: 'left', width: 85, fillColor: [248, 250, 252] } },
+            didParseCell: (data) => {
+                const isBreak = data.cell.text[0] && (data.cell.text[0].toUpperCase().includes('BREAK') || data.cell.text[0].toUpperCase().includes('LUNCH'));
+                if (data.section === 'body' && (isBreak || data.cell.text[0] === 'ACTIVITIES')) {
+                    data.cell.styles.fillColor = [241, 245, 249];
+                    if (isBreak) {
+                        data.cell.styles.textColor = [15, 23, 42];
+                        data.cell.styles.halign = 'center';
+                        data.cell.styles.valign = 'middle';
+                        const rawTxt = String(data.cell.text[0] || '').toUpperCase();
+                        data.cell.text = [rawTxt.includes('LUNCH') ? 'LUNCH' : 'BREAK'];
+                    }
+                }
+                if (data.section === 'body' && data.column.index > 0 && data.cell.text.length > 1 && !isBreak && data.cell.text[0] !== 'ACTIVITIES') {
+                    data.cell.styles.textColor = [255, 255, 255];
+                }
+            },
+            didDrawCell: (data) => {
+                const isBreak = data.cell.text[0] && (data.cell.text[0].toUpperCase().includes('BREAK') || data.cell.text[0].toUpperCase().includes('LUNCH'));
+                if (data.section === 'body' && data.column.index > 0 && data.cell.text.length > 1 && !isBreak && data.cell.text[0] !== 'ACTIVITIES') {
+                    const docRef = data.doc;
+                    const cell = data.cell;
+                    const p = cell.styles.cellPadding;
+                    const pTop = (typeof p === 'number' ? p : (p.top || 0));
+                    const pLeft = (typeof p === 'number' ? p : (p.left || 0));
+                    const pRight = (typeof p === 'number' ? p : (p.right || 0));
+                    const centerX = cell.x + pLeft + (cell.width - pLeft - pRight) / 2;
+                    let y = cell.y + pTop + 10;
+
+                    data.cell.text.forEach((line, idx) => {
+                        const isSecondary = idx > 0;
+                        docRef.setFont('helvetica', isSecondary ? 'normal' : 'bold');
+                        docRef.setFontSize(isSecondary ? 6.5 : 8);
+                        docRef.setTextColor(isSecondary ? 37 : 15, isSecondary ? 99 : 23, isSecondary ? 235 : 42);
+                        const wrappedLines = docRef.splitTextToSize(line, cell.width - 6);
+                        wrappedLines.forEach(l => {
+                            docRef.text(l, centerX, y, { align: 'center' });
+                            y += isSecondary ? 7.5 : 9;
+                        });
+                        if (!isSecondary) y += 2;
+                    });
+                }
+            }
+        });
+
+        const workloadCounts = {};
+        schedule.grid.forEach(row => {
+            row.forEach(slot => {
+                if (slot && slot.subject) {
+                    const key = `${slot.subject} (${slot.classLabel})`;
+                    workloadCounts[key] = (workloadCounts[key] || 0) + 1;
+                }
+            });
+        });
+
+        const workloadRows = Object.entries(workloadCounts).map(([label, count]) => [label, `${count} lessons`]);
+        const totalLessons = Object.values(workloadCounts).reduce((a, b) => a + b, 0);
+
+        if (workloadRows.length > 0) {
+            workloadRows.push([{ content: 'TOTAL WEEKLY WORKLOAD', styles: { fontStyle: 'bold', fillColor: [241, 245, 249] } }, { content: `${totalLessons} lessons`, styles: { fontStyle: 'bold', fillColor: [241, 245, 249] } }]);
+            doc.autoTable({
+                startY: doc.lastAutoTable.finalY + 20,
+                head: [['Subject (Grade)', 'Lessons per Week']],
+                body: workloadRows,
+                theme: 'grid',
+                styles: { fontSize: 8, cellPadding: 4, lineWidth: 0.5, lineColor: [40, 40, 40] },
+                headStyles: { fillColor: [71, 85, 105], textColor: 255 },
+                tableWidth: 250,
+                margin: { left: 85 }
+            });
+        }
+    }
+
     /**
      * 🆕 Aggregates and renders a schedule for a single teacher across all classes
      */
@@ -3411,46 +3806,7 @@ const eyBreaks = [
         });
 
         // 2. Map Columns (Time slots and breaks) with Dual Time Logic (Primary vs Junior/Senior)
-        const getTimeline = (start, dur, count, bks) => {
-            const list = [];
-            let cur = start;
-            for (let l = 1; l <= count; l++) {
-                const end = addMinutes(cur, dur);
-                list.push({ type: 'LESSON', lesson: l, start: cur, end: end });
-                cur = end;
-                bks.filter(b => b.afterLesson === l && b.name !== 'WRAP UP').forEach(b => {
-                    list.push({ type: 'BREAK', name: b.name, start: cur, end: addMinutes(cur, b.duration) });
-                    cur = addMinutes(cur, b.duration);
-                });
-            }
-            return list;
-        };
-
-        const startTime = settings.startTime || "08:20";
-        const pTime = getTimeline(startTime, 35, 8, [
-            { name: "SHORT BREAK", afterLesson: 2, duration: 20 },
-            { name: "LONG BREAK", afterLesson: 4, duration: 30 },
-            { name: "LUNCH", afterLesson: 6, duration: 80 }
-        ]);
-        const jTime = getTimeline(startTime, 40, settings.lessonsPerDay, [
-            { name: "SHORT BREAK", afterLesson: 2, duration: 10 },
-            { name: "LONG BREAK", afterLesson: 4, duration: 20 },
-            { name: "LUNCH", afterLesson: 6, duration: 70 }
-        ]);
-
-        const columns = [];
-        const maxLen = Math.max(pTime.length, jTime.length);
-        for(let i=0; i<maxLen; i++) {
-            const p = pTime[i]; const j = jTime[i];
-            columns.push({
-                type: p?.type || j?.type, name: p?.name || j?.name, index: (p?.lesson || j?.lesson) - 1,
-                pStart: p?.start || '--', pEnd: p?.end || '--',
-                jStart: j?.start || '--', jEnd: j?.end || '--',
-                startTime: p?.start === j?.start ? p?.start : `${p?.start || '--'} / ${j?.start || '--'}`,
-                endTime: p?.end === j?.end ? p?.end : `${p?.end || '--'} / ${j?.end || '--'}`
-            });
-        }
-        columns.push({ type: 'ACTIVITY', name: 'ACTIVITIES', pStart: '15:30', jStart: '15:30', startTime: '15:30' });
+        const columns = buildTeacherDisplayColumns();
 
         // Update metadata for PDF download
         currentTimetableData = { 
@@ -3470,8 +3826,9 @@ const eyBreaks = [
                 <div style="text-align: center; margin-bottom: 5px; border-bottom: 1px solid #e2e8f0; padding-bottom: 2px;">
                     <h2 style="margin: 0; text-transform: uppercase; font-weight: 900; color: #0f172a; font-size: 1.3rem;">${(schoolInfo?.name || 'School Name').toUpperCase()}</h2>
                 </div>
-                <div class="no-print" style="display:flex; justify-content:flex-end; gap:10px; margin-bottom: 10px;">
+                <div class="no-print" style="display:flex; justify-content:flex-end; gap:10px; margin-bottom: 10px; flex-wrap:wrap;">
                     <button class="btn secondary-btn" id="downloadTimetablePDFBtn"><i class="fas fa-file-pdf"></i> Download PDF</button>
+                    <button class="btn secondary-btn" id="downloadAllTeacherTimetablesBtn"><i class="fas fa-users"></i> Download All Teacher Schedules</button>
                 </div>
                 <div class="tt-grid-container" style="overflow-x:auto;">
                     <table class="marks-table" style="width:100%; border-collapse: collapse; border: 1px solid #cbd5e1; table-layout: auto;">
@@ -3515,6 +3872,7 @@ const eyBreaks = [
         html += `</tbody></table></div></div>`;
 
         output.innerHTML = html;
+        updateTeacherBulkDownloadButtonVisibility();
     }
 
     function getBlockTimeHeaders(startTime, duration, lessonCount) {
@@ -3635,10 +3993,13 @@ const eyBreaks = [
             { name: "SHORT BREAK", afterLesson: 2, duration: 30 },
             { name: "LONG BREAK", afterLesson: 4, duration: 30 }
         ];
+        const primaryBlockBreaks = getDefaultBreaks('primary');
+        const juniorBlockBreaks = getDefaultBreaks('junior');
+        const seniorBlockBreaks = getDefaultBreaks('senior');
         const hasSeniorClasses = schoolTimetables.some(tt => window.cbcUtils?.isSeniorGrade(tt.grade));
         const eyCols = getBlockCols(30, 5, eyBreaks);
-        const primaryCols = getBlockCols(35, 8);
-        const juniorCols = getBlockCols(40, (schoolType === 'primary_junior' || !hasSeniorClasses) ? 8 : 9);
+        const primaryCols = getBlockCols(35, 8, primaryBlockBreaks);
+        const juniorCols = getBlockCols(40, (schoolType === 'primary_junior' || !hasSeniorClasses) ? 8 : 9, (schoolType === 'primary_junior' || !hasSeniorClasses) ? juniorBlockBreaks : seniorBlockBreaks);
         const totalCols = Math.max(eyCols.length, primaryCols.length, juniorCols.length);
 
         const allColumnHeaders = Array.from({ length: totalCols }, (_, idx) => ({
@@ -3679,11 +4040,13 @@ const eyBreaks = [
                             row.forEach((subject, dayIdx) => {
                                 if (!subject) return;
                                 const teacherInfo = getTeacherForSubject(tt.grade, tt.stream, subject);
+                                const rawTeacherName = teacherInfo?.name || 'Unassigned';
+                                const teacherName = String(rawTeacherName).trim().replace(/^\((.*)\)$/, '$1');
                                 if (lessonCells[dayIdx] && lessonCells[dayIdx][colIdx]) {
                                     lessonCells[dayIdx][colIdx].push({
                                         classLabel,
                                         subject,
-                                        teacherName: teacherInfo?.name || 'Unassigned'
+                                        teacherName
                                     });
                                 }
                             });
@@ -3697,7 +4060,8 @@ const eyBreaks = [
                     const isBreak = (h.ey?.type === 'BREAK' || h.primary?.type === 'BREAK' || h.junior?.type === 'BREAK');
 
                     if (isBreak) {
-                        return `<td style="vertical-align:middle; text-align:center; padding:10px; border:1px solid #e2e8f0; background:#f8fafc; color:#94a3b8; font-weight:800; font-size:0.65rem; text-transform:uppercase; letter-spacing:1px; min-width:80px;">BREAK</td>`;
+                        const breakName = (h.ey?.name || h.primary?.name || h.junior?.name || 'BREAK').toUpperCase();
+                        return `<td style="vertical-align:middle; text-align:center; padding:10px; border:1px solid #e2e8f0; background:#f8fafc; color:#94a3b8; font-weight:800; font-size:0.65rem; text-transform:uppercase; letter-spacing:1px; min-width:80px;">${breakName}</td>`;
                     }
 
                     const lNum = h.ey?.lesson || h.primary?.lesson || h.junior?.lesson;
@@ -3715,15 +4079,8 @@ const eyBreaks = [
                     </td>`;
                 }).join('');
 
-                const isFriday = dayIdx === 4;
-                const activityName = isFriday ? "GENERAL CLEANING" : (extraActivities[dayIdx] || "GAMES & SPORTS");
-                cellsHtml += `<td style="vertical-align:top; padding:10px; border:1px solid #e2e8f0; min-width:180px; background:#f1f5f9;">
-                    <div style="border:1px solid #e2e8f0; border-radius:10px; padding:8px; margin-bottom:8px; background:#ffffff;">
-                        <div style="font-size:0.72rem; font-weight:700; color:#0f172a;">SCHOOL ACTIVITIES</div>
-                        <div style="font-size:0.68rem; color:#475569; margin-top:4px; font-weight:700;">${activityName}</div>
-                        <div style="font-size:0.65rem; color:#64748b; margin-top:2px; line-height:1.3;">School-wide</div>
-                    </div>
-                </td>`;
+                const activityName = getActivityCellLabel(dayIdx, extraActivities);
+                cellsHtml += renderActivityCellHtml(activityName);
 
                 return `<tr><td style="padding:10px; border:1px solid #e2e8f0; background:#f8fafc; font-weight:800; color:#1e293b; text-transform:uppercase;">${dayName}</td>${cellsHtml}</tr>`;
             }).join('');
@@ -3784,12 +4141,14 @@ const eyBreaks = [
         });
 
         output.innerHTML = overallHtml;
+        updateTeacherBulkDownloadButtonVisibility();
 
         currentTimetableData = {
             viewMode: 'block',
             term,
             academicYear: Number(academicYear),
-            timetables: schoolTimetables
+            timetables: schoolTimetables,
+            settings: JSON.parse(JSON.stringify(settings))
         };
     }
 
@@ -4190,12 +4549,8 @@ const eyBreaks = [
                             </td>`;
                     }
                 } else if (col.type === 'EXTRA_ACTIVITY') {
-                    const isFriday = dayIdx === 4;
-                    const act = isFriday ? "GENERAL CLEANING" : (extraActivities[dayIdx] || "GAMES & SPORTS");
-                    html += `
-                        <td style="padding:4px 2px; text-align:center; border: 1px solid #cbd5e1; background: #f1f5f9; min-width: 90px; vertical-align: middle;">
-                            <div style="font-weight:900; font-size:0.65rem; color:#334155; letter-spacing:0.5px; text-transform:uppercase;">${act}</div>
-                        </td>`;
+                    const act = getActivityCellLabel(dayIdx, extraActivities);
+                    html += renderActivityCellHtml(act);
                 } else if (col.type === 'LESSON') {
                     const subject = grid[col.index][dayIdx];
                     const teacherInfo = getTeacherForSubject(grade, stream, subject);

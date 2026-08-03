@@ -340,12 +340,16 @@ window.cbcUtils = {
     getAbbreviatedSubjectName: (subject) => {
         const abbreviations = {
             "Physics": "PHY",
+            "Literacy": "LIT",
             "ICT": "ICT",
             "Chemistry": "CHEM",
             "Biology": "BIO",
             "Science and Technology": "SCI/T", // Added for junior school
             "History": "HIST",
             "Geography": "GEO",
+            "Psychomotor":"PSYC",
+            "Numberwork":"NUMB",
+            "Language":"LANG",
             "English": "ENG",
             "Kiswahili": "KISW",
             "Social Studies": "S/S",
@@ -359,7 +363,7 @@ window.cbcUtils = {
             "Performing Arts C/A(p)": "C/A(p)",
             "Pre-Technical Studies": "P/TECH",
             "Integrated Science": "I/SCI",
-            "Environmental Activities": "E/ACT",
+            "Environmental Activities": "ENV",
             "Health Education": "H/EDU",
             "Physical Health Education": "PHE",
             "Business Studies": "BS",

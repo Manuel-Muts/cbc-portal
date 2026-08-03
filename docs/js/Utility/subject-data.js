@@ -252,6 +252,7 @@ window.SUBJECT_DATA.getDefaultFrequency = function(sub, grade) {
   const isSeniorGrade = typeof window.cbcUtils?.isSeniorGrade === 'function'
     ? window.cbcUtils.isSeniorGrade(grade)
     : gradeNum >= 10;
+  const isGradesOneToThree = gradeNum >= 1 && gradeNum <= 3;
 
   if (name === "PPI") {
     if (!grade || grade === "all") return 1;
@@ -260,6 +261,11 @@ window.SUBJECT_DATA.getDefaultFrequency = function(sub, grade) {
     if (num >= 7) return 0; // Grades 7, 8, 9, 10, 11, 12 default to 0
     return 1; // Primary (1-6)
   }
+
+  if (isGradesOneToThree && name === "ILA") return 0;
+  if (isGradesOneToThree && name === "Environmental Activities") return 5;
+  if (isGradesOneToThree && name === "Christian Religious Education") return 3;
+  if (isGradesOneToThree && name === "Creative Arts and Sports") return 5;
 
   if (isSeniorGrade) {
     const seniorSpecificFrequencies = {
@@ -295,6 +301,7 @@ window.SUBJECT_DATA.getDefaultFrequency = function(sub, grade) {
   // Components typically have 1-2 lessons per week
   if (name === "Creative Arts and Sports") return 0;
   if (name === "Sports C/A(s)") return 2;
+
   if (name === "Visual Arts C/A(v)") return 1;
   if (name === "Performing Arts C/A(p)") return 2;
   if (name.includes("C/A(")) return 1;

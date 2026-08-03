@@ -116,8 +116,8 @@
 }
 
 .tt-sidebar .primary-btn {
-    background: #334155; /* Darker blue for primary action */
-    color: white;
+    background: var(--brand-primary, #334155); /* Darker blue for primary action */
+    color: var(--brand-on-primary, #ffffff);
     border: none;
 }
 
@@ -715,3 +715,159 @@
         min-width: 800px; /* Maintain scrollable width */
     }
 }
+
+/* Timetable Downloads Page Styles */
+.download-page {
+    max-width: 1200px;
+    margin: 24px auto;
+    padding: 12px;
+}
+
+.download-header {
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    gap:12px;
+    margin-bottom:18px;
+}
+
+.download-card {
+    background: #ffffff;
+    border: 1px solid #e6eef8;
+    border-radius: 14px;
+    padding: 18px;
+    box-shadow: 0 12px 30px rgba(15,23,42,0.06);
+    margin-bottom: 18px;
+}
+
+.download-card h2 {
+    margin: 0 0 8px 0;
+    color: #0f172a;
+    font-size: 1.25rem;
+    font-weight: 800;
+}
+
+.filter-grid { display:grid; grid-template-columns: repeat(auto-fit, minmax(220px,1fr)); gap:12px; }
+
+.download-actions { display:flex; gap:10px; align-items:center; }
+
+.saved-table { width:100%; border-collapse:collapse; margin-top:14px; font-size:0.95rem; }
+.saved-table th, .saved-table td { padding:10px 12px; border:1px solid #eef3fb; text-align:left; vertical-align:middle; }
+.saved-table th { background:#f8fbff; color:#0f172a; font-weight:700; }
+.saved-table tr:hover td { background:#fbfdff; }
+
+/* Buttons used on downloads page - consistent with timetable sidebar */
+.btn {
+    display:inline-flex;
+    align-items:center;
+    gap:8px;
+    padding:8px 14px;
+    border-radius:10px;
+    font-weight:700;
+    cursor:pointer;
+    border:1px solid transparent;
+}
+.btn.primary-btn { background: linear-gradient(90deg,#2563eb,#1e40af); color:#fff; box-shadow:0 8px 18px rgba(37,99,235,0.12); }
+.btn.primary-btn:hover { transform:translateY(-1px); }
+.btn.secondary-btn { background:#eef2ff; color:#3730a3; border-color:#dbeafe; }
+.btn.secondary-btn:hover { background:#e0e7ff; }
+.btn .spinner { width:16px; height:16px; border:2px solid rgba(255,255,255,0.4); border-top-color:#fff; border-radius:50%; display:inline-block; animation:spin 1s linear infinite; }
+@keyframes spin { to { transform:rotate(360deg); } }
+
+.status-banner { display:flex; align-items:center; gap:10px; padding:10px 12px; border-radius:10px; }
+
+/* Brand tokens and download-specific spacing tweaks */
+:root {
+    --brand-primary: #1e40af; /* default primary */
+    --brand-accent: #2563eb;
+    --brand-muted: #475569;
+    --brand-success: #10b981;
+    --brand-danger: #ef4444;
+    --space-sm: 8px;
+    --space-md: 14px;
+    --space-lg: 22px;
+}
+
+.download-page { padding: var(--space-lg); }
+.download-card { padding: var(--space-md); }
+.download-card h2 { color: var(--brand-muted); }
+.primary-btn { background: var(--brand-accent); color: white; border-radius: 10px; padding: 9px 14px; }
+.secondary-btn { background: #f1f5f9; color: var(--brand-muted); border: 1px solid #e2e8f0; }
+
+.toast-container {
+    position: fixed;
+    right: 18px;
+    bottom: 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    z-index: 9999;
+}
+.toast {
+    background: rgba(15,23,42,0.95);
+    color: #fff;
+    padding: 10px 14px;
+    border-radius: 10px;
+    box-shadow: 0 10px 30px rgba(2,6,23,0.25);
+    font-weight: 700;
+}
+.toast.success { background: linear-gradient(90deg, rgba(16,185,129,0.95), rgba(6,182,212,0.9)); }
+.toast.error { background: linear-gradient(90deg, rgba(239,68,68,0.95), rgba(244,63,94,0.9)); }
+
+.confirm-overlay {
+    position: fixed; left:0; right:0; top:0; bottom:0; background: rgba(2,6,23,0.45); display:flex; align-items:center; justify-content:center; z-index:10000;
+}
+.confirm-dialog { background:white; padding:18px; border-radius:12px; max-width:420px; box-shadow: 0 14px 36px rgba(2,6,23,0.35); }
+.confirm-dialog p { margin:0 0 12px; color:var(--brand-muted); }
+.confirm-actions { display:flex; gap:10px; justify-content:flex-end; }
+
+/* Responsive tweaks for downloads page */
+@media (max-width: 900px) {
+    .download-header { flex-direction:column; align-items:stretch; }
+    .download-actions { justify-content:flex-start; }
+}
+
+/* Cards grid: two-column layout on wider screens */
+.cards-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 18px;
+    align-items: start;
+}
+
+@media (max-width: 980px) {
+    .cards-grid { grid-template-columns: 1fr; }
+}
+
+/* Layout: filters full-width, download cards side-by-side */
+.filters-card { grid-column: 1 / -1; }
+.class-download-card, .teacher-download-card { /* stay in the two-column grid */ }
+.cards-grid { grid-auto-flow: dense; }
+
+@media (min-width: 981px) {
+    /* when wide, ensure filters span full width and the two download cards are side-by-side */
+    .cards-grid { grid-template-columns: 1fr 1fr; }
+    .filters-card { grid-column: 1 / -1; }
+    .class-download-card { grid-column: 1 / 2; }
+    .teacher-download-card { grid-column: 2 / 3; }
+}
+
+/* Filter control styling */
+.filter-grid .form-control, .filter-grid select, .filter-grid input {
+    padding: 10px 12px;
+    border-radius: 10px;
+    border: 1px solid #e2e8f0;
+    background: #fff;
+    color: #0f172a;
+}
+.filter-grid select:focus, .filter-grid input:focus {
+    outline: none;
+    box-shadow: 0 6px 18px rgba(37,99,235,0.12);
+    border-color: var(--brand-accent, #2563eb);
+}
+
+.saved-placeholder, .teacher-placeholder {
+    padding: 18px; color: #475569; font-size: 0.95rem; background: #fbfdff; border-radius: 10px; border: 1px dashed #e6eef8;
+}
+
+.download-actions .btn { min-width: 180px; }

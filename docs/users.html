@@ -21,7 +21,7 @@
       <li class="active" data-section="registerTab">➕ Register New User</li>
       <li data-section="userManagement">📋 Registered Users</li>
       <!-- NEW TAB FOR CSV DOWNLOAD -->
-      <li data-section="downloadStudentDataTab">⬇️ Download Student Data</li>
+      <li data-section="downloadStudentDataTab">⬇️ Downloads</li>
       <li data-section="learnerDemographicsTab">📊 Learner Demographics</li>
     </ul>
     
@@ -167,30 +167,50 @@
       </div>
       <!-- NEW: DOWNLOAD STUDENT DATA TAB -->
       <div id="downloadStudentDataTab" class="tab-section" style="display:none;">
-        <div class="card download-data-card">
-          <h3>⬇️ Download Student Data (CSV)</h3>
-          <p>Filter and download a CSV file containing Learner's Names, Grades, and Streams.</p>
+        <h3>⬇️ Download Student Data</h3>
+        <p style="color: #666; margin-bottom: 20px;">Filter and download student information in different formats.</p>
 
-          <div class="flex-row download-filter-row">
-            <div class="col form-group" style="flex: 1;">
-              <label for="csvGradeFilter">Filter by Grade</label>
-              <select id="csvGradeFilter" style="width: 100%;">
-                <option value="all">All Grades</option>
-                <!-- Options populated by JS -->
-              </select>
+        <div class="flex-row download-filter-row">
+          <div class="col form-group" style="flex: 1;">
+            <label for="csvGradeFilter">Filter by Grade</label>
+            <select id="csvGradeFilter" style="width: 100%;">
+              <option value="all">All Grades</option>
+              <!-- Options populated by JS -->
+            </select>
+          </div>
+          <div class="col form-group" style="flex: 1;">
+            <label for="csvStreamFilter">Filter by Stream</label>
+            <select id="csvStreamFilter" style="width: 100%;">
+              <option value="all">All Streams</option>
+              <!-- Options populated by JS -->
+            </select>
+          </div>
+        </div>
+
+        <div class="flex-row" style="gap: 20px; margin-top: 20px;">
+          <!-- Learners List Card (Excel) -->
+          <div class="card" style="flex: 1; padding: 20px;">
+            <div style="text-align: center; margin-bottom: 15px;">
+              <div style="font-size: 2.5rem; margin-bottom: 10px;">📊</div>
+              <h4 style="margin: 0; font-size: 1.1rem;">Learners List</h4>
+              <p style="color: #666; font-size: 0.9rem; margin: 5px 0 0 0;">Export as Excel (CSV)</p>
             </div>
-            <div class="col form-group" style="flex: 1;">
-              <label for="csvStreamFilter">Filter by Stream</label>
-              <select id="csvStreamFilter" style="width: 100%;">
-                <option value="all">All Streams</option>
-                <!-- Options populated by JS -->
-              </select>
-            </div>
+            <button id="downloadFilteredStudentsCsvBtn" class="btn primary-btn" style="width: 100%; padding: 12px 20px; font-size: 0.95rem;">
+              📥 Download
+            </button>
           </div>
 
-          <button id="downloadFilteredStudentsCsvBtn" class="btn primary-btn" style="width: 100%; padding: 12px 20px; font-size: 1rem;">
-            📊 Download Filtered Student List (CSV)
-          </button>
+          <!-- Score Sheets Card (PDF) -->
+          <div class="card" style="flex: 1; padding: 20px;">
+            <div style="text-align: center; margin-bottom: 15px;">
+              <div style="font-size: 2.5rem; margin-bottom: 10px;">📄</div>
+              <h4 style="margin: 0; font-size: 1.1rem;">Score Sheets</h4>
+              <p style="color: #666; font-size: 0.9rem; margin: 5px 0 0 0;">Export as PDF</p>
+            </div>
+            <button id="downloadScoreSheetsPdfBtn" class="btn primary-btn" style="width: 100%; padding: 12px 20px; font-size: 0.95rem;">
+              📥 Download
+            </button>
+          </div>
         </div>
       </div>
 

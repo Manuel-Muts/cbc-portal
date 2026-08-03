@@ -2,6 +2,7 @@
 import express from 'express';
 import mongoose from 'mongoose';
 import dotenv from 'dotenv';
+import dns from 'dns';
 import cors from 'cors';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -174,6 +175,7 @@ const pathMap = {
   '/about': 'about.html',
   '/contact': 'contact.html',
   '/founder': 'founder.html', // ✅ New route for founder page
+  '/timetable-downloads': 'timetable-downloads.html',
 
   // ✅ STANDARDIZED ROUTE (IMPORTANT)
   '/study-materials': 'studentstudymaterial.html',
@@ -233,12 +235,31 @@ app.use((req, res) => {
 // -------------------------
 // DATABASE CONNECTION
 // -------------------------
-const mongoURI = process.env.NODE_ENV === "production" ? process.env.MONGO_ATLAS : process.env.MONGO_LOCAL;
+const rawNodeEnv = process.env.NODE_ENV;
+const normalizedNodeEnv = rawNodeEnv ? rawNodeEnv.trim().toLowerCase() : 'development';
+const isProduction = normalizedNodeEnv === 'production';
+const mongoURI = isProduction ? process.env.MONGO_ATLAS || process.env.MONGO_LOCAL : process.env.MONGO_LOCAL;
 
-console.log(`\n🌍 Environment: ${process.env.NODE_ENV}`);
-console.log(`📦 Using database: ${mongoURI.includes("mongodb+srv") ? "MongoDB Atlas" : "Local MongoDB"}`);
+console.log(`\n🌍 Environment (raw): ${rawNodeEnv}`);
+console.log(`🌍 Environment (normalized): ${normalizedNodeEnv}`);
+console.log(`📦 Using database: ${isProduction ? 'MongoDB Atlas' : 'Local MongoDB'}`);
 
-mongoose.connect(mongoURI)
+// Optional: force Node to use public DNS servers if local DNS/TXT lookups are blocked
+if (process.env.FORCE_PUBLIC_DNS === 'true') {
+  try {
+    dns.setServers(['8.8.8.8', '1.1.1.1']);
+    console.log('🔁 Using public DNS servers: 8.8.8.8, 1.1.1.1');
+  } catch (e) {
+    console.warn('⚠️ Could not set DNS servers:', e.message || e);
+  }
+}
+
+const mongooseOptions = {
+  serverSelectionTimeoutMS: 30000,
+  connectTimeoutMS: 30000
+};
+
+mongoose.connect(mongoURI, mongooseOptions)
   .then(async () => {
     console.log("✅ MongoDB connected successfully!");
 

@@ -131,6 +131,7 @@
   const refreshBtn = document.getElementById("refreshBtn");
   const logoutBtn = document.getElementById("logoutBtn");
   const subjectSearchInput = document.getElementById("subjectSearchInput");
+  const subjectGradeFilter = document.getElementById("subjectGradeFilter");
   const classSearchInput = document.getElementById("classSearchInput");
   const exportSubjectsBtn = document.getElementById("exportSubjectsBtn");
   const exportClassBtn = document.getElementById("exportClassBtn");
@@ -184,11 +185,15 @@
 
   // New DOM elements for promotion progress bar
   let promotionProgressBarContainer;
+
+  let subjectAllocSearchQuery = '';
+  let subjectAllocGradeQuery = '';
   let promotionProgressBar;
   let promotionProgressText;
   let promotionProgressPercent;
   let subjectAllocPage = 1;
   const SUBJECT_ALLOC_LIMIT = 10;
+  const SUBJECT_ALLOC_SEARCH_LIMIT = 1000;
   let subjectAllocTotalPages = 1;
   let classAllocPage = 1;
   const CLASS_ALLOC_LIMIT = 10;
@@ -956,6 +961,25 @@ function attachAdminSignatureLogic() {
     });
   };
 
+  const populateSubjectGradeFilterOptions = () => {
+    if (!subjectGradeFilter) return;
+    const s = getSchoolConfig();
+    if (!s) {
+      subjectGradeFilter.innerHTML = '<option value="">All grades</option>';
+      return;
+    }
+    const options = s.config.gradeOptions;
+
+    subjectGradeFilter.innerHTML = '<option value="">All grades</option>';
+    options.forEach(grade => {
+      const value = (String(grade).toUpperCase().startsWith("PP") || String(grade).toUpperCase() === "PG") ? grade : `Grade ${grade}`;
+      const opt = document.createElement('option');
+      opt.value = value;
+      opt.textContent = value;
+      subjectGradeFilter.appendChild(opt);
+    });
+  };
+
   const populatePromotionGradeOptions = () => {
     if (!promotionGradeSelect) return;
     const s = getSchoolConfig();
@@ -1002,6 +1026,7 @@ function attachAdminSignatureLogic() {
   const applySchoolTypeToGradeSelectors = () => {
     populateGradeRangeOptions();
     populateClassGradeOptions();
+    populateSubjectGradeFilterOptions();
     resetGradeSelection();
     populatePromotionGradeOptions();
     populateBulkDeleteGradeOptions();
@@ -1482,6 +1507,9 @@ confirmPromotionBtn.addEventListener("click", async () => {
 
       if (allocations.length === 0) {
         const tr = document.createElement("tr");
+        tr.dataset.teacher = String(item.name || "").toLowerCase();
+        tr.dataset.grade = "";
+        tr.dataset.subjects = "";
         tr.innerHTML = `
           <td style="white-space: nowrap;"><strong>${item.name}</strong> <button class="btn secondary-btn btn-edit-profile" data-id="${item._id}" data-name="${item.name}" data-email="${item.email || ''}" data-contact="${item.contact || ''}" style="padding: 2px 8px; font-size: 0.7rem; margin-left: 8px;">👤 Edit</button></td>
           <td></td>
@@ -1507,6 +1535,9 @@ confirmPromotionBtn.addEventListener("click", async () => {
           const isPP = normalized.toUpperCase().startsWith("PP") || normalized.toUpperCase() === "PG";
           const gradeLabel = isPP ? (alloc.stream ? `${alloc.grade}${alloc.stream}` : alloc.grade) : (alloc.stream ? `Grade ${alloc.grade}${alloc.stream}` : `Grade ${alloc.grade}`);
           const tr = document.createElement("tr");
+          tr.dataset.teacher = String(item.name || "").toLowerCase();
+          tr.dataset.grade = gradeLabel.toLowerCase();
+          tr.dataset.subjects = Array.isArray(alloc.subjects) ? alloc.subjects.join(", ").toLowerCase() : "";
           tr.innerHTML = `
             <td style="white-space: nowrap;">
               ${index === 0 ? `<strong>${item.name}</strong> <button class="btn secondary-btn btn-edit-profile" data-id="${item._id}" data-name="${item.name}" data-email="${item.email || ''}" data-contact="${item.contact || ''}" style="padding: 2px 8px; font-size: 0.7rem; margin-left: 8px;">👤 Edit</button>` : ""}
@@ -1691,7 +1722,9 @@ confirmPromotionBtn.addEventListener("click", async () => {
     if (subjectAllocTableBody.dataset.loading === "true") return;
     subjectAllocTableBody.dataset.loading = "true";
 
-    const CACHE_KEY = `subject_allocations_p${page}_un${showUnassignedOnly}`;
+    const searching = !showUnassignedOnly && (subjectAllocSearchQuery || subjectAllocGradeQuery);
+    const effectiveLimit = searching ? SUBJECT_ALLOC_SEARCH_LIMIT : limit;
+    const CACHE_KEY = `subject_allocations_p${page}_l${effectiveLimit}_un${showUnassignedOnly}_s${encodeURIComponent(subjectAllocSearchQuery)}_g${encodeURIComponent(subjectAllocGradeQuery)}`;
     if (!force) {
       const cached = localStorage.getItem(CACHE_KEY);
       if (cached) {
@@ -1710,9 +1743,15 @@ confirmPromotionBtn.addEventListener("click", async () => {
     subjectAllocTableBody.innerHTML = `<tr><td colspan="5" style="text-align:center">${createSpinner().outerHTML} Loading allocations...</td></tr>`;
     
     try {
-      let url = `${API_BASE}/users/subjects/allocations?page=${page}&limit=${limit}`;
+      let url = `${API_BASE}/users/subjects/allocations?page=${page}&limit=${effectiveLimit}`;
       if (showUnassignedOnly) {
         url += `&unassigned=true`;
+      }
+      if (!showUnassignedOnly && subjectAllocSearchQuery) {
+        url += `&search=${encodeURIComponent(subjectAllocSearchQuery)}`;
+      }
+      if (!showUnassignedOnly && subjectAllocGradeQuery) {
+        url += `&grade=${encodeURIComponent(subjectAllocGradeQuery)}`;
       }
       const response = await secureFetch(url);
       if (!response) { subjectAllocTableBody.innerHTML = ""; return; }
@@ -1763,13 +1802,17 @@ confirmPromotionBtn.addEventListener("click", async () => {
   }
 
   function updateSubjectAllocPaginationControls() {
+    const searching = !showUnassignedOnly && (subjectAllocSearchQuery || subjectAllocGradeQuery);
     if (subjectAllocPageInfo) {
-      subjectAllocPageInfo.textContent = `Page ${subjectAllocPage} of ${subjectAllocTotalPages}`;
+      subjectAllocPageInfo.textContent = searching ? `Search results` : `Page ${subjectAllocPage} of ${subjectAllocTotalPages}`;
+      subjectAllocPageInfo.style.display = searching ? 'none' : '';
     }
     if (subjectAllocPrevBtn) {
+      subjectAllocPrevBtn.style.display = searching ? 'none' : '';
       subjectAllocPrevBtn.disabled = subjectAllocPage <= 1 || subjectAllocTableBody.dataset.loading === "true";
     }
     if (subjectAllocNextBtn) {
+      subjectAllocNextBtn.style.display = searching ? 'none' : '';
       subjectAllocNextBtn.disabled = subjectAllocPage >= subjectAllocTotalPages || subjectAllocTableBody.dataset.loading === "true";
     }
   }
@@ -2187,10 +2230,12 @@ async function openHistoryModal(studentId) {
         // 🆕 Toggle visibility of related controls
         const form = document.getElementById("subjectAllocForm");
         const searchInput = document.getElementById("subjectSearchInput");
+        const gradeFilter = document.getElementById("subjectGradeFilter");
         const paginationControls = document.getElementById("subjectAllocPaginationControls");
 
         if (form) form.style.display = showUnassignedOnly ? "none" : "block";
         if (searchInput) searchInput.style.display = showUnassignedOnly ? "none" : "block";
+        if (gradeFilter) gradeFilter.style.display = showUnassignedOnly ? "none" : "block";
         if (paginationControls) paginationControls.style.display = showUnassignedOnly ? "none" : "flex"; // Assuming flex for pagination
         subjectAllocPage = 1;
         loadSubjectAllocations(1, SUBJECT_ALLOC_LIMIT, true);
@@ -3025,7 +3070,42 @@ studentSearchBody.addEventListener("click", async (e) => {
   // ---------------------------
   // FILTERS
   // ---------------------------
-  if (subjectSearchInput) subjectSearchInput.addEventListener("input", function () { const q = this.value.toLowerCase(); document.querySelectorAll("#subjectAllocTable tbody tr").forEach(r => r.style.display = r.textContent.toLowerCase().includes(q) ? "" : "none"); });
+  function filterSubjectAllocationRows() {
+    const query = subjectSearchInput?.value.trim().toLowerCase() || "";
+    const gradeFilterValue = subjectGradeFilter?.value.trim() || "";
+    const gradeQuery = gradeFilterValue.toLowerCase();
+
+    document.querySelectorAll("#subjectAllocTable tbody tr").forEach(row => {
+      const teacher = row.dataset.teacher || "";
+      const grade = row.dataset.grade || "";
+      const subjects = row.dataset.subjects || "";
+      const matchesQuery = !query || teacher.includes(query) || grade.includes(query) || subjects.includes(query);
+      const matchesGrade = !gradeQuery || grade.includes(gradeQuery);
+      row.style.display = (matchesQuery && matchesGrade) ? "" : "none";
+    });
+  }
+
+  const debouncedSubjectSearch = debounce(() => {
+    subjectAllocPage = 1;
+    loadSubjectAllocations(1, SUBJECT_ALLOC_LIMIT, true);
+  }, 300);
+
+  if (subjectSearchInput) subjectSearchInput.addEventListener("input", () => {
+    subjectAllocSearchQuery = subjectSearchInput.value.trim();
+    subjectAllocPage = 1;
+    if (!subjectAllocSearchQuery) {
+      loadSubjectAllocations(1, SUBJECT_ALLOC_LIMIT, true);
+      return;
+    }
+    debouncedSubjectSearch();
+  });
+
+  if (subjectGradeFilter) subjectGradeFilter.addEventListener("change", () => {
+    subjectAllocGradeQuery = subjectGradeFilter.value.trim();
+    subjectAllocPage = 1;
+    loadSubjectAllocations(1, SUBJECT_ALLOC_LIMIT, true);
+  });
+
   if (classSearchInput) classSearchInput.addEventListener("input", function () { const q = this.value.toLowerCase(); document.querySelectorAll("#classAllocTable tbody tr").forEach(r => r.style.display = r.textContent.toLowerCase().includes(q) ? "" : "none"); });
 
   if (subjectAllocPrevBtn) {

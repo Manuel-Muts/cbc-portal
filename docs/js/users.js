@@ -38,6 +38,7 @@
   const csvGradeFilter = document.getElementById("csvGradeFilter");
   const csvStreamFilter = document.getElementById("csvStreamFilter");
   const downloadFilteredStudentsCsvBtn = document.getElementById("downloadFilteredStudentsCsvBtn");
+  const downloadScoreSheetsPdfBtn = document.getElementById("downloadScoreSheetsPdfBtn"); // 🆕 New PDF button
   let userProfile = null;
   let importCancelled = false;
   let usersTotalRecords = 0;
@@ -46,6 +47,44 @@
   const PERSISTENT_CACHE_PREFIX = "users_mgmt_cache_";
   const CACHE_TTL = 10 * 60 * 1000; // 10 minutes
   let currentRoleTab = "student"; // Default view: Learners (Students)
+  // Prefetched school assets to speed up PDF generation
+  let prefetchedSchoolLogoBase64 = null;
+  let prefetchedSchoolName = null;
+
+  // Prefetch function (call when downloads tab is opened)
+  async function prefetchSchoolAssets() {
+    if (prefetchedSchoolName || prefetchedSchoolLogoBase64) return; // already prefetched
+    try {
+      const schoolRes = await secureFetch(`${API_BASE}/my-school?includeLogo=true&fields=name,logo,logoMimeType`);
+      if (schoolRes) {
+        prefetchedSchoolName = schoolRes?.schoolName || schoolRes?.name || prefetchedSchoolName;
+        const logoCandidate = schoolRes?.logo;
+        const mime = schoolRes?.logoMimeType || 'image/png';
+        if (logoCandidate) {
+          if (typeof logoCandidate === 'string' && logoCandidate.startsWith('data:')) {
+            prefetchedSchoolLogoBase64 = logoCandidate;
+          } else if (typeof logoCandidate === 'string' && (logoCandidate.startsWith('http') || logoCandidate.startsWith('/'))) {
+            try {
+              const resp = await fetch(logoCandidate.startsWith('/') ? (window.location.origin + logoCandidate) : logoCandidate);
+              const blob = await resp.blob();
+              prefetchedSchoolLogoBase64 = await new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onloadend = () => resolve(reader.result);
+                reader.onerror = reject;
+                reader.readAsDataURL(blob);
+              });
+            } catch (err) {
+              console.warn('Failed to fetch/convert prefetched school logo:', err);
+            }
+          } else if (typeof logoCandidate === 'string') {
+            prefetchedSchoolLogoBase64 = `data:${mime};base64,${logoCandidate}`;
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('Prefetch school assets failed:', e);
+    }
+  }
 
   // ---------------------------
   // SCHOOL TYPE & GRADE HELPERS
@@ -685,9 +724,9 @@ if (usersNextPageBtn) {
              if (value === undefined || value === null || value === "") return null;
 
              const normalized = String(value).trim().toLowerCase();
-             if (["male", "m", "boy", "man"].includes(normalized)) return "Male";
-             if (["female", "f", "girl", "woman"].includes(normalized)) return "Female";
-             if (["other", "others", "nonbinary", "non-binary", "prefer not to say", "prefer not to say", "prefer not say", "not say"].includes(normalized)) return "Prefer not to say";
+             if (["male","Male","MALE","m","M", "boy", "man"].includes(normalized)) return "Male";
+             if (["female", "Female", "FEMALE", "f", "F", "girl", "woman"].includes(normalized)) return "Female";
+             if (["other", "Other", "OTHER", "others", "nonbinary", "non-binary", "prefer not to say", "prefer not to say", "prefer not say", "not say"].includes(normalized)) return "Prefer not to say";
              return String(value).trim();
            };
 
@@ -988,6 +1027,82 @@ if (usersNextPageBtn) {
     });
   }
 
+  function createExcelCellStyle({ bold = false, fontSize = 12, align = "left", wrap = true, border = true } = {}) {
+    return {
+      font: { name: "Calibri", sz: fontSize, bold },
+      alignment: { vertical: "center", horizontal: align, wrapText: wrap },
+      border: border ? {
+        top: { style: "thin", color: { rgb: "FFB0B0B0" } },
+        bottom: { style: "thin", color: { rgb: "FFB0B0B0" } },
+        left: { style: "thin", color: { rgb: "FFB0B0B0" } },
+        right: { style: "thin", color: { rgb: "FFB0B0B0" } }
+      } : undefined
+    };
+  }
+
+  function buildStudentWorkbook(rows, { grade = "", stream = "" } = {}) {
+    if (!window.XLSX) {
+      throw new Error("Excel library is not available.");
+    }
+
+    const schoolName = (prefetchedSchoolName || "School").toString().trim() || "School";
+    const normalizedGrade = grade && grade !== "all" ? grade : "All";
+    const normalizedStream = stream && stream !== "all" ? stream : "All";
+
+    const dataRows = [
+      [schoolName],
+      ["GRADE", normalizedGrade],
+      ["STREAM", normalizedStream],
+      [],
+      ["ADM NO", "NAME"],
+      ...rows
+    ];
+
+    const sheet = XLSX.utils.aoa_to_sheet(dataRows);
+    sheet['!cols'] = [{ wpx: 140 }, { wpx: 320 }];
+    sheet['!rows'] = [{ hpx: 28 }, { hpx: 22 }, { hpx: 22 }, { hpx: 10 }, { hpx: 24 }];
+    sheet['!merges'] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: 1 } }];
+
+    const titleStyle = createExcelCellStyle({ bold: true, fontSize: 15, align: "center", wrap: true });
+    const metadataStyle = createExcelCellStyle({ bold: false, fontSize: 12, align: "left", wrap: false });
+    const headerStyle = createExcelCellStyle({ bold: true, fontSize: 12, align: "center", wrap: true });
+
+    const applyStyle = (cellRef, style) => {
+      const cell = sheet[cellRef];
+      if (cell) cell.s = style;
+    };
+
+    applyStyle("A1", titleStyle);
+    applyStyle("A2", metadataStyle);
+    applyStyle("B2", metadataStyle);
+    applyStyle("A3", metadataStyle);
+    applyStyle("B3", metadataStyle);
+    applyStyle("A5", headerStyle);
+    applyStyle("B5", headerStyle);
+
+    dataRows.slice(5).forEach((_, index) => {
+      const rowNumber = index + 6;
+      applyStyle(`A${rowNumber}`, metadataStyle);
+      applyStyle(`B${rowNumber}`, metadataStyle);
+    });
+
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, sheet, "Learner List");
+    return workbook;
+  }
+
+  function triggerWorkbookDownload(workbook, filename) {
+    const output = XLSX.write(workbook, { bookType: "xlsx", type: "array" });
+    const blob = new Blob([output], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(link.href);
+  }
+
   // 🆕 Download Students List as CSV Button Logic
   if (downloadStudentsCsvBtn) {
     downloadStudentsCsvBtn.addEventListener("click", async () => {
@@ -1009,57 +1124,22 @@ if (usersNextPageBtn) {
           return;
         }
 
-        // Define CSV headers
-        const headers = ["Admission", "Name", "Grade"];
-        let csvContent = headers.map(h => `"${h}"`).join(",") + "\n"; // Add quotes for CSV safety
+        await prefetchSchoolAssets();
+        const gradeFilterValue = studentGradeFilter?.value || "";
+        let streamFilterValue = studentStreamFilter?.value || "";
+        if (/^stream\s+/i.test(streamFilterValue)) streamFilterValue = streamFilterValue.replace(/^stream\s+/i, "");
 
-        // Generate CSV rows
-        students.forEach(u => {
-          let finalGradeOutput = "N/A";
-          // Ultra-Robust Grade Detection (same as table view)
-          let rawGradeValue = u.grade || u.currentGrade || u.classGrade || u.assignedClass || u.className || u.assignedGrade || u.classLabel || u.gradeName || u['class'] || u.assignedGradeLevel || "";
-          if (rawGradeValue && typeof rawGradeValue === 'object') rawGradeValue = rawGradeValue.grade || rawGradeValue.name || rawGradeValue.label || rawGradeValue.gradeName || "";
-          if (!rawGradeValue && u.enrollmentId) rawGradeValue = (typeof u.enrollmentId === 'object') ? u.enrollmentId.grade : "";
-          if (!rawGradeValue && u.enrollment) rawGradeValue = (typeof u.enrollment === 'object') ? u.enrollment.grade : "";
-          if (!rawGradeValue && u.allocations && u.allocations.length > 0) rawGradeValue = u.allocations[0].grade || u.allocations[0].gradeLevel || "";
-          if (!rawGradeValue && u.studentId && typeof u.studentId === 'object') rawGradeValue = u.studentId.grade;
-
-          let streamValue = (u.stream || u.assignedStream || u.classStream || u.currentStream || "").trim();
-          if (!streamValue && u.enrollmentId && typeof u.enrollmentId === 'object') streamValue = u.enrollmentId.stream || "";
-
-          if (rawGradeValue) {
-            const gradeString = String(rawGradeValue).trim();
-            if (gradeString.toUpperCase().startsWith("PP") || gradeString.toUpperCase() === "PG") {
-              finalGradeOutput = streamValue ? `${gradeString.toUpperCase()} ${streamValue}` : gradeString.toUpperCase();
-            } else {
-              const gradeNumberMatch = gradeString.match(/\d+/); // Extract numeric part
-              const gradeNumber = gradeNumberMatch ? gradeNumberMatch[0] : null;
-              if (gradeNumber) {
-                finalGradeOutput = streamValue ? `${gradeNumber}${streamValue}` : `Grade ${gradeNumber}`;
-              } else {
-                finalGradeOutput = gradeString; // Fallback if no number found
-              }
-            }
-          }
-          const row = [
-            u.admission || u.admissionNo || "",
-            u.name,
-            finalGradeOutput
-          ];
-          csvContent += row.map(field => `"${String(field).replace(/"/g, '""')}"`).join(",") + "\n";
+        const rows = students.map(u => [
+          u.admission || u.admissionNo || "",
+          u.name
+        ]);
+        const workbook = buildStudentWorkbook(rows, {
+          grade: gradeFilterValue,
+          stream: streamFilterValue
         });
+        triggerWorkbookDownload(workbook, `Registered_Learners_List_${new Date().toISOString().slice(0,10)}.xlsx`);
 
-        // Create a Blob and trigger download
-        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-        const link = document.createElement("a");
-        link.href = URL.createObjectURL(blob);
-        link.download = `Registered_Learners_List_${new Date().toISOString().slice(0,10)}.csv`;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        URL.revokeObjectURL(link.href);
-
-        showToast("CSV generated successfully", "success");
+        showToast("Excel export generated successfully", "success");
       } catch (err) {
         console.error("Download CSV Error:", err);
         showToast("Failed to generate CSV: " + (err.message || "Unknown error"), "error");
@@ -1113,19 +1193,41 @@ if (usersNextPageBtn) {
     } catch (e) { console.error("Failed to load streams for CSV filter:", e); }
   }
 
+  function getCsvDownloadFilterValues() {
+    const rawGradeVal = document.getElementById("csvGradeFilter")?.value || "";
+    const rawStreamVal = document.getElementById("csvStreamFilter")?.value || "";
+    const gradeVal = rawGradeVal.trim();
+    let streamVal = rawStreamVal.trim();
+    if (/^stream\s+/i.test(streamVal)) streamVal = streamVal.replace(/^stream\s+/i, "");
+    return { gradeVal, streamVal };
+  }
+
+  function validateCsvDownloadFilters() {
+    const { gradeVal, streamVal } = getCsvDownloadFilterValues();
+    const gradeMissing = !gradeVal || gradeVal === "all";
+    const streamMissing = !streamVal || streamVal === "all";
+    if (gradeMissing || streamMissing) {
+      const message = gradeMissing && streamMissing
+        ? "Please select a grade and a stream before downloading."
+        : gradeMissing
+          ? "Please select a grade before downloading."
+          : "Please select a stream before downloading.";
+      showToast(message, "warning");
+      return { valid: false };
+    }
+    return { valid: true, gradeVal, streamVal };
+  }
+
   // Event listener for the new CSV download button
   if (downloadFilteredStudentsCsvBtn) {
     downloadFilteredStudentsCsvBtn.addEventListener("click", async () => {
+      const validation = validateCsvDownloadFilters();
+      if (!validation.valid) return;
+      const { gradeVal, streamVal } = validation;
+
       const originalHTML = downloadFilteredStudentsCsvBtn.innerHTML;
       downloadFilteredStudentsCsvBtn.disabled = true;
       downloadFilteredStudentsCsvBtn.innerHTML = '<span class="spinner"></span> Generating CSV...';
-
-      // Robustly fetch current values from the DOM to avoid stale/null references
-      const rawGradeVal = document.getElementById("csvGradeFilter")?.value;
-      const rawStreamVal = document.getElementById("csvStreamFilter")?.value;
-      const gradeVal = rawGradeVal ? rawGradeVal.trim() : "";
-      let streamVal = rawStreamVal ? rawStreamVal.trim() : "";
-      if (/^stream\s+/i.test(streamVal)) streamVal = streamVal.replace(/^stream\s+/i, "");
 
       try {
         // 🆕 Added '_t' (timestamp) to bypass backend/browser caching and fix "stuck" filters
@@ -1141,64 +1243,304 @@ if (usersNextPageBtn) {
           showToast("No students found for the selected filters.", "info");
           return;
         }
-        // Define CSV headers
-        const headers = ["Admission", "Name", "Grade"];
-        let csvContent = headers.map(h => `"${h}"`).join(",") + "\n"; // Add quotes for CSV safety
-
-        // Generate CSV rows
-        students.forEach(u => {
-          let finalGradeOutput = "N/A";
-          // Robust Grade Detection: Check every possible field
-          let rawGradeValue = u.grade || u.currentGrade || u.classGrade || u.assignedClass || u.className || u.assignedGrade || u.classLabel || u.gradeName || u['class'] || u.assignedGradeLevel || "";
-          if (rawGradeValue && typeof rawGradeValue === 'object') rawGradeValue = rawGradeValue.grade || rawGradeValue.name || rawGradeValue.label || rawGradeValue.gradeName || "";
-          if (!rawGradeValue && u.enrollmentId) rawGradeValue = (typeof u.enrollmentId === 'object') ? u.enrollmentId.grade : "";
-          if (!rawGradeValue && u.enrollment) rawGradeValue = (typeof u.enrollment === 'object') ? u.enrollment.grade : "";
-          if (!rawGradeValue && u.allocations && u.allocations.length > 0) rawGradeValue = u.allocations[0].grade || u.allocations[0].gradeLevel || "";
-          if (!rawGradeValue && u.studentId && typeof u.studentId === 'object') rawGradeValue = u.studentId.grade;
-
-          let streamValue = (u.stream || u.assignedStream || u.classStream || u.currentStream || "").trim();
-          if (!streamValue && u.enrollmentId && typeof u.enrollmentId === 'object') streamValue = u.enrollmentId.stream || "";
-
-          if (rawGradeValue) {
-            const gradeString = String(rawGradeValue).trim();
-            if (gradeString.toUpperCase().startsWith("PP") || gradeString.toUpperCase() === "PG") {
-              finalGradeOutput = streamValue ? `${gradeString.toUpperCase()} ${streamValue}` : gradeString.toUpperCase();
-            } else {
-              const gradeNumberMatch = gradeString.match(/\d+/); // Extract numeric part
-              const gradeNumber = gradeNumberMatch ? gradeNumberMatch[0] : null;
-              if (gradeNumber) {
-                finalGradeOutput = streamValue ? `${gradeNumber}${streamValue}` : `Grade ${gradeNumber}`;
-              } else {
-                finalGradeOutput = gradeString; // Fallback if no number found
-              }
-            }
-          }
-          const row = [
-            u.admission || u.admissionNo || "",
-            u.name,
-            finalGradeOutput
-          ];
-          csvContent += row.map(field => `"${String(field).replace(/"/g, '""')}"`).join(",") + "\n";
+        await prefetchSchoolAssets();
+        const rows = students.map(u => [
+          u.admission || u.admissionNo || "",
+          u.name
+        ]);
+        const workbook = buildStudentWorkbook(rows, {
+          grade: gradeVal,
+          stream: streamVal
         });
-
-        // Create a Blob and trigger download
-        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-        const link = document.createElement("a");
-        link.href = URL.createObjectURL(blob);
         const timestamp = new Date().toISOString().slice(0,10);
-        link.download = `Filtered_Students_List_${timestamp}.csv`;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        URL.revokeObjectURL(link.href);
+        triggerWorkbookDownload(workbook, `Filtered_Students_List_${timestamp}.xlsx`);
 
-        showToast("CSV generated successfully", "success");
+        showToast("Excel export generated successfully", "success");
       } catch (err) {
         console.error("Download Filtered CSV Error:", err);
         showToast("Failed to generate CSV: " + (err.message || "Unknown error"), "error");
       } finally {
         downloadFilteredStudentsCsvBtn.disabled = false;
         downloadFilteredStudentsCsvBtn.innerHTML = originalHTML;
+      }
+    });
+  }
+
+  // ---------------------------
+  // 🆕 DOWNLOAD SCORE SHEETS PDF
+  // ---------------------------
+  if (downloadScoreSheetsPdfBtn) {
+    downloadScoreSheetsPdfBtn.addEventListener("click", async () => {
+      const validation = validateCsvDownloadFilters();
+      if (!validation.valid) return;
+      const { gradeVal, streamVal } = validation;
+
+      const originalHTML = downloadScoreSheetsPdfBtn.innerHTML;
+      downloadScoreSheetsPdfBtn.disabled = true;
+      downloadScoreSheetsPdfBtn.innerHTML = '<span class="spinner"></span> Generating PDF...';
+
+      try {
+        // Fetch students for the selected grade/stream
+
+        // Fetch students for the selected grade/stream
+        let params = new URLSearchParams({ limit: 5000, role: "student", page: 1, _t: Date.now() });
+        if (gradeVal && gradeVal !== "all") params.append("grade", gradeVal);
+        if (streamVal && streamVal !== "all") params.append("stream", streamVal);
+
+        const res = await secureFetch(`${API_BASE}/users?${params.toString()}`);
+        if (!res || !res.users) throw new Error("Failed to fetch student data for PDF.");
+
+        const students = sortStudentsAlphabetically(res.users);
+        if (students.length === 0) {
+          showToast("No students found for the selected filters.", "info");
+          return;
+        }
+
+        // Get current year
+        const currentYear = new Date().getFullYear();
+
+        // Use prefetched school info/logo if available to speed up PDF generation
+        let schoolName = prefetchedSchoolName || "School";
+        let schoolLogoBase64 = prefetchedSchoolLogoBase64 || null;
+        // Fallback: if not prefetched, fetch now (rare)
+        if (!schoolLogoBase64 || !prefetchedSchoolName) {
+          try {
+            const schoolRes = await secureFetch(`${API_BASE}/my-school?includeLogo=true&fields=name,logo,logoMimeType`);
+            schoolName = schoolRes?.schoolName || schoolRes?.name || schoolName;
+            const logoCandidate = schoolRes?.logo;
+            const mime = schoolRes?.logoMimeType || 'image/png';
+            if (logoCandidate) {
+              if (typeof logoCandidate === 'string' && logoCandidate.startsWith('data:')) {
+                schoolLogoBase64 = logoCandidate;
+              } else if (typeof logoCandidate === 'string' && (logoCandidate.startsWith('http') || logoCandidate.startsWith('/'))) {
+                try {
+                  const resp = await fetch(logoCandidate.startsWith('/') ? (window.location.origin + logoCandidate) : logoCandidate);
+                  const blob = await resp.blob();
+                  schoolLogoBase64 = await new Promise((resolve, reject) => {
+                    const reader = new FileReader();
+                    reader.onloadend = () => resolve(reader.result);
+                    reader.onerror = reject;
+                    reader.readAsDataURL(blob);
+                  });
+                } catch (err) {
+                  console.warn('Failed to fetch/convert school logo:', err);
+                }
+              } else if (typeof logoCandidate === 'string') {
+                schoolLogoBase64 = `data:${mime};base64,${logoCandidate}`;
+              }
+            }
+          } catch (e) {
+            console.warn("Could not fetch school info:", e);
+          }
+        }
+
+        // Generate a blank score sheet PDF for teacher entry
+        const { jsPDF } = window.jspdf;
+        const doc = new jsPDF('p', 'mm', 'a4'); // Portrait orientation
+        const pageWidth = doc.internal.pageSize.getWidth();
+        const pageHeight = doc.internal.pageSize.getHeight();
+        let currentY = 15;
+
+        const currentMonth = new Date().getMonth() + 1;
+        let currentTerm = '1';
+        if (currentMonth >= 5 && currentMonth <= 8) currentTerm = '2';
+        else if (currentMonth >= 9) currentTerm = '3';
+        const termLabel = `Term ${currentTerm}`;
+
+        // Header (school name centered)
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(16);
+        const schoolNameY = currentY;
+        doc.text(schoolName.toUpperCase(), pageWidth / 2, schoolNameY, { align: 'center' });
+        currentY += 8;
+
+        doc.setFontSize(12);
+        doc.text('OFFICIAL SCORE SHEET', pageWidth / 2, currentY, { align: 'center' });
+        currentY += 8;
+
+        // Place logo on the upper-left of the page (left-hand side)
+        if (schoolLogoBase64) {
+          try {
+            const imgProps = doc.getImageProperties(schoolLogoBase64);
+            const maxLogoHeight = 28; // mm
+            let logoWidth = 28;
+            let logoHeight = (imgProps.height / imgProps.width) * logoWidth;
+            if (logoHeight > maxLogoHeight) {
+              const scale = maxLogoHeight / logoHeight;
+              logoHeight = maxLogoHeight;
+              logoWidth = logoWidth * scale;
+            }
+            const logoX = 14; // left margin
+            const logoY = 6;  // upper area of the page
+            doc.addImage(schoolLogoBase64, imgProps.imageType || 'PNG', logoX, logoY, logoWidth, logoHeight, undefined, 'FAST');
+          } catch (err) {
+            console.warn('Could not embed school logo in PDF:', err);
+          }
+        }
+
+        doc.setFont('helvetica', 'normal');
+        // Header details (make key info bold)
+        const normalizedGrade = gradeVal && gradeVal.toString().trim();
+        const gradeLabel = normalizedGrade && normalizedGrade.toLowerCase().startsWith('grade ') ? normalizedGrade : `Grade ${normalizedGrade}`;
+        const gradeDisplay = normalizedGrade && normalizedGrade !== "all"
+          ? (streamVal ? `${gradeLabel} - ${streamVal}` : gradeLabel)
+          : "All Grades";
+        // Academic Year and Class/Stream in bold
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(10);
+        doc.text(`Academic Year: ${currentYear}`, 14, currentY);
+        doc.text(`Class / Stream: ${gradeDisplay}`, pageWidth - 14, currentY, { align: 'right' });
+        currentY += 7;
+
+        const generatedOn = new Date().toLocaleDateString();
+        // Generated line bold
+        doc.setFontSize(9);
+        doc.text(`Printed: ${generatedOn}`, 14, currentY);
+        // small right note in normal weight
+        doc.setFont('helvetica', 'normal');
+        doc.text(`For teacher score entry only`, pageWidth - 14, currentY, { align: 'right' });
+        currentY += 8;
+        // Reset to normal
+        doc.setFont('helvetica', 'normal');
+
+        doc.setDrawColor(15, 118, 110);
+        doc.setLineWidth(0.8);
+        doc.line(14, currentY, pageWidth - 14, currentY);
+        currentY += 10;
+
+        // Prepare table data for blank score entry
+        const headers = [
+          [
+            { content: "ADM No", rowSpan: 2, styles: { halign: 'center', valign: 'middle' } },
+            { content: "Name", rowSpan: 2, styles: { halign: 'center', valign: 'middle' } },
+            { content: termLabel, colSpan: 3, styles: { halign: 'center', valign: 'middle' } }
+          ],
+          [
+            "Opener", "Midterm", "Endterm"
+          ]
+        ];
+
+        const tableData = students.map(student => {
+          const admission = student.admission || student.admissionNo || "";
+          const name = (student.name || "").substring(0, 35);
+          return [admission, name, "", "", ""];
+        });
+
+        doc.autoTable({
+          head: headers,
+          body: tableData,
+          startY: currentY,
+          margin: { left: 16, right: 8 },
+          tableWidth: pageWidth - 24,
+          tableLineColor: [130, 130, 130],
+          tableLineWidth: 0.2,
+          styles: {
+            font: 'helvetica',
+            fontSize: 8,
+            halign: 'center',
+            valign: 'middle',
+            cellPadding: 2,
+            lineColor: [130, 130, 130],
+            lineWidth: 0.2,
+            overflow: 'linebreak'
+          },
+          columnStyles: {
+            0: { cellWidth: 18, halign: 'center' },
+            1: { cellWidth: 80, halign: 'left' },
+            2: { cellWidth: 30 },
+            3: { cellWidth: 30 },
+            4: { cellWidth: 30 }
+          },
+          headStyles: {
+            fillColor: [15, 118, 110],
+            textColor: [255, 255, 255],
+            fontStyle: 'bold',
+            fontSize: 9,
+            halign: 'center',
+            valign: 'middle',
+            lineColor: [255, 255, 255],
+            lineWidth: 0.4
+          },
+          bodyStyles: {
+            fillColor: [255, 255, 255],
+            textColor: [20, 20, 20],
+            cellPadding: 2,
+            lineColor: [130, 130, 130],
+            lineWidth: 0.2
+          },
+          alternateRowStyles: {
+            fillColor: [250, 250, 250]
+          },
+          didDrawPage: (data) => {
+            const pageCount = doc.internal.pages.length - 1;
+            doc.setFontSize(8);
+            doc.setTextColor(100);
+            doc.text(`Page ${data.pageNumber} of ${pageCount}`, pageWidth / 2, pageHeight - 10, { align: 'center' });
+          }
+        });
+
+        // Add watermark (school logo) to all pages, faint and centered
+        if (schoolLogoBase64) {
+          try {
+            const totalPages = doc.internal.getNumberOfPages();
+            for (let i = 1; i <= totalPages; i++) {
+              doc.setPage(i);
+              try {
+                const imgProps = doc.getImageProperties(schoolLogoBase64);
+                const format = imgProps.imageType || 'PNG';
+                const maxWidth = pageWidth * 0.6;
+                let w = Math.min(maxWidth, 140);
+                let h = (imgProps.height * w) / imgProps.width;
+                if (h > pageHeight * 0.6) {
+                  const scale = (pageHeight * 0.6) / h;
+                  h = h * scale;
+                  w = w * scale;
+                }
+                doc.saveGraphicsState();
+                doc.setGState(new doc.GState({ opacity: 0.06 }));
+                doc.addImage(schoolLogoBase64, format, (pageWidth - w) / 2, (pageHeight - h) / 2, w, h, undefined, 'FAST');
+                doc.restoreGraphicsState();
+              } catch (e) {
+                console.warn('Watermark rendering error:', e);
+              }
+            }
+          } catch (e) {
+            console.warn('Failed to apply watermark to pages:', e);
+          }
+        }
+
+        // Add official footer section on the first page
+        const firstPageY = doc.lastAutoTable?.finalY || currentY;
+        if (firstPageY + 22 < pageHeight - 20) {
+          const footerY = firstPageY + 14;
+          doc.setFontSize(10);
+          doc.setTextColor(0);
+          doc.text('__________________________', 40, footerY);
+          doc.text('Teacher Signature', 40, footerY + 5);
+          doc.text('__________________________', pageWidth - 80, footerY);
+          doc.text('Date', pageWidth - 80, footerY + 5);
+        }
+        // Add CompetenceHub footer centered at bottom of the page
+        doc.setFontSize(9);
+        doc.setTextColor(100);
+        doc.text('CompetenceHub Score_Sheets', pageWidth / 2, pageHeight - 18, { align: 'center' });
+
+
+        // Download the PDF
+        const timestamp = new Date().toISOString().slice(0, 10);
+        const filename = gradeVal && gradeVal !== "all" 
+          ? `Score_Sheet_${gradeVal}${streamVal ? '_' + streamVal : ''}_${timestamp}.pdf`
+          : `Score_Sheet_All_Grades_${timestamp}.pdf`;
+
+        doc.save(filename);
+        showToast("PDF generated successfully", "success");
+
+      } catch (err) {
+        console.error("Download Score Sheet PDF Error:", err);
+        showToast("Failed to generate PDF: " + (err.message || "Unknown error"), "error");
+      } finally {
+        downloadScoreSheetsPdfBtn.disabled = false;
+        downloadScoreSheetsPdfBtn.innerHTML = originalHTML;
       }
     });
   }
@@ -1295,6 +1637,8 @@ if (usersNextPageBtn) {
               if (csvStreamFilter) csvStreamFilter.value = "all";
             };
           }
+          // Prefetch school assets to speed up Score Sheets PDF generation
+          prefetchSchoolAssets();
         }
       });
     });
@@ -1315,6 +1659,40 @@ if (usersNextPageBtn) {
     if (schoolInfo) {
       populateRegistrationGrades();
     }
+
+    // Prefetch school name and logo in background to speed up PDF generation
+    (async function prefetchSchoolAssets() {
+      try {
+        const schoolRes = await secureFetch(`${API_BASE}/my-school?includeLogo=true&fields=name,logo,logoMimeType`);
+        if (schoolRes) {
+          prefetchedSchoolName = schoolRes?.schoolName || schoolRes?.name || prefetchedSchoolName;
+          const logoCandidate = schoolRes?.logo;
+          const mime = schoolRes?.logoMimeType || 'image/png';
+          if (logoCandidate) {
+            if (typeof logoCandidate === 'string' && logoCandidate.startsWith('data:')) {
+              prefetchedSchoolLogoBase64 = logoCandidate;
+            } else if (typeof logoCandidate === 'string' && (logoCandidate.startsWith('http') || logoCandidate.startsWith('/'))) {
+              try {
+                const resp = await fetch(logoCandidate.startsWith('/') ? (window.location.origin + logoCandidate) : logoCandidate);
+                const blob = await resp.blob();
+                prefetchedSchoolLogoBase64 = await new Promise((resolve, reject) => {
+                  const reader = new FileReader();
+                  reader.onloadend = () => resolve(reader.result);
+                  reader.onerror = reject;
+                  reader.readAsDataURL(blob);
+                });
+              } catch (err) {
+                console.warn('Failed to fetch/convert prefetched school logo:', err);
+              }
+            } else if (typeof logoCandidate === 'string') {
+              prefetchedSchoolLogoBase64 = `data:${mime};base64,${logoCandidate}`;
+            }
+          }
+        }
+      } catch (e) {
+        console.warn('Prefetch school assets failed:', e);
+      }
+    })();
 
     populateStudentGradeFilter(); // Populate student grade filter
     populateStudentStreamFilter(); // Populate student stream filter

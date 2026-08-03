@@ -98,6 +98,11 @@ const normalizeGrade = (grade) => {
   return str;
 };
 
+const escapeRegExp = (str) => {
+  if (!str) return '';
+  return String(str).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+};
+
 // ---------------------------
 // REGISTER USER (Admin Only)
 // ---------------------------
@@ -401,10 +406,6 @@ export const loginUser = async (req, res) => {
   const { role, email, fullname, admission, password } = req.body;
   const normalizedRole = role ? String(role).trim().toLowerCase() : undefined;
   const normalizedEmail = email ? String(email).trim().toLowerCase() : undefined;
-
-  function escapeRegExp(str) {
-    return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  }
 
   try {
     // Maintenance mode: block logins for non-super-admins when enabled
@@ -877,7 +878,35 @@ export const getSubjectAllocations = async (req, res) => {
       ];
     }
 
-    const cacheKey = `sub_alloc_${req.user.schoolId || 'global'}_${page}_${limit}_un${unassignedOnly}`;
+    const searchQuery = String(req.query.search || '').trim();
+    const gradeFilter = String(req.query.grade || '').trim();
+    const cacheKey = `sub_alloc_${req.user.schoolId || 'global'}_${page}_${limit}_un${unassignedOnly}_s${encodeURIComponent(searchQuery)}_g${encodeURIComponent(gradeFilter)}`;
+
+    if (!unassignedOnly) {
+      if (searchQuery) {
+        const sanitizedSearch = escapeRegExp(searchQuery);
+        const searchRegex = new RegExp(sanitizedSearch, 'i');
+        const normalizedGradeSearch = searchQuery.replace(/^Grade\s+/i, '').trim();
+        const gradeSearchRegex = new RegExp(`^${escapeRegExp(normalizedGradeSearch)}$`, 'i');
+
+        query.$or = [
+          { name: searchRegex },
+          { 'allocations.subjects': searchRegex },
+          { 'allocations.grade': searchRegex },
+          { 'allocations.stream': searchRegex },
+        ];
+
+        if (normalizedGradeSearch && normalizedGradeSearch !== searchQuery) {
+          query.$or.push({ 'allocations.grade': gradeSearchRegex });
+        }
+      }
+
+      if (gradeFilter) {
+        const normalizedGradeFilter = gradeFilter.replace(/^Grade\s+/i, '').trim();
+        const gradeFilterRegex = new RegExp(`^${escapeRegExp(normalizedGradeFilter)}$`, 'i');
+        query['allocations.grade'] = gradeFilterRegex;
+      }
+    }
     const cached = cache.get(cacheKey);
 
     if (cached) {

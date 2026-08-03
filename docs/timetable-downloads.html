@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Timetable Downloads</title>
+  <link rel="stylesheet" href="css/style.css" />
+  <link rel="stylesheet" href="css/timetables.css" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
+  <link rel="icon" type="image/png" href="/images/favicon.png" />
+  <style>
+    .download-page { max-width: 1200px; margin: 0 auto; padding: 24px; }
+    .download-header { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 12px; align-items: center; margin-bottom: 24px; }
+    .download-card { background: #ffffff; border: 1px solid #e2e8f0; border-radius: 16px; padding: 22px; box-shadow: 0 10px 30px rgba(15, 23, 42, 0.08); margin-bottom: 20px; }
+    .download-card h2 { margin: 0 0 10px; color: #0f172a; font-size: 1.4rem; }
+    .filter-grid { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
+    .filter-grid label { display: block; margin-bottom: 6px; font-weight: 700; color: #334155; font-size: 0.9rem; }
+    .download-actions { display: flex; flex-wrap: wrap; gap: 12px; }
+    .table-wrapper { overflow-x: auto; }
+    .saved-timetables-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; margin-top: 16px; }
+    .saved-timetable-card { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 14px; display: flex; flex-direction: column; gap: 10px; min-height: 120px; }
+    .saved-timetable-card__title { font-weight: 700; color: #0f172a; font-size: 0.95rem; }
+    .saved-timetable-card__meta { color: #475569; font-size: 0.85rem; }
+    .status-banner { display: flex; align-items: center; gap: 10px; background: #eef2ff; border: 1px solid #c7d2fe; border-radius: 12px; color: #4338ca; padding: 14px 18px; margin-bottom: 20px; }
+    .status-banner i { font-size: 1.25rem; }
+  </style>
+</head>
+<body>
+  <div class="download-page">
+    <div class="download-header">
+      <div>
+        <h1>Timetable Downloads</h1>
+        <p style="margin:8px 0 0; color:#475569; max-width:700px;">Fetch already saved class timetables for your school year and download them as PDF.</p>
+      </div>
+      <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
+       
+        <button id="refreshSavedTimetablesBtn" class="btn primary-btn"><i class="fas fa-sync-alt"></i> Refresh Saved Timetables</button>
+      </div>
+    </div>
+
+    <div class="cards-grid">
+      <div class="download-card filters-card">
+      <h2>Saved Timetable Filters</h2>
+      <div class="filter-grid">
+        <div>
+          <label for="downloadYearSelect">Academic Year</label>
+          <select id="downloadYearSelect" class="form-control"></select>
+        </div>
+        <div>
+          <label for="downloadTermSelect">Term</label>
+          <select id="downloadTermSelect" class="form-control">
+            <option value="Term 1">Term 1</option>
+            <option value="Term 2">Term 2</option>
+            <option value="Term 3">Term 3</option>
+          </select>
+        </div>
+        <div style="display:flex; align-items:flex-end;">
+          <button id="loadSavedTimetablesBtn" class="btn primary-btn" style="width:100%;"><i class="fas fa-download"></i> Load Saved Class Timetables</button>
+        </div>
+      </div>
+
+      <div id="downloadStatus" class="status-banner" style="display:none;"></div>
+      </div>
+
+      <div class="download-card class-download-card">
+      <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap;">
+        <div>
+          <h2>Saved Class Timetables</h2>
+          <p style="margin:4px 0 0; color:#475569;">Download any saved class timetable from the portal.</p>
+        </div>
+        <div class="download-actions">
+          <button id="downloadAllSavedClassesBtn" class="btn secondary-btn"><i class="fas fa-file-pdf"></i> Download All Saved Classes</button>
+        </div>
+      </div>
+      <div id="savedTimetablesList" class="table-wrapper"></div>
+      </div>
+
+    </div>
+  </div>
+
+  <script src="js/config.js"></script>
+  <script src="js/auth-service.js"></script>
+  <script src="js/Utility/cbc-utils.js"></script>
+  <script src="js/Utility/spinner.js"></script>
+  <script src="js/ui.js"></script>
+  <!-- Toast container and confirm dialog mount points -->
+  <div id="toastContainer" class="toast-container" aria-live="polite" aria-atomic="true"></div>
+  <div id="confirmRoot"></div>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.28/jspdf.plugin.autotable.min.js"></script>
+  <script src="js/timetable-common.js"></script>
+  <script src="js/timetable-downloads.js"></script>
+</body>
+</html>
