@@ -95,6 +95,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const digitalSignatureContent = document.getElementById("digitalSignatureContent");
   const submittedMarksContainer = document.getElementById("submittedMarksContainer");
   const submittedMarksStatusMessage = document.getElementById("submittedMarksStatusMessage");
+  const myClassTabBtn = document.getElementById("myClassTabBtn");
 
   // Global variables for submitted marks pagination
   let submittedMarksCurrentPage = 1;
@@ -133,24 +134,25 @@ document.addEventListener("DOMContentLoaded", () => {
   // TAB LOGIC
   // ---------------------------
   function setupTabs() {
-    const tabBtns = document.querySelectorAll(".tab-btn");
     const subnavBtns = document.querySelectorAll(".subnav-btn");
-    const tabPanes = document.querySelectorAll(".tab-pane");
+    const tabPanes = document.querySelectorAll("main > .tab-pane");
 
     const activateTab = (btn) => {
       const target = btn.dataset.tab;
       if (!target) return;
-      tabBtns.forEach(b => b.classList.remove("active"));
       subnavBtns.forEach(b => b.classList.remove("active"));
       tabPanes.forEach(p => p.classList.remove("active"));
       btn.classList.add("active");
       const activePane = document.getElementById(target);
       if (activePane) activePane.classList.add("active");
-    };
 
-    tabBtns.forEach(btn => {
-      btn.addEventListener("click", () => activateTab(btn));
-    });
+      if (target === "myClass") {
+        const trigger = window.generateClassTeacherReport;
+        if (typeof trigger === "function") {
+          setTimeout(() => trigger(), 120);
+        }
+      }
+    };
 
     subnavBtns.forEach(btn => {
       btn.addEventListener("click", () => activateTab(btn));
@@ -353,7 +355,28 @@ document.addEventListener("DOMContentLoaded", () => {
       deanDashboardBtn.style.display = isDean ? "inline-flex" : "none";
     }
 
-    if (digitalSignatureContent && teacher) {
+    const isClassTeacher = Boolean(
+      teacher?.isClassTeacher ||
+      teacher?.role === "classteacher" ||
+      teacher?.role === "Class Teacher" ||
+      (Array.isArray(teacher?.roles) && teacher.roles.includes("classteacher"))
+    );
+    const isTeacher = Boolean(
+      teacher?.role === "teacher" ||
+      (Array.isArray(teacher?.roles) && teacher.roles.includes("teacher")) ||
+      teacher?.isDean === true
+    );
+
+    if (myClassTabBtn) {
+      myClassTabBtn.style.display = (isClassTeacher || isTeacher) ? "inline-flex" : "none";
+    }
+
+    const digitalSignatureTab = document.querySelector(".subnav-btn[data-tab='digitalSignature']");
+    if (digitalSignatureTab) {
+      digitalSignatureTab.style.display = isClassTeacher ? "inline-flex" : "none";
+    }
+
+    if (digitalSignatureContent && teacher && isClassTeacher) {
       renderSignatureUI(teacher);
     }
 
@@ -369,7 +392,12 @@ document.addEventListener("DOMContentLoaded", () => {
 
   function renderSignatureUI(user) {
     const container = digitalSignatureContent || document.getElementById("allocationsContainer");
-    if (!container || !user || !user.isClassTeacher) return; // Only show if user is a class teacher
+    const isTeacher = Boolean(
+      user?.role === "teacher" ||
+      (Array.isArray(user?.roles) && user.roles.includes("teacher")) ||
+      user?.isDean === true
+    );
+    if (!container || !user || (!user.isClassTeacher && !isTeacher)) return;
 
     // Check if signature UI already exists
     if (document.getElementById("signatureUploadContainer")) return;
@@ -1675,40 +1703,15 @@ document.addEventListener("DOMContentLoaded", () => {
 
   async function loadSubmittedMarks(forceRefresh = false) {
     const CACHE_KEY = "teacher_marks_cache";
-    const currentDate = new Date();
-    const currentYear = currentDate.getFullYear();
-    const month = currentDate.getMonth() + 1;
-    let currentTerm = "1";
-    if (month >= 5 && month <= 8) currentTerm = "2";
-    else if (month >= 9) currentTerm = "3";
+    const currentYear = marksYearInput?.value || new Date().getFullYear();
+    const currentTerm = marksTermSelect?.value || "1";
     const currentAcademicContext = { year: currentYear, term: currentTerm };
 
     // 🆕 Reset to first page when forcing a refresh (e.g., after submission)
     if (forceRefresh) submittedMarksCurrentPage = 1;
 
     const CACHE_DURATION = 15 * 60 * 1000; // 15 minutes
-
     const cacheKeyWithContext = `${CACHE_KEY}_${currentAcademicContext.year}_${currentAcademicContext.term}`;
-
-    if (!forceRefresh) {
-      const cached = localStorage.getItem(cacheKeyWithContext);
-      if (cached) {
-        try {
-          const { timestamp, data } = JSON.parse(cached);
-          if (Date.now() - timestamp < CACHE_DURATION) {
-            // Handle both legacy array cache and new paginated object structure
-            submittedMarks = Array.isArray(data) ? data : (data.marks || []);
-            window.currentMarks = submittedMarks; // Keep for compatibility if needed elsewhere
-            displayPaginatedMarksGroups(submittedMarksCurrentPage); // Call new function
-            // Ensure all details are visible after loading
-            submittedMarksContainer.querySelectorAll("details").forEach(d => {
-              d.style.display = "";
-            });
-            return;
-          }
-        } catch (e) { console.warn("Cache read error:", e); }
-      }
-    }
 
     try {
       // 🚀 Fetch with a high limit (1000) to ensure multiple class groups are captured for the accordions
@@ -1722,20 +1725,33 @@ document.addEventListener("DOMContentLoaded", () => {
       if (!res.ok) throw new Error("Failed to fetch marks");
       
       const data = await res.json();
-      // Extract the marks array from the paginated object returned by the backend
       submittedMarks = Array.isArray(data) ? data : (data.marks || []);
-      subTablePageMap.clear(); // Reset sub-pagination on fresh load
-      subSearchMap.clear(); // Reset searches on fresh load
+      subTablePageMap.clear();
+      subSearchMap.clear();
 
       localStorage.setItem(cacheKeyWithContext, JSON.stringify({
         timestamp: Date.now(),
         data: submittedMarks
       }));
 
-      window.currentMarks = submittedMarks; // Keep for compatibility if needed elsewhere
-      displayPaginatedMarksGroups(submittedMarksCurrentPage); // Call new function
+      window.currentMarks = submittedMarks;
+      displayPaginatedMarksGroups(submittedMarksCurrentPage);
     } catch (err) {
       console.error("Load marks error:", err);
+
+      try {
+        const cached = localStorage.getItem(cacheKeyWithContext);
+        if (cached) {
+          const { data } = JSON.parse(cached);
+          submittedMarks = Array.isArray(data) ? data : (data?.marks || []);
+          window.currentMarks = submittedMarks;
+          displayPaginatedMarksGroups(submittedMarksCurrentPage);
+          return;
+        }
+      } catch (cacheErr) {
+        console.warn("Cache fallback error:", cacheErr);
+      }
+
       if (submittedMarksContainer) {
         submittedMarksContainer.innerHTML = `
           <div style="text-align:center; padding:20px; color:#e53e3e; background:#fff5f5; border-radius:12px; border:1px solid #feb2b2;">

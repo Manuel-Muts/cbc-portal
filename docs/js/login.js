@@ -132,13 +132,12 @@ document.addEventListener("DOMContentLoaded", function () {
     const allRoles = [
       { value: "learner", label: "Learner" },
       { value: "teacher", label: "Teacher" },
-      { value: "classteacher", label: "Class Teacher" },
       { value: "accounts", label: "Accounts" },
       { value: "admin", label: "Admin" }
     ];
 
     const visibleRoles = isInstalledApp
-      ? allRoles.filter(role => ["learner", "teacher", "classteacher"].includes(role.value))
+      ? allRoles.filter(role => ["learner", "teacher"].includes(role.value))
       : allRoles;
 
     const currentValue = roleSelect.value;
@@ -200,7 +199,7 @@ document.addEventListener("DOMContentLoaded", function () {
       if (loginToggle) loginToggle.style.display = "none";
       admissionLabel.textContent = "Admission Number";
       hide(emailField); hide(emailLabel);
-    } else if (["teacher", "admin", "classteacher", "accounts", "superAdmin", "super_admin"].includes(selectedRole)) {
+    } else if (["teacher", "admin", "accounts", "superAdmin", "super_admin"].includes(selectedRole)) {
       show(emailField); show(emailLabel);
       show(admissionField); show(admissionLabel);
       admissionField.type = "password"; // Hide password by default
@@ -209,7 +208,7 @@ document.addEventListener("DOMContentLoaded", function () {
         loginToggle.className = "fas fa-eye toggle-password-icon"; 
       }
       hide(firstnameField); hide(firstnameLabel);
-      admissionLabel.textContent = selectedRole === "classteacher" ? "Class Teacher Password" : "Password";
+      admissionLabel.textContent = "Password";
     } else {
       hide(firstnameField); hide(firstnameLabel);
       hide(emailField); hide(emailLabel);
@@ -302,7 +301,7 @@ document.addEventListener("DOMContentLoaded", function () {
       if (data.user.schoolId) localStorage.setItem("schoolId", data.user.schoolId);
 
       // Open password change modal if required
-      if ((["teacher", "classteacher", "admin", "accounts"].includes(selectedRole)) && data.user.passwordMustChange) {
+      if ((["teacher", "admin", "accounts"].includes(selectedRole)) && data.user.passwordMustChange) {
         openChangePasswordModal();
         window.spinner?.hide(submitBtn);
         return;
@@ -336,8 +335,8 @@ document.addEventListener("DOMContentLoaded", function () {
     const currentPasswordInput = changePasswordModal.querySelector("input[name='currentPassword']");
     const newPasswordInput = changePasswordModal.querySelector("input[name='newPassword']");
     if (!user) return;
-    currentField.style.display = (user.role === "classteacher" || user.isClassTeacher) ? "none" : "block";
-    if (currentField.style.display !== "none" && currentPasswordInput) {
+    currentField.style.display = "block";
+    if (currentPasswordInput) {
       currentPasswordInput.focus();
     } else if (newPasswordInput) {
       newPasswordInput.focus();
@@ -361,8 +360,10 @@ document.addEventListener("DOMContentLoaded", function () {
     const token = window.authService?.getToken() || localStorage.getItem(tokenKey);
     
     const selectedRole = localStorage.getItem("userRole");
-    const payload = { newPassword };
-    if (selectedRole !== "classteacher") payload.currentPassword = currentPassword;
+    const payload = {
+      currentPassword,
+      newPassword
+    };
 
     if (!token) return alert("Session token missing. Please try logging in again.");
 

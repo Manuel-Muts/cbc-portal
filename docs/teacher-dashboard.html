@@ -6,7 +6,8 @@
   <title>TEACHER</title>
   <link rel="stylesheet" href="css/teachers.css" />
   <link rel="stylesheet" href="css/announcements.css">
- 
+  <link rel="stylesheet" href="css/analysis.css">
+
 
   <link rel="icon" type="image/png" href="/images/favicon.png"/> 
   <link rel="apple-touch-icon" href="/images/favicon.png" />
@@ -63,6 +64,7 @@
     <div class="subnav-left">
       <button class="subnav-btn active" data-tab="enterMarks">📊 Enter Marks</button>
       <button class="subnav-btn" data-tab="submittedMarks">📋 Submitted Marks</button>
+      <button class="subnav-btn" data-tab="myClass" id="myClassTabBtn" style="display:none;">🏫 My Class</button>
       <button class="subnav-btn" data-tab="studyMaterials">📚 Study Materials</button>
       <button class="subnav-btn" data-tab="digitalSignature">🖊️ Digital Signature</button>
     </div>
@@ -170,6 +172,90 @@
     </section>
     </div>
 
+    <div id="myClass" class="tab-pane">
+      <section class="marks-table">
+        <details open class="collapsible-card">
+          <summary class="collapsible-header">
+            <h2>🏫 MY CLASS</h2>
+            <span class="summary-note">(Class teacher view)</span>
+          </summary>
+          <div class="collapsible-body">
+            <div id="myClassFallbackMessage" class="my-class-fallback-message hidden">No class assigned.</div>
+            <div id="myClassAnalysisWrap" class="card" style="padding:18px;">
+              <div class="filter-grid">
+                <div class="form-group">
+                  <label for="gradeFilter">Grade</label>
+                  <div class="grade-field-with-badge">
+                    <select id="gradeFilter" class="form-control grade-select-with-badge"></select>
+                    <span id="gradeStreamBadge" class="grade-stream-badge" style="display:none;"></span>
+                  </div>
+                </div>
+
+                <div class="form-group">
+                  <label for="termFilter">Term</label>
+                  <select id="termFilter" class="form-control"></select>
+                </div>
+
+                <div class="form-group">
+                  <label for="yearFilter">Year</label>
+                  <select id="yearFilter" class="form-control"></select>
+                </div>
+
+                <div class="form-group" id="streamFilterGroup">
+                  <label for="streamFilterSelect">Stream</label>
+                  <select id="streamFilterSelect" class="form-control">
+                    <option value="assigned">My Stream Only</option>
+                  </select>
+                </div>
+
+                <div class="form-group">
+                  <label for="assessmentFilter">Assessment</label>
+                  <select id="assessmentFilter" class="form-control"></select>
+                </div>
+
+                <div class="form-group">
+                  <button id="generateReport" class="btn primary-btn">Generate Report</button>
+                </div>
+              </div>
+
+              <div class="stats-summary">
+                <div class="stat-card"><h4>Class Mean</h4><p id="classMean">-</p></div>
+                <div class="stat-card"><h4>Pass Rate (%)</h4><p id="passRate">-</p></div>
+                <div class="stat-card"><h4>Records</h4><p id="recordsCount">-</p></div>
+              </div>
+
+              <div class="analysis-tabs-container" id="analysisTabsContainer">
+                <div class="tab-buttons">
+                  <button class="tab-btn active" data-tab="classRankingPane">Class Ranking</button>
+                  <button class="tab-btn" data-tab="subjectAnalysisPane">Subject Analysis</button>
+                  <button class="tab-btn" data-tab="trendChartPane">Trend Chart</button>
+                  <button class="tab-btn" data-tab="missingExamsPane">Missing Exams</button>
+                </div>
+
+                <div class="tab-content-area">
+                  <div class="tab-pane active" id="classRankingPane">
+                    <div id="rankingTableWrap" class="table-responsive"></div>
+                  </div>
+
+                  <div class="tab-pane" id="subjectAnalysisPane">
+                    <div id="subjectTableWrap" class="table-responsive"></div>
+                  </div>
+
+                  <div class="tab-pane" id="trendChartPane">
+                    <canvas id="classTrendChart"></canvas>
+                  </div>
+
+                  <div class="tab-pane" id="missingExamsPane">
+                    <div id="missingExamsTableWrap" class="table-responsive"></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </details>
+      </section>
+    </div>
+
     <div id="studyMaterials" class="tab-pane">
     <!-- =================== STUDY MATERIALS =================== -->
     <section class="materials-section">
@@ -197,5 +283,6 @@
   <script src="js/ui.js"></script>
   <script src="js/Utility/subject-data.js"></script>
   <script src="js/teacher/teachers.js"></script>
+  <script src="js/classteacher/analysis.js"></script>
 </body>
 </html>

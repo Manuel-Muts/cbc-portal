@@ -75,7 +75,7 @@ export const requestReset = async (req, res) => {
       subject: "Password Reset",
       htmlContent: `
         <h3>Hello ${user.firstname || user.name}</h3>
-        <p>Your password reset code is:</p>
+        <p>Your Password Reset Code is:</p>
         <div style="
           font-size: 26px;
           font-weight: bold;

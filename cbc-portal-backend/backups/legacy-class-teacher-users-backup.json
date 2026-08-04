@@ -1,0 +1,121 @@
+{
+  "exportedAt": "2026-08-04T12:25:46.549Z",
+  "count": 9,
+  "users": [
+    {
+      "_id": "6995e7d5a295f598148ee458",
+      "name": "EMMANUEL MUTEGI",
+      "role": "teacher",
+      "schoolId": "69958d30d946f47d793f696f",
+      "email": "gitongaemmanuel50@gmail.com",
+      "password": "$2b$10$f6dJyZGNVFmOjG852W9rM.YEAI8f7Qk6g.q4BpsMKvIO/a6MTqd0u",
+      "classTeacherPassword": "$2b$10$ce6VCF5etzMGWetWJQKGzuL1.ZqLmLb04yi5ktQZp68rK/BY7THGy",
+      "assignedClass": "2",
+      "assignedStream": "Q",
+      "isClassTeacher": true,
+      "isDean": true
+    },
+    {
+      "_id": "69b3bc0655adaccf77ba185f",
+      "name": "Tr Rhoda",
+      "role": "teacher",
+      "schoolId": "6995b18001dfb8705cda4d49",
+      "email": "rhodamukaminjeru@gmail.com",
+      "password": "$2b$10$GGZ7AJtiCz2ARksjOSUpdOQsywIqpj8YCtEMPHdHILZZqPM6/QDRq",
+      "classTeacherPassword": "$2b$10$8Z2UlvFP58kdJU8zK9iIS.P1BMOtBhViv9k62nHVuEa.LUvwQC7b2",
+      "assignedClass": "7",
+      "assignedStream": null,
+      "isClassTeacher": true
+    },
+    {
+      "_id": "69b3c48355adaccf77ba1ada",
+      "name": "Tr Jackline",
+      "role": "teacher",
+      "schoolId": "6995b18001dfb8705cda4d49",
+      "email": "jacklinegitonga26@gmail.com",
+      "password": "$2b$10$V8wUZ4.b.z3//nttR.zC9unPzyVR0/qYxzwuhrQbMDItnToEaCWaC",
+      "classTeacherPassword": "$2b$10$eqMY.SmsOyNKizacGy1oduFT7DzlB8XDLvmyou/vUZ.o0YUjvhyie",
+      "assignedClass": "5",
+      "assignedStream": null,
+      "isClassTeacher": true
+    },
+    {
+      "_id": "69fc86059e6399c33bc48b90",
+      "name": "Tr.Mercy",
+      "role": "teacher",
+      "schoolId": "69fc71094562e1643a22ac8c",
+      "email": "2527790m@gmail.com",
+      "password": "$2b$10$UB0hAYsXzt9IjRxoEUK5OeIyjmKigvHCsCoAF8gQf/g3tPU9wCFM2",
+      "classTeacherPassword": "$2b$10$0hCwovr7QVyNUjqJs4ryiOkUTZgaKSbAe6g55Hhy8OIPzoakOioZm",
+      "assignedClass": "7",
+      "assignedStream": "A",
+      "isClassTeacher": true,
+      "isDean": false
+    },
+    {
+      "_id": "69fc88629e6399c33bc48bdb",
+      "name": "Tr.Priscilla",
+      "role": "teacher",
+      "schoolId": "69fc71094562e1643a22ac8c",
+      "email": "priscillakajira@gmail.com",
+      "password": "$2b$10$P5LXvuvpwkeJ5GkkzVRgPuMb924NsKT9XE6ndkwKNAx8iNwEG9efC",
+      "classTeacherPassword": "$2b$10$4sEmIKgz8EMaPHvyvQzyuO/2ncIzok3WrtWJqS.LEPiN4ja6aNUUe",
+      "assignedClass": "9",
+      "assignedStream": "A",
+      "isClassTeacher": true,
+      "isDean": false
+    },
+    {
+      "_id": "69fd9fc5c4a1e9e913651f0c",
+      "name": "Kenneth Majira",
+      "role": "teacher",
+      "schoolId": "69fc71094562e1643a22ac8c",
+      "email": "kenkennie78@gmail.com",
+      "password": "$2b$10$MnrNIl4qlD0WrMGenTWmv.EjdDV5FxseRJgYEJ/GVi0EbfGnDTCqi",
+      "classTeacherPassword": "$2b$10$2JmSyTcgfotEJzKt.Sun2O45H4EeptlW8ZUlE1RytmDgXtsLoMifS",
+      "assignedClass": "Grade 8",
+      "assignedStream": null,
+      "isClassTeacher": true,
+      "isDean": true
+    },
+    {
+      "_id": "69fda05dc4a1e9e913651f46",
+      "name": "Jeremy kimathi",
+      "role": "teacher",
+      "schoolId": "69fc71094562e1643a22ac8c",
+      "email": "kimathijeremy1992@gmail.com",
+      "password": "$2b$10$v4Pb85jwRBM/NBrEo1RvJu/aFM4CGf4gwfBv60HelgnjdHVSqc2vi",
+      "classTeacherPassword": "$2b$10$m0dk94VbrYluPIgWG5/vqOdQVcBUyhttCr4kTEQNkuuJBox0JFOBS",
+      "assignedClass": "9",
+      "assignedStream": "B",
+      "isClassTeacher": true,
+      "isDean": false
+    },
+    {
+      "_id": "6a01909bc4899295bcadbfa1",
+      "name": "Purity Kathambi",
+      "role": "teacher",
+      "schoolId": "69fc71094562e1643a22ac8c",
+      "email": "puritykathambi2016@gmail.com",
+      "password": "$2b$12$oddTfp4zNTnvfWk9O16zP.a.XGRFPFbPiUh7a6iUEg3uKCBzdnNbO",
+      "classTeacherPassword": "$2b$10$97Sx2n9S4L/nLyf7VVZnz.s63Hkqq3P7sZaoL7WAE7HwyX3kNiUs.",
+      "assignedClass": "7",
+      "assignedStream": "B",
+      "isClassTeacher": true,
+      "isDean": false
+    },
+    {
+      "_id": "6a22903fd640d78d7e31bb33",
+      "name": "Joyce Mugambi",
+      "role": "teacher",
+      "schoolId": "69fc71094562e1643a22ac8c",
+      "email": "joycekarithi0@gmail.com",
+      "password": "$2b$10$dzhCUBIlvxT/86OxgJ0bIOG2goG3VDpwEbdwNvpqwfqtxhN8IER3K",
+      "classTeacherPassword": "$2b$10$3HRyfjkU0VKXcIBdvQaxfeaD1dtvCk7fsENgeuQUDiHeWWZk3qrsO",
+      "assignedClass": "5",
+      "assignedStream": "B",
+      "isClassTeacher": true,
+      "isDean": false
+    }
+  ]
+}

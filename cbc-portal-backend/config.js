@@ -16,11 +16,32 @@ const config = {
   // DATABASE
   // ===========================
   database: {
-    // Uses MongoDB Atlas for production, local MongoDB for development
-    uri:
-      process.env.NODE_ENV === 'production'
-        ? process.env.MONGO_ATLAS
-        : process.env.MONGO_LOCAL,
+    // Explicit source switch: atlas | local | auto
+    // `DB_SOURCE` and `MONGO_SOURCE` override `NODE_ENV` when present.
+    uri: (() => {
+      const rawNodeEnv = process.env.NODE_ENV || 'development';
+      const normalizedNodeEnv = rawNodeEnv.trim().toLowerCase();
+      const isProduction = normalizedNodeEnv === 'production';
+      const rawDatabaseSource = (process.env.DB_SOURCE || process.env.MONGO_SOURCE || 'auto').trim().toLowerCase();
+
+      if (rawDatabaseSource === 'atlas') {
+        return process.env.MONGO_ATLAS;
+      }
+
+      if (rawDatabaseSource === 'local') {
+        return process.env.MONGO_LOCAL;
+      }
+
+      if (rawDatabaseSource === 'auto') {
+        return isProduction
+          ? (process.env.MONGO_ATLAS || process.env.MONGO_LOCAL)
+          : (process.env.MONGO_LOCAL || process.env.MONGO_ATLAS);
+      }
+
+      return isProduction
+        ? (process.env.MONGO_ATLAS || process.env.MONGO_LOCAL)
+        : (process.env.MONGO_LOCAL || process.env.MONGO_ATLAS);
+    })(),
     options: {
       useNewUrlParser: true,
       useUnifiedTopology: true,

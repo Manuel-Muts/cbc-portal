@@ -98,6 +98,32 @@ const normalizeGrade = (grade) => {
   return str;
 };
 
+const normalizeClassGradeValue = (grade) => {
+  if (!grade) return null;
+  let str = String(grade).trim();
+  if (!str) return null;
+
+  const upper = str.toUpperCase();
+  if (upper.startsWith("GRADE")) {
+    str = str.replace(/^GRADE\s+/i, "").trim();
+  }
+
+  const cleaned = str.trim();
+  if (!cleaned) return null;
+
+  const upperCleaned = cleaned.toUpperCase();
+  if (upperCleaned === "PG" || upperCleaned === "PP1" || upperCleaned === "PP2") {
+    return upperCleaned;
+  }
+
+  if (upperCleaned.startsWith("PP") || upperCleaned.startsWith("PG")) {
+    return upperCleaned;
+  }
+
+  const match = cleaned.match(/\d+/);
+  return match ? match[0] : cleaned;
+};
+
 const escapeRegExp = (str) => {
   if (!str) return '';
   return String(str).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -444,36 +470,41 @@ export const loginUser = async (req, res) => {
       }
     } 
     // ---------------------------
-    // CLASS TEACHER LOGIN
-    // ---------------------------
-    else if (normalizedRole === "classteacher") {
-      if (!normalizedEmail || !password) return res.status(400).json({ message: "Email and password required" });
-
-      user = await User.findOne({ email: { $regex: `^${escapeRegExp(normalizedEmail)}$`, $options: 'i' }, isClassTeacher: true });
-      if (!user) {
-        await LoginAttempt.create({ identifier: normalizedEmail, roleAttempted: normalizedRole, success: false, ip: req.ip, userAgent: req.headers['user-agent'] });
-        return res.status(400).json({ message: "Invalid credentials" });
-      }
-
-      const isMatch = await bcrypt.compare(password, user.classTeacherPassword);
-      if (!isMatch) {
-        await LoginAttempt.create({ userId: user._id, identifier: normalizedEmail, roleAttempted: normalizedRole, schoolId: user.schoolId, success: false, ip: req.ip, userAgent: req.headers['user-agent'] });
-        return res.status(400).json({ message: "Invalid credentials" });
-      }
-    } 
-    // ---------------------------
     // TEACHER / ADMIN / SUPERADMIN LOGIN
     // ---------------------------
     else {
       if (!normalizedEmail || !password) return res.status(400).json({ message: "Email and password required" });
 
-      user = await User.findOne({ email: { $regex: `^${escapeRegExp(normalizedEmail)}$`, $options: 'i' }, role: normalizedRole });
+      const allowedRoles = {
+        teacher: ["teacher"],
+        admin: ["admin"],
+        accounts: ["accounts"],
+        super_admin: ["super_admin"],
+        superadmin: ["super_admin"]
+      }[normalizedRole] || [normalizedRole];
+
+      user = await User.findOne({
+        email: { $regex: `^${escapeRegExp(normalizedEmail)}$`, $options: 'i' },
+        role: { $in: allowedRoles }
+      });
+
+      if (!user) {
+        const emailOnlyMatch = await User.findOne({
+          email: { $regex: `^${escapeRegExp(normalizedEmail)}$`, $options: 'i' }
+        });
+
+        if (emailOnlyMatch && allowedRoles.includes(emailOnlyMatch.role)) {
+          user = emailOnlyMatch;
+        }
+      }
+
       if (!user) {
         await LoginAttempt.create({ identifier: normalizedEmail, roleAttempted: normalizedRole, success: false, ip: req.ip, userAgent: req.headers['user-agent'] });
         return res.status(400).json({ message: "Invalid credentials" });
       }
 
       const isMatch = await bcrypt.compare(password, user.password);
+
       if (!isMatch) {
         await LoginAttempt.create({ userId: user._id, identifier: normalizedEmail, roleAttempted: normalizedRole, schoolId: user.schoolId, success: false, ip: req.ip, userAgent: req.headers['user-agent'] });
         return res.status(400).json({ message: "Invalid credentials" });
@@ -541,12 +572,12 @@ export const loginUser = async (req, res) => {
         classGrade:
           (user.role === "student" || user.role === "learner")
             ? studentGrade
-            : (role === "classteacher" || user.isClassTeacher)
+            : user.isClassTeacher
             ? (user.assignedClass ? String(user.assignedClass) : null)
             : null,
         classStream: (user.role === "student" || user.role === "learner") 
           ? studentStream 
-          : (role === "classteacher" || user.isClassTeacher ? classStream : null),
+          : (user.isClassTeacher ? classStream : null),
         schoolStatus: school ? school.status : null,
         schoolVersion: school ? school.version : null,
         isClassTeacher: user.isClassTeacher,
@@ -1007,7 +1038,7 @@ export const assignClassTeacher = async (req, res) => {
       return res.status(403).json({ message: 'You can only assign class teachers in your school' });
     }
 
-    const normalizedGrade = normalizeGrade(assignedClass);
+    const normalizedGrade = normalizeClassGradeValue(assignedClass);
     const stream = assignedStream || null;
 
     // 🆕 Validation: Check if another teacher is already assigned to this specific class/stream
@@ -1029,48 +1060,36 @@ export const assignClassTeacher = async (req, res) => {
     teacher.assignedStream = stream;
     teacher.isClassTeacher = true;
 
-    const rawClassTeacherPassword = 'CT' + Math.random().toString(36).slice(-5).toUpperCase();
-    const hashed = await bcrypt.hash(rawClassTeacherPassword, 10);
-    teacher.classTeacherPassword = hashed;
-
-    teacher.passwordMustChange = true;
-
     await teacher.save();
     cache.clearByPattern(String(teacher.schoolId)); // Invalidate cache
 
     // Email the class teacher credentials (if email exists)
     if (teacher.email) {
-      const classLabel = (String(assignedClass).toUpperCase().startsWith("PP") || String(assignedClass).toUpperCase().startsWith("PG"))
-        ? (assignedStream ? `${normalizeGrade(assignedClass)} ${assignedStream}` : `${normalizeGrade(assignedClass)}`)
+      const classLabel = (String(normalizedGrade).toUpperCase().startsWith("PP") || String(normalizedGrade).toUpperCase().startsWith("PG"))
+        ? (assignedStream ? `${normalizedGrade} ${assignedStream}` : `${normalizedGrade}`)
         : (assignedStream 
-          ? `Grade ${assignedClass} ${assignedStream}` 
-          : `Grade ${assignedClass}`);
+          ? `Grade ${normalizedGrade} ${assignedStream}` 
+          : `Grade ${normalizedGrade}`);
       
       await sendEmail({
         to: teacher.email,
         subject: 'Class Teacher Allocation',
         text: `Hello ${teacher.name},
 
-        You have been allocated to ${classLabel} as the class teacher.
+You have been allocated to ${classLabel} as the class teacher.
 
-        Login credentials (Class Teacher role):
-        Email: ${teacher.email}
-        Password: ${rawClassTeacherPassword}
+Your teacher page now includes a dedicated My Class tab for this allocation.
 
-         Please log in and change your password immediately.`,
+Please use your existing teacher account credentials to access the teacher page.`,
         html: `
           <p>Hello <strong>${teacher.name}</strong>,</p>
           <p>You have been allocated to <strong>${classLabel}</strong> as the class teacher.</p>
-          <p><strong>Login credentials (Class Teacher role):</strong></p>
-          <ul>
-            <li>Email: ${teacher.email}</li>
-            <li>Password: ${rawClassTeacherPassword}</li>
-          </ul>
-          <p>Please log in and change your password immediately.</p>
-           <p>
-        <a href="https://competencehub.netlify.app/login" target="_blank">CLICK HERE TO LOGIN</a>
-      </p>
-       `
+          <p>Your teacher dashboard now includes a dedicated <strong>My Class</strong> tab for this allocation.</p>
+          <p>Please use your existing teacher account credentials to access the teacher page.</p>
+          <p>
+            <a href="https://competencehub.netlify.app/login" target="_blank">CLICK HERE TO LOGIN</a>
+          </p>
+        `
       });
     }
 
@@ -1111,11 +1130,11 @@ export const getClassTeacherAllocations = async (req, res) => {
       teacherId: t._id.toString(),
       teacherName: t.name,
       teacherAdmission: t.admission,
-      assignedClass: t.assignedClass || '',
+      assignedClass: normalizeClassGradeValue(t.assignedClass) || '',
       assignedStream: t.assignedStream || null,
-      classLabel: (String(t.assignedClass).toUpperCase().startsWith("PP") || String(t.assignedClass).toUpperCase().startsWith("PG"))
-        ? (t.assignedStream ? `${normalizeGrade(t.assignedClass)} ${t.assignedStream}` : `${normalizeGrade(t.assignedClass)}`)
-        : (t.assignedStream ? `Grade ${t.assignedClass} ${t.assignedStream}` : `Grade ${t.assignedClass}`),
+      classLabel: (String(normalizeClassGradeValue(t.assignedClass)).toUpperCase().startsWith("PP") || String(normalizeClassGradeValue(t.assignedClass)).toUpperCase().startsWith("PG"))
+        ? (t.assignedStream ? `${normalizeClassGradeValue(t.assignedClass)} ${t.assignedStream}` : `${normalizeClassGradeValue(t.assignedClass)}`)
+        : (t.assignedStream ? `Grade ${normalizeClassGradeValue(t.assignedClass)} ${t.assignedStream}` : `Grade ${normalizeClassGradeValue(t.assignedClass)}`),
       isClassTeacher: !!t.isClassTeacher,
       isDean: !!t.isDean,
       signatureUrl: t.signatureUrl || ""
@@ -1163,11 +1182,12 @@ export const getUser = async (req, res) => {
 
     return res.status(200).json({
       ...userObj,
-      schoolStatus: userObj.schoolId?.status || "Active", // 🆕 Explicitly provide school status
-      schoolId: userObj.schoolId?._id || userObj.schoolId,   // 🆕 Restore schoolId as a standard ID string
+      schoolStatus: userObj.schoolId?.status || "Active",
+      schoolId: userObj.schoolId?._id || userObj.schoolId,
       isDean: !!userObj.isDean,
-      // normalize for frontend safety
-      classGrade: userObj.assignedClass || userObj.classGrade || null
+      classGrade: userObj.assignedClass || userObj.classGrade || null,
+      assignedStream: userObj.assignedStream || userObj.classStream || null,
+      classStream: userObj.assignedStream || userObj.classStream || null
     });
   } catch (err) {
     console.error("GetUser Error:", err);
@@ -1362,58 +1382,6 @@ export const changePassword = async (req, res) => {
     if (!user) return res.status(404).json({ message: "User not found" });
 
     // ---------------------------
-    // CLASS TEACHER SPECIAL CASE
-    // ---------------------------
-    const isClassTeacher = req.user.roles?.includes("classteacher") || user.isClassTeacher;
-
-    if (isClassTeacher) {
-      // Class teachers do NOT submit currentPassword
-      const hashed = await bcrypt.hash(newPassword, 10);
-      user.classTeacherPassword = hashed;
-      user.passwordMustChange = false;
-
-      await user.save();
-
-      // Fetch school for version
-      let schoolVersion = null;
-      if (user.schoolId) {
-        const school = await School.findById(user.schoolId).select('version');
-        schoolVersion = school ? school.version : null;
-      }
-
-      // Generate token with classTeacherPassword flag
-      const token = jwt.sign(
-        {
-          id: user._id,
-          roles: ["classteacher", ...(user.role !== "classteacher" ? [user.role] : [])],
-          schoolId: user.schoolId ? String(user.schoolId) : null,
-          classGrade: user.assignedClass || null,
-          classStream: user.assignedStream || null, // 🆕 Include stream
-          isClassTeacher: true,
-          isDean: user.isDean,
-          schoolVersion
-        },
-        process.env.JWT_SECRET,
-        { expiresIn: "1d" }
-      );
-
-      // Sanitize user for response
-      const sanitizedUser = user.toObject();
-      delete sanitizedUser.password;
-      delete sanitizedUser.classTeacherPassword;
-      delete sanitizedUser.resetCode;
-      delete sanitizedUser.resetCodeExpires;
-      delete sanitizedUser.resetAttempts;
-      delete sanitizedUser.resetVerified;
-
-      return res.json({
-        message: "Password updated successfully",
-        user: sanitizedUser,
-        token
-      });
-    }
-
-    // ---------------------------
     // NORMAL USERS (Teacher/Admin/Student)
     // ---------------------------
     if (!currentPassword) {
@@ -1439,10 +1407,10 @@ export const changePassword = async (req, res) => {
     const token = jwt.sign(
       {
         id: user._id,
-        roles: [user.role],
+        roles: user.isClassTeacher ? [user.role, "classteacher"] : [user.role],
         schoolId: user.schoolId ? String(user.schoolId) : null,
-        classGrade: user.assignedClass || null,
-        classStream: user.assignedStream || null, // 🆕 Include stream
+        classGrade: user.isClassTeacher ? (user.assignedClass || null) : null,
+        classStream: user.isClassTeacher ? (user.assignedStream || null) : null,
         isClassTeacher: user.isClassTeacher,
         isDean: user.isDean,
         schoolVersion

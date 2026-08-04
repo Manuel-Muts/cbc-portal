@@ -727,10 +727,6 @@ export const getMarks = async (req, res) => {
     const limit = parseInt(req.query.limit) || 20;
     const skip = (page - 1) * limit;
 
-    if (req.user.role === 'dean' || req.user.isDean === true) {
-      return res.json({ marks: [], total: 0, totalPages: 0, currentPage: page });
-    }
-
     const query = buildTeacherMarksQuery(
       {
         teacherId: req.user.id,

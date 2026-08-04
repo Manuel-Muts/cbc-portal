@@ -16,6 +16,32 @@ const allocationSchema = new mongoose.Schema({
   subjects: { type: [String], default: [] }
 });
 
+const normalizeClassGradeValue = (grade) => {
+  if (!grade) return null;
+  let str = String(grade).trim();
+  if (!str) return null;
+
+  const upper = str.toUpperCase();
+  if (upper.startsWith("GRADE")) {
+    str = str.replace(/^GRADE\s+/i, "").trim();
+  }
+
+  const cleaned = str.trim();
+  if (!cleaned) return null;
+
+  const upperCleaned = cleaned.toUpperCase();
+  if (upperCleaned === "PG" || upperCleaned === "PP1" || upperCleaned === "PP2") {
+    return upperCleaned;
+  }
+
+  if (upperCleaned.startsWith("PP") || upperCleaned.startsWith("PG")) {
+    return upperCleaned;
+  }
+
+  const match = cleaned.match(/\d+/);
+  return match ? match[0] : cleaned;
+};
+
 const userSchema = new mongoose.Schema({
   // ------------------------------------
   // BASIC ACCOUNT DETAILS
@@ -89,7 +115,11 @@ const userSchema = new mongoose.Schema({
   // CLASS / SUBJECT ALLOCATION
   // ------------------------------------
   allocations: { type: [allocationSchema], default: [] },
-  assignedClass: { type: String, default: null },
+  assignedClass: {
+    type: String,
+    default: null,
+    set: (value) => normalizeClassGradeValue(value)
+  },
   assignedStream: { 
     type: String, 
     default: null,

@@ -15,13 +15,16 @@ function detectEnvironment() {
   const hostname = window.location.hostname;
   const port = window.location.port;
   const protocol = window.location.protocol;
-  
-  // Development: localhost or 127.0.0.1
-  if (hostname === 'localhost' || hostname === '127.0.0.1' || hostname.startsWith('192.168')) {
+  const hostnameLower = hostname.toLowerCase();
+
+  if (hostnameLower === 'localhost' || hostnameLower === '127.0.0.1' || hostnameLower.startsWith('192.168') || hostnameLower === '0.0.0.0') {
     return 'development';
   }
-  
-  // Default to production for any other hostname
+
+  if (hostnameLower.includes('netlify') || hostnameLower.includes('vercel') || hostnameLower.includes('ngrok')) {
+    return 'development';
+  }
+
   return 'production';
 }
 

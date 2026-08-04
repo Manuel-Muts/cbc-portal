@@ -24,6 +24,8 @@ const LearnerMarksModule = (function() {
   let learnerContextMarks = [];
   let classmateContextMarks = [];
   let lmSubjectsTableWrap;
+  let lastLoadedContextKey = null;
+  let isSubjectContextLoading = false;
 
   const API_BASE = config.api.baseURL;
   let gradeOptions = []; // 🆕 Now dynamic, not const
@@ -105,12 +107,12 @@ const LearnerMarksModule = (function() {
   }
 
   function getClassSubjectOptions() {
-    if (!selectedLearner || !classmateContextMarks.length) return [];
+    if (!selectedLearner) return [];
     const isSenior = window.cbcUtils.isSeniorGrade(selectedLearner.grade);
     const seen = new Set();
     const subjects = [];
 
-    classmateContextMarks.forEach((mark) => {
+    [...learnerContextMarks, ...classmateContextMarks].forEach((mark) => {
       const raw = isSenior ? mark.course : mark.subject;
       const key = normalizeLearnerKey(raw);
       if (!key || seen.has(key)) return;
@@ -416,14 +418,27 @@ const LearnerMarksModule = (function() {
   async function loadStudentMarkContext() {
     learnerContextMarks = [];
     classmateContextMarks = [];
-    if (!selectedLearner) return;
+    isSubjectContextLoading = true;
+    if (!selectedLearner) {
+      lastLoadedContextKey = null;
+      renderLearnerSubjectTable();
+      return;
+    }
 
     const grade = lmGradeSelect.value;
     const term = lmTermSelect.value;
     const assessment = lmAssessmentSelect.value;
     const year = lmYearSelect.value;
+    const contextKey = `${grade}|${term}|${assessment}|${year}|${selectedLearner.admission || ''}|${selectedLearner.stream || ''}`;
+
+    if (lastLoadedContextKey === contextKey) {
+      updateSubjects();
+      renderLearnerSubjectTable();
+      return;
+    }
 
     if (!grade || !term || !assessment || !year) {
+      lastLoadedContextKey = null;
       renderLearnerSubjectTable();
       return;
     }
@@ -451,11 +466,13 @@ const LearnerMarksModule = (function() {
       const marks = Array.isArray(data) ? data : [];
       learnerContextMarks = marks.filter((mark) => String(mark.admissionNo) === String(selectedLearner.admission));
       classmateContextMarks = marks.filter((mark) => String(mark.admissionNo) !== String(selectedLearner.admission));
+      lastLoadedContextKey = contextKey;
       updateSubjects();
     } catch (err) {
       console.error(err);
       setStatus(err.message, "error");
     } finally {
+      isSubjectContextLoading = false;
       renderLearnerSubjectTable();
     }
   }
@@ -560,13 +577,15 @@ const LearnerMarksModule = (function() {
       return;
     }
 
-    const isSenior = window.cbcUtils.isSeniorGrade(grade);
-    const classSubjects = getClassSubjectOptions();
-    let subjects = classSubjects.length > 0 ? classSubjects :
-      (isSenior ? getSuggestedSeniorSubjects(grade) : getSubjectOptionsForGrade(grade));
+    if (isSubjectContextLoading) {
+      lmSubjectsTableWrap.innerHTML = `<div class="empty-state" style="padding:18px; border-radius:12px; background:#f8fafc; color:#475569;">Preparing subject list for this learner…</div>`;
+      return;
+    }
+
+    const subjects = getClassSubjectOptions();
 
     if (!subjects || subjects.length === 0) {
-      lmSubjectsTableWrap.innerHTML = `<div class="empty-state" style="padding:18px; border-radius:12px; background:#f8fafc; color:#475569;">No class subject submissions were found for ${grade}${selectedLearner.stream ? ` ${selectedLearner.stream}` : ''}. Use the subject selector to add a missing mark.</div>`;
+      lmSubjectsTableWrap.innerHTML = `<div class="empty-state" style="padding:18px; border-radius:12px; background:#f8fafc; color:#475569;">No subject entries have been populated for ${grade}${selectedLearner.stream ? ` ${selectedLearner.stream}` : ''} yet.</div>`;
       return;
     }
 

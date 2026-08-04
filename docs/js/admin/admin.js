@@ -762,6 +762,21 @@ function attachAdminSignatureLogic() {
     return match ? `Grade ${match[0]}` : g;
   };
 
+  const normalizeClassGradeValue = (g) => {
+    if (!g) return "";
+    const str = String(g).trim();
+    if (!str) return "";
+
+    const cleaned = str.replace(/^grade\s+/i, "").trim();
+    const upper = cleaned.toUpperCase();
+
+    if (upper === "PG" || upper === "PP1" || upper === "PP2") return upper;
+    if (upper.startsWith("PP") || upper.startsWith("PG")) return upper;
+
+    const match = cleaned.match(/\d+/);
+    return match ? match[0] : cleaned;
+  };
+
   const getSchoolTypeKey = () => resolveSchoolTypeKey();
 
   const supportsElectivesManagement = () => {
@@ -955,8 +970,9 @@ function attachAdminSignatureLogic() {
     classGradeSelect.innerHTML = '<option value="">-- Select Grade --</option>';
     options.forEach(grade => {
       const opt = document.createElement('option');
-      opt.value = grade;
-      opt.textContent = (String(grade).toUpperCase().startsWith("PP") || String(grade).toUpperCase() === "PG") ? grade : `Grade ${grade}`;
+      const normalizedValue = normalizeClassGradeValue(grade);
+      opt.value = normalizedValue;
+      opt.textContent = (String(grade).toUpperCase().startsWith("PP") || String(grade).toUpperCase() === "PG") ? grade : `Grade ${normalizedValue}`;
       classGradeSelect.appendChild(opt);
     });
   };
@@ -2571,7 +2587,7 @@ window.addEventListener('beforeunload', () => {
     e.preventDefault();
 
     const teacherId = classTeacherSelect?.value || "";
-    const assignedClass = classGradeSelect?.value || "";
+    const assignedClass = normalizeClassGradeValue(classGradeSelect?.value || "");
     const assignedStream = (classStreamInput && classStreamInput.value !== "") ? classStreamInput.value : null;
 
     if (!teacherId) return showToast("Please select a teacher.", "error");

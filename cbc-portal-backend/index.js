@@ -31,7 +31,9 @@ import electiveRoutes from "./routes/electiveRoutes.js";
 import subjectRoutes from "./routes/subjectRoutes.js";
 import studentRoutes from "./routes/studentRoutes.js";
 import { User } from './models/User.js';
-dotenv.config();
+import { loadEnvironmentFiles } from './utils/envConfig.js';
+
+loadEnvironmentFiles({ env: process.env.NODE_ENV || 'development' });
 
 // Resolve __dirname
 const __filename = fileURLToPath(import.meta.url);
@@ -238,11 +240,71 @@ app.use((req, res) => {
 const rawNodeEnv = process.env.NODE_ENV;
 const normalizedNodeEnv = rawNodeEnv ? rawNodeEnv.trim().toLowerCase() : 'development';
 const isProduction = normalizedNodeEnv === 'production';
-const mongoURI = isProduction ? process.env.MONGO_ATLAS || process.env.MONGO_LOCAL : process.env.MONGO_LOCAL;
+const rawDatabaseSource = (process.env.DB_SOURCE || process.env.MONGO_SOURCE || (isProduction ? 'atlas' : 'local')).trim().toLowerCase();
+
+const resolveDatabaseTarget = () => {
+  const mode = rawDatabaseSource;
+
+  if (mode === 'atlas') {
+    const uri = process.env.MONGO_ATLAS;
+    if (!uri) {
+      throw new Error('DB_SOURCE=atlas was requested but MONGO_ATLAS is not defined.');
+    }
+    return { source: 'atlas', uri, sourceEnvVar: 'MONGO_ATLAS' };
+  }
+
+  if (mode === 'local') {
+    const uri = process.env.MONGO_LOCAL;
+    if (!uri) {
+      throw new Error('DB_SOURCE=local was requested but MONGO_LOCAL is not defined.');
+    }
+    return { source: 'local', uri, sourceEnvVar: 'MONGO_LOCAL' };
+  }
+
+  if (mode === 'auto') {
+    if (isProduction) {
+      const uri = process.env.MONGO_ATLAS || process.env.MONGO_LOCAL;
+      if (!uri) {
+        throw new Error('AUTO database selection is production-mode, but neither MONGO_ATLAS nor MONGO_LOCAL is defined.');
+      }
+      return {
+        source: 'atlas',
+        uri,
+        sourceEnvVar: process.env.MONGO_ATLAS ? 'MONGO_ATLAS' : 'MONGO_LOCAL'
+      };
+    }
+
+    const uri = process.env.MONGO_LOCAL || process.env.MONGO_ATLAS;
+    if (!uri) {
+      throw new Error('AUTO database selection is development-mode, but neither MONGO_LOCAL nor MONGO_ATLAS is defined.');
+    }
+    return {
+      source: 'local',
+      uri,
+      sourceEnvVar: process.env.MONGO_LOCAL ? 'MONGO_LOCAL' : 'MONGO_ATLAS'
+    };
+  }
+
+  throw new Error(`Unsupported DB_SOURCE value: ${mode}. Use atlas, local, or auto.`);
+};
+
+let databaseTarget;
+try {
+  databaseTarget = resolveDatabaseTarget();
+} catch (error) {
+  console.error('\n❌ Database source selection failed:');
+  console.error(error.message);
+  console.error('Set DB_SOURCE=atlas|local|auto and make sure the matching MONGO_* variable is present.');
+  process.exit(1);
+}
+
+const mongoURI = databaseTarget.uri;
 
 console.log(`\n🌍 Environment (raw): ${rawNodeEnv}`);
 console.log(`🌍 Environment (normalized): ${normalizedNodeEnv}`);
-console.log(`📦 Using database: ${isProduction ? 'MongoDB Atlas' : 'Local MongoDB'}`);
+console.log(`🧭 Database source override: ${rawDatabaseSource}`);
+console.log(`📦 Resolved database source: ${databaseTarget.source}`);
+console.log(`📦 Using database URI from: ${databaseTarget.sourceEnvVar}`);
 
 // Optional: force Node to use public DNS servers if local DNS/TXT lookups are blocked
 if (process.env.FORCE_PUBLIC_DNS === 'true') {

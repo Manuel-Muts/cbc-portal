@@ -29,25 +29,27 @@ export const isStudent = (req, res, next) => {
 // Class teacher guard
 export const isClassTeacher = (req, res, next) => {
   const roles = getRoles(req.user);
-  // Allow if classteacher OR Dean
-  const ok = roles.includes("classteacher") || req.user?.isClassTeacher === true || req.user?.isDean === true;
-  if (!ok) {
-    return res.status(403).json({ message: "Forbidden: class teacher role required" });
-  }
+  const isTeacher = roles.includes("teacher") || req.user?.role === "teacher";
+  const isDean = req.user?.isDean === true;
+  const isExplicitClassTeacher = req.user?.isClassTeacher === true || roles.includes("classteacher");
 
-  // If user is a Dean, they bypass the grade-specific scoping
-  if (req.user?.isDean === true) {
+  // Allow teachers and deans through the same route path unless a grade scope is explicitly being enforced.
+  if (isDean || isTeacher || isExplicitClassTeacher) {
+    if (isDean) {
+      return next();
+    }
+
+    const requestedGrade = req.query.grade || req.params.grade;
+    const userClassGrade = req.user?.classGrade;
+
+    if (requestedGrade && userClassGrade && requestedGrade !== userClassGrade) {
+      return res.status(403).json({ message: "Unauthorized: not the assigned grade for this teacher" });
+    }
+
     return next();
   }
 
-  // Optional: enforce grade scoping
-  const requestedGrade = req.query.grade || req.params.grade;
-  const userClassGrade = req.user?.classGrade;
-  if (requestedGrade && userClassGrade && requestedGrade !== userClassGrade) {
-    return res.status(403).json({ message: "Unauthorized: not the class teacher for this grade" });
-  }
-
-  next();
+  return res.status(403).json({ message: "Forbidden: teacher access required" });
 };
 
 export const accountsOnly = (req, res, next) => {

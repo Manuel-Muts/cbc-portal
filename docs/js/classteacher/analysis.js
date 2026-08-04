@@ -6,6 +6,8 @@ document.addEventListener("DOMContentLoaded", async () => {
   // ---------------------------
   const notAllowedEl = document.getElementById("notAllowed");
   const analysisWrap = document.getElementById("analysisWrap");
+  const myClassAnalysisWrap = document.getElementById("myClassAnalysisWrap");
+  const myClassFallbackMessage = document.getElementById("myClassFallbackMessage");
   const logoutBtn = document.getElementById("logoutBtn");
   const refreshBtn = document.getElementById("refreshBtn");
   const generateBtn = document.getElementById("generateReport");
@@ -112,19 +114,33 @@ document.addEventListener("DOMContentLoaded", async () => {
   currentUser = await window.authService?.getUserProfile(["teacher", "classteacher"]);
   if (!currentUser) return; // authService handles redirect to login if session is invalid
 
-  if (!currentUser.isClassTeacher && !currentUser.roles?.includes("classteacher")) {
-    alert("Access Denied: Class Teacher role required.");
+  const userRoles = new Set(
+    [currentUser?.role, ...(currentUser?.roles || [])]
+      .filter(Boolean)
+      .map(role => String(role).toLowerCase())
+  );
+  const isTeacherLikeUser = userRoles.has("teacher") || userRoles.has("classteacher") || currentUser?.isClassTeacher === true || currentUser?.isDean === true;
+
+  if (!isTeacherLikeUser) {
+    alert("Access Denied: Teacher access required.");
     return window.location.href = "/teacher";
   }
 
   function showNotAllowed() {
     notAllowedEl?.classList.remove("hidden");
     analysisWrap?.classList.add("hidden");
+    myClassAnalysisWrap?.classList.add("hidden");
+    if (myClassFallbackMessage) {
+      myClassFallbackMessage.textContent = "No class assigned.";
+      myClassFallbackMessage.classList.remove("hidden");
+    }
   }
 
   function showAnalysis() {
     notAllowedEl?.classList.add("hidden");
     analysisWrap?.classList.remove("hidden");
+    myClassFallbackMessage?.classList.add("hidden");
+    myClassAnalysisWrap?.classList.remove("hidden");
     // 🆕 Ensure tab content is visible
     if (analysisTabsContainer) analysisTabsContainer.style.display = "block";
   }
@@ -201,6 +217,27 @@ document.addEventListener("DOMContentLoaded", async () => {
   refreshBtn?.addEventListener("click", () => window.location.reload());
   generateBtn?.addEventListener("click", generateReport);
   applyFiltersBtn?.addEventListener("click", generateReport);
+
+  window.generateClassTeacherReport = async function() {
+    if (!currentUser?.classGrade) return;
+    if (assessmentFilter && assessmentFilter.value === "") {
+      const latestAssessment = Object.keys(window.ASSESSMENT_MAPPING || {}).sort((a, b) => Number(b) - Number(a))[0];
+      if (latestAssessment) {
+        assessmentFilter.value = latestAssessment;
+      }
+    }
+    if (termFilter && termFilter.value === "all") {
+      const currentMonth = new Date().getMonth() + 1;
+      let currentTerm = "1";
+      if (currentMonth >= 5 && currentMonth <= 8) currentTerm = "2";
+      else if (currentMonth >= 9) currentTerm = "3";
+      termFilter.value = currentTerm;
+    }
+    if (yearFilter && !yearFilter.value) {
+      yearFilter.value = new Date().getFullYear();
+    }
+    await generateReport();
+  };
 
   // Create Container for Edit Table
   const editContainer = document.createElement("div");
@@ -365,6 +402,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   async function initializeAnalysisDashboard(profile) {
     try {
       let classGrade = profile.classGrade || profile.assignedClass;
+      let assignedStream = profile.assignedStream || profile.classStream || null;
 
       // Fallback: If grade isn't in profile, try fetching allocations
       if (!classGrade) {
@@ -375,6 +413,7 @@ document.addEventListener("DOMContentLoaded", async () => {
           const allocations = res.ok ? await res.json() : [];
           const myAlloc = allocations.find(a => a.teacherId === profile.id || a.teacherId === profile._id);
           if (myAlloc?.assignedClass) classGrade = myAlloc.assignedClass;
+          if (myAlloc?.assignedStream) assignedStream = myAlloc.assignedStream;
         } catch (e) { console.warn("Grade fallback resolution failed", e); }
       }
 
@@ -382,11 +421,24 @@ document.addEventListener("DOMContentLoaded", async () => {
       
       // Update local profile object
       profile.classGrade = classGrade;
+      profile.assignedStream = assignedStream;
+      profile.classStream = assignedStream;
       showAnalysis();
 
       if (gradeFilter) {
         gradeFilter.innerHTML = `<option value="${classGrade}">${classGrade}</option>`;
         gradeFilter.disabled = true;
+      }
+
+      const gradeStreamBadge = document.getElementById("gradeStreamBadge");
+      if (gradeStreamBadge) {
+        if (assignedStream) {
+          gradeStreamBadge.textContent = assignedStream;
+          gradeStreamBadge.style.display = "inline-flex";
+        } else {
+          gradeStreamBadge.textContent = "";
+          gradeStreamBadge.style.display = "none";
+        }
       }
 
       const teacherInfoEl = document.getElementById("teacherInfo");
