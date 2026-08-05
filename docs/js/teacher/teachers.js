@@ -492,6 +492,17 @@ document.addEventListener("DOMContentLoaded", () => {
   };
 
   // 🆕 FETCH SCHOOL INFO without any frontend school name cache
+  const resolveSchoolNameFromResponse = (data) => {
+    if (!data || typeof data !== 'object') return null;
+    return String(
+      data.name ||
+      data.schoolName ||
+      data.school?.name ||
+      data.school?.schoolName ||
+      ""
+    ).trim() || null;
+  };
+
   async function loadSchoolName() {
     const token = authService.getToken();
     if (!token) return;
@@ -503,11 +514,29 @@ document.addEventListener("DOMContentLoaded", () => {
 
     try {
       const res = await fetchWithAuth(`${API_BASE}/my-school?fields=name`);
-      const data = await res.json();
-      const schoolName = String(data?.name || "").trim();
+      if (!res || typeof res.json !== "function") {
+        console.warn("School info fetch skipped because auth redirect occurred or response is invalid");
+        return;
+      }
+
+      const data = await res.json().catch(() => null);
+      const schoolName = resolveSchoolNameFromResponse(data);
 
       if (!schoolName) {
-        throw new Error("School name missing from API response");
+        console.warn("School info fetch warning: no school name in API response", data);
+        if (fallbackName) {
+          schoolInfo = { ...schoolInfo, name: fallbackName };
+          window.currentSchool = schoolInfo;
+          updateSchoolNameUI(schoolInfo);
+          updateTeacherNameUI();
+          return;
+        }
+
+        schoolInfo = { ...schoolInfo, name: null };
+        window.currentSchool = schoolInfo;
+        updateSchoolNameUI(schoolInfo);
+        updateTeacherNameUI();
+        return;
       }
 
       const freshSchoolInfo = { name: schoolName };
@@ -1378,7 +1407,7 @@ document.addEventListener("DOMContentLoaded", () => {
       }
 
       if (!marksTermSelect.value || !marksAssessmentSelect.value || !marksYearInput.value) {
-        showToast("Please select Term and Assessment", "error");
+        showToast("Please select Subject and Assessment", "error");
         return;
       }
 

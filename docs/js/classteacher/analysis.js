@@ -498,6 +498,10 @@ document.addEventListener("DOMContentLoaded", async () => {
   // Start sequential init
   await initializeAnalysisDashboard(currentUser);
 
+  const marksFetchCache = new Map();
+  const getMarksCacheKey = (params) => params.toString();
+  const clearMarksCache = () => marksFetchCache.clear();
+
   let currentFilteredData = null; // 🆕 Store filtered data for chart re-rendering
   let currentIsSeniorSchool = false; // 🆕 Store senior school status for chart re-rendering
   async function getFilteredMarks(page = null, limit = null, search = "", streamOverride = null, assessmentOverride = null, termOverride = null) {
@@ -528,6 +532,12 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (page) params.append("page", page);
     if (limit) params.append("limit", limit);
     if (search) params.append("search", search);
+
+    const cacheKey = getMarksCacheKey(params);
+    if (marksFetchCache.has(cacheKey)) {
+      console.log("[Analysis] Returning cached marks for params:", Object.fromEntries(params.entries()));
+      return marksFetchCache.get(cacheKey);
+    }
 
     console.log("[Analysis] Fetching marks with params:", Object.fromEntries(params.entries()));
 
@@ -575,15 +585,18 @@ document.addEventListener("DOMContentLoaded", async () => {
       })) : [];
 
       if (page && limit) {
-        return {
+        const pagedResult = {
           data: normalized,
           total: data.total || 0,
           totalPages: data.totalPages || 1,
           currentPage: data.page || 1
         };
+        marksFetchCache.set(cacheKey, pagedResult);
+        return pagedResult;
       }
 
       console.log("[Analysis] Normalized to:", normalized.length, "records");
+      marksFetchCache.set(cacheKey, normalized);
       return normalized;
     } catch (err) {
       console.error("[Analysis] Error fetching marks:", err);
@@ -1615,8 +1628,13 @@ document.addEventListener("DOMContentLoaded", async () => {
               body: JSON.stringify(payload)
             });
             
-            if(res.ok) { btn.textContent = "Saved"; setTimeout(() => { btn.textContent = "Save"; btn.disabled = false; }, 1500); }
-            else { throw new Error("Update failed"); }
+            if(res.ok) {
+              btn.textContent = "Saved";
+              clearMarksCache();
+              setTimeout(() => { btn.textContent = "Save"; btn.disabled = false; }, 1500);
+            } else {
+              throw new Error("Update failed");
+            }
           } catch(err) {
             console.error(err);
             btn.textContent = "Error";
@@ -1973,6 +1991,9 @@ document.addEventListener("DOMContentLoaded", async () => {
       
       // Capture Charts Area (Trend + Subject Breakdown)
       const chartsArea = document.getElementById("journeyChartsArea");
+      if (!window.html2canvas) {
+        throw new Error("html2canvas library is not loaded. Please include html2canvas before analysis.js.");
+      }
       const canvas = await html2canvas(chartsArea, { scale: 2 });
       const imgData = canvas.toDataURL("image/png");
       const imgWidth = pageWidth - 80;
@@ -1983,8 +2004,18 @@ document.addEventListener("DOMContentLoaded", async () => {
       // Capture Journey Table
       const table = document.querySelector("#journeyTableArea table");
       if (table) {
+        const pdfTable = table.cloneNode(true);
+        const sanitizeText = (text) => String(text || "")
+          .normalize("NFKD")
+          .replace(/[\u0300-\u036f]/g, "")
+          .replace(/[^\x00-\x7F]/g, "");
+
+        pdfTable.querySelectorAll("th, td").forEach(cell => {
+          cell.textContent = sanitizeText(cell.textContent);
+        });
+
         doc.autoTable({
-          html: table,
+          html: pdfTable,
           startY: 110 + imgHeight,
           theme: 'grid',
           headStyles: { fillColor: [30, 58, 138], textColor: 255 },

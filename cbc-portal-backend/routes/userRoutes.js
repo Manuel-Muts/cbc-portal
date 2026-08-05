@@ -5,6 +5,7 @@ import {
   loginUser,
   resendCredentials,
   getAllUsers,
+  getLastAdmission,
   updateUser,
   deleteUser,
   assignSubjects,
@@ -76,6 +77,7 @@ router.get("/student/:admission", getStudentByAdmission);
 // after router initialization
 router.get('/my-school', getMySchool);
 router.put('/my-school/grading-config', isAdminOrDean, updateGradingConfig); // 🆕 Add the PUT route
+router.get('/last-admission', getLastAdmission);
 
 // ---------------------------
 // USER MANAGEMENT

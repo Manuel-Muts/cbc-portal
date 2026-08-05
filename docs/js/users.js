@@ -50,6 +50,8 @@
   // Prefetched school assets to speed up PDF generation
   let prefetchedSchoolLogoBase64 = null;
   let prefetchedSchoolName = null;
+  let lastAdmissionValue = null;
+  const lastAdmissionBadge = document.getElementById("lastAdmissionBadge");
 
   // Prefetch function (call when downloads tab is opened)
   async function prefetchSchoolAssets() {
@@ -130,7 +132,7 @@
 
   // 🆕 Helper for consistent labels across tabs and headings
   function getRoleLabel(role) {
-    if (role === "student") return "Registered Learners";
+    if (role === "student" || role === "learner") return "Registered Learners";
     if (role === "teacher") return "Registered Teachers";
     if (role === "accounts") return "Accounts Staff";
     if (role === "admin") return "Admins";
@@ -179,6 +181,29 @@
     }
   }
 
+  async function refreshLastAdmissionBadge(selectedRole = 'student') {
+    if (!lastAdmissionBadge) return;
+    lastAdmissionBadge.textContent = 'Highest: ...';
+    lastAdmissionBadge.style.display = 'inline-flex';
+    try {
+      const roleParam = selectedRole === 'learner' ? 'learner' : 'student';
+      const res = await secureFetch(`${API_BASE}/users/last-admission?role=${encodeURIComponent(roleParam)}`);
+      const lastAdmission = res?.lastAdmission ?? null;
+      lastAdmissionValue = lastAdmission;
+      if (lastAdmission !== null && lastAdmission !== undefined && lastAdmission !== '') {
+        lastAdmissionBadge.textContent = `Highest: ${lastAdmission}`;
+      } else {
+        lastAdmissionBadge.textContent = 'Highest: N/A';
+      }
+    } catch (err) {
+      console.warn('Unable to refresh last admission badge:', err);
+      if (lastAdmissionBadge) {
+        lastAdmissionBadge.textContent = 'Highest: N/A';
+        lastAdmissionBadge.style.display = 'inline-flex';
+      }
+    }
+  }
+
   // 🆕 Helper to introduce a delay
   function sleep(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));
@@ -207,7 +232,7 @@
   if (userRoleSelect) {
     userRoleSelect.addEventListener("change", () => {
       const role = userRoleSelect.value;
-      const isStudent = role === "student";
+      const isStudent = role === "student" || role === "learner";
       const isTeacher = role === "teacher" || role === "classteacher";
 
       // Show registration group for students (Full) or teachers (Contact only)
@@ -245,6 +270,11 @@
 
       // Always reload users when role changes to apply new filters
       loadUsers(1, true);
+      if (isStudent) {
+        refreshLastAdmissionBadge(role);
+      } else if (lastAdmissionBadge) {
+        lastAdmissionBadge.style.display = 'none';
+      }
     });
   }
 
@@ -558,17 +588,17 @@ if (usersNextPageBtn) {
         submitBtn.disabled = false; submitBtn.textContent = originalText;
         return;
       }
-      if (role === "student" && (!admission || !grade)) {
+      if ((role === "student" || role === "learner") && (!admission || !grade)) {
         showFeedback(registerFeedback, "Admission and Grade required for students", "error");
         submitBtn.disabled = false; submitBtn.textContent = originalText;
         return;
       }
-      if (role === "student" && window.cbcUtils.isSeniorGrade(grade) && !pathway) {
+      if ((role === "student" || role === "learner") && window.cbcUtils.isSeniorGrade(grade) && !pathway) {
         showFeedback(registerFeedback, "Select a senior school pathway for this learner", "error");
         submitBtn.disabled = false; submitBtn.textContent = originalText;
         return;
       }
-      if (role !== "student" && !normalizedEmail) {
+      if (role !== "student" && role !== "learner" && !normalizedEmail) {
         showFeedback(registerFeedback, "Email required", "error");
         submitBtn.disabled = false; submitBtn.textContent = originalText;
         return;
@@ -577,7 +607,7 @@ if (usersNextPageBtn) {
       const body = { role, name };
       if (contact) body.contact = contact; // 🆕 Ensure contact is sent for all roles
 
-      if (role === "student") {
+      if (role === "student" || role === "learner") {
         body.admission = admission;
         body.grade = grade;
         if (pathway) body.pathway = pathway;
@@ -599,6 +629,7 @@ if (usersNextPageBtn) {
         userRoleSelect.dispatchEvent(new Event("change"));
         clearUsersCache();
         loadUsers(1, true);
+        refreshLastAdmissionBadge(document.getElementById("userRole")?.value || 'student');
       } else {
         showFeedback(registerFeedback, "Registration failed", "error");
       }
@@ -860,6 +891,7 @@ if (usersNextPageBtn) {
              }
              clearUsersCache();
              loadUsers(1, true);
+             refreshLastAdmissionBadge(document.getElementById("userRole")?.value || 'student');
            }
         } catch (err) {
           console.error("Import error:", err);
@@ -1032,10 +1064,10 @@ if (usersNextPageBtn) {
       font: { name: "Calibri", sz: fontSize, bold },
       alignment: { vertical: "center", horizontal: align, wrapText: wrap },
       border: border ? {
-        top: { style: "thin", color: { rgb: "FFB0B0B0" } },
-        bottom: { style: "thin", color: { rgb: "FFB0B0B0" } },
-        left: { style: "thin", color: { rgb: "FFB0B0B0" } },
-        right: { style: "thin", color: { rgb: "FFB0B0B0" } }
+        top: { style: "thin", color: { rgb: "FF333333" } },
+        bottom: { style: "thin", color: { rgb: "FF333333" } },
+        left: { style: "thin", color: { rgb: "FF333333" } },
+        right: { style: "thin", color: { rgb: "FF333333" } }
       } : undefined
     };
   }
@@ -1054,14 +1086,17 @@ if (usersNextPageBtn) {
       ["GRADE", normalizedGrade],
       ["STREAM", normalizedStream],
       [],
-      ["ADM NO", "NAME"],
+      ["No", "ADM NO", "NAME"],
       ...rows
     ];
 
     const sheet = XLSX.utils.aoa_to_sheet(dataRows);
-    sheet['!cols'] = [{ wpx: 140 }, { wpx: 320 }];
+    sheet['!cols'] = [{ wpx: 40 }, { wpx: 140 }, { wpx: 320 }];
     sheet['!rows'] = [{ hpx: 28 }, { hpx: 22 }, { hpx: 22 }, { hpx: 10 }, { hpx: 24 }];
-    sheet['!merges'] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: 1 } }];
+    sheet['!merges'] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: 2 } }];
+    sheet['!pageSetup'] = { orientation: 'landscape', paperSize: 9, fitToPage: true, fitToWidth: 1, fitToHeight: 0 };
+    sheet['!printOptions'] = { gridLines: true, horizontalCentered: true, verticalCentered: false };
+    sheet['!margins'] = { left: 0.4, right: 0.4, top: 0.5, bottom: 0.5, header: 0.3, footer: 0.3 };
 
     const titleStyle = createExcelCellStyle({ bold: true, fontSize: 15, align: "center", wrap: true });
     const metadataStyle = createExcelCellStyle({ bold: false, fontSize: 12, align: "left", wrap: false });
@@ -1079,11 +1114,13 @@ if (usersNextPageBtn) {
     applyStyle("B3", metadataStyle);
     applyStyle("A5", headerStyle);
     applyStyle("B5", headerStyle);
+    applyStyle("C5", headerStyle);
 
     dataRows.slice(5).forEach((_, index) => {
       const rowNumber = index + 6;
       applyStyle(`A${rowNumber}`, metadataStyle);
       applyStyle(`B${rowNumber}`, metadataStyle);
+      applyStyle(`C${rowNumber}`, metadataStyle);
     });
 
     const workbook = XLSX.utils.book_new();
@@ -1244,7 +1281,8 @@ if (usersNextPageBtn) {
           return;
         }
         await prefetchSchoolAssets();
-        const rows = students.map(u => [
+        const rows = students.map((u, index) => [
+          index + 1,
           u.admission || u.admissionNo || "",
           u.name
         ]);
@@ -1411,6 +1449,7 @@ if (usersNextPageBtn) {
         // Prepare table data for blank score entry
         const headers = [
           [
+            { content: "No", rowSpan: 2, styles: { halign: 'center', valign: 'middle' } },
             { content: "ADM No", rowSpan: 2, styles: { halign: 'center', valign: 'middle' } },
             { content: "Name", rowSpan: 2, styles: { halign: 'center', valign: 'middle' } },
             { content: termLabel, colSpan: 3, styles: { halign: 'center', valign: 'middle' } }
@@ -1420,18 +1459,18 @@ if (usersNextPageBtn) {
           ]
         ];
 
-        const tableData = students.map(student => {
+        const tableData = students.map((student, index) => {
           const admission = student.admission || student.admissionNo || "";
           const name = (student.name || "").substring(0, 35);
-          return [admission, name, "", "", ""];
+          return [index + 1, admission, name, "", "", ""];
         });
 
         doc.autoTable({
           head: headers,
           body: tableData,
           startY: currentY,
-          margin: { left: 16, right: 8 },
-          tableWidth: pageWidth - 24,
+          margin: { left: 14, right: 14, bottom: 24 },
+          tableWidth: pageWidth - 28,
           tableLineColor: [130, 130, 130],
           tableLineWidth: 0.2,
           styles: {
@@ -1445,11 +1484,12 @@ if (usersNextPageBtn) {
             overflow: 'linebreak'
           },
           columnStyles: {
-            0: { cellWidth: 18, halign: 'center' },
-            1: { cellWidth: 80, halign: 'left' },
-            2: { cellWidth: 30 },
-            3: { cellWidth: 30 },
-            4: { cellWidth: 30 }
+            0: { cellWidth: 14, halign: 'center' },
+            1: { cellWidth: 20, halign: 'center' },
+            2: { cellWidth: 66, halign: 'left' },
+            3: { cellWidth: 27 },
+            4: { cellWidth: 27 },
+            5: { cellWidth: 27 }
           },
           headStyles: {
             fillColor: [15, 118, 110],
@@ -1475,7 +1515,8 @@ if (usersNextPageBtn) {
             const pageCount = doc.internal.pages.length - 1;
             doc.setFontSize(8);
             doc.setTextColor(100);
-            doc.text(`Page ${data.pageNumber} of ${pageCount}`, pageWidth / 2, pageHeight - 10, { align: 'center' });
+            doc.text('CompetenceHub Score_Sheets', pageWidth / 2, pageHeight - 10, { align: 'center' });
+            doc.text(`Page ${data.pageNumber} of ${pageCount}`, pageWidth - 14, pageHeight - 10, { align: 'right' });
           }
         });
 
@@ -1509,10 +1550,12 @@ if (usersNextPageBtn) {
           }
         }
 
-        // Add official footer section on the first page
+        // Add official footer section on the first page if there is room below the table
         const firstPageY = doc.lastAutoTable?.finalY || currentY;
-        if (firstPageY + 22 < pageHeight - 20) {
-          const footerY = firstPageY + 14;
+        const footerSpacing = 14;
+        const footerHeight = 16;
+        if (firstPageY + footerSpacing + footerHeight < pageHeight - 24) {
+          const footerY = firstPageY + footerSpacing;
           doc.setFontSize(10);
           doc.setTextColor(0);
           doc.text('__________________________', 40, footerY);
@@ -1520,11 +1563,6 @@ if (usersNextPageBtn) {
           doc.text('__________________________', pageWidth - 80, footerY);
           doc.text('Date', pageWidth - 80, footerY + 5);
         }
-        // Add CompetenceHub footer centered at bottom of the page
-        doc.setFontSize(9);
-        doc.setTextColor(100);
-        doc.text('CompetenceHub Score_Sheets', pageWidth / 2, pageHeight - 18, { align: 'center' });
-
 
         // Download the PDF
         const timestamp = new Date().toISOString().slice(0, 10);
@@ -1699,6 +1737,11 @@ if (usersNextPageBtn) {
     setupNavigation();
     setupUserTypeTabs();
     loadUsers();
+
+    // Refresh the admission badge immediately if the form is already set to student/learner
+    if (userRoleSelect && (userRoleSelect.value === 'student' || userRoleSelect.value === 'learner')) {
+      refreshLastAdmissionBadge(userRoleSelect.value);
+    }
 
     // Fetch all counts once to populate labels for all tabs
     refreshAllTabCounts();

@@ -96,6 +96,11 @@
             </select>
           </div>
           
+            <div class="form-group">
+            <label>Assessment</label>
+            <select id="marksAssessmentSelect" required></select>
+          </div>
+          
           <div class="form-group">
             <label><strong>Term</strong></label>
             <select id="marksTermSelect" required disabled>
@@ -106,11 +111,7 @@
             </select>
           </div>
 
-          <div class="form-group">
-            <label>Assessment</label>
-            <select id="marksAssessmentSelect" required></select>
-          </div>
-
+        
           <div class="form-group">
             <label>Year</label>
             <input style="width: 50px;" type="number" id="marksYearInput" min="2025" max="2090" readonly />
@@ -275,6 +276,9 @@
     </div>
   </main>
 
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.28/jspdf.plugin.autotable.min.js"></script>
   <script src="js/config.js"></script>
   <script src="js/auth-service.js"></script>
    <script src="js/Utility/announcements.js"></script>

@@ -63,7 +63,11 @@
 
             <div class="flex-row" id="studentFields" style="display:none;">
               <div class="col form-group">
-                <label>Admission Number <span style="color:red">*</span></label>
+                <label>
+                  Admission Number
+                  <span id="lastAdmissionBadge" class="input-badge" style="display:none; margin-left: 0.5rem;"></span>
+                  <span style="color:red">*</span>
+                </label>
                 <input type="text" id="userAdmission" placeholder="e.g.4521">
               </div>
               
@@ -93,8 +97,6 @@
                   <option value="">-- Select --</option>
                   <option value="Male">Male</option>
                   <option value="Female">Female</option>
-                  <option value="Other">Other</option>
-                  <option value="Prefer not to say">Prefer not to say</option>
                 </select>
               </div>
               <div class="col form-group">

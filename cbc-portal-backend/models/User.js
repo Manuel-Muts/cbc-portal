@@ -80,6 +80,12 @@ const userSchema = new mongoose.Schema({
     required: function () { return this.role === "student"; },
     sparse: true
   },
+  // Numeric suffix extracted from `admission` for fast max lookups
+  numericAdmission: {
+    type: Number,
+    default: null,
+    index: true
+  },
 
   contact: {
     type: String,
@@ -193,6 +199,24 @@ userSchema.index(
     }
   }
 ); // 🛡️ Unique for students only, avoiding collisions for staff accounts with no admission
+
+// Index to quickly find highest numeric admission per school
+userSchema.index({ schoolId: 1, numericAdmission: -1 });
+
+// Pre-save hook to compute numericAdmission from admission string
+userSchema.pre('save', function (next) {
+  try {
+    if (this.role === 'student' && this.admission) {
+      const m = String(this.admission).trim().match(/(\d+)(?!.*\d)/);
+      this.numericAdmission = m ? Number(m[1]) : null;
+    } else {
+      this.numericAdmission = null;
+    }
+  } catch (err) {
+    this.numericAdmission = null;
+  }
+  next();
+});
 
 userSchema.index({ name: "text", admission: "text", email: "text" }); // Enable fast text search
 

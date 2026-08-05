@@ -738,13 +738,33 @@ export const getMarks = async (req, res) => {
       }
     );
 
-    const total = await Mark.countDocuments(query);
-    const marks = await Mark.find(query)
-      .sort({ year: -1, term: -1, assessment: -1, createdAt: -1 })
-      .skip(skip)
-      .limit(limit);
+    const rawMarks = await Mark.find(query)
+      .sort({ assessment: -1, createdAt: -1 });
 
-    return res.json({ marks, total, totalPages: Math.ceil(total / limit), currentPage: page });
+    const latestAssessmentByGroup = new Map();
+    rawMarks.forEach(mark => {
+      const isSenior = getGradeLevel(mark.grade) >= 10;
+      const subjectKey = isSenior ? `${mark.pathway || ''}||${mark.course || ''}` : `${mark.subject || ''}`;
+      const streamKey = mark.stream || '';
+      const groupKey = `${subjectKey}||${mark.grade || ''}||${streamKey}`;
+      const currentMax = latestAssessmentByGroup.get(groupKey) || 0;
+      if (mark.assessment > currentMax) {
+        latestAssessmentByGroup.set(groupKey, mark.assessment);
+      }
+    });
+
+    const marks = rawMarks.filter(mark => {
+      const isSenior = getGradeLevel(mark.grade) >= 10;
+      const subjectKey = isSenior ? `${mark.pathway || ''}||${mark.course || ''}` : `${mark.subject || ''}`;
+      const streamKey = mark.stream || '';
+      const groupKey = `${subjectKey}||${mark.grade || ''}||${streamKey}`;
+      return mark.assessment === latestAssessmentByGroup.get(groupKey);
+    });
+
+    const total = marks.length;
+    const pagedMarks = marks.slice(skip, skip + limit);
+
+    return res.json({ marks: pagedMarks, total, totalPages: Math.ceil(total / limit), currentPage: page });
   } catch (err) {
     console.error("getMarks error:", err);
     return res.status(500).json({ message: err.message });

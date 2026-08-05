@@ -155,11 +155,12 @@ export const getMySchool = async (req, res) => {
     const includeLogo = includeLogoParam.toLowerCase() === 'true';
     const rawFields = typeof query.fields === 'string' ? query.fields : '';
     const bypassCache = shouldBypassSchoolProfileCache(query);
-    const fields = rawFields
+    const normalizeFieldName = (field) => field === 'schoolName' ? 'name' : field;
+    const selectedFields = rawFields
       .split(',')
-      .map((field) => field.trim())
-      .filter(Boolean)
-      .join(' ');
+      .map((field) => normalizeFieldName(field.trim()))
+      .filter(Boolean);
+    const fields = selectedFields.join(' ');
 
     const isStudent = user?.role === 'student' || user?.role === 'learner';
     const isStudentLiteFetch = isStudent && !includeLogo;
@@ -198,18 +199,25 @@ export const getMySchool = async (req, res) => {
     const school = await School.findById(schoolId).select(projectionFields).lean();
     if (!school) return res.status(404).json({ msg: "School not found" });
 
+    const normalizeResponse = (payload) => ({
+      ...payload,
+      name: payload.name || payload.schoolName || null,
+      schoolName: payload.schoolName || payload.name || null,
+    });
+
     if (fields) {
-      cache.set(cacheKey, school, 300);
-      return res.json(school);
+      const normalized = normalizeResponse(school);
+      cache.set(cacheKey, normalized, 300);
+      return res.json(normalized);
     }
 
-    const response = {
+    const response = normalizeResponse({
       name: school.name,
       address: school.address,
       allowSignatureUpload: school.allowSignatureUpload !== false,
       schoolType: school.schoolType || 'full',
       smsCredits: school.smsCredits || 0
-    };
+    });
 
     if (school.logo !== undefined) {
       response.logo = school.logo || null;

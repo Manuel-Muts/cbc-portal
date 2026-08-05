@@ -674,6 +674,75 @@ export const resendCredentials = async (req, res) => {
 // GET ALL USERS (Admin / Super Admin)
 // ---------------------------
 
+export const getLastAdmission = async (req, res) => {
+  try {
+    const user = req.user;
+    if (!['admin', 'super_admin', 'teacher', 'classteacher', 'accounts'].includes(user.role)) {
+      return res.status(403).json({ message: 'Unauthorized access to last admission info' });
+    }
+
+    const requestedRole = String(req.query.role || 'student').trim().toLowerCase();
+    if (requestedRole !== 'student' && requestedRole !== 'learner') {
+      return res.status(400).json({ message: 'Role must be student or learner' });
+    }
+
+    // Support both current "student" users and legacy "learner" users in the same lookup.
+    const roleCriteria = { $in: ['student', 'learner'] };
+    const query = { role: roleCriteria };
+    if (user.role !== 'super_admin' && user.schoolId) {
+      query.schoolId = user.schoolId;
+    }
+
+    const cacheKey = `highestAdmission_${user.schoolId || 'global'}_students`;
+    const cached = cache.get(cacheKey);
+    if (cached !== undefined && cached !== null) {
+      return res.json({ lastAdmission: cached });
+    }
+
+    const computeHighestAdmissionFromDocs = async () => {
+      const students = await User.find(query).select('admission admissionNo').lean();
+      let highest = null;
+      const parseLastDigits = value => {
+        if (value === undefined || value === null) return null;
+        const str = String(value).trim();
+        if (!str) return null;
+        const match = str.match(/(\d+)(?!.*\d)/);
+        if (!match) return null;
+        const num = Number(match[1]);
+        return Number.isFinite(num) ? num : null;
+      };
+      students.forEach(student => {
+        const candidate = parseLastDigits(student.admission ?? student.admissionNo);
+        if (candidate !== null && (highest === null || candidate > highest)) {
+          highest = candidate;
+        }
+      });
+      return highest !== null ? String(highest) : null;
+    };
+
+    // First try fast indexed approach using numericAdmission
+    let highestAdmission = null;
+    try {
+      const top = await User.findOne(query).sort({ numericAdmission: -1 }).select('numericAdmission').lean();
+      if (top && top.numericAdmission != null) {
+        highestAdmission = String(top.numericAdmission);
+      }
+    } catch (err) {
+      console.error('Error while fetching highest numericAdmission:', err);
+    }
+
+    if (highestAdmission === null) {
+      highestAdmission = await computeHighestAdmissionFromDocs();
+    }
+
+    cache.set(cacheKey, highestAdmission, 60);
+    return res.json({ lastAdmission: highestAdmission });
+  } catch (err) {
+    console.error('Get Last Admission Error:', err);
+    res.status(500).json({ message: 'Failed to fetch last admission' });
+  }
+};
+
 export const getAllUsers = async (req, res) => {
   try {
     const user = req.user;
@@ -1285,16 +1354,14 @@ export const removeClassTeacher = async (req, res) => {
     if (teacher.email) {
       await sendEmail({
         to: teacher.email,
-        subject: 'CBE Portal Class Teacher Removal',
+        subject: 'Class Teacher Removal',
         text: `Hello ${teacher.name},
 
-         You have been removed as class teacher. You still retain your teacher role credentials.
-
-        If you are re-allocated in the future, you will receive new class teacher login details.`,
+         You have been removed as class teacher. You still retain your teacher role credentials.`,
         html: `
           <p>Hello <strong>${teacher.name}</strong>,</p>
           <p>You have been removed as class teacher. You still retain your teacher role credentials.</p>
-          <p>If you are re-allocated in the future, you will receive new class teacher login details.</p>
+         
         `
       });
     }
