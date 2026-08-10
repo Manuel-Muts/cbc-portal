@@ -18,11 +18,11 @@ body {
   backdrop-filter: blur(15px);
   -webkit-backdrop-filter: blur(15px);
   border-radius: 20px !important;
-  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2) !important; /* Softer shadow */
-  border: 1px solid rgba(255, 255, 255, 0.2) !important; /* More transparent border */
-  padding: 35px !important;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.18) !important;
+  border: 1px solid rgba(255, 255, 255, 0.18) !important;
+  padding: 22px 22px 20px !important;
   text-align: center;
-  margin: 40px 20px;
+  margin: 24px 12px;
   box-sizing: border-box;
 }
 
@@ -43,7 +43,7 @@ body {
 }
 
 .reset-form .form-group {
-  margin-bottom: 20px;
+  margin-bottom: 14px;
   text-align: left;
 }
 
@@ -63,14 +63,15 @@ body {
 .reset-form select,
 .reset-form .otp {
   width: 100% !important;
-  padding: 12px 15px;
-  border: 1px solid #ccc;
+  padding: 10px 12px;
+  border: 1px solid #d1d5db;
   border-radius: 10px;
-  font-size: 1rem;
-  background-color: #f9f9f9;
-  color: #333;
+  font-size: 0.95rem;
+  background-color: #f8fafc;
+  color: #1f2937;
   transition: all 0.3s ease;
   box-sizing: border-box;
+  margin-bottom: 12px;
 }
 
 .reset-form input:focus,
@@ -99,13 +100,13 @@ body {
 
 .reset-form button {
   width: 100%;
-  padding: 11px 16px; /* Slightly smaller height */
+  padding: 10px 14px;
   border: none;
-  border-radius: 12px;
-  font-size: 0.95rem;
+  border-radius: 10px;
+  font-size: 0.92rem;
   font-weight: 600;
   cursor: pointer;
-  transition: all 0.3s ease;
+  transition: all 0.25s ease;
 }
 
 .reset-form button#sendCodeBtn,

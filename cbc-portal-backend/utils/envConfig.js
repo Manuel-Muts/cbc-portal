@@ -6,12 +6,14 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const projectRoot = path.resolve(__dirname, '..');
 
+function normalizeEnvValue(value, fallback = 'development') {
+  return String(value || fallback).trim().toLowerCase();
+}
+
 export function resolveEnvironmentSettings({ env = process.env.NODE_ENV || 'development', envVars = process.env } = {}) {
-  const normalizedEnv = String(env || 'development').trim().toLowerCase();
-  const resolvedDbSource = (envVars.DB_SOURCE || envVars.MONGO_SOURCE || (normalizedEnv === 'production' ? 'atlas' : 'local'))
-    .toString()
-    .trim()
-    .toLowerCase();
+  const normalizedEnv = normalizeEnvValue(envVars.NODE_ENV || env || 'development');
+  const explicitDbSource = normalizeEnvValue(envVars.DB_SOURCE || envVars.MONGO_SOURCE || '', '');
+  const resolvedDbSource = explicitDbSource || (normalizedEnv === 'production' ? 'atlas' : 'local');
 
   return {
     nodeEnv: normalizedEnv,
@@ -20,10 +22,11 @@ export function resolveEnvironmentSettings({ env = process.env.NODE_ENV || 'deve
 }
 
 export function loadEnvironmentFiles({ env = process.env.NODE_ENV || 'development' } = {}) {
-  const normalizedEnv = String(env || 'development').trim().toLowerCase();
+  const explicitEnv = normalizeEnvValue(env || process.env.NODE_ENV || 'development');
+  const requestedEnv = explicitEnv || 'development';
   const candidates = [
-    `.env.${normalizedEnv}.local`,
-    `.env.${normalizedEnv}`,
+    `.env.${requestedEnv}.local`,
+    `.env.${requestedEnv}`,
     '.env.local',
     '.env',
   ];
@@ -34,12 +37,12 @@ export function loadEnvironmentFiles({ env = process.env.NODE_ENV || 'developmen
   }
 
   const settings = resolveEnvironmentSettings({
-    env: normalizedEnv,
+    env: process.env.NODE_ENV || requestedEnv,
     envVars: process.env,
   });
 
-  process.env.NODE_ENV = settings.nodeEnv;
-  process.env.DB_SOURCE = process.env.DB_SOURCE || settings.dbSource;
+  process.env.NODE_ENV = normalizeEnvValue(process.env.NODE_ENV || settings.nodeEnv, settings.nodeEnv);
+  process.env.DB_SOURCE = normalizeEnvValue(process.env.DB_SOURCE || process.env.MONGO_SOURCE || settings.dbSource, settings.dbSource);
 
   return settings;
 }

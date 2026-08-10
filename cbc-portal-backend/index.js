@@ -74,28 +74,65 @@ app.use(helmet({
 // -------------------------
 // CORS
 // -------------------------
-const FRONTEND_ORIGINS = [
-  process.env.FRONTEND_URL,         // Production frontend (Netlify)
-  "http://localhost:5000",          // Local testing - Express
-  "http://localhost:3000",          // Local testing - React/common
-  "http://localhost:8000",          // Local testing - Python/other
-  "http://localhost:8080",          // Local testing - Vue/other
-  "http://127.0.0.1:5000",          // Localhost IPv4
-  "http://127.0.0.1:3000",          // Localhost IPv4
-  "http://127.0.0.1:8000",          // Localhost IPv4
-  "http://127.0.0.1:8080",          // Localhost IPv4
-  "http://127.0.0.1:5500",          // VS Code Live Server (default)
-  "http://127.0.0.1:5501",          // VS Code Live Server (alternate)
-  "http://localhost:5500",          // VS Code Live Server
-  "http://localhost:5501",          // VS Code Live Server alternate
-].filter(Boolean);
+const parseAllowedOrigins = () => {
+  const configuredOrigins = (process.env.CORS_ALLOWED_ORIGINS || process.env.FRONTEND_URL || '')
+    .split(',')
+    .map((value) => value.trim())
+    .filter(Boolean);
+
+  const defaults = [
+    "http://localhost:5000",
+    "http://localhost:3000",
+    "http://localhost:8000",
+    "http://localhost:8080",
+    "http://localhost:5500",
+    "http://localhost:5501",
+    "http://127.0.0.1:5000",
+    "http://127.0.0.1:3000",
+    "http://127.0.0.1:8000",
+    "http://127.0.0.1:8080",
+    "http://127.0.0.1:5500",
+    "http://127.0.0.1:5501",
+    "https://competence-hub.onrender.com",
+    "https://www.competence-hub.onrender.com",
+  ];
+
+  return [...new Set([...defaults, ...configuredOrigins])];
+};
+
+const FRONTEND_ORIGINS = parseAllowedOrigins();
+
+const isAllowedOrigin = (origin) => {
+  if (!origin) return true;
+
+  try {
+    const { hostname } = new URL(origin);
+    const normalizedHostname = hostname.toLowerCase();
+
+    if (normalizedHostname === 'localhost' || normalizedHostname === '127.0.0.1' || normalizedHostname === '0.0.0.0' || normalizedHostname.startsWith('192.168.')) {
+      return true;
+    }
+
+    if (
+      normalizedHostname.endsWith('.netlify.app') ||
+      normalizedHostname.endsWith('.vercel.app') ||
+      normalizedHostname.endsWith('.github.dev') ||
+      normalizedHostname.endsWith('.pages.dev') ||
+      normalizedHostname.endsWith('.ngrok-free.app') ||
+      normalizedHostname.endsWith('.ngrok.app')
+    ) {
+      return true;
+    }
+
+    return FRONTEND_ORIGINS.includes(origin);
+  } catch (error) {
+    return false;
+  }
+};
 
 app.use(cors({
   origin: function(origin, callback) {
-    // Allow tools like Postman (no origin)
-    if (!origin) return callback(null, true);
-
-    if (FRONTEND_ORIGINS.includes(origin)) {
+    if (isAllowedOrigin(origin)) {
       return callback(null, true);
     }
 
@@ -238,11 +275,16 @@ app.use((req, res) => {
 // DATABASE CONNECTION
 // -------------------------
 const rawNodeEnv = process.env.NODE_ENV;
-const normalizedNodeEnv = rawNodeEnv ? rawNodeEnv.trim().toLowerCase() : 'development';
+const normalizedNodeEnv = rawNodeEnv ? String(rawNodeEnv).trim().toLowerCase() : 'development';
 const isProduction = normalizedNodeEnv === 'production';
-const rawDatabaseSource = (process.env.DB_SOURCE || process.env.MONGO_SOURCE || (isProduction ? 'atlas' : 'local')).trim().toLowerCase();
+const rawDatabaseSource = String(process.env.DB_SOURCE || process.env.MONGO_SOURCE || (isProduction ? 'atlas' : 'local')).trim().toLowerCase();
 
 const resolveDatabaseTarget = () => {
+  const explicitMongoUri = (process.env.MONGO_URI || process.env.MONGO_URL || '').trim();
+  if (explicitMongoUri) {
+    return { source: 'explicit', uri: explicitMongoUri, sourceEnvVar: 'MONGO_URI' };
+  }
+
   const mode = rawDatabaseSource;
 
   if (mode === 'atlas') {

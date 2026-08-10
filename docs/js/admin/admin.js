@@ -206,15 +206,14 @@
   let streamsCache = new Map(); // 🆕 Cache for grade streams
   let currentSchoolInfo = null; // 🆕 Store school info for grade options
 // ---------------------------
-  // Term Lock Management DOM elements
+  // Marks edit settings DOM elements
   const termLockYearSelect = document.getElementById("termLockYearSelect");
   const termLockTermSelect = document.getElementById("termLockTermSelect");
-  const termLockStatusDisplay = document.getElementById("termLockStatusDisplay");
-  const termLockToggleButton = document.getElementById("termLockToggleButton");
   const submittedMarksEditStatusDisplay = document.getElementById("submittedMarksEditStatusDisplay");
   const submittedMarksEditToggleButton = document.getElementById("submittedMarksEditToggleButton");
   const saveTermLockBtn = document.getElementById("saveTermLockBtn");
-    let termLockPollIntervalId = null;
+  const marksEditSettingsCache = new Map();
+  const marksEditSettingsInFlight = new Map();
 // FETCH SCHOOL INFO
 // ---------------------------
 // Derive BACKEND_URL from config (removes /api suffix)
@@ -2279,7 +2278,7 @@ async function openHistoryModal(studentId) {
       "searchSection": "Learner Search",
       "promotionSection": "Learner Promotion",
       "signatureUploadSection": "Digital Signature", // New section title
-      "termLockManagementSection": "Term Lock Management", // 🆕 New section title
+      "termLockManagementSection": "Marks Edit Settings", // 🆕 New section title
       "electivesSection": "Electives Management" // NEW
     }; 
 
@@ -2343,7 +2342,7 @@ async function openHistoryModal(studentId) {
   }
 
 // ---------------------------
-// TERM LOCK MANAGEMENT LOGIC (🆕)
+// MARKS EDIT SETTINGS LOGIC (🆕)
 // ---------------------------
 function populateTermLockYearOptions() {
   if (!termLockYearSelect) return;
@@ -2376,77 +2375,65 @@ function populateTermLockTermOptions() {
 }
 
 async function loadTermLockStatus() {
-  if (!termLockYearSelect || !termLockTermSelect || !termLockStatusDisplay || !termLockToggleButton) return;
+  if (!termLockYearSelect || !termLockTermSelect || !submittedMarksEditStatusDisplay || !submittedMarksEditToggleButton) return;
 
   const year = termLockYearSelect.value;
   const term = termLockTermSelect.value;
 
   if (!year || !term) {
-    termLockStatusDisplay.textContent = "Select year and term";
-    termLockToggleButton.disabled = true;
+    submittedMarksEditStatusDisplay.textContent = "Select year and term";
+    submittedMarksEditStatusDisplay.style.color = "orange";
+    submittedMarksEditToggleButton.disabled = true;
     return;
   }
 
-  termLockStatusDisplay.textContent = "Loading...";
-  termLockToggleButton.disabled = true;
+  const cacheKey = `${year}-${term}`;
+  const cached = marksEditSettingsCache.get(cacheKey);
+  if (cached) {
+    submittedMarksEditStatusDisplay.textContent = cached.allowTeacherSubmittedMarkEdits ? "Enabled" : "Disabled";
+    submittedMarksEditStatusDisplay.style.color = cached.allowTeacherSubmittedMarkEdits ? "green" : "red";
+    submittedMarksEditToggleButton.checked = cached.allowTeacherSubmittedMarkEdits;
+    submittedMarksEditToggleButton.disabled = false;
+    return;
+  }
 
-  try {
-    const res = await secureFetch(`${API_BASE}/settings/term-lock?year=${year}&term=${term}`);
-    if (res) {
-      const isLocked = res.isLocked;
+  if (marksEditSettingsInFlight.has(cacheKey)) return;
+
+  submittedMarksEditStatusDisplay.textContent = "Loading...";
+  submittedMarksEditToggleButton.disabled = true;
+
+  const fetchPromise = (async () => {
+    try {
+      const res = await secureFetch(`${API_BASE}/settings/term-lock?year=${year}&term=${term}`);
+      if (!res) return;
+
       const allowTeacherSubmittedMarkEdits = res.allowTeacherSubmittedMarkEdits === true;
-      termLockStatusDisplay.textContent = isLocked ? "LOCKED" : "UNLOCKED";
-      termLockStatusDisplay.style.color = isLocked ? "red" : "green";
-      termLockToggleButton.checked = isLocked;
-      termLockToggleButton.disabled = false;
+      marksEditSettingsCache.set(cacheKey, { allowTeacherSubmittedMarkEdits });
 
-      if (submittedMarksEditStatusDisplay && submittedMarksEditToggleButton) {
-        submittedMarksEditStatusDisplay.textContent = allowTeacherSubmittedMarkEdits ? "Enabled" : "Disabled";
-        submittedMarksEditStatusDisplay.style.color = allowTeacherSubmittedMarkEdits ? "green" : "red";
-        submittedMarksEditToggleButton.checked = allowTeacherSubmittedMarkEdits;
-        submittedMarksEditToggleButton.disabled = false;
-      }
-      // Clear any existing poll
-      if (termLockPollIntervalId) clearInterval(termLockPollIntervalId);
-      // Start a short polling loop to pick up teacher-submitted changes quickly
-      termLockPollIntervalId = setInterval(async () => {
-        try {
-          const p = await secureFetch(`${API_BASE}/settings/term-lock?year=${year}&term=${term}`);
-          if (!p) return;
-          const pIsLocked = p.isLocked;
-          const pAllowEdits = p.allowTeacherSubmittedMarkEdits === true;
-          // Update admin UI if changed
-          termLockStatusDisplay.textContent = pIsLocked ? "LOCKED" : "UNLOCKED";
-          termLockStatusDisplay.style.color = pIsLocked ? "red" : "green";
-          termLockToggleButton.checked = pIsLocked;
-          if (submittedMarksEditStatusDisplay && submittedMarksEditToggleButton) {
-            submittedMarksEditStatusDisplay.textContent = pAllowEdits ? "Enabled" : "Disabled";
-            submittedMarksEditStatusDisplay.style.color = pAllowEdits ? "green" : "red";
-            submittedMarksEditToggleButton.checked = pAllowEdits;
-          }
-        } catch (e) { console.warn('Term lock poll error', e); }
-      }, 5000);
-    }
-  } catch (err) {
-    console.error("Error loading term lock status:", err);
-    termLockStatusDisplay.textContent = "Error loading status";
-    termLockStatusDisplay.style.color = "orange";
-    termLockToggleButton.disabled = true;
-    if (submittedMarksEditStatusDisplay && submittedMarksEditToggleButton) {
+      submittedMarksEditStatusDisplay.textContent = allowTeacherSubmittedMarkEdits ? "Enabled" : "Disabled";
+      submittedMarksEditStatusDisplay.style.color = allowTeacherSubmittedMarkEdits ? "green" : "red";
+      submittedMarksEditToggleButton.checked = allowTeacherSubmittedMarkEdits;
+      submittedMarksEditToggleButton.disabled = false;
+    } catch (err) {
+      console.error("Error loading marks edit status:", err);
       submittedMarksEditStatusDisplay.textContent = "Error";
       submittedMarksEditStatusDisplay.style.color = "orange";
       submittedMarksEditToggleButton.disabled = true;
+    } finally {
+      marksEditSettingsInFlight.delete(cacheKey);
     }
-  }
+  })();
+
+  marksEditSettingsInFlight.set(cacheKey, fetchPromise);
+  return fetchPromise;
 }
 
 async function saveTermLockStatus() {
-  if (!termLockYearSelect || !termLockTermSelect || !termLockToggleButton || !saveTermLockBtn) return;
+  if (!termLockYearSelect || !termLockTermSelect || !saveTermLockBtn || !submittedMarksEditToggleButton) return;
 
   const year = termLockYearSelect.value;
   const term = termLockTermSelect.value;
-  const isLocked = termLockToggleButton.checked;
-  const allowTeacherSubmittedMarkEdits = submittedMarksEditToggleButton ? submittedMarksEditToggleButton.checked : true;
+  const allowTeacherSubmittedMarkEdits = submittedMarksEditToggleButton.checked;
 
   if (!year || !term) {
     showToast("Please select a year and term.", "error");
@@ -2458,30 +2445,26 @@ async function saveTermLockStatus() {
   try {
     const res = await secureFetch(`${API_BASE}/settings/term-lock`, {
       method: "PUT",
-      body: JSON.stringify({ year: Number(year), term: Number(term), isLocked, allowTeacherSubmittedMarkEdits })
+      body: JSON.stringify({ year: Number(year), term: Number(term), isLocked: false, allowTeacherSubmittedMarkEdits })
     });
 
     if (res) {
+      marksEditSettingsCache.set(`${year}-${term}`, { allowTeacherSubmittedMarkEdits });
       showToast(res.message, "success");
-      loadTermLockStatus(); // Refresh status display
+      loadTermLockStatus();
     }
   } catch (err) {
-    console.error("Error saving term lock status:", err);
-    showToast("Failed to save term lock status: " + err.message, "error");
+    console.error("Error saving marks edit status:", err);
+    showToast("Failed to save marks edit status: " + err.message, "error");
   } finally {
     window.spinner?.hide(saveTermLockBtn);
   }
 }
 
-// Event Listeners for Term Lock Management
+// Event listeners for marks edit settings
 termLockYearSelect?.addEventListener("change", loadTermLockStatus);
 termLockTermSelect?.addEventListener("change", loadTermLockStatus);
 saveTermLockBtn?.addEventListener("click", saveTermLockStatus);
-
-// Clean up polling when navigating away
-window.addEventListener('beforeunload', () => {
-  if (termLockPollIntervalId) clearInterval(termLockPollIntervalId);
-});
 
   // IMPORTANT: Ensure your admin.html file has the following list item within the <ul class="menu">
   // for the "Digital Signature" navigation to appear:

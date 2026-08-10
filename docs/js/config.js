@@ -10,11 +10,39 @@
 // ===========================
 // ENVIRONMENT DETECTION
 // ===========================
+function getEnvironmentOverride() {
+  if (typeof window === 'undefined') return null;
+
+  const params = new URLSearchParams(window.location.search || '');
+  const queryEnv = params.get('env');
+  if (queryEnv === 'development' || queryEnv === 'production') {
+    return queryEnv;
+  }
+
+  try {
+    const storedEnv = window.localStorage.getItem('cbcPortalEnvironmentOverride');
+    if (storedEnv === 'development' || storedEnv === 'production') {
+      return storedEnv;
+    }
+  } catch (error) {
+    console.warn('[CONFIG] Unable to read environment override from storage:', error);
+  }
+
+  if (window.__CBC_PORTAL_ENV__ === 'development' || window.__CBC_PORTAL_ENV__ === 'production') {
+    return window.__CBC_PORTAL_ENV__;
+  }
+
+  return null;
+}
+
 // Automatically detect environment based on URL and hostname
 function detectEnvironment() {
+  const override = getEnvironmentOverride();
+  if (override) {
+    return override;
+  }
+
   const hostname = window.location.hostname;
-  const port = window.location.port;
-  const protocol = window.location.protocol;
   const hostnameLower = hostname.toLowerCase();
 
   if (hostnameLower === 'localhost' || hostnameLower === '127.0.0.1' || hostnameLower.startsWith('192.168') || hostnameLower === '0.0.0.0') {
@@ -29,6 +57,8 @@ function detectEnvironment() {
 }
 
 const CURRENT_ENV = detectEnvironment();
+const LOCAL_API_BASE_URL = 'http://localhost:5000/api';
+const PROD_API_BASE_URL = 'https://competence-hub.onrender.com/api';
 
 // ===========================
 // ENVIRONMENT-SPECIFIC CONFIGS
@@ -36,7 +66,7 @@ const CURRENT_ENV = detectEnvironment();
 const environmentConfigs = {
   development: {
     api: {
-      baseURL: 'http://localhost:5000/api',
+      baseURL: LOCAL_API_BASE_URL,
       timeout: 30000,
       version: 'v1',
       announcements: '/announcements/active'
@@ -56,7 +86,7 @@ const environmentConfigs = {
   
   production: {
     api: {
-      baseURL: 'https://competence-hub.onrender.com/api',
+      baseURL: PROD_API_BASE_URL,
       timeout: 30000,
       version: 'v1',
       announcements: '/announcements/active'
@@ -153,10 +183,20 @@ const config = {
       return;
     }
     const envConfig = environmentConfigs[env];
-    this.api = envConfig.api;
-    this.app = envConfig.app;
-    this.features = envConfig.features;
+    this.api = { ...envConfig.api };
+    this.app = { ...envConfig.app };
+    this.features = { ...envConfig.features };
     this.currentEnvironment = env;
+
+    if (typeof window !== 'undefined') {
+      try {
+        window.localStorage.setItem('cbcPortalEnvironmentOverride', env);
+      } catch (error) {
+        console.warn('[CONFIG] Unable to persist environment override:', error);
+      }
+      window.__CBC_PORTAL_ENV__ = env;
+    }
+
     if (this.app.debug) {
       console.log(`[CONFIG] Environment switched to: ${env}`);
       console.log(`[CONFIG] API URL: ${this.api.baseURL}`);
@@ -207,6 +247,7 @@ if (config.app.debug) {
 
 // Make config globally available for browser environment
 window.config = config;
+window.setAppEnvironment = (env) => config.switchEnvironment(env);
 
 // Export for use in other files (Node.js environments)
 if (typeof module !== 'undefined' && module.exports) {

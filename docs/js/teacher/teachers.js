@@ -12,11 +12,10 @@ document.addEventListener("DOMContentLoaded", () => {
   let submittedMarks = []; // in-memory marks list
   let editingMarkId = null;
   let teacher = null;
-  let currentTermLocked = false; // Global variable to store term lock status
-  let teacherSubmittedMarkEditsAllowed = true; // Controls whether teachers may edit submitted marks
-  const termLockMessageEl = document.getElementById("termLockMessage"); // Element to display lock message
   let isSingleEditMode = false;
   let schoolInfo = null; // Global school info cache
+  let marksEditPermissionEnabled = false;
+  let marksEditPermissionContextKey = null;
 
   // ---------------------------
   // CACHES
@@ -136,6 +135,21 @@ document.addEventListener("DOMContentLoaded", () => {
   function setupTabs() {
     const subnavBtns = document.querySelectorAll(".subnav-btn");
     const tabPanes = document.querySelectorAll("main > .tab-pane");
+    let myClassReportLoaded = false;
+    let myClassReportLoading = false;
+
+    const loadMyClassReportOnce = async () => {
+      if (myClassReportLoaded || myClassReportLoading) return;
+      const trigger = window.generateClassTeacherReport;
+      if (typeof trigger !== "function") return;
+      myClassReportLoading = true;
+      try {
+        await trigger();
+        myClassReportLoaded = true;
+      } finally {
+        myClassReportLoading = false;
+      }
+    };
 
     const activateTab = (btn) => {
       const target = btn.dataset.tab;
@@ -147,10 +161,7 @@ document.addEventListener("DOMContentLoaded", () => {
       if (activePane) activePane.classList.add("active");
 
       if (target === "myClass") {
-        const trigger = window.generateClassTeacherReport;
-        if (typeof trigger === "function") {
-          setTimeout(() => trigger(), 120);
-        }
+        setTimeout(() => loadMyClassReportOnce(), 120);
       }
     };
 
@@ -159,92 +170,62 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
-  // ---------------------------
-  // NEW: CHECK TERM LOCK STATUS
-  // ---------------------------
-  async function checkTermLockStatus() {
-    const term = marksTermSelect.value;
-    const year = marksYearInput.value;
+  function setMarksEntryEnabled(enabled) {
+    const inputs = marksEntryTableBody?.querySelectorAll("input") || [];
+    const buttons = [submitAllMarksBtn, saveDraftBtn, loadStudentsBtn];
 
-    if (!term || !year) {
-      currentTermLocked = false;
-      teacherSubmittedMarkEditsAllowed = true;
-      updateUIForTermLock();
-      return;
+    inputs.forEach(input => {
+      if (!input.readOnly) input.disabled = !enabled;
+    });
+
+    buttons.forEach(btn => {
+      if (btn) btn.disabled = !enabled;
+    });
+  }
+
+  async function refreshMarksEditPermissionStatus() {
+    const currentYear = marksYearInput?.value || new Date().getFullYear();
+    const currentTerm = marksTermSelect?.value || "1";
+    const contextKey = `${currentYear}_${currentTerm}`;
+
+    if (marksEditPermissionContextKey === contextKey) {
+      updateSubmittedMarksEditStatus();
+      return marksEditPermissionEnabled;
     }
 
     try {
-      const res = await fetchWithAuth(`${API_BASE}/settings/term-lock?year=${year}&term=${term}`);
+      const res = await fetchWithAuth(`${API_BASE}/settings/term-lock?year=${currentYear}&term=${currentTerm}`);
+      if (!res.ok) throw new Error("Failed to load marks edit settings");
 
-      if (!res.ok) throw new Error("Failed to fetch term lock status");
       const data = await res.json();
-      currentTermLocked = data.isLocked;
-      teacherSubmittedMarkEditsAllowed = data.allowTeacherSubmittedMarkEdits === true;
-      updateUIForTermLock();
+      marksEditPermissionEnabled = data?.allowTeacherSubmittedMarkEdits === true;
+      marksEditPermissionContextKey = contextKey;
     } catch (err) {
-      console.error("Error checking term lock status:", err);
-      currentTermLocked = false; // Default to unlocked on error
-      teacherSubmittedMarkEditsAllowed = true;
-      updateUIForTermLock();
-      updateSubmittedMarksEditStatus();
-      showToast("Error checking term lock status. Please refresh.", "error");
+      console.warn("Could not load marks edit settings:", err);
+      marksEditPermissionEnabled = false;
+      marksEditPermissionContextKey = contextKey;
     }
+
+    updateSubmittedMarksEditStatus();
+    return marksEditPermissionEnabled;
   }
 
-  // ---------------------------
-  // NEW: UPDATE SUBMITTED MARKS EDIT STATUS MESSAGE
-  // ---------------------------
   function updateSubmittedMarksEditStatus() {
     if (!submittedMarksStatusMessage) return;
 
-    const canEdit = teacherSubmittedMarkEditsAllowed && !currentTermLocked;
-    submittedMarksStatusMessage.textContent = canEdit ? "Edits enabled" : "Edits disabled";
+    const isEnabled = marksEditPermissionEnabled;
+    submittedMarksStatusMessage.textContent = isEnabled
+      ? "Edits enabled"
+      : "Edits disabled for this Assessment";
     submittedMarksStatusMessage.style.display = "flex";
     submittedMarksStatusMessage.style.alignItems = "center";
     submittedMarksStatusMessage.style.justifyContent = "center";
     submittedMarksStatusMessage.style.fontWeight = "700";
-    submittedMarksStatusMessage.style.color = canEdit ? "#115e59" : "#9b1c1c";
-    submittedMarksStatusMessage.style.background = canEdit ? "#ecfdf5" : "#fee2e2";
-    submittedMarksStatusMessage.style.border = canEdit ? "1px solid #34d399" : "1px solid #f87171";
+    submittedMarksStatusMessage.style.color = isEnabled ? "#115e59" : "#92400e";
+    submittedMarksStatusMessage.style.background = isEnabled ? "#ecfdf5" : "#fff7ed";
+    submittedMarksStatusMessage.style.border = isEnabled ? "1px solid #34d399" : "1px solid #fb923c";
     submittedMarksStatusMessage.style.borderRadius = "10px";
     submittedMarksStatusMessage.style.padding = "12px 14px";
-  }
-
-  // ---------------------------
-  // NEW: UPDATE UI BASED ON TERM LOCK STATUS
-  // ---------------------------
-  function updateUIForTermLock() {
-    const inputs = marksEntryTableBody?.querySelectorAll("input") || [];
-    const buttons = [submitAllMarksBtn, saveDraftBtn, loadStudentsBtn]; // Also disable save draft and load students
-
-    inputs.forEach(input => {
-      // Only disable if not a readonly input (like final score)
-      if (!input.readOnly) input.disabled = currentTermLocked;
-    });
-
-    buttons.forEach(btn => {
-      if (btn) btn.disabled = currentTermLocked;
-    });
-
-    if (termLockMessageEl) {
-      if (currentTermLocked) {
-        termLockMessageEl.innerHTML = ` 
-          <div style="font-size: 1.3rem; background: #feebc8; width: 42px; height: 42px; display: flex; align-items: center; justify-content: center; border-radius: 50%; flex-shrink: 0;">🔒</div> 
-          <div style="flex-grow: 1;"> 
-            <div style="font-size: 0.9rem; font-weight: 700; color: #7b341e;">Viewing Finalized Term</div> 
-            <div style="font-size: 0.72rem; line-height: 1.4; color: #975a16; margin-top: 1px;"> 
-              This period is officially finalized. Marks are in <strong>read-only mode</strong> to ensure record integrity. New entries or changes cannot be saved. 
-            </div> 
-          </div>
-        `;
-        termLockMessageEl.style.display = "flex";
-        marksTableContainer?.classList.add("locked-state-overlay");
-      } else {
-        termLockMessageEl.style.display = "none";
-        marksTableContainer?.classList.remove("locked-state-overlay");
-      }
-    }
-    updateSubmittedMarksEditStatus();
   }
 
   // ---------------------------
@@ -273,13 +254,12 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // 🆕 Reset table when context changes to prevent data pollution across terms/assessments
   [marksAssessmentSelect, marksYearInput].forEach(el => {
-    el?.addEventListener("change", () => {
+    el?.addEventListener("change", async () => {
       if (marksEntryTableBody && marksEntryTableBody.innerHTML !== "") {
         resetMarksTable();
       }
-      // 🆕 Re-check lock status when year changes
       if (el === marksYearInput) {
-        checkTermLockStatus();
+        await refreshMarksEditPermissionStatus();
       }
     });
   });
@@ -1089,7 +1069,7 @@ document.addEventListener("DOMContentLoaded", () => {
   <td data-label="Admission">${sanitize(student.admissionNo || student.admission)}</td>
   <td data-label="Name">${sanitize(student.name)}</td>
   <td data-label="Marks" class="marks-entry-cell">
-    <input type="text" class="marks-entry-input marks-input" inputmode="text" placeholder="Score (or X for Absent)" value="${existingScoreValue}" ${currentTermLocked ? 'disabled' : ''} />
+    <input type="text" class="marks-entry-input marks-input" inputmode="text" placeholder="Score (or X for Absent)" value="${existingScoreValue}" />
   </td>
 `;
     });
@@ -1411,10 +1391,6 @@ document.addEventListener("DOMContentLoaded", () => {
         return;
       }
 
-      if (currentTermLocked) { // Early exit if term is locked
-        showToast("Cannot load students for a locked term.", "error");
-        return;
-      }
 
       isLoadingStudents = true;
       loadStudentsBtn.disabled = true;
@@ -1442,7 +1418,7 @@ document.addEventListener("DOMContentLoaded", () => {
       window.lastStudentsFetchTotalCount = response.total || students.length;
 
       displayStudentsInMarksTable(students);
-      updateUIForTermLock(); // Ensure UI is updated after students are loaded
+      setMarksEntryEnabled(true);
 
       if (students.length > 0) {
         showToast(`✅ Loaded ${students.length} Learner(s) from ${selectedAllocationData.classLabel}`, "success");
@@ -1469,11 +1445,6 @@ document.addEventListener("DOMContentLoaded", () => {
         showToast("No marks entered to submit.", "error");
         return;
       }
-      if (currentTermLocked) { // Early exit if term is locked
-        showToast("No marks entered to submit.", "error");
-        return;
-      }
-
       const validationErrors = validateMarksTable();
       if (validationErrors.length > 0) {
         showToast(`Validation Errors: ${validationErrors.join(", ")}`, "error");
@@ -1743,6 +1714,8 @@ document.addEventListener("DOMContentLoaded", () => {
     const cacheKeyWithContext = `${CACHE_KEY}_${currentAcademicContext.year}_${currentAcademicContext.term}`;
 
     try {
+      await refreshMarksEditPermissionStatus();
+
       // 🚀 Fetch with a high limit (1000) to ensure multiple class groups are captured for the accordions
       const requestUrl = `${API_BASE}/marks/teacher?limit=1000&year=${currentAcademicContext.year}&term=${currentAcademicContext.term}`;
       const res = await fetchWithAuth(requestUrl);
@@ -1896,8 +1869,8 @@ document.addEventListener("DOMContentLoaded", () => {
         // 🆕 Include Stream in the display title (e.g. Grade 7 B)
         const streamLabel = headerInfo.stream ? ` ${headerInfo.stream}` : '';
         const gradeWithStream = `${window.cbcUtils.normalizeGrade(headerInfo.grade)}${streamLabel}`;
-    const canEditSubmittedGroup = teacherSubmittedMarkEditsAllowed && !currentTermLocked;
-    const adminLockText = canEditSubmittedGroup ? '' : ' • Admin disabled submitted mark edits';
+    const canEditSubmittedGroup = marksEditPermissionEnabled;
+    const adminLockText = !marksEditPermissionEnabled ? ' • Edits Disabled' : '';
     const summaryText = `Grade: ${sanitize(gradeWithStream)} • ${sanitize(subjectDisplay)} • Term: ${sanitize(headerInfo.term)} • Year: ${sanitize(headerInfo.year)} • ${assessmentLabel} — ${fullGroupMarksRaw.length} record${fullGroupMarksRaw.length > 1 ? 's' : ''}${adminLockText}`;
         const summary = document.createElement('summary');
         summary.className = 'marks-accordion-summary';
@@ -1970,8 +1943,10 @@ document.addEventListener("DOMContentLoaded", () => {
       displayPaginatedMarksGroups(submittedMarksCurrentPage);
     });
 
-    const canEditSubmittedGroup = teacherSubmittedMarkEditsAllowed && !currentTermLocked;
-    const editHint = canEditSubmittedGroup ? 'Use the pencil icon to edit records. Submitted-mark editing is controlled by the admin dashboard for this term.' : 'Editing submitted marks is disabled for this term.';
+    const canEditSubmittedGroup = marksEditPermissionEnabled;
+    const editHint = canEditSubmittedGroup
+      ? 'Use the pencil icon to edit records.'
+      : 'Submitted mark edits are currently disabled by admin for this term.';
 
     const hintMessage = document.createElement('div');
     hintMessage.textContent = editHint;
@@ -2009,9 +1984,7 @@ document.addEventListener("DOMContentLoaded", () => {
     controlsRow.appendChild(rightControls);
 
     contentWrapper.appendChild(controlsRow);
-    if (canEditSubmittedGroup) {
-      contentWrapper.appendChild(hintMessage);
-    }
+    contentWrapper.appendChild(hintMessage);
 
     const tableContainer = document.createElement('div');
     tableContainer.className = 'marks-table-container';
@@ -2093,9 +2066,10 @@ document.addEventListener("DOMContentLoaded", () => {
     if (!btn) return;
     const row = btn.closest("tr");
     const id = row?.dataset.id;
-    
-    if (!teacherSubmittedMarkEditsAllowed || currentTermLocked) {
-      return showToast("Editing submitted marks is currently disabled for this term.", "error");
+
+    if (!marksEditPermissionEnabled) {
+      showToast("Submitted mark edits are disabled by admin for this term.", "info");
+      return;
     }
 
     // 🆕 HANDLE BULK DELETE FOR ENTIRE GROUP
@@ -2114,16 +2088,6 @@ document.addEventListener("DOMContentLoaded", () => {
 
       const confirmMsg = `Are you sure you want to permanently delete ALL ${marksToDelete.length} records in this table? This action cannot be undone.`;
       if (!await showConfirm(confirmMsg)) return;
-
-      // Check Term Lock for the group before processing (using the first mark as reference)
-      const sample = marksToDelete[0];
-      try {
-        const lockRes = await fetchWithAuth(`${API_BASE}/settings/term-lock?year=${sample.year}&term=${sample.term}`);
-        const lockData = await lockRes.json();
-        if (lockData.isLocked && teacher.role !== 'super_admin') {
-          return showToast("Cannot delete: This academic term is officially locked.", "error");
-        }
-      } catch (e) { console.warn("Lock check failed, proceeding with deletion attempt..."); }
 
       btn.disabled = true;
       const originalHTML = btn.innerHTML;
@@ -2359,29 +2323,6 @@ document.addEventListener("DOMContentLoaded", () => {
     // Initialize Tabs
     setupTabs();
     
-    // 🆕 Move termLockMessageEl to the desired position
-    const marksControls = document.querySelector('.marks-controls');
-    const step1Heading = marksControls?.querySelector('h3'); // Assuming "Step 1" is an h3
-
-    if (marksControls && step1Heading && termLockMessageEl) {
-        // Create a wrapper for the heading and the lock message
-        const headerWrapper = document.createElement('div');
-        headerWrapper.className = 'lock-message-wrapper'; // Add a class for specific styling
-        headerWrapper.style.cssText = 'display: flex; justify-content: space-between; align-items: center; width: 100%; flex-wrap: wrap; margin-bottom: 15px;';
-
-        // Move the h3 into the wrapper
-        headerWrapper.appendChild(step1Heading);
-
-        // Move the termLockMessageEl into the wrapper
-        headerWrapper.appendChild(termLockMessageEl);
-
-        // Prepend the wrapper to marksControls
-        marksControls.prepend(headerWrapper);
-    } else if (marksControls && termLockMessageEl) {
-        // Fallback if h3 is not found, just prepend the message
-        marksControls.prepend(termLockMessageEl);
-    }
-
     await loadSchoolName();
 
     // Step 2.5: Render signature UI now that school info is available
@@ -2390,8 +2331,6 @@ document.addEventListener("DOMContentLoaded", () => {
     await loadTeacherAllocations();
     
     await loadSubmittedMarks();
-    
-    // 🆕 Initial check for term lock status
-    await checkTermLockStatus();
+    await refreshMarksEditPermissionStatus();
   })();
 });

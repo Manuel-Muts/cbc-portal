@@ -111,6 +111,22 @@ const canBypassMarkLocks = (reqUser = {}) => {
   return reqUser?.role === 'super_admin' || reqUser?.role === 'dean' || reqUser?.isDean === true;
 };
 
+// Check whether teacher-submitted-mark edits are allowed for a given year/term.
+// Returns true when edits are allowed or when the user can bypass (dean/super_admin).
+const isMarksEditAllowed = async (reqUser, schoolId, year, term) => {
+  if (canBypassMarkLocks(reqUser)) return true;
+  if (!schoolId || !year || !term) return true; // conservative default: allow when context missing
+  const editPermissionKey = `submitted_marks_edits_allowed_${schoolId}_${year}_${term}`;
+  try {
+    const editSetting = await Setting.findOne({ key: editPermissionKey }).lean();
+    // Default to true (allow) when no explicit setting exists
+    return editSetting ? editSetting.value === true : true;
+  } catch (err) {
+    console.warn('isMarksEditAllowed error:', err);
+    return true;
+  }
+};
+
 const getSeniorPathway = (subjectName) => {
   const sub = normalizeSeniorSubjectName(subjectName);
   if (SENIOR_COMPULSORY_SUBJECTS.some(s => s.toLowerCase() === sub.toLowerCase())) return "Core";
@@ -315,21 +331,7 @@ const processSingleMark = async (markData, reqUser, isNew = true, cachedContext 
     throw new Error(`${normalizeSeniorSubjectName(course)} is not a graded senior subject and should not be submitted.`);
   }
 
-  // 🆕 Term Lock Check (Optimized: bypass if already checked in bulk)
-  if (!cachedContext?.lockChecked) {
-    const lockKey = `term_lock_${reqUser.schoolId}_${year}_${term}`;
-    const isLocked = await Setting.findOne({ key: lockKey }).lean();
-    if (isLocked?.value === true && !canBypassMarkLocks(reqUser)) {
-      throw new Error(`Action denied: Year ${year} Term ${term} is officially locked.`);
-    }
-  }
-
-  if (!isNew) {
-    const allowTeacherSubmittedMarkEdits = cachedContext?.allowTeacherSubmittedMarkEdits;
-    if (allowTeacherSubmittedMarkEdits === false && !canBypassMarkLocks(reqUser)) {
-      throw new Error(`Action denied: Teacher edits for submitted marks are disabled by admin for Year ${year} Term ${term}.`);
-    }
-  }
+  // Term-lock checks are no longer enforced for teachers; marking remains scoped to the current term/year workflow.
 
   // Find student if new or if admissionNo is provided for update
   let student;
@@ -500,13 +502,14 @@ export const updateMark = async (req, res) => {
       return res.status(403).json({ message: "Unauthorized" });
     }
 
-    if (!isDeanUser && !isSuperAdmin) {
-      const editPermissionKey = `submitted_marks_edits_allowed_${req.user.schoolId}_${mark.year}_${mark.term}`;
-      const editSetting = await Setting.findOne({ key: editPermissionKey }).lean();
-      if (!editSetting || editSetting.value !== true) {
-        return res.status(403).json({ message: "Teacher edits for submitted marks are disabled by admin for this term." });
+    // Enforce admin marks-edit permission for teacher updates
+    if (!canBypassMarkLocks(req.user)) {
+      const allowed = await isMarksEditAllowed(req.user, req.user.schoolId, mark.year, mark.term);
+      if (!allowed) {
+        return res.status(403).json({ message: `Action denied: Teacher edits for submitted marks are disabled by admin for Year ${mark.year} Term ${mark.term}.` });
       }
     }
+
     const processedFields = await processSingleMark({
       ...req.body,
       _id: id,
@@ -555,19 +558,31 @@ export const bulkAddUpdateMarks = async (req, res) => {
     const schoolId = req.user.schoolId;
     const sample = marksArray[0];
 
-    // 1. Pre-fetch Term Lock and School Config once for the whole batch
-    const lockKey = `term_lock_${schoolId}_${sample.year}_${sample.term}`;
-    const editPermissionKey = `submitted_marks_edits_allowed_${schoolId}_${sample.year}_${sample.term}`;
-    const [isLocked, editSetting] = await Promise.all([
-      Setting.findOne({ key: lockKey }).lean(),
-      Setting.findOne({ key: editPermissionKey }).lean()
-    ]);
-    if (isLocked?.value === true && !canBypassMarkLocks(req.user)) {
-      return res.status(403).json({ message: `Year ${sample.year} Term ${sample.term} is locked.` });
+    // If this batch contains updates (existing _id), ensure teacher edits are allowed for those year/term combos
+    if (!canBypassMarkLocks(req.user)) {
+      const updateCombos = new Set();
+      marksArray.forEach(m => {
+        if (m._id) {
+          const y = m.year || sample.year;
+          const t = m.term || sample.term;
+          if (y && t) updateCombos.add(`${y}-${t}`);
+        }
+      });
+      if (updateCombos.size > 0) {
+        const disallowed = [];
+        for (const combo of updateCombos) {
+          const [y, t] = combo.split('-');
+          const allowed = await isMarksEditAllowed(req.user, schoolId, y, t);
+          if (!allowed) disallowed.push({ year: y, term: t });
+        }
+        if (disallowed.length > 0) {
+          const first = disallowed[0];
+          return res.status(403).json({ message: `Action denied: Teacher edits for submitted marks are disabled by admin for Year ${first.year} Term ${first.term}.` });
+        }
+      }
     }
-    const allowTeacherSubmittedMarkEdits = editSetting && editSetting.value === true;
 
-    // 2. Pre-fetch students and enrollments to avoid N+1 queries
+    // Pre-fetch students and enrollments to avoid N+1 queries
     const admissions = [...new Set(marksArray.map(m => m.admissionNo).filter(Boolean))];
     const students = await Student.find({ 
       admission: { $in: admissions }, 
@@ -617,7 +632,7 @@ export const bulkAddUpdateMarks = async (req, res) => {
     // 🚀 NEW: Fetch school grading config once for bulk processing
     const school = await School.findById(schoolId).select("gradingConfig").lean();
 
-    const cachedContext = { studentMap, enrollmentMap, lockChecked: true, existingMarksMap, gradingConfig: school?.gradingConfig, allowTeacherSubmittedMarkEdits };
+    const cachedContext = { studentMap, enrollmentMap, lockChecked: true, existingMarksMap, gradingConfig: school?.gradingConfig };
     const ops = [];
     const errors = [];
 
@@ -782,22 +797,14 @@ export const deleteMark = async (req, res) => {
     if (String(mark.teacherId) !== String(req.user.id)) {
       return res.status(403).json({ message: "Unauthorized" });
     }
+    // Enforce marks-edit permission for deletions
+    if (!canBypassMarkLocks(req.user)) {
+      const allowed = await isMarksEditAllowed(req.user, req.user.schoolId, mark.year, mark.term);
+      if (!allowed) {
+        return res.status(403).json({ message: `Cannot delete marks: Teacher edits for submitted marks are disabled by admin for Year ${mark.year} Term ${mark.term}.` });
+      }
+    }
     
-    // 🆕 Check Lock and admin edit permission before deletion
-    const lockKey = `term_lock_${req.user.schoolId}_${mark.year}_${mark.term}`;
-    const editPermissionKey = `submitted_marks_edits_allowed_${req.user.schoolId}_${mark.year}_${mark.term}`;
-    const [lockSetting, editSetting] = await Promise.all([
-      Setting.findOne({ key: lockKey }).lean(),
-      Setting.findOne({ key: editPermissionKey }).lean()
-    ]);
-
-    if (lockSetting?.value === true && !canBypassMarkLocks(req.user)) {
-      return res.status(403).json({ message: "Cannot delete marks: This academic term is officially locked." });
-    }
-    if ((!editSetting || editSetting.value !== true) && !canBypassMarkLocks(req.user)) {
-      return res.status(403).json({ message: "Cannot delete marks: Teacher edits for submitted marks are disabled by admin for this term." });
-    }
-
     await mark.deleteOne();
     cache.clearByPattern(String(req.user.schoolId));
 
@@ -836,42 +843,19 @@ export const bulkDeleteMarks = async (req, res) => {
       return res.status(403).json({ message: "You can only delete your own marks." });
     }
 
-    // 3. Perform Term Lock Check
-    // Collect all unique (year, term) combinations for the marks to be deleted.
-    // Use req.user.schoolId and req.user.role.
-    const termKeys = [...new Set(marksToDelete.map(m => `term_lock_${req.user.schoolId}_${m.year}_${m.term}`))];
+    // Enforce marks-edit permission for bulk deletions across involved year/term combos
     if (!canBypassMarkLocks(req.user)) {
-      // Optimized: Fetch all relevant lock settings in one go
-      const [lockedSettings, editSettings] = await Promise.all([
-        Setting.find({ key: { $in: termKeys }, value: true }).lean(),
-        Setting.find({ key: { $in: termKeys.map(k => k.replace('term_lock_', 'submitted_marks_edits_allowed_')) } }).lean()
-      ]);
-
-      // For submitted mark edits, only block when an explicit false value exists for a term.
-      const disabledEditKey = termKeys.map(k => k.replace('term_lock_', 'submitted_marks_edits_allowed_')).find(editKey => {
-        const found = editSettings.find(e => e.key === editKey);
-        return found?.value === false;
-      });
-      if (disabledEditKey) {
-        const parts = disabledEditKey.split('_');
-        const disabledYear = parts[4];
-        const disabledTerm = parts[5];
-        return res.status(403).json({
-          message: `Cannot delete marks: Teacher edits for submitted marks are disabled by admin for Year ${disabledYear} Term ${disabledTerm}.`
-        });
-      }
-
-      if (lockedSettings.length > 0) {
-        const firstLocked = lockedSettings[0].key.split('_');
-        const lockedYear = firstLocked[3];
-        const lockedTerm = firstLocked[4];
-        return res.status(403).json({ 
-          message: `Cannot delete marks: One or more academic terms (e.g., Year ${lockedYear} Term ${lockedTerm}) are officially locked.` 
-        });
+      const combos = new Set(marksToDelete.map(m => `${m.year}-${m.term}`));
+      for (const combo of combos) {
+        const [y, t] = combo.split('-');
+        const allowed = await isMarksEditAllowed(req.user, req.user.schoolId, y, t);
+        if (!allowed) {
+          return res.status(403).json({ message: `Cannot delete marks: Teacher edits for submitted marks are disabled by admin for Year ${y} Term ${t}.` });
+        }
       }
     }
 
-    // 4. Execute bulk deletion
+    // Execute bulk deletion
     const deleteResult = await Mark.deleteMany({
       _id: { $in: markIds },
       teacherId: req.user.id, // Double-check ownership during deletion

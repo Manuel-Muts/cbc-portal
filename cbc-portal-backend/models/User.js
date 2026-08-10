@@ -54,12 +54,13 @@ const userSchema = new mongoose.Schema({
     required: true
   },
 
-  // Each non-super admin user MUST belong to a school.
+  // Each non-super admin user should belong to a school on creation.
+  // Legacy users may have null schoolId, so require only for new docs.
   schoolId: { 
     type: mongoose.Schema.Types.ObjectId, 
     ref: "School", 
     default: null,
-    required: function() { return this.role !== "super_admin"; } // 🔒 Enforce school assignment
+    required: function() { return this.isNew && this.role !== "super_admin"; }
   },
  
 

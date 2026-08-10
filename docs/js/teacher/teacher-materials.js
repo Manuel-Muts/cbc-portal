@@ -49,7 +49,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       if (!res.ok) throw new Error("Failed to fetch school info");
       const school = await res.json();
       
-      const type = school.schoolType || 'full';
+      const type = resolveSchoolTypeKey(school.schoolType || 'full');
       const grades = SCHOOL_TYPES_GRADES[type] || SCHOOL_TYPES_GRADES.full;
       
       if (materialGrade) {
@@ -74,6 +74,14 @@ document.addEventListener("DOMContentLoaded", async () => {
   const isSeniorGrade = (grade) => {
     const num = getGradeNum(grade);
     return num >= 10 && num <= 12;
+  };
+
+  const resolveSchoolTypeKey = (rawType) => {
+    if (!rawType) return 'full';
+    const normalized = String(rawType).toLowerCase().replace(/[^a-z]/g, '_');
+    if (normalized.includes('primary') || normalized.includes('junior')) return 'primary_junior';
+    if (normalized.includes('senior')) return 'senior';
+    return 'full';
   };
 
   // ---------------------------
@@ -436,13 +444,11 @@ document.addEventListener("DOMContentLoaded", async () => {
         // Clear cache on new upload
         localStorage.removeItem("teacher_materials_cache");
 
-        const listTabBtn = document.querySelector('[data-tab="listTab"]');
         showToast("Study material uploaded successfully!", "success");
-        // Ensure toast is visible before potentially disruptive UI updates
+        // Ensure toast is visible before refreshing the materials list
         setTimeout(() => {
-          if (listTabBtn) listTabBtn.click();
           loadMaterials(1, true); // Force refresh and reset to page 1
-        }, 100); // Small delay to allow toast to render
+        }, 100);
         // Reset UI
         setTimeout(() => {
           progressContainer.style.display = "none";

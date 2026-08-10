@@ -31,10 +31,11 @@
                 <li data-section="promotionSection"><span class="menu-icon">⬆️</span><span>Learner Promotion</span></li>
                 <li><a href="/users"><span class="menu-icon">👥</span><span>User Management</span></a></li>
                 <li data-section="electivesSection"><span class="menu-icon">⚙️</span><span>Electives Management</span></li>
-                <li data-section="signatureUploadSection"><span class="menu-icon">✍️</span><span>Digital Signature</span></li>
                 <li data-section="termLockManagementSection">
-                    <a href="#"><span class="menu-icon">🔒</span><span>Term Lock Management</span></a>
+                    <a href="#"><span class="menu-icon">�</span><span>Marks Edit Settings</span></a>
                 </li>
+                <li data-section="signatureUploadSection"><span class="menu-icon">✍️</span><span>Digital Signature</span></li>
+                
             </ul>
         </div>
     </aside>
@@ -404,10 +405,10 @@
 <section id="termLockManagementSection" class="tab-section hidden">
   <div class="card">
     <div class="admin-section-header-row">
-      <h3>Term Lock Management</h3>
+      <h3>Marks Edit Settings</h3>
     </div>
     <p style="margin-bottom: 20px; color: #6b7280;">
-      Control mark entry for specific academic terms. Locking a term prevents teachers from adding, updating, or deleting marks for that period.
+      Choose whether teachers may edit marks that have already been submitted for a selected academic term.
     </p>
 
     <div class="form-group">
@@ -418,16 +419,6 @@
     <div class="form-group">
       <label for="termLockTermSelect">Term:</label>
       <select id="termLockTermSelect" class="form-control"></select>
-    </div>
-
-    <div class="form-group" style="display: flex; align-items: center; gap: 15px; margin-top: 20px;">
-      <label>Term Lock Status:</label>
-      <span id="termLockStatusDisplay" style="font-weight: bold; font-size: 1.1rem;">Loading...</span>
-      <label class="switch">
-        <input type="checkbox" id="termLockToggleButton">
-        <span class="slider round"></span>
-      </label>
-      <span style="font-size: 0.9rem; color: #6b7280;">(Toggle to Lock/Unlock)</span>
     </div>
 
     <div class="form-group" style="display: flex; align-items: center; gap: 15px; margin-top: 12px;">

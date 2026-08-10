@@ -250,6 +250,33 @@ th {
   background: white;
 }
 
+#subjectTableWrap .marks-table {
+  table-layout: fixed;
+}
+
+#subjectTableWrap .marks-table th,
+#subjectTableWrap .marks-table td {
+  padding: 5px 6px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+#subjectTableWrap .marks-table th:first-child,
+#subjectTableWrap .marks-table td:first-child {
+  width: 40px;
+}
+
+#subjectTableWrap .marks-table th:nth-child(2),
+#subjectTableWrap .marks-table td:nth-child(2) {
+  width: 90px;
+}
+
+#subjectTableWrap .marks-table th:nth-child(n+3),
+#subjectTableWrap .marks-table td:nth-child(n+3) {
+  width: 60px;
+}
+
 @media screen and (max-width: 768px) {
   #rankingTableWrap table,
   #subjectTableWrap table {

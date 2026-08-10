@@ -2,7 +2,7 @@
   "id": "/",
   "name": "CompetenceHub",
   "short_name": "CompetenceHub",
-  "description": "Teacher and class teacher dashboard for CompetenceHub",
+  "description": "Teacher and Learner app for CompetenceHub",
   "start_url": "/?source=pwa",
   "scope": "/",
   "display": "standalone",

@@ -17,6 +17,153 @@ document.addEventListener("DOMContentLoaded", function () {
   const emailLabel = document.getElementById("emailLabel");
   const passwordField = admissionField;
   const keepLoggedInCheckbox = document.getElementById("keepLoggedIn");
+  const nextButton = document.getElementById("nextButton");
+  const backButton = document.getElementById("backButton");
+  const stepNextButton = document.getElementById("stepNextButton");
+  const submitButton = document.getElementById("submitButton");
+  const formSteps = Array.from(document.querySelectorAll(".form-step"));
+
+  let selectedRole = "";
+  let credentialStage = 0;
+
+  function setActiveStep(stepIndex) {
+    formSteps.forEach((step) => {
+      step.classList.toggle("active", Number(step.dataset.step) === stepIndex);
+    });
+
+    if (stepIndex === 1) {
+      roleSelect.focus();
+      const rememberGroup = document.getElementById('rememberGroup');
+      if (rememberGroup) showElement(rememberGroup);
+    } else if (stepIndex === 2) {
+      const activeInput = document.querySelector(".form-step.active input:not([type='hidden'])");
+      if (activeInput) activeInput.focus();
+      const rememberGroup = document.getElementById('rememberGroup');
+      if (rememberGroup) hideElement(rememberGroup);
+    }
+  }
+
+  function showElement(el) {
+    if (!el) return;
+    el.classList.remove("hidden");
+    if (el.style) el.style.display = "block";
+  }
+
+  function hideElement(el) {
+    if (!el) return;
+    el.classList.add("hidden");
+    if (el.style) el.style.display = "none";
+  }
+
+  function updateCredentialStage() {
+    const isLearner = selectedRole === "student" || selectedRole === "learner";
+    const showFirstCredential = credentialStage === 0;
+
+    if (isLearner) {
+      firstnameLabel.textContent = "Full Name";
+      firstnameField.placeholder = "Enter your full name";
+      emailLabel.textContent = "Email";
+      emailField.placeholder = "Enter your email";
+      admissionLabel.textContent = credentialStage === 1 ? "Admission Number" : "Password";
+      admissionField.placeholder = credentialStage === 1 ? "Enter your admission number" : "Enter your password";
+      admissionField.type = credentialStage === 1 ? "text" : "password";
+    } else {
+      firstnameLabel.textContent = "Full Name";
+      firstnameField.placeholder = "Enter your full name";
+      emailLabel.textContent = "Email";
+      emailField.placeholder = "Enter your email";
+      admissionLabel.textContent = "Password";
+      admissionField.placeholder = "Enter your password";
+      admissionField.type = "password";
+    }
+
+    if (showFirstCredential) {
+      if (isLearner) {
+        showElement(firstnameLabel.parentElement);
+        showElement(firstnameField);
+        hideElement(emailLabel.parentElement);
+        hideElement(emailField);
+      } else {
+        showElement(emailLabel.parentElement);
+        showElement(emailField);
+        hideElement(firstnameLabel.parentElement);
+        hideElement(firstnameField);
+      }
+
+      hideElement(admissionLabel.parentElement);
+      hideElement(admissionField);
+      hideElement(submitButton);
+      showElement(stepNextButton);
+    } else {
+      hideElement(firstnameLabel.parentElement);
+      hideElement(firstnameField);
+      hideElement(emailLabel.parentElement);
+      hideElement(emailField);
+
+      showElement(admissionLabel.parentElement);
+      showElement(admissionField);
+      showElement(submitButton);
+      hideElement(stepNextButton);
+    }
+  }
+
+  function startCredentialFlow() {
+    if (!roleSelect.value) return alert("Please select your role before continuing.");
+    selectedRole = roleSelect.value;
+    credentialStage = 0;
+    setActiveStep(2);
+    updateCredentialStage();
+  }
+
+  // Show transient three-dot loader on a button for a short duration
+  function showTransientDots(btn, duration = 300) {
+    if (!btn) return;
+    btn.dataset._orig = btn.textContent;
+    btn.classList.add('has-dots');
+    btn.textContent = '';
+    const s = document.createElement('span');
+    s.className = 'login-state';
+    s.innerHTML = '<span class="login-dot"></span><span class="login-dot"></span><span class="login-dot"></span>';
+    btn.appendChild(s);
+    setTimeout(() => {
+      const el = btn.querySelector('.login-state');
+      if (el) el.remove();
+      btn.classList.remove('has-dots');
+      if (btn.dataset._orig) { btn.textContent = btn.dataset._orig; delete btn.dataset._orig; }
+    }, duration);
+  }
+
+  function advanceCredentialStage() {
+    const isLearner = selectedRole === "student" || selectedRole === "learner";
+    if (credentialStage === 0) {
+      if (isLearner) {
+        if (!firstnameField.value.trim()) return alert("Please enter your full name before continuing.");
+      } else {
+        if (!emailField.value.trim()) return alert("Please enter your email before continuing.");
+      }
+      credentialStage = 1;
+      updateCredentialStage();
+    }
+  }
+
+  function handleBack() {
+    if (credentialStage === 1) {
+      credentialStage = 0;
+      updateCredentialStage();
+      return;
+    }
+    setActiveStep(1);
+  }
+
+  nextButton?.addEventListener("click", (e) => {
+    // show a brief micro-loading state before advancing
+    showTransientDots(nextButton, 260);
+    setTimeout(() => startCredentialFlow(e), 260);
+  });
+  stepNextButton?.addEventListener("click", advanceCredentialStage);
+  backButton?.addEventListener("click", handleBack);
+  setActiveStep(1);
+  updateCredentialStage();
 
   // Subtle Parallax Effect for Login Background
   document.addEventListener("mousemove", (e) => {
@@ -130,100 +277,81 @@ document.addEventListener("DOMContentLoaded", function () {
     if (!roleSelect) return;
 
     const allRoles = [
-      { value: "learner", label: "Learner" },
-      { value: "teacher", label: "Teacher" },
-      { value: "accounts", label: "Accounts" },
-      { value: "admin", label: "Admin" }
+      { value: "teacher", label: "Teacher", icon: "fas fa-chalkboard-teacher" },
+      { value: "learner", label: "Learner", icon: "fas fa-user-graduate" },
+      { value: "accounts", label: "Accounts", icon: "fas fa-wallet" },
+      { value: "admin", label: "Admin", icon: "fas fa-shield-alt" }
     ];
 
     const visibleRoles = isInstalledApp
       ? allRoles.filter(role => ["learner", "teacher"].includes(role.value))
       : allRoles;
 
+    const roleDropdown = document.getElementById('roleDropdown');
+    const roleTrigger = document.getElementById('roleTrigger');
+    if (!roleDropdown || !roleTrigger) return;
+
     const currentValue = roleSelect.value;
-    roleSelect.innerHTML = '<option value="">-- Select Role --</option>';
+    const placeholder = roleTrigger.querySelector('.role-select-placeholder');
+    roleDropdown.innerHTML = '';
 
     visibleRoles.forEach(role => {
-      const option = document.createElement('option');
-      option.value = role.value;
-      option.textContent = role.label;
-      roleSelect.appendChild(option);
+      const item = document.createElement('button');
+      item.type = 'button';
+      item.className = 'role-dropdown-item';
+      item.dataset.value = role.value;
+      item.setAttribute('role', 'option');
+      item.innerHTML = `
+        <span class="role-dropdown-label">${role.label}</span>
+      `;
+
+      item.addEventListener('click', () => {
+        document.querySelectorAll('.role-dropdown-item').forEach(el => el.classList.remove('selected'));
+        item.classList.add('selected');
+        roleSelect.value = role.value;
+        if (placeholder) placeholder.textContent = role.label;
+        roleDropdown.classList.remove('open');
+        roleDropdown.classList.add('hidden');
+        roleTrigger.setAttribute('aria-expanded', 'false');
+        if (credentialStage === 0) updateCredentialStage();
+      });
+
+      if (currentValue === role.value) {
+        item.classList.add('selected');
+        if (placeholder) placeholder.textContent = role.label;
+      }
+
+      roleDropdown.appendChild(item);
     });
 
-    if (currentValue && visibleRoles.some(role => role.value === currentValue)) {
-      roleSelect.value = currentValue;
-    } else if (isInstalledApp && ["accounts", "admin"].includes(currentValue)) {
+    roleTrigger.addEventListener('click', () => {
+      const open = !roleDropdown.classList.contains('open');
+      roleDropdown.classList.toggle('open', open);
+      roleDropdown.classList.toggle('hidden', !open);
+      roleTrigger.setAttribute('aria-expanded', String(open));
+    });
+
+    document.addEventListener('click', (event) => {
+      if (!roleTrigger.contains(event.target) && !roleDropdown.contains(event.target)) {
+        roleDropdown.classList.remove('open');
+        roleDropdown.classList.add('hidden');
+        roleTrigger.setAttribute('aria-expanded', 'false');
+      }
+    });
+
+    if (isInstalledApp && ["accounts", "admin"].includes(currentValue)) {
       roleSelect.value = "";
-    } else {
+    } else if (!currentValue || !visibleRoles.some(role => role.value === currentValue)) {
       roleSelect.value = "";
     }
   }
 
   configureRoleOptions();
 
-  // ---------------------------
-  // ROLE SWITCHING UI
-  // ---------------------------
-  function updateRoleUI(selectedRole) {
-    if (!admissionField) return;
-
-    const show = (el) => { 
-      if (!el) return;
-      el.style.display = "block"; 
-      if (['INPUT', 'SELECT', 'TEXTAREA'].includes(el.tagName)) el.required = true;
-      // Ensure parent form-group or wrapper is also shown
-      if (el.parentElement && (el.parentElement.classList.contains('form-group') || el.parentElement.classList.contains('password-input-wrapper'))) {
-        el.parentElement.style.display = "block";
-      }
-      // Trigger the fade-in animation
-      el.classList.remove("field-fade-in");
-      void el.offsetWidth; // Force reflow to restart animation
-      el.classList.add("field-fade-in");
-    };
-    const hide = (el) => { 
-      if (!el) return;
-      el.style.display = "none";
-      if (['INPUT', 'SELECT', 'TEXTAREA'].includes(el.tagName)) el.required = false;
-      // Hide parent form-group if it's a specific toggleable field
-      if (el.parentElement && el.parentElement.classList.contains('form-group') && (el.id === 'firstname' || el.id === 'email')) {
-        el.parentElement.style.display = "none";
-      }
-      el.classList.remove("field-fade-in");
-    };
-
-    if (selectedRole === "student" || selectedRole === "learner") {
-      show(firstnameField); show(firstnameLabel);
-      show(admissionField); show(admissionLabel);
-      admissionField.type = "text"; // Show admission number as plain text
-      if (admissionField.parentNode) admissionField.parentNode.style.display = "block";
-      if (loginToggle) loginToggle.style.display = "none";
-      admissionLabel.textContent = "Admission Number";
-      hide(emailField); hide(emailLabel);
-    } else if (["teacher", "admin", "accounts", "superAdmin", "super_admin"].includes(selectedRole)) {
-      show(emailField); show(emailLabel);
-      show(admissionField); show(admissionLabel);
-      admissionField.type = "password"; // Hide password by default
-      if (loginToggle) {
-        loginToggle.style.display = "block";
-        loginToggle.className = "fas fa-eye toggle-password-icon"; 
-      }
-      hide(firstnameField); hide(firstnameLabel);
-      admissionLabel.textContent = "Password";
-    } else {
-      hide(firstnameField); hide(firstnameLabel);
-      hide(emailField); hide(emailLabel);
-      hide(admissionField); hide(admissionLabel);
-      if (loginToggle) {
-        loginToggle.style.display = "none";
-        if (admissionField.parentNode && admissionField.parentNode.classList.contains('password-input-wrapper')) {
-          admissionField.parentNode.style.display = "none";
-        }
-      }
-    }
-  }
-
-  roleSelect.addEventListener("change", () => updateRoleUI(roleSelect.value));
-  updateRoleUI(roleSelect.value);
+  // Recompute the current stage when the role is changed while still on step 1.
+  roleSelect.addEventListener("change", () => {
+    if (credentialStage === 0) updateCredentialStage();
+  });
 
   // ---------------------------
   // HELPER: API REQUEST
@@ -283,7 +411,20 @@ document.addEventListener("DOMContentLoaded", function () {
       payload.expiresIn = config.auth.expiresInLong;
     }
     const submitBtn = loginForm.querySelector('button[type="submit"]');
-    window.spinner?.show(submitBtn, "Logging in...");
+    // Visual loading state for minimal floating design: replace text with animated dots
+    if (submitBtn) {
+      // Use the three-dot animation exclusively for the button.
+      submitBtn.classList.add('loading', 'has-dots');
+      submitBtn.dataset.origText = submitBtn.textContent;
+      // hide original text and add animated login state (three dots only)
+      submitBtn.textContent = "";
+      const stateEl = document.createElement('span');
+      stateEl.className = 'login-state';
+      stateEl.innerHTML = '<span class="login-dot"></span><span class="login-dot"></span><span class="login-dot"></span>';
+      submitBtn.appendChild(stateEl);
+      // Ensure any external circular spinner is hidden for this button
+      window.spinner?.hide(submitBtn);
+    }
 
     try {
       // Login and fetch user + token + schoolId
@@ -316,8 +457,24 @@ document.addEventListener("DOMContentLoaded", function () {
     } catch (err) {
       console.error(err);
       alert(err.message);
-      // Reset button on error
+      // Reset button on error (remove loading + dot state)
       window.spinner?.hide(submitBtn);
+      if (submitBtn) {
+        submitBtn.classList.remove('loading', 'has-dots');
+        const stateEl = submitBtn.querySelector('.login-state');
+        if (stateEl) stateEl.remove();
+        if (submitBtn.dataset.origText) { submitBtn.textContent = submitBtn.dataset.origText; delete submitBtn.dataset.origText; }
+      }
+    }
+    finally {
+      // Ensure spinner and dot state are hidden in all cases (redirect may navigate away)
+      window.spinner?.hide(submitBtn);
+      if (submitBtn) {
+        submitBtn.classList.remove('loading', 'has-dots');
+        const stateEl = submitBtn.querySelector('.login-state');
+        if (stateEl) stateEl.remove();
+        if (submitBtn.dataset.origText) { submitBtn.textContent = submitBtn.dataset.origText; delete submitBtn.dataset.origText; }
+      }
     }
   }
 

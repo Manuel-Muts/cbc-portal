@@ -138,6 +138,42 @@
     }
     @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
     .senior-material-fields { display: none; } /* Hidden by default */
+
+    .materials-layout {
+      display: grid;
+      grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.95fr);
+      gap: 20px;
+      align-items: start;
+    }
+
+    .materials-panel {
+      min-width: 0;
+    }
+
+    .materials-panel-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 15px;
+      flex-wrap: wrap;
+    }
+
+    .materials-panel-header h3 {
+      margin: 0;
+      color: #2c3e50;
+    }
+
+    .materials-panel-header span {
+      font-size: 0.9rem;
+      color: #666;
+    }
+
+    @media (max-width: 980px) {
+      .materials-layout {
+        grid-template-columns: 1fr;
+      }
+    }
   </style>
 </head>
 <body>
@@ -147,8 +183,8 @@
     <!-- HEADER -->
     <nav class="top-nav">
       <div class="nav-left"></div>
-      <div class="nav-right">
-        <a href="/teacher" class="btn secondary-btn" style="margin-right: 10px;">← Back to Dashboard</a>
+      <div class="nav-right" style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+        <a href="/teacher" class="btn secondary-btn">← Back to Dashboard</a>
         <button id="smartRefreshBtn" class="btn secondary-btn">🔄 Refresh</button>
         <button id="logoutBtn" class="btn danger-btn">Logout</button>
       </div>
@@ -160,121 +196,113 @@
       <p style="color: #7f8c8d; margin-top: 5px;">Upload notes, assignments, and resources for your classes.</p>
     </div>
 
-    <!-- TABS NAVIGATION -->
-    <div class="tabs-nav" style="margin: 0 0 20px 0;">
-      <button class="tab-btn active" data-tab="uploadTab">📤 Upload New Material</button>
-      <button class="tab-btn" data-tab="listTab">📁 Uploaded Materials</button>
-    </div>
+    <div class="materials-layout">
+      <div class="card materials-panel">
+        <div class="materials-panel-header">
+          <h3>📤 Upload New Material</h3>
+        </div>
+        <form id="materials-form">
+          <div class="form-row">
+            <!-- Grade Selector -->
+            <div class="form-group" style="flex: 0 0 200px;">
+              <label for="materialGrade">Grade / Class</label>
+              <select id="materialGrade" class="form-control" required>
+                <option value="">-- Select Grade --</option>
+                <option value="1">Grade 1</option>
+                <option value="2">Grade 2</option>
+                <option value="3">Grade 3</option>
+                <option value="4">Grade 4</option>
+                <option value="5">Grade 5</option>
+                <option value="6">Grade 6</option>
+                <option value="7">Grade 7</option>
+                <option value="8">Grade 8</option>
+                <option value="9">Grade 9</option>
+                <option value="10">Grade 10 (Senior)</option>
+                <option value="11">Grade 11 (Senior)</option>
+                <option value="12">Grade 12 (Senior)</option>
+              </select>
+            </div>
 
-    <div id="uploadTab" class="tab-pane active">
-    <!-- UPLOAD FORM -->
-    <div class="card">
-      <h3>📤 Upload New Material</h3>
-      <form id="materials-form">
-        <div class="form-row">
-          <!-- Grade Selector -->
-          <div class="form-group" style="flex: 0 0 200px;">
-            <label for="materialGrade">Grade / Class</label>
-            <select id="materialGrade" class="form-control" required>
-              <option value="">-- Select Grade --</option>
-              <option value="1">Grade 1</option>
-              <option value="2">Grade 2</option>
-              <option value="3">Grade 3</option>
-              <option value="4">Grade 4</option>
-              <option value="5">Grade 5</option>
-              <option value="6">Grade 6</option>
-              <option value="7">Grade 7</option>
-              <option value="8">Grade 8</option>
-              <option value="9">Grade 9</option>
-              <option value="10">Grade 10 (Senior)</option>
-              <option value="11">Grade 11 (Senior)</option>
-              <option value="12">Grade 12 (Senior)</option>
-            </select>
+            <!-- JUNIOR SCHOOL: Subject -->
+            <div class="form-group" id="subjectGroup">
+              <label for="materialSubject">Subject</label>
+              <select id="materialSubject" class="form-control">
+                <option value="">-- Select Subject --</option>
+                <!-- Populated by JS -->
+              </select>
+            </div>
+
+            <!-- SENIOR SCHOOL: Pathway & Course -->
+            <div class="form-group senior-material-fields">
+              <label for="materialPathway">Pathway</label>
+              <select id="materialPathway" class="form-control">
+                <option value="">-- Select Pathway --</option>
+                <!-- Populated by JS -->
+              </select>
+            </div>
+            <div class="form-group senior-material-fields">
+              <label for="materialCourse">Course / Learning Area</label>
+              <select id="materialCourse" class="form-control">
+                <option value="">-- Select Course --</option>
+                <!-- Populated by JS -->
+              </select>
+            </div>
           </div>
 
-          <!-- JUNIOR SCHOOL: Subject -->
-          <div class="form-group" id="subjectGroup">
-            <label for="materialSubject">Subject</label>
-            <select id="materialSubject" class="form-control">
-              <option value="">-- Select Subject --</option>
-              <!-- Populated by JS -->
-            </select>
+          <!-- Details -->
+          <div class="form-group">
+            <label for="materialTitle">Title</label>
+            <input type="text" id="materialTitle" class="form-control" placeholder="e.g. Mathematics Assignment Term 1" required>
           </div>
 
-          <!-- SENIOR SCHOOL: Pathway & Course -->
-          <div class="form-group senior-material-fields">
-            <label for="materialPathway">Pathway</label>
-            <select id="materialPathway" class="form-control">
-              <option value="">-- Select Pathway --</option>
-              <!-- Populated by JS -->
-            </select>
+          <div class="form-group">
+            <label for="materialDescription">Description / Instructions</label>
+            <textarea id="materialDescription" class="form-control" rows="3" placeholder="Brief description of the material..." required></textarea>
           </div>
-          <div class="form-group senior-material-fields">
-            <label for="materialCourse">Course / Learning Area</label>
-            <select id="materialCourse" class="form-control">
-              <option value="">-- Select Course --</option>
-              <!-- Populated by JS -->
-            </select>
+
+          <div class="form-group">
+            <label for="materialFile">Attach File (PDF, Word - Max 10MB)</label>
+            <input type="file" id="materialFile" class="form-control" accept=".pdf,.doc,.docx" required style="padding: 8px; background: #f9f9f9;">
           </div>
-        </div>
 
-        <!-- Details -->
-        <div class="form-group">
-          <label for="materialTitle">Title</label>
-          <input type="text" id="materialTitle" class="form-control" placeholder="e.g. Mathematics Assignment Term 1" required>
-        </div>
-
-        <div class="form-group">
-          <label for="materialDescription">Description / Instructions</label>
-          <textarea id="materialDescription" class="form-control" rows="3" placeholder="Brief description of the material..." required></textarea>
-        </div>
-
-        <div class="form-group">
-          <label for="materialFile">Attach File (PDF, Word - Max 10MB)</label>
-          <input type="file" id="materialFile" class="form-control" accept=".pdf,.doc,.docx" required style="padding: 8px; background: #f9f9f9;">
-        </div>
-
-        <div style="text-align: right;">
-          <button type="submit" class="btn primary-btn" style="padding: 12px 30px; font-size: 1rem;">
-            ⬆️ Upload Material
-          </button>
-        </div>
-      </form>
-    </div>
-    </div>
-
-    <div id="listTab" class="tab-pane">
-    <!-- MATERIALS LIST -->
-    <div class="card">
-      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
-        <h3>📂 Uploaded Materials</h3>
-        <span style="font-size: 0.9rem; color: #666;">Showing recent uploads</span>
+          <div style="text-align: right;">
+            <button type="submit" class="btn primary-btn" style="padding: 12px 30px; font-size: 1rem;">
+              ⬆️ Upload Material
+            </button>
+          </div>
+        </form>
       </div>
-      
-      <div class="table-responsive materials-table-container">
-        <table class="table">
-          <thead>
-            <tr id="materialsTableHeader">
-              <!-- Headers populated dynamically by JS based on Junior/Senior selection -->
-              <th>Grade</th>
-              <th>Subject</th>
-              <th>Title</th>
-              <th>Description</th>
-              <th>File</th>
-              <th>Downloads</th>
-              <th>Actions</th>
-            </tr>
-          </thead>
-          <tbody id="materialsList">
-            <tr>
-              <td colspan="7" style="text-align: center; padding: 30px; color: #999;">
-                Loading materials...
-              </td>
-            </tr>
-          </tbody>
-        </table>
+
+      <div class="card materials-panel">
+        <div class="materials-panel-header">
+          <h3>📂 Uploaded Materials</h3>
+          <span>Showing recent uploads</span>
+        </div>
+
+        <div class="table-responsive materials-table-container">
+          <table class="table">
+            <thead>
+              <tr id="materialsTableHeader">
+                <!-- Headers populated dynamically by JS based on Junior/Senior selection -->
+                <th>Grade</th>
+                <th>Subject</th>
+                <th>Title</th>
+                <th>Description</th>
+                <th>File</th>
+                <th>Downloads</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="materialsList">
+              <tr>
+                <td colspan="7" style="text-align: center; padding: 30px; color: #999;">
+                  Loading materials...
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
       </div>
-    </div>
     </div>
 
   </div>
