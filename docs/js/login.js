@@ -189,17 +189,26 @@ document.addEventListener("DOMContentLoaded", function () {
     if (field.parentNode) field.parentNode.insertBefore(wrapper, field);
     wrapper.appendChild(field);
     wrapper.appendChild(icon);
+
+    const refreshIcon = () => {
+      const isPasswordField = field.type === "password";
+      icon.style.display = isPasswordField ? "inline-block" : "none";
+      icon.classList.toggle("fa-eye", isPasswordField);
+      icon.classList.toggle("fa-eye-slash", false);
+    };
+
     icon.addEventListener("click", () => {
       const isPass = field.type === "password";
       field.type = isPass ? "text" : "password";
       icon.classList.toggle("fa-eye", !isPass);
       icon.classList.toggle("fa-eye-slash", isPass);
     });
-    return icon;
+
+    refreshIcon();
+    return { icon, refreshIcon };
   }
 
   const loginToggle = attachToggle(admissionField);
-  if (loginToggle) loginToggle.style.display = "none";
 
   const currentPasswordInputModal = changePasswordForm?.querySelector("input[name='currentPassword']");
   const newPasswordInputModal = changePasswordForm?.querySelector("input[name='newPassword']");

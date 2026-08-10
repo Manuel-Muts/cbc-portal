@@ -81,9 +81,13 @@ const overlay = document.getElementById("menuOverlay");
         });
     }
 
-    // --- 1A. PWA INSTALL PROMPT (Only on landing page) ---
-    // 🆕 Check if this is the landing page (/) to avoid showing on dashboards
-    const isLandingPage = window.location.pathname === '/' || window.location.pathname === '/index.html';
+    // --- 1A. PWA INSTALL PROMPT (Landing or login/home after redirect) ---
+    const isLandingPage = [
+      '/',
+      '/index.html',
+      '/login',
+      '/home'
+    ].includes(window.location.pathname);
     
     if (isLandingPage) {
         const installPromptState = {

@@ -79,6 +79,10 @@
     </form>
   </div>
 
+  <footer class="login-page-footer">
+    <p>© Muts Tech· Secure CBE Education Platform · <span id="loginFooterYear"></span></p>
+  </footer>
+
   <!-- Change Password Modal -->
   <div id="changePasswordModal" class="modal hidden">
     <div class="modal-content">
@@ -114,13 +118,12 @@
         // Dispatch change event so login.js updates the UI (hides/shows Email vs Name)
         roleSelect.dispatchEvent(new Event('change'));
       }
+
+      const yearSpan = document.getElementById('loginFooterYear');
+      if (yearSpan) {
+        yearSpan.textContent = new Date().getFullYear();
+      }
     });
   </script>
-    <footer>
-    <p>
-© Muts Tech· Secure CBE Education Platform ·
-<script>document.write(new Date().getFullYear());</script>
-</p>
-  </footer>
 </body>
 </html>
