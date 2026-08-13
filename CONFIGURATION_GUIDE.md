@@ -157,7 +157,7 @@ Centralized configuration for the frontend including API endpoints, authenticati
 ```javascript
 // API Configuration
 api: {
-  baseURL: 'https://competence-hub.onrender.com/api',
+  baseURL: 'https://api.competencehub.co.ke/api',
   timeout: 30000,                     // milliseconds
   version: 'v1'
 }

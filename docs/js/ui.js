@@ -186,6 +186,7 @@ const overlay = document.getElementById("menuOverlay");
         const handleInstall = async () => {
             if (installPromptState.deferredPrompt) {
                 installPromptState.installRequested = true;
+                showToast('Installing...', 'info');
                 installPromptState.deferredPrompt.prompt();
                 const { outcome } = await installPromptState.deferredPrompt.userChoice;
                 installPromptState.deferredPrompt = null;
