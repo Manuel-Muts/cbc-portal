@@ -1,0 +1,50 @@
+# CompetenceHub CBC Portal - robots.txt
+# Allow search engine crawlers to index public pages
+
+User-agent: *
+Allow: /
+Allow: /login
+Allow: /about
+Allow: /founder
+Allow: /contact
+Disallow: /admin
+Disallow: /super-admin
+Disallow: /dean
+Disallow: /teacher
+Disallow: /student
+Disallow: /accounts
+Disallow: /performance
+Disallow: /analysis
+Disallow: /report
+Disallow: /reset
+Disallow: /api/
+Disallow: /uploads/
+Disallow: /js/
+Disallow: /css/
+Disallow: /images/
+Disallow: /*.html$
+
+# Sitemap location
+Sitemap: https://competencehub.co.ke/sitemap.xml
+
+# Crawl delay (be respectful)
+Crawl-delay: 1
+Request-rate: 1/5s
+
+# Google
+User-agent: Googlebot
+Allow: /
+Disallow: /admin
+Disallow: /super-admin
+Disallow: /teacher
+Disallow: /student
+Crawl-delay: 0
+
+# Bing
+User-agent: Bingbot
+Allow: /
+Disallow: /admin
+Disallow: /super-admin
+Disallow: /teacher
+Disallow: /student
+Crawl-delay: 1

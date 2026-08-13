@@ -350,6 +350,23 @@ app.get('/health', (req, res) => {
 
 
 // ============================================================
+// SEO & SITEMAP
+// ============================================================
+
+// Serve robots.txt
+app.get('/robots.txt', (req, res) => {
+  res.type('text/plain');
+  res.sendFile(path.join(__dirname, '../docs/robots.txt'));
+});
+
+// Serve sitemap.xml
+app.get('/sitemap.xml', (req, res) => {
+  res.type('application/xml');
+  res.sendFile(path.join(__dirname, '../docs/sitemap.xml'));
+});
+
+
+// ============================================================
 // STATIC PUBLIC FILES
 // ============================================================
 
