@@ -180,32 +180,43 @@ document.addEventListener("DOMContentLoaded", function () {
   // ---------------------------
   function attachToggle(field) {
     if (!field) return null;
-    const icon = document.createElement("i");
-    icon.className = "fas fa-eye toggle-password-icon";
-    icon.title = "Toggle Visibility";
-    
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "toggle-password-icon";
+    button.setAttribute("aria-label", "Toggle password visibility");
+    button.title = "Toggle Visibility";
+    button.innerHTML = '<i class="fas fa-eye" aria-hidden="true"></i>';
+
     const wrapper = document.createElement("div");
     wrapper.className = "password-input-wrapper";
     if (field.parentNode) field.parentNode.insertBefore(wrapper, field);
     wrapper.appendChild(field);
-    wrapper.appendChild(icon);
+    wrapper.appendChild(button);
 
     const refreshIcon = () => {
       const isPasswordField = field.type === "password";
-      icon.style.display = isPasswordField ? "inline-block" : "none";
-      icon.classList.toggle("fa-eye", isPasswordField);
-      icon.classList.toggle("fa-eye-slash", false);
+      const iconEl = button.querySelector("i");
+      button.style.display = isPasswordField ? "inline-flex" : "none";
+      if (iconEl) {
+        iconEl.classList.toggle("fa-eye", isPasswordField);
+        iconEl.classList.toggle("fa-eye-slash", !isPasswordField);
+      }
     };
 
-    icon.addEventListener("click", () => {
+    button.addEventListener("click", (event) => {
+      event.preventDefault();
       const isPass = field.type === "password";
       field.type = isPass ? "text" : "password";
-      icon.classList.toggle("fa-eye", !isPass);
-      icon.classList.toggle("fa-eye-slash", isPass);
+      const iconEl = button.querySelector("i");
+      if (iconEl) {
+        iconEl.classList.toggle("fa-eye", !isPass);
+        iconEl.classList.toggle("fa-eye-slash", isPass);
+      }
+      field.focus({ preventScroll: true });
     });
 
     refreshIcon();
-    return { icon, refreshIcon };
+    return { icon: button, refreshIcon };
   }
 
   const loginToggle = attachToggle(admissionField);

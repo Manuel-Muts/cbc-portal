@@ -4,7 +4,7 @@
  * Supports both DEVELOPMENT and PRODUCTION environments
  * 
  * DEVELOPMENT: http://localhost:5000
- * PRODUCTION: https://competence-hub.onrender.com
+ * PRODUCTION: set via window.__CBC_PORTAL_API_URL__ or update the NovaHost URL below
  */
 
 // ===========================
@@ -58,7 +58,11 @@ function detectEnvironment() {
 
 const CURRENT_ENV = detectEnvironment();
 const LOCAL_API_BASE_URL = 'http://localhost:5000/api';
-const PROD_API_BASE_URL = 'https://competence-hub.onrender.com/api';
+const PROD_API_BASE_URL = (
+  typeof window !== 'undefined' && window.__CBC_PORTAL_API_URL__
+    ? window.__CBC_PORTAL_API_URL__
+    : 'https://api.competencehub.co.ke/api'
+);
 
 // ===========================
 // ENVIRONMENT-SPECIFIC CONFIGS

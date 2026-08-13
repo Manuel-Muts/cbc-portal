@@ -79,9 +79,9 @@ export const sendCredentialsEmail = async ({ name, email, rawPassword }) => {
         <li><strong>Password:</strong> ${rawPassword}</li>
       </ul>
       <p>Please log in and change your password immediately.</p>
-      <p>
-        <a href="https://competencehub.netlify.app/login" target="_blank">CLICK HERE TO LOGIN</a>
-      </p>
+        <p>
+          <a href="${process.env.FRONTEND_URL || 'https://competencehub.co.ke'}/login" target="_blank">CLICK HERE TO LOGIN</a>
+        </p>
     `,
   });
 

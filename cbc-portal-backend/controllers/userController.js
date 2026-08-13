@@ -1156,7 +1156,7 @@ Please use your existing teacher account credentials to access the teacher page.
           <p>Your teacher dashboard now includes a dedicated <strong>My Class</strong> tab for this allocation.</p>
           <p>Please use your existing teacher account credentials to access the teacher page.</p>
           <p>
-            <a href="https://competencehub.netlify.app/login" target="_blank">CLICK HERE TO LOGIN</a>
+            <a href="${process.env.FRONTEND_URL || 'https://competencehub.co.ke'}/login" target="_blank">CLICK HERE TO LOGIN</a>
           </p>
         `
       });
