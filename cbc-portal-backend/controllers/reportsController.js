@@ -517,6 +517,7 @@ export const getOutstandingFees = async (req, res) => {
     const skip = (page - 1) * limit;
     const yearToUse = parseInt(academicYear) || new Date().getFullYear();
     const schoolIdObj = new mongoose.Types.ObjectId(req.user.schoolId);
+    const CACHE_TTL_SECONDS = 300; // 🚀 Increased from 120s to 5 minutes - fees don't change frequently
 
     const matchStage = {
       schoolId: schoolIdObj,
@@ -556,7 +557,10 @@ export const getOutstandingFees = async (req, res) => {
           from: 'users',
           localField: 'studentId',
           foreignField: '_id',
-          as: 'student'
+          as: 'student',
+          pipeline: [
+            { $project: { _id: 1, name: 1, admission: 1 } } // 🚀 Select only needed fields
+          ]
         }
       },
       { $unwind: '$student' },
@@ -576,7 +580,8 @@ export const getOutstandingFees = async (req, res) => {
                   ]
                 }
               }
-            }
+            },
+            { $project: { totalFee: 1, term1Fee: 1, term2Fee: 1, term3Fee: 1 } } // 🚀 Select only needed fields
           ],
           as: 'feeStructure'
         }
@@ -599,6 +604,7 @@ export const getOutstandingFees = async (req, res) => {
                 }
               }
             },
+            { $project: { term: 1, amount: 1 } }, // 🚀 Select only needed fields
             { $group: { _id: '$term', totalAmount: { $sum: '$amount' } } }
           ],
           as: 'paymentSummaries'
@@ -696,7 +702,7 @@ export const getOutstandingFees = async (req, res) => {
       totalFilteredStudents: total
     };
 
-    cache.set(cacheKey, response, 120);
+    cache.set(cacheKey, response, CACHE_TTL_SECONDS); // 🚀 Use extended cache TTL
     res.json(response);
   } catch (err) {
     console.error('Get Outstanding Fees Error:', err);

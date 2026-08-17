@@ -649,6 +649,7 @@ export const getAllStudentAccounts = async (req, res) => {
     const academicYear = parseInt(req.query.academicYear) || new Date().getFullYear();
     const skip = (page - 1) * limit;
     const schoolId = new mongoose.Types.ObjectId(req.user.schoolId);
+    const CACHE_TTL_SECONDS = 300; // 🚀 Increased from 60s to 5 minutes - student accounts don't change frequently
 
     // 🔎 Get school type to restrict grades if no specific class filter is provided
     const school = await User.findById(req.user.id).select('schoolId').populate('schoolId', 'schoolType');
@@ -673,7 +674,10 @@ export const getAllStudentAccounts = async (req, res) => {
           from: "users",
           localField: "studentId",
           foreignField: "_id",
-          as: "student"
+          as: "student",
+          pipeline: [
+            { $project: { _id: 1, name: 1, admission: 1, role: 1, schoolId: 1 } } // 🚀 Select only needed fields
+          ]
         }
       },
       { $unwind: "$student" },
@@ -708,7 +712,8 @@ export const getAllStudentAccounts = async (req, res) => {
                   ]
                 }
               }
-            }
+            },
+            { $project: { totalFee: 1, term1Fee: 1, term2Fee: 1, term3Fee: 1 } } // 🚀 Select only needed fields
           ],
           as: "feeStructure"
         }
@@ -729,7 +734,8 @@ export const getAllStudentAccounts = async (req, res) => {
                   ]
                 }
               }
-            }
+            },
+            { $project: { term1Paid: 1, term2Paid: 1, term3Paid: 1, totalPaid: 1, totalFee: 1, term1Fee: 1, term2Fee: 1, term3Fee: 1, balance: 1, broughtForwardAmount: 1 } } // 🚀 Select only needed fields
           ],
           as: "balanceSummary"
         }
@@ -820,7 +826,7 @@ export const getAllStudentAccounts = async (req, res) => {
     const totalPages = Math.ceil(total / limit);
 
     const responseData = { accounts, total, totalPages, currentPage: page };
-    cache.set(cacheKey, responseData, 60); // Cache for 60 seconds
+    cache.set(cacheKey, responseData, CACHE_TTL_SECONDS); // 🚀 Cache for 5 minutes - data doesn't change frequently
     res.json(responseData);
   } catch (err) {
     console.error("Get All Student Accounts Error:", err);

@@ -74,6 +74,9 @@ markSchema.index({
 // For Student & Class Performance queries
 markSchema.index({ schoolId: 1, grade: 1, stream: 1, year: 1, term: 1, assessment: 1 });
 
+// High-impact index for dean ranking / school-wide analytics
+markSchema.index({ schoolId: 1, year: 1, term: 1, assessment: 1, admissionNo: 1 });
+
 // 🆕 For Dean/Admin analytics queries that filter by performance level
 markSchema.index({ schoolId: 1, year: 1, term: 1, assessment: 1, performanceLevel: 1 });
 

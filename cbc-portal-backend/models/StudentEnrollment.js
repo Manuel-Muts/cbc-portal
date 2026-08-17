@@ -39,20 +39,22 @@ const studentEnrollmentSchema = new mongoose.Schema({
     trim: true,
     uppercase: true,
     validate: {
-      validator: function(v) {
-        if (!v) return true; // Allow null/empty
-        return /^[A-Z]+$/.test(v); // Strictly letters only
+      validator: function (v) {
+        if (!v) return true;
+        return /^[A-Z]+$/.test(v);
       },
-      message: props => `${props.value} is not a valid stream. Streams must contain letters only (e.g., A, B, BLUE, WEST).`
+      message: props =>
+        `${props.value} is not a valid stream. Streams must contain letters only (e.g., A, B, BLUE, WEST).`
     }
   },
 
   pathway: {
     type: String,
-    enum: ['STEM', 'Social Sciences', 'Arts & Sports Science', 'N/A'],
-    default: null,  // 🆕 Allow null for non-senior school students
+    enum: ["STEM", "Social Sciences", "Arts & Sports Science", "N/A"],
+    default: null,
     trim: true
   },
+
   term: {
     type: String,
     enum: ["Term 1", "Term 2", "Term 3"],
@@ -87,18 +89,50 @@ const studentEnrollmentSchema = new mongoose.Schema({
 });
 
 // ------------------------------------
-// IMPORTANT COMPOUND INDEX
+// UNIQUE ENROLLMENT PER YEAR
 // ------------------------------------
 studentEnrollmentSchema.index(
   { studentId: 1, academicYear: 1 },
   { unique: true }
 );
-studentEnrollmentSchema.index({ grade: 1, pathway: 1 }); // 🆕 Compound index for grade and pathway
-studentEnrollmentSchema.index({ pathway: 1 }); // Optimize pathway-based lookups
 
-// 🚀 Optimized Index for Promotion Preview & Class Roster lookups
-studentEnrollmentSchema.index({ schoolId: 1, academicYear: 1, grade: 1, stream: 1, status: 1 });
-studentEnrollmentSchema.index({ studentId: 1, schoolId: 1 }); // For efficient lookups of a student's enrollments within a school
+// ------------------------------------
+// EXISTING PERFORMANCE INDEXES
+// ------------------------------------
+studentEnrollmentSchema.index({ grade: 1, pathway: 1 });
+studentEnrollmentSchema.index({ pathway: 1 });
+
+studentEnrollmentSchema.index({
+  schoolId: 1,
+  academicYear: 1,
+  grade: 1,
+  stream: 1,
+  status: 1
+});
+
+studentEnrollmentSchema.index({
+  studentId: 1,
+  schoolId: 1
+});
+
+// ------------------------------------
+// NEW REPORTING & PAYMENT INDEXES
+// ------------------------------------
+
+// Reports, enrollment summaries, payment queries
+studentEnrollmentSchema.index({
+  schoolId: 1,
+  academicYear: 1,
+  status: 1,
+  grade: 1
+});
+
+// Student balance lookups
+studentEnrollmentSchema.index({
+  studentId: 1,
+  academicYear: 1,
+  status: 1
+});
 
 const StudentEnrollment = mongoose.model(
   "StudentEnrollment",

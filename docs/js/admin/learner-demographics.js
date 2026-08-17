@@ -105,10 +105,16 @@
     }
   };
 
-  // Initialize
+  // Initialize - attach event listeners but don't load data
   function init() {
-    loadDemographicsData();
     attachEventListeners();
+    console.log("[LAZY LOAD] Demographics module ready (data will load on tab click)");
+  }
+
+  // 🆕 Lazy load - called when demographics tab is actually clicked
+  function initLazy() {
+    loadDemographicsData();
+    console.log("[LAZY LOAD] Loading demographics data now...");
   }
 
   function attachEventListeners() {
@@ -483,6 +489,7 @@
   // Export module
   window.LearnerDemographicsModule = {
     init,
+    initLazy, // 🆕 Export lazy load function for tab click handler
     cache: {
       clear: () => cacheManager.clearAll(),
       stats: () => cacheManager.getStats(),
@@ -490,7 +497,10 @@
     }
   };
 
-  // Auto-initialize when DOM is ready
+  // 🆕 Alias for users.js compatibility
+  window.demographicsModule = window.LearnerDemographicsModule;
+
+  // Auto-initialize when DOM is ready (just attach listeners, don't load data)
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', init);
   } else {

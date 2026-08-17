@@ -56,7 +56,7 @@ async function getOfflineFallback() {
     if (cachedFallback) return cachedFallback;
 
     return new Response(
-        `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8" /><meta name="viewport" content="width=device-width,initial-scale=1" /><title>CompetenceHub Offline</title><style>body{font-family:Arial,sans-serif;background:#f8fafc;color:#0f172a;display:grid;place-items:center;min-height:100vh;margin:0;padding:24px;} .card{background:white;padding:28px;border-radius:16px;box-shadow:0 12px 30px rgba(15,23,42,.15);max-width:520px;text-align:center;}h1{margin-top:0}</style></head><body><div class="card"><h1>No internet connection</h1><p>CompetenceHub is offline right now. Please check your connection and try again.</p></div></body></html>`,
+        `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8" /><meta name="viewport" content="width=device-width,initial-scale=1" /><title>Offline</title><style>body{font-family:Arial,sans-serif;background:#f8fafc;color:#0f172a;display:grid;place-items:center;min-height:100vh;margin:0;padding:24px;} .card{background:white;padding:28px;border-radius:16px;box-shadow:0 12px 30px rgba(15,23,42,.15);max-width:520px;text-align:center;}h1{margin-top:0}</style></head><body><div class="card"><h1>No internet connection</h1><p>CompetenceHub is offline right now. Please check your connection and try again.</p></div></body></html>`,
         { headers: { 'Content-Type': 'text/html; charset=utf-8' } }
     );
 }

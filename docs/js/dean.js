@@ -49,6 +49,41 @@ let currentRoster = []; // 🆕 Store roster globally for re-analysis
 let lastProcessedStudents = []; // 🆕 For reports tab
 let lastProcessedSubjects = []; // 🆕 For reports tab
 let currentElectiveAssignments = []; // 🆕 Cache elective assignments for debug and re-analysis
+const lazyWidgetCache = {
+  missingExams: null,
+  rankings: null,
+};
+
+function renderLazySchoolRankingsWidget() {
+  const term = filterTermEl?.value;
+  const assessment = filterAssessmentEl?.value;
+  const year = filterYearEl?.value;
+  const cacheKey = `${term}|${year}|${assessment}`;
+
+  if (!schoolRankingsTableWrap) return;
+
+  if (lazyWidgetCache.rankings && lazyWidgetCache.rankings.key === cacheKey && Array.isArray(lazyWidgetCache.rankings.data)) {
+    if (lazyWidgetCache.rankings.data.length === 0) {
+      schoolRankingsTableWrap.innerHTML = '<div class="empty-state">No rankings available for this period.</div>';
+    } else {
+      renderSchoolWideRankingsTable(lazyWidgetCache.rankings.data);
+    }
+    return;
+  }
+
+  if (term === "all" || assessment === "all") {
+    schoolRankingsTableWrap.innerHTML = `
+      <div class="instruction-state" style="text-align:center; padding:40px; margin-top: 20px; background:#f8fafc; border-radius:12px; border: 1px dashed #cbd5e0; color:#64748b;">
+        <h3 style="margin-top:0; color:#1e293b;">School-Wide Performance Rankings</h3>
+        <p style="font-size:1rem; margin-bottom:15px;">View and download top performers across all grades for the selected academic period.</p>
+        <p style="font-size:0.9rem; font-weight:600; color:#475569;">Select a specific Term and Assessment, then open the <strong>SCHOOL RANKINGS</strong> tab to view the report.</p>
+      </div>`;
+    return;
+  }
+
+  schoolRankingsTableWrap.innerHTML = '<div style="text-align:center; padding:40px;"><span class="spinner"></span> Loading school-wide performance...</div>';
+  generateSchoolWideReport();
+}
 
 // Helper function to set text content of an element
 const setText = (el, value) => {
@@ -556,13 +591,29 @@ function setupTabs() {
            fetchSmsHistorySummary(true);
         }
 
-        // 🆕 Load rankings if the rankings tab is opened
+        // 🆕 Lazy-load rankings when the rankings tab is opened
         if (target === "schoolRankingsTab") {
-           generateSchoolWideReport();
+           renderLazySchoolRankingsWidget();
+        }
+
+        if (target === "missingExamsTab") {
+           renderLazyMissingExamsWidget();
         }
       }
     });
   });
+}
+
+function renderLazyMissingExamsWidget() {
+  if (!lazyWidgetCache.missingExams) {
+    if (missingExamsTableWrap) {
+      missingExamsTableWrap.innerHTML = '<div class="empty-state" style="padding: 30px; text-align:center; color:#475569;">Run analysis first to view missing exams.</div>';
+    }
+    return;
+  }
+
+  const { missingExamsList, streamDiscrepancies } = lazyWidgetCache.missingExams;
+  renderMissingExamsTable(missingExamsList, streamDiscrepancies);
 }
 
 async function generateReport() {
@@ -572,13 +623,19 @@ async function generateReport() {
   const year = filterYearEl.value;
 
   if (!grade) return cbcUtils.showToast("Please select a grade.", "error");
+  if (term === "all" || assessment === "all") {
+    analysisSection.style.display = "none";
+    cbcUtils.showToast("Please select a specific term and assessment to generate a dashboard report.", "info");
+    return;
+  }
 
   window.spinner?.show(applyFiltersBtn, "Analyzing...");
-  
 
   // Allow UI to render spinner before potentially heavy cache/processing logic
   await new Promise(resolve => setTimeout(resolve, 100));
-  
+
+  const gradeNum = window.cbcUtils?.getGradeNum?.(grade) ?? 0;
+  const isSenior = gradeNum >= 10;
   const cacheKey = `${grade}_${term}_${year}_${assessment}`;
   const cached = getAnalyticsCache(cacheKey); // Check cache
 
@@ -601,12 +658,16 @@ async function generateReport() {
   }
   
   try {
-    // 🚀 Fetch marks and the full class roster in parallel
+    const marksPromise = fetchWithAuth(`${API_BASE}/marks/by-grade?${new URLSearchParams({ grade, term, year, assessment: 'all' })}`);
+    const rosterPromise = fetchWithAuth(`${API_BASE}/enrollments/class/${encodeURIComponent(grade)}?limit=500`);
+    const electivePromise = isSenior
+      ? fetchWithAuth(`${API_BASE}/electives/assignments`)
+      : Promise.resolve([]);
+
     const [marksData, rosterResponse, electiveAssignmentsResponse] = await Promise.all([
-      // 🆕 Fetch all assessments for the term to allow intra-term progress comparison
-      fetchWithAuth(`${API_BASE}/marks/by-grade?${new URLSearchParams({ grade, term, year, assessment: 'all' })}`),
-      fetchWithAuth(`${API_BASE}/enrollments/class/${encodeURIComponent(grade)}?limit=1000`),
-      fetchWithAuth(`${API_BASE}/electives/assignments`)
+      marksPromise,
+      rosterPromise,
+      electivePromise
     ]);
 
     if (!marksData || marksData.length === 0) {
@@ -615,8 +676,10 @@ async function generateReport() {
       return;
     }
 
-    const roster = rosterResponse.students || (Array.isArray(rosterResponse) ? rosterResponse : []);
-    const electiveAssignments = Array.isArray(electiveAssignmentsResponse) ? electiveAssignmentsResponse : (electiveAssignmentsResponse?.data || electiveAssignmentsResponse?.assignments || []);
+    const roster = rosterResponse?.students || (Array.isArray(rosterResponse) ? rosterResponse : []);
+    const electiveAssignments = Array.isArray(electiveAssignmentsResponse)
+      ? electiveAssignmentsResponse
+      : (electiveAssignmentsResponse?.data || electiveAssignmentsResponse?.assignments || []);
     currentRoster = roster; // 🆕 Cache roster for local re-analysis
     currentElectiveAssignments = electiveAssignments;
     
@@ -633,9 +696,6 @@ async function generateReport() {
     
     
     analysisSection.style.display = "block";
-    const gradeNum = window.cbcUtils.getGradeNum(grade); // Use cbcUtils.getGradeNum
-    const isSenior = gradeNum >= 10;
-
     // 🆕 Update Reports Tab UI
     const reportsUI = document.getElementById("reportsGenerationUI");
     const reportsPlaceholder = document.getElementById("reportsPlaceholder");
@@ -742,30 +802,46 @@ async function generateSchoolWideReport() {
   const term = filterTermEl.value;
   const assessment = filterAssessmentEl.value;
   const year = filterYearEl.value;
+  const cacheKey = `${term}|${year}|${assessment}`;
 
   if (term === "all" || assessment === "all") {
-    // Display an instructional message directly in the content area
-    schoolRankingsTableWrap.innerHTML = `
-      <div class="instruction-state" style="text-align:center; padding:40px; margin-top: 20px; background:#f8fafc; border-radius:12px; border: 1px dashed #cbd5e0; color:#64748b;">
-        <h3 style="margin-top:0; color:#1e293b;">School-Wide Performance Rankings</h3>
-        <p style="font-size:1rem; margin-bottom:15px;">View and download top performers across all grades for the selected academic period.</p>
-        <p style="font-size:0.9rem; font-weight:600; color:#475569;">Select a specific Term and Assessment, then click the <strong>SCHOOL RANKINGS</strong> tab NOT (view Results) to view school-wide rankings.</p>
-      </div>`;
+    if (schoolRankingsTableWrap) {
+      schoolRankingsTableWrap.innerHTML = `
+        <div class="instruction-state" style="text-align:center; padding:40px; margin-top: 20px; background:#f8fafc; border-radius:12px; border: 1px dashed #cbd5e0; color:#64748b;">
+          <h3 style="margin-top:0; color:#1e293b;">School-Wide Performance Rankings</h3>
+          <p style="font-size:1rem; margin-bottom:15px;">View and download top performers across all grades for the selected academic period.</p>
+          <p style="font-size:0.9rem; font-weight:600; color:#475569;">Select a specific Term and Assessment, then open the <strong>SCHOOL RANKINGS</strong> tab to view the report.</p>
+        </div>`;
+    }
     return;
   }
 
   if (!schoolRankingsTableWrap) return;
+
+  if (lazyWidgetCache.rankings && lazyWidgetCache.rankings.key === cacheKey) {
+    const payload = Array.isArray(lazyWidgetCache.rankings.data) ? lazyWidgetCache.rankings.data : [];
+    if (payload.length === 0) {
+      schoolRankingsTableWrap.innerHTML = '<div class="empty-state">No rankings available for this period.</div>';
+    } else {
+      renderSchoolWideRankingsTable(payload);
+    }
+    return;
+  }
+
   schoolRankingsTableWrap.innerHTML = '<div style="text-align:center; padding:40px;"><span class="spinner"></span> Analyzing school-wide performance...</div>';
 
   try {
-    const res = await fetchWithAuth(`${API_BASE}/marks/school-wide-rankings?${new URLSearchParams({ term, year, assessment, limit: 1000 })}`);
-    
-    if (!res || !res.rankings || res.rankings.length === 0) {
+    const res = await fetchWithAuth(`${API_BASE}/marks/school-wide-rankings?${new URLSearchParams({ term, year, assessment, limit: 200 })}`);
+
+    const rankings = Array.isArray(res?.rankings) ? res.rankings : [];
+    lazyWidgetCache.rankings = { key: cacheKey, data: rankings };
+
+    if (rankings.length === 0) {
       schoolRankingsTableWrap.innerHTML = '<div class="empty-state">No rankings available for this period.</div>';
       return;
     }
 
-    renderSchoolWideRankingsTable(res.rankings);
+    renderSchoolWideRankingsTable(rankings);
   } catch (err) {
     console.error("School Ranking Error:", err);
     schoolRankingsTableWrap.innerHTML = '<div class="error-state">Failed to load school rankings.</div>';
@@ -1750,6 +1826,11 @@ function processAnalysisData(allRaw, isSenior, assessment, allPrevRaw = null, ro
   // Convert map to list and sort missing list by name // Convert map to list and sort
   const missingExamsList = Object.values(missingExamsMap);
   missingExamsList.sort((a, b) => a.name.localeCompare(b.name));
+
+  lazyWidgetCache.missingExams = { missingExamsList, streamDiscrepancies };
+  if (document.getElementById("missingExamsTab")?.classList.contains("active")) {
+    renderLazyMissingExamsWidget();
+  }
 
   const overallRankRaw = isAll ? overallPathwayFilteredRaw : overallPathwayFilteredRaw.filter(m => String(m.assessment) === assessment);
   const overallRankStudentMap = {};
@@ -3087,16 +3168,67 @@ async function loadDeanProfile() {
   const overlay = document.createElement('div');
   overlay.id = 'deanInitOverlay';
   overlay.style.cssText = `
-    position: fixed; inset: 0; background: linear-gradient(135deg, rgba(219, 234, 254, 0.82) 0%, rgba(191, 219, 254, 0.7) 100%);
+    position: fixed; inset: 0;
+    background:
+      radial-gradient(circle at top left, rgba(147, 197, 253, 0.32), transparent 30%),
+      radial-gradient(circle at bottom right, rgba(59, 130, 246, 0.2), transparent 38%),
+      linear-gradient(135deg, rgba(239, 246, 255, 0.92) 0%, rgba(224, 242, 254, 0.82) 42%, rgba(219, 234, 254, 0.76) 100%);
     z-index: 20000; display: flex; align-items: center; justify-content: center;
-    backdrop-filter: blur(8px); transition: opacity 0.4s ease;
+    backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+    transition: opacity 0.4s ease; overflow: hidden;
   `;
   overlay.innerHTML = `
-    <div style="text-align: center; padding: 45px; background: rgba(255, 255, 255, 0.9); border-radius: 24px; box-shadow: 0 25px 50px -12px rgba(37, 99, 235, 0.14); border: 1px solid rgba(147, 197, 253, 0.45); max-width: 420px; width: 92%;">
-      <div class="spinner" style="width: 50px; height: 50px; border-width: 5px; border-top-color: #2563eb; border-right-color: #2563eb; display: inline-block; margin-right: 0;"></div>
-      <h2 style="margin: 25px 0 10px 0; color: #1e293b; font-size: 1.6rem; font-weight: 800; letter-spacing: -0.025em; text-transform: uppercase;">Dean's Panel</h2>
-      <p style="color: #475569; font-size: 1rem; font-weight: 500; line-height: 1.6; margin: 0;">Authenticating session and synchronizing academic analytics...</p>
+    <div style="position: relative; width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; overflow: hidden; animation: deanShellFade 0.45s ease-out;">
+      <span style="position:absolute; width: 280px; height: 280px; border-radius: 50%; background: rgba(96, 165, 250, 0.18); filter: blur(28px); top: 12%; left: 18%; animation: deanOrbFloat 7s ease-in-out infinite;"></span>
+      <span style="position:absolute; width: 220px; height: 220px; border-radius: 50%; background: rgba(125, 211, 252, 0.18); filter: blur(24px); bottom: 10%; right: 18%; animation: deanOrbFloat 9s ease-in-out infinite reverse;"></span>
+      <span style="position:absolute; width: 170px; height: 170px; border-radius: 50%; background: rgba(191, 219, 254, 0.24); filter: blur(22px); top: 38%; right: 28%; animation: deanOrbFloat 8s ease-in-out infinite;"></span>
+
+      <div style="position: relative; width: min(430px, 92vw); padding: 28px 28px 24px; border-radius: 28px;
+        background: rgba(255, 255, 255, 0.72); border: 1px solid rgba(148, 163, 184, 0.28);
+        box-shadow: 0 22px 60px rgba(37, 99, 235, 0.14), inset 0 1px 0 rgba(255,255,255,0.7);
+        backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px); animation: deanCardRise 0.6s cubic-bezier(.2,.8,.2,1);">
+        <div style="position:absolute; inset: 0 auto auto 0; width: 100%; height: 4px; border-radius: 28px 28px 0 0;
+          background: linear-gradient(90deg, #2563eb, #38bdf8, #60a5fa, #2563eb); background-size: 200% 100%;
+          animation: deanLoadBarSweep 2.6s ease-in-out infinite;"></div>
+        <div style="display:flex; align-items:center; justify-content:center; gap:18px; margin-bottom: 16px;">
+          <div class="spinner" style="width: 48px; height: 48px; border-width: 4px; border-top-color: #2563eb; border-right-color: #60a5fa; display: inline-block; margin-right: 0; box-shadow: 0 0 0 4px rgba(37,99,235,0.08), 0 0 24px rgba(96,165,250,0.28);"></div>
+          <div style="display:flex; align-items:center; gap:8px; background: rgba(37,99,235,0.07); border: 1px solid rgba(96,165,250,0.25);
+            border-radius: 999px; padding: 6px 12px; color: #1d4ed8; font-size: 0.72rem; font-weight: 800; letter-spacing: 0.14em; text-transform: uppercase; font-family: 'Segoe UI', 'Trebuchet MS', sans-serif;">
+            <span style="width:8px; height:8px; border-radius:50%; background:#22c55e; box-shadow:0 0 12px rgba(34,197,94,0.8); display:inline-block;"></span>
+            Syncing
+          </div>
+        </div>
+        <div style="text-align:center;">
+          <h2 style="margin: 0 0 10px; color: #0f172a; font-size: clamp(1.4rem, 2vw, 1.8rem); font-weight: 900; letter-spacing: -0.04em; text-transform: uppercase; font-family: 'Segoe UI', 'Trebuchet MS', 'Arial Black', sans-serif; text-shadow: 0 1px 0 rgba(255,255,255,0.4); animation: deanTextFade 0.9s ease-out;">Dean's Panel</h2>
+          <p style="margin: 0; color: #475569; font-size: 0.98rem; font-weight: 500; line-height: 1.6; font-family: 'Segoe UI', 'Trebuchet MS', sans-serif; letter-spacing: 0.01em; animation: deanTextFade 1.1s ease-out;">
+            Authenticating session and synchronizing academic analytics...
+          </p>
+        </div>
+      </div>
     </div>
+    <style>
+      @keyframes deanLoadBarSweep {
+        0% { background-position: 0% 50%; opacity: 0.8; }
+        50% { background-position: 100% 50%; opacity: 1; }
+        100% { background-position: 0% 50%; opacity: 0.8; }
+      }
+      @keyframes deanOrbFloat {
+        0%, 100% { transform: translate3d(0, 0, 0) scale(1); opacity: 0.7; }
+        50% { transform: translate3d(18px, -22px, 0) scale(1.08); opacity: 1; }
+      }
+      @keyframes deanCardRise {
+        0% { opacity: 0; transform: translateY(18px) scale(0.98); }
+        100% { opacity: 1; transform: translateY(0) scale(1); }
+      }
+      @keyframes deanTextFade {
+        0% { opacity: 0; transform: translateY(6px); }
+        100% { opacity: 1; transform: translateY(0); }
+      }
+      @keyframes deanShellFade {
+        0% { opacity: 0; }
+        100% { opacity: 1; }
+      }
+    </style>
   `;
   document.body.appendChild(overlay);
 

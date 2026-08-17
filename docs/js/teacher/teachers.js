@@ -16,6 +16,7 @@ document.addEventListener("DOMContentLoaded", () => {
   let schoolInfo = null; // Global school info cache
   let marksEditPermissionEnabled = false;
   let marksEditPermissionContextKey = null;
+  let submittedMarksTabInitialized = false; // 🆕 Lazy loading flag for submitted marks
 
   // ---------------------------
   // CACHES
@@ -137,6 +138,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const tabPanes = document.querySelectorAll("main > .tab-pane");
     let myClassReportLoaded = false;
     let myClassReportLoading = false;
+    let submittedMarksLoading = false;
 
     const loadMyClassReportOnce = async () => {
       if (myClassReportLoaded || myClassReportLoading) return;
@@ -151,6 +153,23 @@ document.addEventListener("DOMContentLoaded", () => {
       }
     };
 
+    // 🆕 Lazy load submitted marks when tab is clicked
+    const loadSubmittedMarksOnce = async () => {
+      if (submittedMarksTabInitialized || submittedMarksLoading) return;
+      submittedMarksLoading = true;
+      try {
+        console.log("[LAZY LOAD] Loading submitted marks...");
+        await loadSubmittedMarks();
+        await refreshMarksEditPermissionStatus();
+        submittedMarksTabInitialized = true;
+        console.log("[LAZY LOAD] Submitted marks loaded successfully");
+      } catch (err) {
+        console.error("[LAZY LOAD] Error loading submitted marks:", err);
+      } finally {
+        submittedMarksLoading = false;
+      }
+    };
+
     const activateTab = (btn) => {
       const target = btn.dataset.tab;
       if (!target) return;
@@ -162,6 +181,11 @@ document.addEventListener("DOMContentLoaded", () => {
 
       if (target === "myClass") {
         setTimeout(() => loadMyClassReportOnce(), 120);
+      }
+
+      // 🆕 Lazy load submitted marks when tab is clicked
+      if (target === "submittedMarks") {
+        setTimeout(() => loadSubmittedMarksOnce(), 120);
       }
     };
 
@@ -2330,7 +2354,8 @@ document.addEventListener("DOMContentLoaded", () => {
     
     await loadTeacherAllocations();
     
-    await loadSubmittedMarks();
-    await refreshMarksEditPermissionStatus();
+    // 🆕 LAZY LOAD: Submitted marks will load only when the tab is clicked
+    // await loadSubmittedMarks();
+    // await refreshMarksEditPermissionStatus();
   })();
 });

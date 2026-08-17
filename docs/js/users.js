@@ -47,6 +47,8 @@
   const PERSISTENT_CACHE_PREFIX = "users_mgmt_cache_";
   const CACHE_TTL = 10 * 60 * 1000; // 10 minutes
   let currentRoleTab = "student"; // Default view: Learners (Students)
+  let usersTabInitialized = false; // 🆕 Lazy loading flag for users table
+  let demographicsTabInitialized = false; // 🆕 Lazy loading flag for demographics
   // Prefetched school assets to speed up PDF generation
   let prefetchedSchoolLogoBase64 = null;
   let prefetchedSchoolName = null;
@@ -1663,6 +1665,15 @@ if (usersNextPageBtn) {
           sec.style.display = sec.id === targetId ? "block" : "none";
         });
 
+        // 🆕 Special handling for Users Management tab - lazy load on first click
+        if (targetId === "userManagement" && !usersTabInitialized) {
+          usersTabInitialized = true;
+          populateStudentGradeFilter();
+          populateStudentStreamFilter();
+          loadUsers(1, true);
+          console.log("[LAZY LOAD] Users table initialized on first tab click");
+        }
+
         // Special handling for the new CSV download tab
         if (targetId === "downloadStudentDataTab") {
           // Only populate if they are currently empty to prevent wiping user selections
@@ -1677,6 +1688,15 @@ if (usersNextPageBtn) {
           }
           // Prefetch school assets to speed up Score Sheets PDF generation
           prefetchSchoolAssets();
+        }
+
+        // 🆕 Special handling for Demographics tab - lazy load on first click
+        if (targetId === "learnerDemographicsTab" && !demographicsTabInitialized) {
+          demographicsTabInitialized = true;
+          if (window.demographicsModule && typeof window.demographicsModule.initLazy === 'function') {
+            window.demographicsModule.initLazy();
+            console.log("[LAZY LOAD] Demographics tab initialized on first tab click");
+          }
         }
       });
     });
@@ -1732,18 +1752,19 @@ if (usersNextPageBtn) {
       }
     })();
 
-    populateStudentGradeFilter(); // Populate student grade filter
-    populateStudentStreamFilter(); // Populate student stream filter
+    // 🆕 Setup navigation and user type tabs first
     setupNavigation();
     setupUserTypeTabs();
-    loadUsers();
+
+    // 🆕 Lazy load: Only populate filters and load users when the tab is actually clicked
+    // Don't load here - let setupNavigation handle it via lazy loading
 
     // Refresh the admission badge immediately if the form is already set to student/learner
     if (userRoleSelect && (userRoleSelect.value === 'student' || userRoleSelect.value === 'learner')) {
       refreshLastAdmissionBadge(userRoleSelect.value);
     }
 
-    // Fetch all counts once to populate labels for all tabs
-    refreshAllTabCounts();
+    // 🆕 Defer tab count loading: Load counts after main UI is ready (background task)
+    setTimeout(() => refreshAllTabCounts(), 500);
   })();
 })();

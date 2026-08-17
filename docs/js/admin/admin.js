@@ -96,16 +96,59 @@
     const overlay = document.createElement('div');
     overlay.id = 'adminInitOverlay';
     overlay.style.cssText = `
-      position: fixed; inset: 0; background: linear-gradient(135deg, rgba(219, 234, 254, 0.82) 0%, rgba(191, 219, 254, 0.7) 100%);
+      position: fixed; inset: 0;
+      background:
+        radial-gradient(circle at top left, rgba(147, 197, 253, 0.32), transparent 30%),
+        radial-gradient(circle at bottom right, rgba(59, 130, 246, 0.2), transparent 38%),
+        linear-gradient(135deg, rgba(239, 246, 255, 0.92) 0%, rgba(224, 242, 254, 0.82) 42%, rgba(219, 234, 254, 0.76) 100%);
       z-index: 20000; display: flex; align-items: center; justify-content: center;
-      backdrop-filter: blur(8px); transition: opacity 0.3s ease;
+      backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+      transition: opacity 0.3s ease; overflow: hidden;
     `;
     overlay.innerHTML = `
-      <div style="text-align: center; padding: 40px 30px; background: rgba(255, 255, 255, 0.9); border-radius: 20px; box-shadow: 0 24px 55px rgba(37, 99, 235, 0.14); border: 1px solid rgba(147, 197, 253, 0.45); max-width: 420px; width: 90%;">
-        <div class="spinner" style="width: 50px; height: 50px; border-width: 5px; border-top-color: #2563eb; border-right-color: #2563eb; display: inline-block; margin-bottom: 18px;"></div>
-        <h2 style="margin: 0 0 10px; color: #1e293b; font-size: 1.5rem; font-weight: 800; letter-spacing: -0.03em;">Admin Panel</h2>
-        <p style="margin: 0; color: #475569; font-size: 0.95rem; line-height: 1.75;">Loading school data and preparing the portal. Please wait...</p>
+      <div style="position: relative; width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; overflow: hidden; animation: adminShellFade 0.45s ease-out;">
+        <span style="position:absolute; width: 280px; height: 280px; border-radius: 50%; background: rgba(96, 165, 250, 0.18); filter: blur(28px); top: 12%; left: 18%; animation: adminOrbFloat 7s ease-in-out infinite;"></span>
+        <span style="position:absolute; width: 220px; height: 220px; border-radius: 50%; background: rgba(125, 211, 252, 0.18); filter: blur(24px); bottom: 10%; right: 18%; animation: adminOrbFloat 9s ease-in-out infinite reverse;"></span>
+        <span style="position:absolute; width: 170px; height: 170px; border-radius: 50%; background: rgba(191, 219, 254, 0.24); filter: blur(22px); top: 38%; right: 28%; animation: adminOrbFloat 8s ease-in-out infinite;"></span>
+
+        <div style="position: relative; width: min(430px, 92vw); padding: 28px 28px 24px; border-radius: 28px; background: rgba(255, 255, 255, 0.72); border: 1px solid rgba(148, 163, 184, 0.28); box-shadow: 0 22px 60px rgba(37, 99, 235, 0.14), inset 0 1px 0 rgba(255,255,255,0.7); backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px); animation: adminCardRise 0.6s cubic-bezier(.2,.8,.2,1);">
+          <div style="position:absolute; inset: 0 auto auto 0; width: 100%; height: 4px; border-radius: 28px 28px 0 0; background: linear-gradient(90deg, #2563eb, #38bdf8, #60a5fa, #2563eb); background-size: 200% 100%; animation: adminLoadBarSweep 2.6s ease-in-out infinite;"></div>
+          <div style="display:flex; align-items:center; justify-content:center; gap:18px; margin-bottom: 16px;">
+            <div class="spinner" style="width: 48px; height: 48px; border-width: 4px; border-top-color: #2563eb; border-right-color: #60a5fa; display: inline-block; margin-right: 0; margin-bottom: 0; box-shadow: 0 0 0 4px rgba(37,99,235,0.08), 0 0 24px rgba(96,165,250,0.28);"></div>
+            <div style="display:flex; align-items:center; gap:8px; background: rgba(37,99,235,0.07); border: 1px solid rgba(96,165,250,0.25); border-radius: 999px; padding: 6px 12px; color: #1d4ed8; font-size: 0.72rem; font-weight: 800; letter-spacing: 0.14em; text-transform: uppercase; font-family: 'Segoe UI', 'Trebuchet MS', sans-serif;">
+              <span style="width:8px; height:8px; border-radius:50%; background:#22c55e; box-shadow:0 0 12px rgba(34,197,94,0.8); display:inline-block;"></span>
+              Syncing
+            </div>
+          </div>
+          <div style="text-align:center;">
+            <h2 style="margin: 0 0 10px; color: #0f172a; font-size: clamp(1.4rem, 2vw, 1.8rem); font-weight: 900; letter-spacing: -0.04em; text-transform: uppercase; font-family: 'Segoe UI', 'Trebuchet MS', 'Arial Black', sans-serif; text-shadow: 0 1px 0 rgba(255,255,255,0.4); animation: adminTextFade 0.9s ease-out;">Admin Panel</h2>
+            <p style="margin: 0; color: #475569; font-size: 0.98rem; font-weight: 500; line-height: 1.6; font-family: 'Segoe UI', 'Trebuchet MS', sans-serif; letter-spacing: 0.01em; animation: adminTextFade 1.1s ease-out;">Loading school data and preparing the portal. Please wait...</p>
+          </div>
+        </div>
       </div>
+      <style>
+        @keyframes adminLoadBarSweep {
+          0% { background-position: 0% 50%; opacity: 0.8; }
+          50% { background-position: 100% 50%; opacity: 1; }
+          100% { background-position: 0% 50%; opacity: 0.8; }
+        }
+        @keyframes adminOrbFloat {
+          0%, 100% { transform: translate3d(0, 0, 0) scale(1); opacity: 0.7; }
+          50% { transform: translate3d(18px, -22px, 0) scale(1.08); opacity: 1; }
+        }
+        @keyframes adminCardRise {
+          0% { opacity: 0; transform: translateY(18px) scale(0.98); }
+          100% { opacity: 1; transform: translateY(0) scale(1); }
+        }
+        @keyframes adminTextFade {
+          0% { opacity: 0; transform: translateY(6px); }
+          100% { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes adminShellFade {
+          0% { opacity: 0; }
+          100% { opacity: 1; }
+        }
+      </style>
     `;
     document.body.appendChild(overlay);
   };
