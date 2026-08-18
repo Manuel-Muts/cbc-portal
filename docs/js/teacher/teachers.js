@@ -24,6 +24,11 @@ document.addEventListener("DOMContentLoaded", () => {
   // Teacher page does not cache school name to avoid stale school type/name bugs on login.
   // Always fetch fresh school info for the current session.
 
+  // 🆕 TERM CONFIGURATION CACHE & ACTIVE TERM
+  const termConfigCache = new Map(); // Cache for term config data
+  const termConfigInFlight = new Set(); // Track in-flight requests to prevent duplicates
+  let activeTermValue = null; // Store the active term from API
+
   // Pagination for individual student tables inside Submitted Marks
   const STUDENTS_PER_TABLE_PAGE = 10;
   const subTablePageMap = new Map();
@@ -264,16 +269,26 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
-  // ---------------------------
-  // 🆕 SET DEFAULT VALUES FOR TERM AND ASSESSMENT
-  // ---------------------------
-  if (marksTermSelect) {
-    const month = new Date().getMonth() + 1; // 1-12
-    let currentTerm = "1";
-    if (month >= 5 && month <= 8) currentTerm = "2";
-    else if (month >= 9) currentTerm = "3";
-    marksTermSelect.value = currentTerm;
-    marksTermSelect.disabled = true; // Make term read-only (current term only)
+  // 🆕 FUNCTION TO SET DEFAULT TERM (called after loadActiveTerm completes)
+  function setDefaultTermFromActiveTerm() {
+    if (marksTermSelect) {
+      // 🆕 Use active term from API, fallback to month-based calculation
+      let currentTerm = "1";
+      if (activeTermValue && activeTermValue.includes("Term")) {
+        // Extract term number from "Term 1", "Term 2", "Term 3"
+        const termMatch = activeTermValue.match(/\d+/);
+        if (termMatch) {
+          currentTerm = termMatch[0];
+        }
+      } else {
+        // Fallback to month-based calculation if active term not available
+        const month = new Date().getMonth() + 1; // 1-12
+        if (month >= 5 && month <= 8) currentTerm = "2";
+        else if (month >= 9) currentTerm = "3";
+      }
+      marksTermSelect.value = currentTerm;
+      marksTermSelect.disabled = true; // Make term read-only (current term only)
+    }
   }
 
   // 🆕 Reset table when context changes to prevent data pollution across terms/assessments
@@ -301,6 +316,52 @@ document.addEventListener("DOMContentLoaded", () => {
   const STUDENTS_PER_PAGE = 15;
 
   setupTeacherProfileMenu();
+
+  // 🆕 LOAD ACTIVE TERM FROM CONFIGURATION
+  async function loadActiveTerm() {
+    const cacheKey = "term-config";
+    
+    // Check cache first
+    const cached = termConfigCache.get(cacheKey);
+    if (cached) {
+      activeTermValue = cached.activeTerm;
+      return cached.activeTerm;
+    }
+
+    // Prevent duplicate in-flight requests
+    if (termConfigInFlight.has(cacheKey)) {
+      // Wait for existing request
+      for (let i = 0; i < 50; i++) {
+        await new Promise(r => setTimeout(r, 100));
+        if (termConfigCache.has(cacheKey)) {
+          const cached = termConfigCache.get(cacheKey);
+          activeTermValue = cached.activeTerm;
+          return cached.activeTerm;
+        }
+      }
+      return activeTermValue; // Return last known value if cache still empty
+    }
+
+    termConfigInFlight.add(cacheKey);
+
+    try {
+      const res = await fetchWithAuth(`${API_BASE}/settings/term-config`);
+      if (!res.ok) throw new Error("Failed to fetch term config");
+      
+      const data = await res.json();
+      const { termConfig = { activeTerm: 'Term 1' } } = data;
+      termConfigCache.set(cacheKey, termConfig);
+      activeTermValue = termConfig.activeTerm;
+      return termConfig.activeTerm;
+    } catch (err) {
+      console.warn("Error loading active term:", err);
+      // Fallback to Term 1 if API fails
+      activeTermValue = 'Term 1';
+      return 'Term 1';
+    } finally {
+      termConfigInFlight.delete(cacheKey);
+    }
+  }
 
   // ---------------------------
   // AUTHENTICATION
@@ -2348,6 +2409,12 @@ document.addEventListener("DOMContentLoaded", () => {
     setupTabs();
     
     await loadSchoolName();
+
+    // 🆕 Fetch active term configuration from API
+    await loadActiveTerm();
+    
+    // 🆕 Set term filter to active term after API loads
+    setDefaultTermFromActiveTerm();
 
     // Step 2.5: Render signature UI now that school info is available
     renderSignatureUI(teacher);

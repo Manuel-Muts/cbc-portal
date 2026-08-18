@@ -30,8 +30,7 @@
                 <li data-section="searchSection"><span class="menu-icon">🔎</span><span>Learner Search</span></li>
 
                 <li><a href="/users"><span class="menu-icon">👥</span><span>User Management</span></a></li>
-                <li data-section="electivesSection"><span class="menu-icon">⚙️</span><span>Electives Management</span></li>
-                <li data-section="termLockManagementSection">
+                <li data-section="electivesSection"><span class="menu-icon">⚙️</span><span>Electives Management</span></li>                <li data-section="termConfigSection"><span class="menu-icon">📅</span><span>Term Configuration</span></li>                <li data-section="termLockManagementSection">
                     <a href="#"><span class="menu-icon">�</span><span>Marks Edit Settings</span></a>
 
                 </li>
@@ -410,21 +409,11 @@
       <h3>Marks Edit Settings</h3>
     </div>
     <p style="margin-bottom: 20px; color: #6b7280;">
-      Choose whether teachers may edit marks that have already been submitted for a selected academic term.
+      Choose whether teachers may edit marks that have already been submitted.
     </p>
 
-    <div class="form-group">
-      <label for="termLockYearSelect">Academic Year:</label>
-      <select id="termLockYearSelect" class="form-control"></select>
-    </div>
-
-    <div class="form-group">
-      <label for="termLockTermSelect">Term:</label>
-      <select id="termLockTermSelect" class="form-control"></select>
-    </div>
-
     <div class="form-group" style="display: flex; align-items: center; gap: 15px; margin-top: 12px;">
-      <label>Teacher Submitted Marks Edits:</label>
+      <label>Allow Teacher Submitted Marks Edits:</label>
       <span id="submittedMarksEditStatusDisplay" style="font-weight: bold; font-size: 1.1rem;">Loading...</span>
       <label class="switch">
         <input type="checkbox" id="submittedMarksEditToggleButton">
@@ -434,6 +423,57 @@
     </div>
 
     <button id="saveTermLockBtn" class="btn primary-btn" style="margin-top: 20px;">Save Settings</button>
+  </div>
+</section>
+
+<!-- Term Configuration Section -->
+<section id="termConfigSection" class="tab-section hidden">
+  <div class="card">
+    <div class="admin-section-header-row">
+      <h3>Term Configuration</h3>
+    </div>
+    <p style="margin-bottom: 20px; color: #6b7280;">
+      Configure which terms are available in your school and set the currently active term.
+    </p>
+
+    <div style="display: flex; flex-direction: column; gap: 12px; margin-bottom: 25px;">
+      <!-- Term 1 -->
+      <div style="padding: 12px; border: 1px solid #e5e7eb; border-radius: 6px; background: #f9fafb;">
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <input type="checkbox" id="term1Checkbox" checked style="width: 18px; height: 18px; cursor: pointer;">
+          <label for="term1Checkbox" style="cursor: pointer; font-weight: 600; margin: 0;">Term 1</label>
+        </div>
+      </div>
+
+      <!-- Term 2 -->
+      <div style="padding: 12px; border: 1px solid #e5e7eb; border-radius: 6px; background: #f9fafb;">
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <input type="checkbox" id="term2Checkbox" checked style="width: 18px; height: 18px; cursor: pointer;">
+          <label for="term2Checkbox" style="cursor: pointer; font-weight: 600; margin: 0;">Term 2</label>
+        </div>
+      </div>
+
+      <!-- Term 3 -->
+      <div style="padding: 12px; border: 1px solid #e5e7eb; border-radius: 6px; background: #f9fafb;">
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <input type="checkbox" id="term3Checkbox" checked style="width: 18px; height: 18px; cursor: pointer;">
+          <label for="term3Checkbox" style="cursor: pointer; font-weight: 600; margin: 0;">Term 3</label>
+        </div>
+      </div>
+    </div>
+
+    <div style="border-top: 1px solid #e5e7eb; padding-top: 20px;">
+      <label for="activeTermSelect" style="font-weight: 600; display: block; margin-bottom: 10px;">Active Term</label>
+      <select id="activeTermSelect" class="form-control" style="max-width: 250px;">
+        <option value="Term 1">Term 1</option>
+        <option value="Term 2">Term 2</option>
+        <option value="Term 3">Term 3</option>
+      </select>
+      <p style="font-size: 0.85rem; color: #6b7280; margin-top: 8px;">The selected term will be the default for all dashboards</p>
+    </div>
+
+    <button id="saveTermConfigBtn" class="btn primary-btn" style="margin-top: 25px;">Save Configuration</button>
+    <span id="termConfigMessage" style="display: none; margin-left: 15px; font-weight: 500;"></span>
   </div>
 </section>
 

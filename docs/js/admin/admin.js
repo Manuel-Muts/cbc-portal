@@ -257,6 +257,16 @@
   const saveTermLockBtn = document.getElementById("saveTermLockBtn");
   const marksEditSettingsCache = new Map();
   const marksEditSettingsInFlight = new Map();
+
+  // 🆕 Term configuration DOM elements
+  const term1Checkbox = document.getElementById("term1Checkbox");
+  const term2Checkbox = document.getElementById("term2Checkbox");
+  const term3Checkbox = document.getElementById("term3Checkbox");
+  const activeTermSelect = document.getElementById("activeTermSelect");
+  const saveTermConfigBtn = document.getElementById("saveTermConfigBtn");
+  const termConfigMessage = document.getElementById("termConfigMessage");
+  const termConfigCache = new Map();
+  const termConfigInFlight = new Map();
 // FETCH SCHOOL INFO
 // ---------------------------
 // Derive BACKEND_URL from config (removes /api suffix)
@@ -2373,6 +2383,7 @@ async function openHistoryModal(studentId) {
       "promotionSection": "Learner Promotion",
       "signatureUploadSection": "Digital Signature", // New section title
       "termLockManagementSection": "Marks Edit Settings", // 🆕 New section title
+      "termConfigSection": "Term Configuration", // 🆕 Term configuration section
       "electivesSection": "Electives Management" // NEW
     }; 
 
@@ -2413,6 +2424,8 @@ async function openHistoryModal(studentId) {
         } else if (targetId === "termLockManagementSection") {
           populateTermLockYearOptions();
           loadTermLockStatus(); // Load status for default year/term
+        } else if (targetId === "termConfigSection") {
+          loadTermConfig(); // 🆕 Load term configuration when tab is active
         } else if (targetId === "classAllocSection") {
           // 🆕 Autofocus teacher search input for Class Allocation
           const searchInput = classTeacherSelect?.previousElementSibling;
@@ -2559,6 +2572,116 @@ async function saveTermLockStatus() {
 termLockYearSelect?.addEventListener("change", loadTermLockStatus);
 termLockTermSelect?.addEventListener("change", loadTermLockStatus);
 saveTermLockBtn?.addEventListener("click", saveTermLockStatus);
+
+// ---------------------------
+// TERM CONFIGURATION LOGIC (🆕)
+// ---------------------------
+async function loadTermConfig() {
+  if (!term1Checkbox || !term2Checkbox || !term3Checkbox || !activeTermSelect || !termConfigMessage) return;
+
+  const cacheKey = "term-config";
+  const cached = termConfigCache.get(cacheKey);
+  if (cached) {
+    term1Checkbox.checked = cached.term1;
+    term2Checkbox.checked = cached.term2;
+    term3Checkbox.checked = cached.term3;
+    activeTermSelect.value = cached.activeTerm;
+    termConfigMessage.textContent = "";
+    termConfigMessage.style.color = "";
+    return;
+  }
+
+  if (termConfigInFlight.has(cacheKey)) return;
+
+  termConfigMessage.textContent = "Loading...";
+  termConfigMessage.style.color = "blue";
+
+  const fetchPromise = (async () => {
+    try {
+      const res = await secureFetch(`${API_BASE}/settings/term-config`);
+      if (!res) return;
+
+      const { termConfig = { term1: true, term2: true, term3: true, activeTerm: 'Term 1' } } = res;
+      termConfigCache.set(cacheKey, termConfig);
+
+      // Update UI
+      term1Checkbox.checked = termConfig.term1;
+      term2Checkbox.checked = termConfig.term2;
+      term3Checkbox.checked = termConfig.term3;
+      activeTermSelect.value = termConfig.activeTerm;
+
+      termConfigMessage.textContent = "Configuration loaded";
+      termConfigMessage.style.color = "green";
+      setTimeout(() => {
+        termConfigMessage.textContent = "";
+        termConfigMessage.style.color = "";
+      }, 3000);
+    } catch (err) {
+      console.error("Error loading term config:", err);
+      termConfigMessage.textContent = "Error loading configuration";
+      termConfigMessage.style.color = "red";
+    } finally {
+      termConfigInFlight.delete(cacheKey);
+    }
+  })();
+
+  termConfigInFlight.set(cacheKey, fetchPromise);
+  return fetchPromise;
+}
+
+async function saveTermConfig() {
+  if (!term1Checkbox || !term2Checkbox || !term3Checkbox || !activeTermSelect || !saveTermConfigBtn || !termConfigMessage) return;
+
+  // Collect term availability from checkboxes
+  const term1 = term1Checkbox.checked;
+  const term2 = term2Checkbox.checked;
+  const term3 = term3Checkbox.checked;
+
+  if (!term1 && !term2 && !term3) {
+    showToast("Please enable at least one term.", "error");
+    return;
+  }
+
+  const activeTerm = activeTermSelect.value;
+
+  // Validate that active term is enabled
+  const termMap = { 'Term 1': term1, 'Term 2': term2, 'Term 3': term3 };
+  if (!termMap[activeTerm]) {
+    showToast("Active term must be one of the enabled terms.", "error");
+    return;
+  }
+
+  window.spinner?.show(saveTermConfigBtn, "Saving...");
+
+  try {
+    const res = await secureFetch(`${API_BASE}/settings/term-config`, {
+      method: "PUT",
+      body: JSON.stringify({ term1, term2, term3, activeTerm })
+    });
+
+    if (res) {
+      termConfigCache.set("term-config", { term1, term2, term3, activeTerm });
+      showToast(res.message || "Term configuration saved successfully!", "success");
+      termConfigMessage.textContent = "Configuration saved";
+      termConfigMessage.style.color = "green";
+      setTimeout(() => {
+        termConfigMessage.textContent = "";
+        termConfigMessage.style.color = "";
+      }, 3000);
+      loadTermConfig(); // Refresh to confirm
+    }
+  } catch (err) {
+    console.error("Error saving term config:", err);
+    showToast("Failed to save term configuration: " + err.message, "error");
+    termConfigMessage.textContent = "Error saving configuration";
+    termConfigMessage.style.color = "red";
+  } finally {
+    window.spinner?.hide(saveTermConfigBtn);
+  }
+}
+
+// Event listeners for term configuration
+saveTermConfigBtn?.addEventListener("click", saveTermConfig);
 
   // IMPORTANT: Ensure your admin.html file has the following list item within the <ul class="menu">
   // for the "Digital Signature" navigation to appear:

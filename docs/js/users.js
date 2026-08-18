@@ -55,6 +55,11 @@
   let lastAdmissionValue = null;
   const lastAdmissionBadge = document.getElementById("lastAdmissionBadge");
 
+  // 🆕 TERM CONFIGURATION CACHE & ACTIVE TERM
+  const termConfigCache = new Map(); // Cache for term config data
+  const termConfigInFlight = new Set(); // Track in-flight requests to prevent duplicates
+  let activeTermValue = null; // Store the active term from API
+
   // Prefetch function (call when downloads tab is opened)
   async function prefetchSchoolAssets() {
     if (prefetchedSchoolName || prefetchedSchoolLogoBase64) return; // already prefetched
@@ -1381,11 +1386,16 @@ if (usersNextPageBtn) {
         const pageHeight = doc.internal.pageSize.getHeight();
         let currentY = 15;
 
-        const currentMonth = new Date().getMonth() + 1;
-        let currentTerm = '1';
-        if (currentMonth >= 5 && currentMonth <= 8) currentTerm = '2';
-        else if (currentMonth >= 9) currentTerm = '3';
-        const termLabel = `Term ${currentTerm}`;
+        // 🆕 Use active term from API if available, fallback to month-based calculation
+        let termLabel = activeTermValue || 'Term 1';
+        if (!termLabel.includes('Term')) {
+          // If activeTermValue is just a number, format it
+          const currentMonth = new Date().getMonth() + 1;
+          let currentTerm = '1';
+          if (currentMonth >= 5 && currentMonth <= 8) currentTerm = '2';
+          else if (currentMonth >= 9) currentTerm = '3';
+          termLabel = `Term ${currentTerm}`;
+        }
 
         // Header (school name centered)
         doc.setFont('helvetica', 'bold');
@@ -1705,6 +1715,51 @@ if (usersNextPageBtn) {
     if (active) active.click();
   }
 
+  // 🆕 LOAD ACTIVE TERM FROM CONFIGURATION
+  async function loadActiveTerm() {
+    const cacheKey = "term-config";
+    
+    // Check cache first
+    const cached = termConfigCache.get(cacheKey);
+    if (cached) {
+      activeTermValue = cached.activeTerm;
+      return cached.activeTerm;
+    }
+
+    // Prevent duplicate in-flight requests
+    if (termConfigInFlight.has(cacheKey)) {
+      // Wait for existing request
+      for (let i = 0; i < 50; i++) {
+        await new Promise(r => setTimeout(r, 100));
+        if (termConfigCache.has(cacheKey)) {
+          const cached = termConfigCache.get(cacheKey);
+          activeTermValue = cached.activeTerm;
+          return cached.activeTerm;
+        }
+      }
+      return activeTermValue; // Return last known value if cache still empty
+    }
+
+    termConfigInFlight.add(cacheKey);
+
+    try {
+      const res = await secureFetch(`${API_BASE}/settings/term-config`);
+      if (!res) return activeTermValue;
+
+      const { termConfig = { activeTerm: 'Term 1' } } = res;
+      termConfigCache.set(cacheKey, termConfig);
+      activeTermValue = termConfig.activeTerm;
+      return termConfig.activeTerm;
+    } catch (err) {
+      console.warn("Error loading active term:", err);
+      // Fallback to Term 1 if API fails
+      activeTermValue = 'Term 1';
+      return 'Term 1';
+    } finally {
+      termConfigInFlight.delete(cacheKey);
+    }
+  }
+
   // Initialize Application
   (async function init() {
     userProfile = await authService.getUserProfile(["admin"]);
@@ -1717,6 +1772,9 @@ if (usersNextPageBtn) {
     if (schoolInfo) {
       populateRegistrationGrades();
     }
+
+    // 🆕 Fetch active term configuration from API
+    await loadActiveTerm();
 
     // Prefetch school name and logo in background to speed up PDF generation
     (async function prefetchSchoolAssets() {

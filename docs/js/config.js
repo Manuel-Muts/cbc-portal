@@ -13,6 +13,17 @@
 function getEnvironmentOverride() {
   if (typeof window === 'undefined') return null;
 
+  const hostname = window.location.hostname.toLowerCase();
+  const isLocalHost = (
+    hostname === 'localhost' ||
+    hostname === '127.0.0.1' ||
+    hostname === '0.0.0.0' ||
+    hostname.startsWith('192.168.') ||
+    hostname.startsWith('10.') ||
+    hostname.startsWith('172.') ||
+    hostname.endsWith('.local')
+  );
+
   const params = new URLSearchParams(window.location.search || '');
   const queryEnv = params.get('env');
   if (queryEnv === 'development' || queryEnv === 'production') {
@@ -22,6 +33,13 @@ function getEnvironmentOverride() {
   try {
     const storedEnv = window.localStorage.getItem('cbcPortalEnvironmentOverride');
     if (storedEnv === 'development' || storedEnv === 'production') {
+      // Ignore stale local overrides on deployed production hosts.
+      // This prevents a previously-used localhost override from forcing the Netlify/Vercel app back to development.
+      if (!isLocalHost && storedEnv === 'development') {
+        window.localStorage.removeItem('cbcPortalEnvironmentOverride');
+        console.warn('[CONFIG] Ignored stale development override on production host. Cleared local override.');
+        return null;
+      }
       return storedEnv;
     }
   } catch (error) {
@@ -29,6 +47,10 @@ function getEnvironmentOverride() {
   }
 
   if (window.__CBC_PORTAL_ENV__ === 'development' || window.__CBC_PORTAL_ENV__ === 'production') {
+    if (!isLocalHost && window.__CBC_PORTAL_ENV__ === 'development') {
+      delete window.__CBC_PORTAL_ENV__;
+      return null;
+    }
     return window.__CBC_PORTAL_ENV__;
   }
 
