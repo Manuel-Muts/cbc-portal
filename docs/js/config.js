@@ -45,11 +45,18 @@ function detectEnvironment() {
   const hostname = window.location.hostname;
   const hostnameLower = hostname.toLowerCase();
 
-  if (hostnameLower === 'localhost' || hostnameLower === '127.0.0.1' || hostnameLower.startsWith('192.168') || hostnameLower === '0.0.0.0') {
-    return 'development';
-  }
+  const isLocalHost = (
+    hostnameLower === 'localhost' ||
+    hostnameLower === '127.0.0.1' ||
+    hostnameLower === '0.0.0.0' ||
+    hostnameLower.startsWith('192.168') ||
+    hostnameLower.startsWith('10.') ||
+    hostnameLower.startsWith('172.')
+  );
 
-  if (hostnameLower.includes('netlify') || hostnameLower.includes('vercel') || hostnameLower.includes('ngrok')) {
+  // Only treat truly local/private hosts as development.
+  // Netlify/Vercel/NGROK preview deployments should use the production API by default.
+  if (isLocalHost || hostnameLower.endsWith('.local')) {
     return 'development';
   }
 

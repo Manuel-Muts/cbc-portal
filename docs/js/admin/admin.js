@@ -261,6 +261,36 @@
 // ---------------------------
 // Derive BACKEND_URL from config (removes /api suffix)
 const BACKEND_URL = config.api.baseURL.replace('/api', '');
+const ADMIN_CACHE_PREFIX = 'cbc_admin_cache_';
+const ADMIN_CACHE_TTL = 5 * 60 * 1000;
+
+function readAdminCache(key) {
+  try {
+    const raw = localStorage.getItem(`${ADMIN_CACHE_PREFIX}${key}`);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed || !parsed.timestamp || !parsed.data) return null;
+    if (Date.now() - parsed.timestamp > ADMIN_CACHE_TTL) {
+      localStorage.removeItem(`${ADMIN_CACHE_PREFIX}${key}`);
+      return null;
+    }
+    return parsed.data;
+  } catch (error) {
+    console.warn(`[ADMIN CACHE] Unable to read cache for ${key}:`, error);
+    return null;
+  }
+}
+
+function writeAdminCache(key, data) {
+  try {
+    localStorage.setItem(`${ADMIN_CACHE_PREFIX}${key}`, JSON.stringify({
+      timestamp: Date.now(),
+      data
+    }));
+  } catch (error) {
+    console.warn(`[ADMIN CACHE] Unable to save cache for ${key}:`, error);
+  }
+}
 
 function getDisplaySchoolName(info) {
   const name = info?.name || info?.schoolName || info?.school?.name || info?.school?.schoolName || "";
@@ -291,6 +321,24 @@ async function loadSchoolInfo(forceRefresh = false) {
     }
   };
 
+  if (!forceRefresh) {
+    const cachedSchoolInfo = readAdminCache('school_info');
+    if (cachedSchoolInfo) {
+      schoolInfo = cachedSchoolInfo;
+      currentSchoolInfo = cachedSchoolInfo;
+      window.schoolInfo = cachedSchoolInfo;
+      try {
+        const resolvedKey = resolveSchoolTypeKey(cachedSchoolInfo);
+        window.schoolTypeKey = resolvedKey;
+        window.schoolConfig = resolvedKey ? SCHOOL_TYPES[resolvedKey] : null;
+      } catch (e) {
+        console.warn('Failed to resolve schoolTypeKey from cache', e);
+      }
+      renderSchoolInfo();
+      return;
+    }
+  }
+
   try {
     const token = authService.getToken();
     if (!token) return;
@@ -318,6 +366,8 @@ async function loadSchoolInfo(forceRefresh = false) {
       if (fallbackName) parsedData.name = fallbackName;
     }
 
+    writeAdminCache('school_info', parsedData);
+
     schoolInfo = parsedData;
     currentSchoolInfo = parsedData;
     window.schoolInfo = parsedData;
@@ -336,7 +386,8 @@ async function loadSchoolInfo(forceRefresh = false) {
   } catch (err) {
     console.error("School info error:", err);
     const fallbackName = await getFallbackProfileName();
-    schoolInfo = { ...(schoolInfo || {}), name: fallbackName || "School Name" };
+    const cachedFallback = readAdminCache('school_info');
+    schoolInfo = { ...(cachedFallback || {}), ...(schoolInfo || {}), name: fallbackName || (cachedFallback?.name) || "School Name" };
     currentSchoolInfo = schoolInfo;
     window.schoolInfo = schoolInfo;
     window.schoolTypeKey = null;
