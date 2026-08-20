@@ -258,6 +258,11 @@
   const marksEditSettingsCache = new Map();
   const marksEditSettingsInFlight = new Map();
 
+  window.addEventListener("cbc-settings-cache-invalidated", (event) => {
+    if (event.detail?.includes("term-config")) termConfigCache.clear();
+    if (event.detail?.includes("marks-edit")) marksEditSettingsCache.clear();
+  });
+
   // 🆕 Term configuration DOM elements
   const term1Checkbox = document.getElementById("term1Checkbox");
   const term2Checkbox = document.getElementById("term2Checkbox");
@@ -2504,6 +2509,16 @@ async function loadTermLockStatus() {
     return;
   }
 
+  const persisted = window.cbcSettingsCache?.get("marks-edit", cacheKey);
+  if (persisted) {
+    marksEditSettingsCache.set(cacheKey, persisted);
+    submittedMarksEditStatusDisplay.textContent = persisted.allowTeacherSubmittedMarkEdits ? "Enabled" : "Disabled";
+    submittedMarksEditStatusDisplay.style.color = persisted.allowTeacherSubmittedMarkEdits ? "green" : "red";
+    submittedMarksEditToggleButton.checked = persisted.allowTeacherSubmittedMarkEdits;
+    submittedMarksEditToggleButton.disabled = false;
+    return;
+  }
+
   if (marksEditSettingsInFlight.has(cacheKey)) return;
 
   submittedMarksEditStatusDisplay.textContent = "Loading...";
@@ -2512,10 +2527,16 @@ async function loadTermLockStatus() {
   const fetchPromise = (async () => {
     try {
       const res = await secureFetch(`${API_BASE}/settings/term-lock?year=${year}&term=${term}`);
-      if (!res) return;
+      if (!res) {
+        submittedMarksEditStatusDisplay.textContent = "Error";
+        submittedMarksEditStatusDisplay.style.color = "orange";
+        submittedMarksEditToggleButton.disabled = true;
+        return;
+      }
 
       const allowTeacherSubmittedMarkEdits = res.allowTeacherSubmittedMarkEdits === true;
       marksEditSettingsCache.set(cacheKey, { allowTeacherSubmittedMarkEdits });
+      window.cbcSettingsCache?.set("marks-edit", { allowTeacherSubmittedMarkEdits }, cacheKey);
 
       submittedMarksEditStatusDisplay.textContent = allowTeacherSubmittedMarkEdits ? "Enabled" : "Disabled";
       submittedMarksEditStatusDisplay.style.color = allowTeacherSubmittedMarkEdits ? "green" : "red";
@@ -2557,6 +2578,8 @@ async function saveTermLockStatus() {
 
     if (res) {
       marksEditSettingsCache.set(`${year}-${term}`, { allowTeacherSubmittedMarkEdits });
+      window.cbcSettingsCache?.remove("marks-edit", `${year}-${term}`);
+      window.cbcSettingsCache?.set("marks-edit", { allowTeacherSubmittedMarkEdits }, `${year}-${term}`);
       showToast(res.message, "success");
       loadTermLockStatus();
     }
@@ -2591,6 +2614,18 @@ async function loadTermConfig() {
     return;
   }
 
+  const persisted = window.cbcSettingsCache?.get("term-config");
+  if (persisted) {
+    termConfigCache.set(cacheKey, persisted);
+    term1Checkbox.checked = persisted.term1;
+    term2Checkbox.checked = persisted.term2;
+    term3Checkbox.checked = persisted.term3;
+    activeTermSelect.value = persisted.activeTerm;
+    termConfigMessage.textContent = "";
+    termConfigMessage.style.color = "";
+    return;
+  }
+
   if (termConfigInFlight.has(cacheKey)) return;
 
   termConfigMessage.textContent = "Loading...";
@@ -2603,6 +2638,7 @@ async function loadTermConfig() {
 
       const { termConfig = { term1: true, term2: true, term3: true, activeTerm: 'Term 1' } } = res;
       termConfigCache.set(cacheKey, termConfig);
+      window.cbcSettingsCache?.set("term-config", termConfig);
 
       // Update UI
       term1Checkbox.checked = termConfig.term1;
@@ -2661,6 +2697,8 @@ async function saveTermConfig() {
 
     if (res) {
       termConfigCache.set("term-config", { term1, term2, term3, activeTerm });
+      window.cbcSettingsCache?.remove("term-config");
+      window.cbcSettingsCache?.set("term-config", { term1, term2, term3, activeTerm });
       showToast(res.message || "Term configuration saved successfully!", "success");
       termConfigMessage.textContent = "Configuration saved";
       termConfigMessage.style.color = "green";

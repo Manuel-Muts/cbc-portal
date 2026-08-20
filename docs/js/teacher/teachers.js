@@ -29,6 +29,16 @@ document.addEventListener("DOMContentLoaded", () => {
   const termConfigInFlight = new Set(); // Track in-flight requests to prevent duplicates
   let activeTermValue = null; // Store the active term from API
 
+  window.addEventListener("cbc-settings-cache-invalidated", (event) => {
+    if (event.detail?.includes("term-config")) {
+      termConfigCache.clear();
+      activeTermValue = null;
+    }
+    if (event.detail?.includes("marks-edit")) {
+      marksEditPermissionContextKey = null;
+    }
+  });
+
   // Pagination for individual student tables inside Submitted Marks
   const STUDENTS_PER_TABLE_PAGE = 10;
   const subTablePageMap = new Map();
@@ -141,22 +151,7 @@ document.addEventListener("DOMContentLoaded", () => {
   function setupTabs() {
     const subnavBtns = document.querySelectorAll(".subnav-btn");
     const tabPanes = document.querySelectorAll("main > .tab-pane");
-    let myClassReportLoaded = false;
-    let myClassReportLoading = false;
     let submittedMarksLoading = false;
-
-    const loadMyClassReportOnce = async () => {
-      if (myClassReportLoaded || myClassReportLoading) return;
-      const trigger = window.generateClassTeacherReport;
-      if (typeof trigger !== "function") return;
-      myClassReportLoading = true;
-      try {
-        await trigger();
-        myClassReportLoaded = true;
-      } finally {
-        myClassReportLoading = false;
-      }
-    };
 
     // 🆕 Lazy load submitted marks when tab is clicked
     const loadSubmittedMarksOnce = async () => {
@@ -183,10 +178,6 @@ document.addEventListener("DOMContentLoaded", () => {
       btn.classList.add("active");
       const activePane = document.getElementById(target);
       if (activePane) activePane.classList.add("active");
-
-      if (target === "myClass") {
-        setTimeout(() => loadMyClassReportOnce(), 120);
-      }
 
       // 🆕 Lazy load submitted marks when tab is clicked
       if (target === "submittedMarks") {
@@ -222,12 +213,23 @@ document.addEventListener("DOMContentLoaded", () => {
       return marksEditPermissionEnabled;
     }
 
+    const persisted = window.cbcSettingsCache?.get("marks-edit", contextKey);
+    if (persisted) {
+      marksEditPermissionEnabled = persisted.allowTeacherSubmittedMarkEdits === true;
+      marksEditPermissionContextKey = contextKey;
+      updateSubmittedMarksEditStatus();
+      return marksEditPermissionEnabled;
+    }
+
     try {
       const res = await fetchWithAuth(`${API_BASE}/settings/term-lock?year=${currentYear}&term=${currentTerm}`);
       if (!res.ok) throw new Error("Failed to load marks edit settings");
 
       const data = await res.json();
       marksEditPermissionEnabled = data?.allowTeacherSubmittedMarkEdits === true;
+      window.cbcSettingsCache?.set("marks-edit", {
+        allowTeacherSubmittedMarkEdits: marksEditPermissionEnabled
+      }, contextKey);
       marksEditPermissionContextKey = contextKey;
     } catch (err) {
       console.warn("Could not load marks edit settings:", err);
@@ -328,6 +330,13 @@ document.addEventListener("DOMContentLoaded", () => {
       return cached.activeTerm;
     }
 
+    const persisted = window.cbcSettingsCache?.get("term-config");
+    if (persisted) {
+      termConfigCache.set(cacheKey, persisted);
+      activeTermValue = persisted.activeTerm;
+      return persisted.activeTerm;
+    }
+
     // Prevent duplicate in-flight requests
     if (termConfigInFlight.has(cacheKey)) {
       // Wait for existing request
@@ -351,6 +360,7 @@ document.addEventListener("DOMContentLoaded", () => {
       const data = await res.json();
       const { termConfig = { activeTerm: 'Term 1' } } = data;
       termConfigCache.set(cacheKey, termConfig);
+      window.cbcSettingsCache?.set("term-config", termConfig);
       activeTermValue = termConfig.activeTerm;
       return termConfig.activeTerm;
     } catch (err) {
@@ -1786,23 +1796,22 @@ document.addEventListener("DOMContentLoaded", () => {
 
 
 
-  async function loadSubmittedMarks(forceRefresh = false) {
+  async function loadSubmittedMarks(forceRefresh = false, requestedPage = submittedMarksCurrentPage) {
     const CACHE_KEY = "teacher_marks_cache";
     const currentYear = marksYearInput?.value || new Date().getFullYear();
     const currentTerm = marksTermSelect?.value || "1";
     const currentAcademicContext = { year: currentYear, term: currentTerm };
 
     // 🆕 Reset to first page when forcing a refresh (e.g., after submission)
-    if (forceRefresh) submittedMarksCurrentPage = 1;
+    if (forceRefresh) requestedPage = 1;
 
     const CACHE_DURATION = 15 * 60 * 1000; // 15 minutes
-    const cacheKeyWithContext = `${CACHE_KEY}_${currentAcademicContext.year}_${currentAcademicContext.term}`;
+    const cacheKeyWithContext = `${CACHE_KEY}_${currentAcademicContext.year}_${currentAcademicContext.term}_${requestedPage}`;
 
     try {
       await refreshMarksEditPermissionStatus();
 
-      // 🚀 Fetch with a high limit (1000) to ensure multiple class groups are captured for the accordions
-      const requestUrl = `${API_BASE}/marks/teacher?limit=1000&year=${currentAcademicContext.year}&term=${currentAcademicContext.term}`;
+      const requestUrl = `${API_BASE}/marks/teacher?page=${requestedPage}&limit=${SUBMITTED_MARKS_LIMIT}&year=${currentAcademicContext.year}&term=${currentAcademicContext.term}`;
       const res = await fetchWithAuth(requestUrl);
       
       if (res.status === 403) {
@@ -1813,12 +1822,18 @@ document.addEventListener("DOMContentLoaded", () => {
       
       const data = await res.json();
       submittedMarks = Array.isArray(data) ? data : (data.marks || []);
+      submittedMarksCurrentPage = data.currentPage || requestedPage;
+      submittedMarksTotalPages = data.totalPages || 1;
       subTablePageMap.clear();
       subSearchMap.clear();
 
       localStorage.setItem(cacheKeyWithContext, JSON.stringify({
         timestamp: Date.now(),
-        data: submittedMarks
+        data: {
+          marks: submittedMarks,
+          currentPage: submittedMarksCurrentPage,
+          totalPages: submittedMarksTotalPages
+        }
       }));
 
       window.currentMarks = submittedMarks;
@@ -1829,8 +1844,12 @@ document.addEventListener("DOMContentLoaded", () => {
       try {
         const cached = localStorage.getItem(cacheKeyWithContext);
         if (cached) {
-          const { data } = JSON.parse(cached);
+          const cachedEntry = JSON.parse(cached);
+          if (cachedEntry.timestamp && Date.now() - cachedEntry.timestamp > CACHE_DURATION) return;
+          const { data } = cachedEntry;
           submittedMarks = Array.isArray(data) ? data : (data?.marks || []);
+          submittedMarksCurrentPage = data?.currentPage || requestedPage;
+          submittedMarksTotalPages = data?.totalPages || Math.max(1, Math.ceil(submittedMarks.length / SUBMITTED_MARKS_LIMIT));
           window.currentMarks = submittedMarks;
           displayPaginatedMarksGroups(submittedMarksCurrentPage);
           return;
@@ -1917,18 +1936,14 @@ document.addEventListener("DOMContentLoaded", () => {
       // If same assessment, fall back to alphabetical by full key
       return keyA.localeCompare(keyB);
     }); 
-    const totalGroups = submittedMarksGroupedKeys.length;
-    submittedMarksTotalPages = Math.ceil(totalGroups / SUBMITTED_MARKS_LIMIT);
     submittedMarksCurrentPage = page;
 
-    if (page > submittedMarksTotalPages && totalGroups > 0) {
+    if (page > submittedMarksTotalPages && submittedMarksGroupedKeys.length > 0) {
       displayPaginatedMarksGroups(1);
       return;
     }
 
-    const startIndex = (page - 1) * SUBMITTED_MARKS_LIMIT;
-    const endIndex = startIndex + SUBMITTED_MARKS_LIMIT;
-    const keysForCurrentPage = submittedMarksGroupedKeys.slice(startIndex, endIndex);
+    const keysForCurrentPage = submittedMarksGroupedKeys;
     
     submittedMarksContainer.innerHTML = '';
     if (!keysForCurrentPage.length) {
@@ -2132,13 +2147,13 @@ document.addEventListener("DOMContentLoaded", () => {
 
     document.getElementById("prevSubmittedMarksBtn")?.addEventListener("click", () => {
         if (submittedMarksCurrentPage > 1) {
-            displayPaginatedMarksGroups(submittedMarksCurrentPage - 1);
+          loadSubmittedMarks(false, submittedMarksCurrentPage - 1);
         }
     });
 
     document.getElementById("nextSubmittedMarksBtn")?.addEventListener("click", () => {
         if (submittedMarksCurrentPage < submittedMarksTotalPages) {
-            displayPaginatedMarksGroups(submittedMarksCurrentPage + 1);
+          loadSubmittedMarks(false, submittedMarksCurrentPage + 1);
         }
     });
   }

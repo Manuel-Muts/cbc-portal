@@ -104,8 +104,8 @@ export const updateTermConfig = async (req, res) => {
       return res.status(400).json({ message: "Invalid active term" });
     }
 
-    const termMap = { 'Term 1': 'term1', 'Term 2': 'term2', 'Term 3': 'term3' };
-    if (!eval(termMap[activeTerm])) {
+    const enabledTerms = { 'Term 1': term1, 'Term 2': term2, 'Term 3': term3 };
+    if (!enabledTerms[activeTerm]) {
       return res.status(400).json({ message: `${activeTerm} is not enabled` });
     }
 

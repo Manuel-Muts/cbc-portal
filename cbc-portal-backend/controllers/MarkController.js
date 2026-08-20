@@ -7,7 +7,7 @@ import StudentEnrollment from "../models/StudentEnrollment.js";
 import { School } from "../models/school.js";
 import Setting from "../models/Setting.js";
 import cache from "../utils/cacheManager.js";
-import { buildTeacherMarksQuery } from "../utils/academicTerm.js";
+import { buildTeacherMarksQuery, resolveAcademicContext } from "../utils/academicTerm.js";
 import sendSMS, { countSMSSegments, classifySmsProviderResponse } from "../utils/sendSMS.js";
 import SMSLog from "../models/SMSLog.js";
 
@@ -741,45 +741,109 @@ export const getMarks = async (req, res) => {
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 20;
     const skip = (page - 1) * limit;
+    const { year, term } = resolveAcademicContext(req.query);
+    const cacheKey = cache.generateKey(`teacher_marks:${req.user.schoolId}`, {
+      teacherId: req.user.id,
+      year,
+      term,
+      page,
+      limit
+    });
+    const cachedResponse = cache.get(cacheKey);
+
+    if (cachedResponse) {
+      return res.json(cachedResponse);
+    }
 
     const query = buildTeacherMarksQuery(
       {
-        teacherId: req.user.id,
-        schoolId: req.user.schoolId
+        teacherId: new mongoose.Types.ObjectId(req.user.id),
+        schoolId: new mongoose.Types.ObjectId(req.user.schoolId)
       },
       {
-        year: req.query.year,
-        term: req.query.term
+        year,
+        term
       }
     );
 
-    const rawMarks = await Mark.find(query)
-      .sort({ assessment: -1, createdAt: -1 });
-
-    const latestAssessmentByGroup = new Map();
-    rawMarks.forEach(mark => {
-      const isSenior = getGradeLevel(mark.grade) >= 10;
-      const subjectKey = isSenior ? `${mark.pathway || ''}||${mark.course || ''}` : `${mark.subject || ''}`;
-      const streamKey = mark.stream || '';
-      const groupKey = `${subjectKey}||${mark.grade || ''}||${streamKey}`;
-      const currentMax = latestAssessmentByGroup.get(groupKey) || 0;
-      if (mark.assessment > currentMax) {
-        latestAssessmentByGroup.set(groupKey, mark.assessment);
+    const pipeline = [
+      { $match: query },
+      {
+        $set: {
+          _teacherGradeLevel: {
+            $convert: {
+              input: {
+                $getField: {
+                  field: "match",
+                  input: {
+                    $regexFind: {
+                      input: { $toString: { $ifNull: ["$grade", ""] } },
+                      regex: "[0-9]+"
+                    }
+                  }
+                }
+              },
+              to: "int",
+              onError: null,
+              onNull: null
+            }
+          }
+        }
+      },
+      {
+        $set: {
+          _teacherGroupKey: {
+            $concat: [
+              {
+                $cond: [
+                  { $gte: ["$_teacherGradeLevel", 10] },
+                  { $concat: [{ $ifNull: ["$pathway", ""] }, "||", { $ifNull: ["$course", ""] }] },
+                  { $ifNull: ["$subject", ""] }
+                ]
+              },
+              "||",
+              { $ifNull: ["$grade", ""] },
+              "||",
+              { $ifNull: ["$stream", ""] }
+            ]
+          }
+        }
+      },
+      { $sort: { assessment: -1, createdAt: -1, _id: -1 } },
+      {
+        $group: {
+          _id: {
+            groupKey: "$_teacherGroupKey",
+            assessment: "$assessment"
+          },
+          marks: { $push: "$$ROOT" }
+        }
+      },
+      { $sort: { "_id.groupKey": 1, "_id.assessment": -1 } },
+      {
+        $group: {
+          _id: "$_id.groupKey",
+          assessment: { $first: "$_id.assessment" },
+          marks: { $first: "$marks" }
+        }
+      },
+      { $sort: { assessment: -1, _id: 1 } },
+      {
+        $facet: {
+          metadata: [{ $count: "total" }],
+          data: [{ $skip: skip }, { $limit: limit }]
+        }
       }
-    });
+    ];
 
-    const marks = rawMarks.filter(mark => {
-      const isSenior = getGradeLevel(mark.grade) >= 10;
-      const subjectKey = isSenior ? `${mark.pathway || ''}||${mark.course || ''}` : `${mark.subject || ''}`;
-      const streamKey = mark.stream || '';
-      const groupKey = `${subjectKey}||${mark.grade || ''}||${streamKey}`;
-      return mark.assessment === latestAssessmentByGroup.get(groupKey);
-    });
+    const [result] = await Mark.aggregate(pipeline).allowDiskUse(true);
+    const total = result?.metadata?.[0]?.total || 0;
+    const pagedMarks = result?.data?.flatMap(group => (group.marks || []).map(({ _teacherGradeLevel, _teacherGroupKey, ...mark }) => mark)) || [];
 
-    const total = marks.length;
-    const pagedMarks = marks.slice(skip, skip + limit);
+    const response = { marks: pagedMarks, total, totalPages: Math.max(1, Math.ceil(total / limit)), currentPage: page };
+    cache.set(cacheKey, response, 900);
 
-    return res.json({ marks: pagedMarks, total, totalPages: Math.ceil(total / limit), currentPage: page });
+    return res.json(response);
   } catch (err) {
     console.error("getMarks error:", err);
     return res.status(500).json({ message: err.message });

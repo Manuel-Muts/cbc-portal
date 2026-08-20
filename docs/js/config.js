@@ -282,6 +282,60 @@ if (config.app.debug) {
 window.config = config;
 window.setAppEnvironment = (env) => config.switchEnvironment(env);
 
+// Shared settings cache used by admin, teacher, and learner pages.
+const settingsCachePrefix = 'cbc_settings_cache_v1_';
+const settingsCacheTtl = 7 * 24 * 60 * 60 * 1000;
+
+window.cbcSettingsCache = {
+  get(name, scope = '') {
+    try {
+      const schoolId = window.localStorage.getItem('schoolId') || 'current';
+      const key = `${settingsCachePrefix}${schoolId}_${name}_${scope}`;
+      const raw = window.localStorage.getItem(key);
+      if (!raw) return null;
+
+      const entry = JSON.parse(raw);
+      if (!entry || entry.expiresAt <= Date.now()) {
+        window.localStorage.removeItem(key);
+        return null;
+      }
+
+      return entry.value;
+    } catch (error) {
+      console.warn('[SETTINGS CACHE] Unable to read cache:', error);
+      return null;
+    }
+  },
+
+  set(name, value, scope = '') {
+    try {
+      const schoolId = window.localStorage.getItem('schoolId') || 'current';
+      const key = `${settingsCachePrefix}${schoolId}_${name}_${scope}`;
+      window.localStorage.setItem(key, JSON.stringify({
+        value,
+        expiresAt: Date.now() + settingsCacheTtl
+      }));
+    } catch (error) {
+      console.warn('[SETTINGS CACHE] Unable to write cache:', error);
+    }
+  },
+
+  remove(name, scope = '') {
+    try {
+      const schoolId = window.localStorage.getItem('schoolId') || 'current';
+      window.localStorage.removeItem(`${settingsCachePrefix}${schoolId}_${name}_${scope}`);
+    } catch (error) {
+      console.warn('[SETTINGS CACHE] Unable to invalidate cache:', error);
+    }
+  }
+};
+
+window.addEventListener('storage', (event) => {
+  if (event.key?.startsWith(settingsCachePrefix)) {
+    window.dispatchEvent(new CustomEvent('cbc-settings-cache-invalidated', { detail: event.key }));
+  }
+});
+
 // Export for use in other files (Node.js environments)
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = config;

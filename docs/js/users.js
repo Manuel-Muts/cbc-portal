@@ -60,6 +60,11 @@
   const termConfigInFlight = new Set(); // Track in-flight requests to prevent duplicates
   let activeTermValue = null; // Store the active term from API
 
+  window.addEventListener("cbc-settings-cache-invalidated", () => {
+    termConfigCache.clear();
+    activeTermValue = null;
+  });
+
   // Prefetch function (call when downloads tab is opened)
   async function prefetchSchoolAssets() {
     if (prefetchedSchoolName || prefetchedSchoolLogoBase64) return; // already prefetched
@@ -1726,6 +1731,13 @@ if (usersNextPageBtn) {
       return cached.activeTerm;
     }
 
+    const persisted = window.cbcSettingsCache?.get("term-config");
+    if (persisted) {
+      termConfigCache.set(cacheKey, persisted);
+      activeTermValue = persisted.activeTerm;
+      return persisted.activeTerm;
+    }
+
     // Prevent duplicate in-flight requests
     if (termConfigInFlight.has(cacheKey)) {
       // Wait for existing request
@@ -1748,6 +1760,7 @@ if (usersNextPageBtn) {
 
       const { termConfig = { activeTerm: 'Term 1' } } = res;
       termConfigCache.set(cacheKey, termConfig);
+      window.cbcSettingsCache?.set("term-config", termConfig);
       activeTermValue = termConfig.activeTerm;
       return termConfig.activeTerm;
     } catch (err) {
