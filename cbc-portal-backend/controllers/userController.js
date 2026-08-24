@@ -700,7 +700,7 @@ export const getLastAdmission = async (req, res) => {
     }
 
     const computeHighestAdmissionFromDocs = async () => {
-      const students = await User.find(query).select('admission admissionNo').lean();
+      const students = await User.find(query).select('admission').lean();
       let highest = null;
       const parseLastDigits = value => {
         if (value === undefined || value === null) return null;
@@ -712,7 +712,7 @@ export const getLastAdmission = async (req, res) => {
         return Number.isFinite(num) ? num : null;
       };
       students.forEach(student => {
-        const candidate = parseLastDigits(student.admission ?? student.admissionNo);
+        const candidate = parseLastDigits(student.admission);
         if (candidate !== null && (highest === null || candidate > highest)) {
           highest = candidate;
         }
@@ -720,20 +720,9 @@ export const getLastAdmission = async (req, res) => {
       return highest !== null ? String(highest) : null;
     };
 
-    // First try fast indexed approach using numericAdmission
-    let highestAdmission = null;
-    try {
-      const top = await User.findOne(query).sort({ numericAdmission: -1 }).select('numericAdmission').lean();
-      if (top && top.numericAdmission != null) {
-        highestAdmission = String(top.numericAdmission);
-      }
-    } catch (err) {
-      console.error('Error while fetching highest numericAdmission:', err);
-    }
-
-    if (highestAdmission === null) {
-      highestAdmission = await computeHighestAdmissionFromDocs();
-    }
+    // Read the admission strings directly so legacy/bulk records with a stale
+    // numericAdmission field cannot produce an incorrect highest value.
+    const highestAdmission = await computeHighestAdmissionFromDocs();
 
     cache.set(cacheKey, highestAdmission, 60);
     return res.json({ lastAdmission: highestAdmission });

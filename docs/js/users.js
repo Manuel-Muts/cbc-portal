@@ -120,12 +120,22 @@
 
   let schoolInfo = null;
 
+    function normalizeSchoolType(value) {
+        const normalized = String(value || "").trim().toLowerCase().replace(/[^a-z]+/g, "_");
+        if (normalized === "senior" || normalized === "senior_school" || normalized === "secondary") return "senior";
+        if (
+          normalized === "primary_junior" ||
+          normalized === "primary_and_junior" ||
+          normalized === "primary_plus_junior" ||
+          normalized === "primary_junior_school"
+        ) return "primary_junior";
+        if (normalized === "full" || normalized === "full_school" || normalized === "full_school_grades_pg_12") return "full";
+        return null;
+    }
+
     function getSchoolTypeKey() {
-        if (!schoolInfo || !schoolInfo.schoolType) return 'full';
-        const rawType = String(schoolInfo.schoolType).toLowerCase().replace(/[^a-z]/g, '_');
-        if (rawType.includes('primary') || rawType.includes('junior')) return 'primary_junior';
-        if (rawType.includes('senior')) return 'senior';
-        return 'full';
+        const schoolType = schoolInfo?.schoolType || schoolInfo?.school?.schoolType;
+        return normalizeSchoolType(schoolType) || 'full';
     }
 
   function populateRegistrationGrades() {
@@ -1110,9 +1120,21 @@ if (usersNextPageBtn) {
     sheet['!printOptions'] = { gridLines: true, horizontalCentered: true, verticalCentered: false };
     sheet['!margins'] = { left: 0.4, right: 0.4, top: 0.5, bottom: 0.5, header: 0.3, footer: 0.3 };
 
-    const titleStyle = createExcelCellStyle({ bold: true, fontSize: 15, align: "center", wrap: true });
-    const metadataStyle = createExcelCellStyle({ bold: false, fontSize: 12, align: "left", wrap: false });
-    const headerStyle = createExcelCellStyle({ bold: true, fontSize: 12, align: "center", wrap: true });
+    const titleStyle = {
+      ...createExcelCellStyle({ bold: true, fontSize: 15, align: "center", wrap: true }),
+      fill: { patternType: "solid", fgColor: { rgb: "FF1F4E78" } },
+      font: { name: "Calibri", sz: 15, bold: true, color: { rgb: "FFFFFFFF" } }
+    };
+    const metadataStyle = {
+      ...createExcelCellStyle({ bold: true, fontSize: 11, align: "left", wrap: false }),
+      fill: { patternType: "solid", fgColor: { rgb: "FFD9EAF7" } }
+    };
+    const headerStyle = {
+      ...createExcelCellStyle({ bold: true, fontSize: 12, align: "center", wrap: true }),
+      fill: { patternType: "solid", fgColor: { rgb: "FF5B9BD5" } },
+      font: { name: "Calibri", sz: 12, bold: true, color: { rgb: "FFFFFFFF" } }
+    };
+    const dataStyle = createExcelCellStyle({ fontSize: 11, align: "left", wrap: false });
 
     const applyStyle = (cellRef, style) => {
       const cell = sheet[cellRef];
@@ -1130,10 +1152,13 @@ if (usersNextPageBtn) {
 
     dataRows.slice(5).forEach((_, index) => {
       const rowNumber = index + 6;
-      applyStyle(`A${rowNumber}`, metadataStyle);
-      applyStyle(`B${rowNumber}`, metadataStyle);
-      applyStyle(`C${rowNumber}`, metadataStyle);
+      applyStyle(`A${rowNumber}`, dataStyle);
+      applyStyle(`B${rowNumber}`, dataStyle);
+      applyStyle(`C${rowNumber}`, dataStyle);
     });
+
+    sheet['!autofilter'] = { ref: `A5:C${dataRows.length}` };
+    sheet['!printArea'] = `A1:C${dataRows.length}`;
 
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, sheet, "Learner List");
@@ -1141,7 +1166,7 @@ if (usersNextPageBtn) {
   }
 
   function triggerWorkbookDownload(workbook, filename) {
-    const output = XLSX.write(workbook, { bookType: "xlsx", type: "array" });
+    const output = XLSX.write(workbook, { bookType: "xlsx", type: "array", cellStyles: true });
     const blob = new Blob([output], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
     const link = document.createElement("a");
     link.href = URL.createObjectURL(blob);
@@ -1254,7 +1279,9 @@ if (usersNextPageBtn) {
   function validateCsvDownloadFilters() {
     const { gradeVal, streamVal } = getCsvDownloadFilterValues();
     const gradeMissing = !gradeVal || gradeVal === "all";
-    const streamMissing = !streamVal || streamVal === "all";
+    const hasStreams = Array.from(csvStreamFilter?.options || [])
+      .some(option => String(option.value || "").trim() && option.value !== "all");
+    const streamMissing = hasStreams && (!streamVal || streamVal === "all");
     if (gradeMissing || streamMissing) {
       const message = gradeMissing && streamMissing
         ? "Please select a grade and a stream before downloading."
@@ -1775,6 +1802,9 @@ if (usersNextPageBtn) {
 
   // Initialize Application
   (async function init() {
+    // Attach navigation immediately so the sidebar remains responsive while startup data loads.
+    setupNavigation();
+
     userProfile = await authService.getUserProfile(["admin"]);
     if (!userProfile) return;
     authService.initLogout();
@@ -1823,8 +1853,6 @@ if (usersNextPageBtn) {
       }
     })();
 
-    // 🆕 Setup navigation and user type tabs first
-    setupNavigation();
     setupUserTypeTabs();
 
     // 🆕 Lazy load: Only populate filters and load users when the tab is actually clicked

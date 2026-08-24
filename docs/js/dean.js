@@ -47,6 +47,7 @@ let currentPrevRawData = null;
 let currentIsSenior = false;
 let currentRoster = []; // 🆕 Store roster globally for re-analysis
 let lastProcessedStudents = []; // 🆕 For reports tab
+let lastCompleteGradeStudents = []; // Complete grade records used for overall subject ranks
 let lastProcessedSubjects = []; // 🆕 For reports tab
 let currentElectiveAssignments = []; // 🆕 Cache elective assignments for debug and re-analysis
 const lazyWidgetCache = {
@@ -427,6 +428,8 @@ function buildStudentTermProgressSeries(student) {
   const selectedStream = filterStreamEl?.value || "all";
   const term = filterTermEl?.value;
   const year = filterYearEl?.value;
+  const selectedAssessments = new Set(Array.from(document.querySelectorAll(".baseline-check:checked"))
+    .map(input => String(input.value)));
 
   const grouped = {};
   currentAnalysisRawData.forEach((entry) => {
@@ -436,10 +439,11 @@ function buildStudentTermProgressSeries(student) {
     const sameTerm = !term || String(entry.term) === String(term);
     const sameYear = !year || String(entry.year) === String(year);
     const sameStream = selectedStream === "all" || String(entry.stream || "Unassigned") === String(selectedStream);
-
-    if (!sameStudent || !sameGrade || !sameTerm || !sameYear || !sameStream) return;
-
     const assessmentKey = String(entry.assessment);
+    const selectedAssessment = selectedAssessments.has(assessmentKey);
+
+    if (!sameStudent || !sameGrade || !sameTerm || !sameYear || !sameStream || !selectedAssessment) return;
+
     if (!grouped[assessmentKey]) {
       grouped[assessmentKey] = { total: 0, count: 0 };
     }
@@ -461,7 +465,7 @@ function buildStudentTermProgressSeries(student) {
     .map(([assessment, data]) => ({
       assessment,
       mean: data.count ? data.total / data.count : 0,
-      label: sanitizePdfText(window.ASSESSMENT_MAPPING?.[assessment] || `A${assessment}`)
+      label: sanitizePdfText(window.ASSESSMENT_MAPPING?.[assessment] || "")
     }));
 }
 
@@ -636,7 +640,7 @@ async function generateReport() {
 
   const gradeNum = window.cbcUtils?.getGradeNum?.(grade) ?? 0;
   const isSenior = gradeNum >= 10;
-  const cacheKey = `${grade}_${term}_${year}_${assessment}`;
+  const cacheKey = `${grade}_${term}_${year}_${assessment}_${filterStreamEl?.value || "all"}`;
   const cached = getAnalyticsCache(cacheKey); // Check cache
 
   if (cached) {
@@ -1834,6 +1838,18 @@ function processAnalysisData(allRaw, isSenior, assessment, allPrevRaw = null, ro
 
   const overallRankRaw = isAll ? overallPathwayFilteredRaw : overallPathwayFilteredRaw.filter(m => String(m.assessment) === assessment);
   const overallRankStudentMap = {};
+  const overallExpectedSubjectsByStream = {};
+
+  overallRankRaw.forEach((m) => {
+    const stream = m.stream || "Unassigned";
+    if (!overallExpectedSubjectsByStream[stream]) overallExpectedSubjectsByStream[stream] = new Set();
+    m.subjects.forEach((sub) => {
+      const subName = getAnalysisSubjectName(sub, isSenior);
+      if (subName && !(isSenior && isExcludedSeniorSubject(subName))) {
+        overallExpectedSubjectsByStream[stream].add(subName);
+      }
+    });
+  });
 
   overallRankRaw.forEach((m) => {
     const key = isAll ? m.admissionNo : `${m.admissionNo}_${m.assessment}`;
@@ -1876,7 +1892,7 @@ function processAnalysisData(allRaw, isSenior, assessment, allPrevRaw = null, ro
         if (!expectedSubjects.includes(sub)) expectedSubjects.push(sub);
       });
     } else {
-      expectedSubjects.push(...(streamExpectedSubjectsMap[s.stream || "Unassigned"] || []));
+      expectedSubjects.push(...Array.from(overallExpectedSubjectsByStream[s.stream || "Unassigned"] || []));
     }
 
     expectedSubjects.forEach(subName => {
@@ -1898,6 +1914,8 @@ function processAnalysisData(allRaw, isSenior, assessment, allPrevRaw = null, ro
       return { ...s, total, mean };
     })
     .sort((a, b) => b.mean - a.mean);
+
+  lastCompleteGradeStudents = overallCompleteStudents;
 
   let prevOverallMean = null;
   let prevOverallRank = 0;
@@ -3587,6 +3605,50 @@ async function generateBulkReportCards() {
         sanitizePdfText(item.points)
     ]);
 
+    const hasGradeStreams = lastProcessedStudents.some(student => {
+      const stream = String(student.stream || "").trim();
+      return stream && stream.toLowerCase() !== "unassigned";
+    });
+    const subjectRankMaps = { grade: new Map(), stream: new Map() };
+    const subjectRankTotals = { grade: new Map(), stream: new Map() };
+    const buildSubjectRankMap = (students, totalsMap, groupKey = "") => {
+      const rankMap = new Map();
+      const subjectNames = new Set();
+      students.forEach(student => Object.keys(student.subjects || {}).forEach(subject => subjectNames.add(subject)));
+
+      subjectNames.forEach(subject => {
+        const ranked = students
+          .filter(student => {
+            const score = student.subjects?.[subject];
+            return score !== undefined && score !== null && score !== "" && !isNaN(score) && String(score).toUpperCase() !== "X";
+          })
+          .sort((a, b) => Number(b.subjects[subject]) - Number(a.subjects[subject]));
+        let previousScore = null;
+        let previousRank = 0;
+        totalsMap.set(`${groupKey}::${subject}`, ranked.length);
+        ranked.forEach((student, index) => {
+          const score = Number(student.subjects[subject]);
+          const rank = score === previousScore ? previousRank : index + 1;
+          rankMap.set(`${student.adm}::${subject}`, rank);
+          previousScore = score;
+          previousRank = rank;
+        });
+      });
+      return rankMap;
+    };
+
+    subjectRankMaps.grade = buildSubjectRankMap(lastCompleteGradeStudents, subjectRankTotals.grade);
+    const studentsByStream = new Map();
+    lastProcessedStudents.forEach(student => {
+      const stream = String(student.stream || "Unassigned");
+      if (!studentsByStream.has(stream)) studentsByStream.set(stream, []);
+      studentsByStream.get(stream).push(student);
+    });
+    studentsByStream.forEach((students, stream) => {
+      const streamRanks = buildSubjectRankMap(students, subjectRankTotals.stream, stream);
+      streamRanks.forEach((rank, key) => subjectRankMaps.stream.set(key, rank));
+    });
+
     for (let i = 0; i < lastProcessedStudents.length; i++) {
         const s = lastProcessedStudents[i];
         const percent = Math.round((i / lastProcessedStudents.length) * 100);
@@ -3655,7 +3717,7 @@ async function generateBulkReportCards() {
         headerY += 6;
 
         // 2. Student Info Box
-        const studentStream = sanitizePdfText(s.stream || "N/A");
+        const studentStream = sanitizePdfText(s.stream || "");
         const studentPathway = sanitizePdfText(s.pathway || "");
         const infoBoxY = headerY + 2;
         const leftColX = 18;
@@ -3678,22 +3740,26 @@ async function generateBulkReportCards() {
         doc.text(`Overall Rank:`, centerColX - 14, infoBoxY + 7, { align: "center" });
         doc.setFont("helvetica", "normal").setFontSize(8.2);
         doc.text(`${s.overallRank || s.rank || '-'} of ${s.overallRankTotal || s.rankTotal || lastProcessedStudents.length}`, centerColX + 10, infoBoxY + 7, { align: "center" });
-        doc.setFont("helvetica", "bold").setFontSize(8.2);
-        doc.text(`Stream Rank:`, centerColX - 14, infoBoxY + 13, { align: "center" });
-        doc.setFont("helvetica", "normal").setFontSize(8.2);
-        doc.text(`${s.streamRank || '-'} of ${s.streamTotal || 1}`, centerColX + 10, infoBoxY + 13, { align: "center" });
+        if (hasGradeStreams) {
+          doc.setFont("helvetica", "bold").setFontSize(8.2);
+          doc.text(`Stream Rank:`, centerColX - 14, infoBoxY + 13, { align: "center" });
+          doc.setFont("helvetica", "normal").setFontSize(8.2);
+          doc.text(`${s.streamRank || '-'} of ${s.streamTotal || 1}`, centerColX + 10, infoBoxY + 13, { align: "center" });
+        }
 
         doc.setFont("helvetica", "bold").setFontSize(8.2);
         doc.text(`Grade:`, rightColX - 6, infoBoxY + 7, { align: "right" });
         doc.setFont("helvetica", "normal").setFontSize(8.2);
         doc.text(`${sanitizePdfText(filterGradeEl.value)}`, rightColX + 18, infoBoxY + 7, { align: "right" });
-        doc.setFont("helvetica", "bold").setFontSize(8.2);
-        doc.text(`Stream:`, rightColX - 6, infoBoxY + 13, { align: "right" });
-        doc.setFont("helvetica", "normal").setFontSize(8.2);
-        doc.text(`${studentStream}`, rightColX + 18, infoBoxY + 13, { align: "right" });
+        if (hasGradeStreams) {
+          doc.setFont("helvetica", "bold").setFontSize(8.2);
+          doc.text(`Stream:`, rightColX - 6, infoBoxY + 13, { align: "right" });
+          doc.setFont("helvetica", "normal").setFontSize(8.2);
+          doc.text(`${studentStream}`, rightColX + 18, infoBoxY + 13, { align: "right" });
+        }
 
         // 3. Subject Grid
-        const headers = [["Subject", "Score", "Level", "Pts", "Remarks"]];
+        const headers = [["Subject", "Score", ...(hasGradeStreams ? ["Stream Rank", "Overall Rank"] : ["Overall Rank"]), "Level", "Pts", "Remarks"]];
         const tableStartY = infoBoxY + 26; // Y position for table
 
         // Determine senior status and eligibility map (use cached roster/elective assignments)
@@ -3717,7 +3783,19 @@ async function generateBulkReportCards() {
           const score = s.subjects[sub];
           const val = (score === undefined || score === null) ? "ABS" : score;
           const remark = cbcUtils.getSubjectRemark(score, sub);
-          return [sub, val, cbcUtils.getSubdivision(score, s.grade), cbcUtils.getPoints(score, s.grade), remark];
+          const streamRank = subjectRankMaps.stream.get(`${s.adm}::${sub}`);
+          const gradeRank = subjectRankMaps.grade.get(`${s.adm}::${sub}`);
+          return [
+            sub,
+            val,
+            ...(hasGradeStreams ? [
+              streamRank ? `${streamRank}/${subjectRankTotals.stream.get(`${String(s.stream || "Unassigned")}::${sub}`) || 1}` : "-",
+              gradeRank ? `${gradeRank}/${subjectRankTotals.grade.get(`::${sub}`) || 1}` : "-"
+            ] : [gradeRank ? `${gradeRank}/${subjectRankTotals.grade.get(`::${sub}`) || 1}` : "-"]),
+            cbcUtils.getSubdivision(score, s.grade),
+            cbcUtils.getPoints(score, s.grade),
+            remark
+          ];
         });
 
         doc.autoTable({
@@ -3801,7 +3879,7 @@ async function generateBulkReportCards() {
         const chartY = keyStartY;
         const chartW = 72;
         const chartH = 34;
-        if (progressSeries.length >= 2) {
+        if (progressSeries.length >= 1) {
             doc.setFont("helvetica", "bold").setFontSize(8).setTextColor(0, 0, 0);
             doc.text(sanitizePdfText("Term Progress"), chartX, chartY);
             doc.setDrawColor(203, 213, 225).setLineWidth(0.25).rect(chartX, chartY + 2, chartW, chartH);
@@ -3851,7 +3929,7 @@ async function generateBulkReportCards() {
             doc.setFont("helvetica", "bold").setFontSize(5.8);
             progressSeries.forEach((point, index) => {
                 const pointX = points[index].x;
-                const label = sanitizePdfText(point.label || `A${index + 1}`);
+                const label = sanitizePdfText(point.label);
                 doc.text(label, pointX, plotY + plotH + 4, { align: "center" });
             });
 
@@ -4186,9 +4264,9 @@ if (filterStreamEl) {
       const term = filterTermEl.value;
       const year = filterYearEl.value;
       const assessment = filterAssessmentEl.value;
-      const cacheKey = `${grade}_${term}_${year}_${assessment}`;
+      const cacheKey = `${grade}_${term}_${year}_${assessment}_${filterStreamEl?.value || "all"}`;
       const cached = getAnalyticsCache(cacheKey);
-      processAnalysisData(currentAnalysisRawData, currentIsSenior, assessment, currentPrevRawData, cached?.roster || []);
+      processAnalysisData(currentAnalysisRawData, currentIsSenior, assessment, currentPrevRawData, cached?.roster || currentRoster, currentElectiveAssignments);
     }
   }); // Update analysis on stream change
 }
@@ -4199,9 +4277,9 @@ if (filterPathwayEl) {
       const term = filterTermEl.value;
       const year = filterYearEl.value;
       const assessment = filterAssessmentEl.value;
-      const cacheKey = `${grade}_${term}_${year}_${assessment}`;
+      const cacheKey = `${grade}_${term}_${year}_${assessment}_${filterStreamEl?.value || "all"}`;
       const cached = getAnalyticsCache(cacheKey);
-      processAnalysisData(currentAnalysisRawData, currentIsSenior, assessment, currentPrevRawData, cached?.roster || []);
+      processAnalysisData(currentAnalysisRawData, currentIsSenior, assessment, currentPrevRawData, cached?.roster || currentRoster, currentElectiveAssignments);
     }
   });
 }
