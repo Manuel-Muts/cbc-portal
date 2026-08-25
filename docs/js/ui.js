@@ -1,4 +1,41 @@
 document.addEventListener("DOMContentLoaded", () => {
+  // Shared request indicator for page and dashboard data loading.
+  const loadingBar = document.createElement('div');
+  loadingBar.id = 'globalLoadingBar';
+  loadingBar.setAttribute('aria-hidden', 'true');
+  loadingBar.innerHTML = '<div class="global-loading-bar-progress"></div>';
+  loadingBar.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:3px;z-index:2147483647;background:rgba(15,23,42,0.12);pointer-events:none;opacity:0;transition:opacity .18s ease;';
+  const loadingProgress = loadingBar.firstElementChild;
+  loadingProgress.style.cssText = 'height:100%;width:0;background:linear-gradient(90deg,#0ea5e9,#2563eb,#14b8a6);box-shadow:0 0 10px rgba(14,165,233,.75);transition:width .25s ease;';
+  document.body.appendChild(loadingBar);
+
+  let activeRequests = 0;
+  let hideLoadingTimer;
+  const showLoading = () => {
+    clearTimeout(hideLoadingTimer);
+    activeRequests += 1;
+    loadingBar.style.opacity = '1';
+    loadingProgress.style.width = activeRequests === 1 ? '28%' : '72%';
+  };
+  const hideLoading = () => {
+    activeRequests = Math.max(0, activeRequests - 1);
+    if (activeRequests > 0) return;
+    loadingProgress.style.width = '100%';
+    hideLoadingTimer = setTimeout(() => {
+      loadingBar.style.opacity = '0';
+      loadingProgress.style.width = '0';
+    }, 220);
+  };
+
+  if (!window.__globalLoadingFetchWrapped && typeof window.fetch === 'function') {
+    const originalFetch = window.fetch.bind(window);
+    window.fetch = (...args) => {
+      showLoading();
+      return originalFetch(...args).finally(hideLoading);
+    };
+    window.__globalLoadingFetchWrapped = true;
+  }
+
     const isInstalledApp = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone || window.location.search.includes('source=pwa');
 
     if (isInstalledApp) {

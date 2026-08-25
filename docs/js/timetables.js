@@ -310,12 +310,37 @@ const TimetableModule = (function() {
         }
     };
 
+    function normalizeSchoolType(value) {
+        const normalized = String(value || "").trim().toLowerCase().replace(/[^a-z]+/g, "_");
+        if (normalized === "senior" || normalized === "senior_school" || normalized === "secondary") return "senior";
+        if (
+            normalized === "primary_junior" ||
+            normalized === "junior_primary" ||
+            normalized === "primary_and_junior" ||
+            normalized === "junior_and_primary" ||
+            normalized === "primary_plus_junior" ||
+            normalized === "junior_primary_school" ||
+            normalized === "primary_junior_school"
+        ) return "primary_junior";
+        if (normalized === "full" || normalized === "full_school" || normalized === "full_school_grades_pg_12") return "full";
+        return null;
+    }
+
     function getSchoolTypeKey() {
-        if (!schoolInfo || !schoolInfo.schoolType) return 'full';
-        const rawType = String(schoolInfo.schoolType).toLowerCase().replace(/[^a-z]/g, '_');
-        if (rawType.includes('primary') || rawType.includes('junior')) return 'primary_junior';
-        if (rawType.includes('senior')) return 'senior';
-        return 'full';
+        const schoolType = schoolInfo?.schoolType || schoolInfo?.school?.schoolType;
+        return normalizeSchoolType(schoolType) || 'full';
+    }
+
+    function applySchoolTypeSettings() {
+        if (getSchoolTypeKey() === 'primary_junior') {
+            settings.lessonsPerDay = 8;
+            settings.schoolDayEnd = "15:30";
+            if (!settings.breaks.some(b => b.name === "WRAP UP")) {
+                settings.breaks.push({ name: "WRAP UP", afterLesson: 8, duration: 5 });
+            }
+        } else {
+            settings.lessonsPerDay = 9;
+        }
     }
 
     function getGradeOptionsForSchool() {
@@ -1126,6 +1151,7 @@ const TimetableModule = (function() {
                     // Ensure cached data has schoolType and is not expired
                     if (cachedData && cachedData.schoolType && (Date.now() - timestamp < CACHE_TTL)) {
                         schoolInfo = { ...cachedData, logo: null, logoMimeType: null }; // Set schoolInfo from cache
+                        applySchoolTypeSettings();
                         populateDropdowns(); // Populate with cached data
                         shouldFetchFromServer = false; // No need to fetch from server
                     } else {
@@ -1144,22 +1170,12 @@ const TimetableModule = (function() {
                 if (schoolRes.ok) {
                     const fullSchoolData = await schoolRes.json();
                     schoolInfo = fullSchoolData; // Store full data in module-level variable
+                    applySchoolTypeSettings();
 
                     // Create a lightweight version for localStorage caching (without the potentially large logo)
                     const basicSchoolInfoToCache = { name: fullSchoolData.name, schoolType: fullSchoolData.schoolType };
                     localStorage.setItem(SCHOOL_INFO_CACHE_KEY, JSON.stringify({ timestamp: Date.now(), data: basicSchoolInfoToCache }));
                     
-                    // Update global module settings based on detected school type
-                    if (fullSchoolData.schoolType === 'primary_junior') {
-                        settings.lessonsPerDay = 8;
-                        settings.schoolDayEnd = "15:30";
-                        if (!settings.breaks.some(b => b.name === "WRAP UP")) {
-                            settings.breaks.push({ name: "WRAP UP", afterLesson: 8, duration: 5 });
-                        }
-                    } else {
-                        settings.lessonsPerDay = 9;
-                    }
-
                     populateDropdowns(); // Re-populate dropdowns with fresh info (using the now updated schoolInfo)
                 } else {
                     // Fallback if server fetch fails
