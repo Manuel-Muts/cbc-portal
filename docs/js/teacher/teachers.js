@@ -413,7 +413,9 @@ document.addEventListener("DOMContentLoaded", () => {
       });
     }
 
-    const displayName = (teacher.name || teacher.fullName || teacher.username || "Teacher").toString().trim();
+    const fullDisplayName = (teacher.name || teacher.fullName || teacher.username || "Teacher").toString().trim();
+    const nameParts = fullDisplayName.split(/\s+/).filter(Boolean);
+    const displayName = nameParts[1] || nameParts[0] || "Teacher";
     const roleLabel = Array.isArray(teacher.roles) ? teacher.roles[0] : (teacher.role || "Teacher");
     const labelText = String(roleLabel || "Teacher").replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase());
     const initial = displayName.charAt(0).toUpperCase() || "T";

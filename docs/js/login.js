@@ -299,8 +299,9 @@ document.addEventListener("DOMContentLoaded", function () {
     const allRoles = [
       { value: "teacher", label: "Teacher", icon: "fas fa-chalkboard-teacher" },
       { value: "learner", label: "Learner", icon: "fas fa-user-graduate" },
-      { value: "accounts", label: "Accounts", icon: "fas fa-wallet" },
-      { value: "admin", label: "Admin", icon: "fas fa-shield-alt" }
+      { value: "admin", label: "Admin", icon: "fas fa-shield-alt" },
+      { value: "accounts", label: "Accounts", icon: "fas fa-wallet" }
+      
     ];
 
     const visibleRoles = isInstalledApp
