@@ -356,13 +356,13 @@ app.get('/health', (req, res) => {
 // Serve robots.txt
 app.get('/robots.txt', (req, res) => {
   res.type('text/plain');
-  res.sendFile(path.join(__dirname, '../docs/robots.txt'));
+  res.sendFile(path.join(__dirname, 'public/robots.txt'));
 });
 
 // Serve sitemap.xml
 app.get('/sitemap.xml', (req, res) => {
   res.type('application/xml');
-  res.sendFile(path.join(__dirname, '../docs/sitemap.xml'));
+  res.sendFile(path.join(__dirname, 'public/sitemap.xml'));
 });
 
 

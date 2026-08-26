@@ -1532,6 +1532,7 @@ function processAnalysisData(allRaw, isSenior, assessment, allPrevRaw = null, ro
   // 🆕 Calculate previous assessment means for progress indicators
   const prevSubjectMeans = {};
   const prevStudentMeans = {};
+  const prevStudentSubjects = {};
 
   // 🆕 Improved baseline selection for Intra-Term Tracking (e.g. Mid-Term vs Opener)
   let prevBaselineData = null;
@@ -1595,6 +1596,7 @@ function processAnalysisData(allRaw, isSenior, assessment, allPrevRaw = null, ro
     const pSubjectCounts = {};
     
     Object.values(pStudentsMap).forEach(s => {
+      prevStudentSubjects[s.adm] = { ...s.subjects };
         if (s.hasAbsence) return; // Skip absent students for a fair baseline
 
         const rawScores = Object.values(s.subjects);
@@ -1810,7 +1812,14 @@ function processAnalysisData(allRaw, isSenior, assessment, allPrevRaw = null, ro
     const pMean = prevStudentMeans[s.adm];
     const progress = (pMean !== undefined && pMean > 0) ? (mean - pMean) : null;
 
-    return { ...s, total, mean, points, progress }; // Return student object with calculated stats
+    return {
+      ...s,
+      total,
+      mean,
+      points,
+      progress,
+      previousSubjects: prevStudentSubjects[s.adm] || {}
+    }; // Return student object with calculated stats
   }).sort((a, b) => b.mean - a.mean);
 
   lastProcessedStudents = studentArray; // 🆕 Store for bulk reports
@@ -3759,7 +3768,19 @@ async function generateBulkReportCards() {
         }
 
         // 3. Subject Grid
-        const headers = [["Subject", "Score", ...(hasGradeStreams ? ["Stream Rank", "Overall Rank"] : ["Overall Rank"]), "Level", "Pts", "Remarks"]];
+        const rankingHeaders = hasGradeStreams ? ["Stream Rank", "Overall Rank"] : ["Overall Rank"];
+        const headers = [
+          [
+            { content: "Subject", rowSpan: 2 },
+            { content: "Score", rowSpan: 2 },
+            { content: "Progress", rowSpan: 2 },
+            { content: "SUBJECTS RANKING", colSpan: rankingHeaders.length, styles: { halign: "center" } },
+            { content: "Level", rowSpan: 2 },
+            { content: "Points", rowSpan: 2 },
+            { content: "Remarks", rowSpan: 2 }
+          ],
+          rankingHeaders
+        ];
         const tableStartY = infoBoxY + 26; // Y position for table
 
         // Determine senior status and eligibility map (use cached roster/elective assignments)
@@ -3781,13 +3802,23 @@ async function generateBulkReportCards() {
 
         const rows = subjectsToShow.map(sub => {
           const score = s.subjects[sub];
+          const previousScore = s.previousSubjects?.[sub];
           const val = (score === undefined || score === null) ? "ABS" : score;
+          const isNumericScore = (value) => value !== null && value !== undefined && value !== ""
+            && !isNaN(value) && String(value).trim().toUpperCase() !== "X";
+          const currentNumber = Number(score);
+          const previousNumber = Number(previousScore);
+          const subjectProgress = isNumericScore(score) && isNumericScore(previousScore)
+            && Number.isFinite(currentNumber) && Number.isFinite(previousNumber)
+            ? `${currentNumber - previousNumber >= 0 ? "+" : ""}${(currentNumber - previousNumber).toFixed(1)}`
+            : "N/A";
           const remark = cbcUtils.getSubjectRemark(score, sub);
           const streamRank = subjectRankMaps.stream.get(`${s.adm}::${sub}`);
           const gradeRank = subjectRankMaps.grade.get(`${s.adm}::${sub}`);
           return [
             sub,
             val,
+            subjectProgress,
             ...(hasGradeStreams ? [
               streamRank ? `${streamRank}/${subjectRankTotals.stream.get(`${String(s.stream || "Unassigned")}::${sub}`) || 1}` : "-",
               gradeRank ? `${gradeRank}/${subjectRankTotals.grade.get(`::${sub}`) || 1}` : "-"
@@ -3803,9 +3834,49 @@ async function generateBulkReportCards() {
             head: headers,
             body: rows,
             theme: 'grid',
-            headStyles: { fillColor: [29, 78, 216], textColor: 255 },
+            headStyles: { fillColor: [147, 197, 253], textColor: [15, 23, 42] },
             styles: { fontSize: 7.5, cellPadding: 2, lineWidth: 0.2, lineColor: [0, 0, 0] },
             bodyStyles: { valign: 'middle' },
+            didParseCell: (data) => {
+              if (data.section !== 'body') return;
+
+              const isRankingColumn = data.column.index >= 3
+                && data.column.index < (hasGradeStreams ? 5 : 4);
+              if (isRankingColumn && /^\d+\/\d+$/.test(String(data.cell.raw))) {
+                data.cell.customRankText = String(data.cell.raw);
+                data.cell.text = [];
+                return;
+              }
+
+              if (data.column.index !== 2) return;
+
+              const progressValue = parseFloat(String(data.cell.raw));
+              if (Number.isNaN(progressValue)) return;
+
+              data.cell.styles.textColor = progressValue > 0
+                ? [22, 163, 74]
+                : progressValue < 0
+                  ? [220, 38, 38]
+                  : [71, 85, 105];
+              data.cell.styles.fontStyle = 'bold';
+            },
+            didDrawCell: (data) => {
+              if (data.section !== 'body' || !data.cell.customRankText) return;
+
+              const [position, total] = data.cell.customRankText.split('/');
+              const centerX = data.cell.x + (data.cell.width / 2);
+              const baselineY = data.cell.y + (data.cell.height / 2) + 1.1;
+              doc.setTextColor(15, 23, 42);
+              doc.setFont('helvetica', 'bold');
+              const positionWidth = doc.getTextWidth(position);
+              doc.setFont('helvetica', 'normal');
+              const suffixWidth = doc.getTextWidth(`/${total}`);
+              const startX = centerX - ((positionWidth + suffixWidth) / 2);
+              doc.setFont('helvetica', 'bold');
+              doc.text(position, startX, baselineY);
+              doc.setFont('helvetica', 'normal');
+              doc.text(`/${total}`, startX + positionWidth, baselineY);
+            },
             alternateRowStyles: { fillColor: [247, 248, 250] },
             margin: { left: 15, right: 15 },
             tableWidth: pageWidth - 30
@@ -3868,7 +3939,7 @@ async function generateBulkReportCards() {
             head: [["Level", "Range", "Pts"]],
             body: perfKeyBody,
             theme: 'grid',
-            headStyles: { fillColor: [29, 78, 216], textColor: 255, fontSize: 6.2, halign: 'center' },
+            headStyles: { fillColor: [147, 197, 253], textColor: [15, 23, 42], fontSize: 6.2, halign: 'center' },
             styles: { fontSize: 6, cellPadding: 1.2, lineWidth: 0.2, lineColor: [0, 0, 0] },
             margin: { left: metaX },
             tableWidth: 62
