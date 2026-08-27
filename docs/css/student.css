@@ -256,6 +256,22 @@ a {
   .sidebar-close {
     display: block;
   }
+
+  /* Keep actions close to the menu on compact screens. */
+  .sidebar.show {
+    height: auto;
+    max-height: 100dvh;
+  }
+
+  .sidebar.show .menu {
+    flex: 0 1 auto;
+    max-height: calc(100dvh - 190px);
+  }
+
+  .sidebar.show .sidebar-actions {
+    margin-top: 10px;
+    margin-bottom: 12px;
+  }
 }
 
 .btn.small { font-size: 0.85rem; padding: 6px 10px; border-radius: 6px; }
