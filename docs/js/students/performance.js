@@ -173,7 +173,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         if (termMarks.length > 0) {
           const assessTotals = {};
           termMarks.forEach(m => {
-            let sc = (m.score !== undefined && m.score !== null) ? Number(m.score) : (window.cbcUtils?.calculateFinalScore(m.continuousAssessment, m.projectWork, m.endTermExam) || 0);
+            let sc = Number(m.score ?? 0);
             if (!assessTotals[m.assessment]) assessTotals[m.assessment] = { sum: 0, count: 0 };
             assessTotals[m.assessment].sum += sc;
             assessTotals[m.assessment].count++;
@@ -230,7 +230,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       const totals = {};
       studentMarks.forEach(m => {
         const key = `${m.year}-${String(m.term).padStart(2, '0')}-${String(m.assessment).padStart(2, '0')}`;
-        let score = (m.score !== undefined && m.score !== null) ? Number(m.score) : (window.cbcUtils?.calculateFinalScore(m.continuousAssessment, m.projectWork, m.endTermExam) || 0);
+        let score = Number(m.score ?? 0);
         
         if (!totals[key]) {
           totals[key] = { sum: 0, count: 0, year: m.year, term: m.term, assessment: m.assessment };

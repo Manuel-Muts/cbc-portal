@@ -1159,7 +1159,7 @@ document.addEventListener("DOMContentLoaded", () => {
       row.dataset.pathway = student.pathway || ''; // Preserve stored pathway for senior school students
       const existingMark = allMarksEntered.get(markEntryKey);
       
-      const existingScoreValue = existingMark?.score ?? existingMark?.finalScore ?? existingMark?.continuousAssessment ?? existingMark?.projectWork ?? existingMark?.endTermExam ?? '';
+      const existingScoreValue = existingMark?.score ?? '';
 
       // ADM and Name columns
       row.innerHTML = `
@@ -1246,7 +1246,6 @@ document.addEventListener("DOMContentLoaded", () => {
       markData.course = selectedSubject;
       markData.pathway = markData.pathway || row.dataset.pathway || null; // Preserve existing pathway if available
       markData.score = inputValue.toUpperCase() === "X" ? "X" : (inputValue === "" ? null : inputValue);
-      markData.finalScore = markData.score;
     } else {
       markData.subject = selectedSubject;
       if (inputElement.classList.contains("marks-input")) {
@@ -1659,7 +1658,6 @@ document.addEventListener("DOMContentLoaded", () => {
           markPayload.pathway = pathway;
           markPayload.course = course;
           markPayload.score = (String(markData.score).toUpperCase() === "X") ? null : (markData.score !== null && markData.score !== "" ? Number(markData.score) : null);
-          markPayload.finalScore = markPayload.score;
 
         }
         else {
@@ -2097,7 +2095,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const editDisabled = !canEditSubmittedGroup;
     const deleteDisabled = !canEditSubmittedGroup;
     let tbody = `<tbody>${pagedGroupMarks.map(m => {
-      const displayScore = groupIsSenior ? (m.score ?? m.finalScore ?? '-') : (m.score ?? '-');
+      const displayScore = m.score ?? '-';
       const scoreCell = `<td data-label="Score">${sanitize(displayScore)}</td>`;
       return `<tr data-id="${m._id || ''}"><td data-label="Admission">${sanitize(m.admissionNo ?? m.admission ?? '')}</td><td data-label="Name">${sanitize(m.studentName)}</td>${scoreCell}<td data-label="Actions"><button class="btn-edit" data-action="edit" ${editDisabled ? 'disabled' : ''}>✏️</button><button class="btn-delete" data-action="delete" ${deleteDisabled ? 'disabled' : ''}>🗑️</button></td></tr>`;
     }).join('')}</tbody>`;
@@ -2306,7 +2304,7 @@ document.addEventListener("DOMContentLoaded", () => {
         // 7. Populate the mark input in that specific row
         const marksInput = studentRow.querySelector(".marks-input");
         if (marksInput) {
-          const inputValue = mark.score ?? mark.finalScore ?? mark.continuousAssessment ?? mark.projectWork ?? mark.endTermExam ?? '';
+          const inputValue = mark.score ?? '';
           marksInput.value = inputValue;
           marksInput.dispatchEvent(new Event('input', { bubbles: true }));
         }

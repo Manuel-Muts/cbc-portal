@@ -280,7 +280,7 @@ const LearnerMarksModule = (function() {
         lmMarkModalContent.appendChild(inputWrapper);
       }
 
-      const existingScore = currentExistingMark?.score ?? currentExistingMark?.finalScore ?? '';
+      const existingScore = currentExistingMark?.score ?? '';
       const currentScore = existingScore !== null && existingScore !== undefined ? existingScore : '';
       if (lmMarkModalInput) {
         lmMarkModalInput.value = currentScore;
@@ -600,7 +600,7 @@ const LearnerMarksModule = (function() {
       const key = normalizeLearnerKey(subject);
       const existingMark = existingMap.get(key);
       const scoreValue = existingMark ?
-        (existingMark.score !== null ? existingMark.score : (existingMark.finalScore ?? "X")) : "-";
+        (existingMark.score !== null ? existingMark.score : "X") : "-";
       const status = existingMark ? "Submitted" : "Missing";
       const actionText = existingMark ? "Edit" : "Add";
       const isSelected = selectedKey === key;
@@ -685,9 +685,6 @@ const LearnerMarksModule = (function() {
       payload.course = course;
       payload.subject = null;
       payload.score = score;
-      payload.continuousAssessment = null;
-      payload.projectWork = null;
-      payload.endTermExam = null;
     } else {
       payload.subject = subject;
       payload.pathway = null;

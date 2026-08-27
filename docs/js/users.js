@@ -38,6 +38,7 @@
   const csvGradeFilter = document.getElementById("csvGradeFilter");
   const csvStreamFilter = document.getElementById("csvStreamFilter");
   const downloadFilteredStudentsCsvBtn = document.getElementById("downloadFilteredStudentsCsvBtn");
+  const downloadLearnerImportCsvBtn = document.getElementById("downloadLearnerImportCsvBtn");
   const downloadScoreSheetsPdfBtn = document.getElementById("downloadScoreSheetsPdfBtn"); // 🆕 New PDF button
   let userProfile = null;
   let importCancelled = false;
@@ -1102,9 +1103,10 @@ if (usersNextPageBtn) {
     const schoolName = (prefetchedSchoolName || "School").toString().trim() || "School";
     const normalizedGrade = grade && grade !== "all" ? grade : "All";
     const normalizedStream = stream && stream !== "all" ? stream : "All";
+    const documentTitle = `${schoolName} - Learners List - ${normalizedGrade === "All" ? "All Grades" : `Grade ${normalizedGrade}`}${normalizedStream !== "All" ? ` - Stream ${normalizedStream}` : ""}`;
 
     const dataRows = [
-      [schoolName],
+      [documentTitle],
       ["GRADE", normalizedGrade],
       ["STREAM", normalizedStream],
       [],
@@ -1176,6 +1178,34 @@ if (usersNextPageBtn) {
     document.body.removeChild(link);
     URL.revokeObjectURL(link.href);
   }
+
+  function triggerLearnerImportCsvDownload(rows, filename, includeStream) {
+    const escapeCsvValue = value => {
+      const text = value === null || value === undefined ? "" : String(value);
+      return /[",\r\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+    };
+    const headers = includeStream
+      ? ["Name", "Admission", "Grade", "Stream", "Contact"]
+      : ["Name", "Admission", "Grade", "Contact"];
+    const csvContent = [headers, ...rows]
+      .map(row => row.map(escapeCsvValue).join(","))
+      .join("\r\n");
+    const blob = new Blob(["\uFEFF", csvContent], { type: "text/csv;charset=utf-8;" });
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(link.href);
+  }
+
+  const getNumericGrade = grade => {
+    const normalized = String(grade || "").trim();
+    if (/^(PP\d|PG)$/i.test(normalized)) return normalized.toUpperCase();
+    const match = normalized.match(/\d+/);
+    return match ? match[0] : normalized;
+  };
 
   // 🆕 Download Students List as CSV Button Logic
   if (downloadStudentsCsvBtn) {
@@ -1330,7 +1360,9 @@ if (usersNextPageBtn) {
           stream: streamVal
         });
         const timestamp = new Date().toISOString().slice(0,10);
-        triggerWorkbookDownload(workbook, `Filtered_Students_List_${timestamp}.xlsx`);
+        const gradeLabel = gradeVal === "all" ? "All_Grades" : `Grade_${gradeVal}`;
+        const streamLabel = streamVal && streamVal !== "all" ? `_Stream_${streamVal}` : "";
+        triggerWorkbookDownload(workbook, `Filtered_Learners_${gradeLabel}${streamLabel}_${timestamp}.xlsx`);
 
         showToast("Excel export generated successfully", "success");
       } catch (err) {
@@ -1339,6 +1371,56 @@ if (usersNextPageBtn) {
       } finally {
         downloadFilteredStudentsCsvBtn.disabled = false;
         downloadFilteredStudentsCsvBtn.innerHTML = originalHTML;
+      }
+    });
+  }
+
+  if (downloadLearnerImportCsvBtn) {
+    downloadLearnerImportCsvBtn.addEventListener("click", async () => {
+      const validation = validateCsvDownloadFilters();
+      if (!validation.valid) return;
+      const { gradeVal, streamVal } = validation;
+      const originalHTML = downloadLearnerImportCsvBtn.innerHTML;
+      downloadLearnerImportCsvBtn.disabled = true;
+      downloadLearnerImportCsvBtn.innerHTML = '<span class="spinner"></span> Generating CSV...';
+
+      try {
+        const params = new URLSearchParams({ limit: 5000, role: "student", page: 1, _t: Date.now() });
+        if (gradeVal && gradeVal !== "all") params.append("grade", gradeVal);
+        if (streamVal && streamVal !== "all") params.append("stream", streamVal);
+
+        const res = await secureFetch(`${API_BASE}/users?${params.toString()}`);
+        if (!res || !res.users) throw new Error("Failed to fetch student data for import CSV.");
+
+        const students = sortStudentsAlphabetically(res.users);
+        if (students.length === 0) {
+          showToast("No students found for the selected filters.", "info");
+          return;
+        }
+
+        const includeStream = Array.from(csvStreamFilter?.options || [])
+          .some(option => String(option.value || "").trim() && option.value !== "all");
+        const rows = students.map(student => {
+          const row = [
+            student.name || "",
+            student.admission || student.admissionNo || "",
+            getNumericGrade(student.grade || gradeVal)
+          ];
+          if (includeStream) row.push(student.stream || streamVal || "");
+          row.push(student.contact || "");
+          return row;
+        });
+        const timestamp = new Date().toISOString().slice(0, 10);
+        const gradeLabel = gradeVal === "all" ? "All_Grades" : `Grade_${getNumericGrade(gradeVal)}`;
+        const streamLabel = streamVal && streamVal !== "all" ? `_Stream_${streamVal}` : "";
+        triggerLearnerImportCsvDownload(rows, `Learner_Import_${gradeLabel}${streamLabel}_${timestamp}.csv`, includeStream);
+        showToast("Import CSV generated successfully", "success");
+      } catch (err) {
+        console.error("Download Learner Import CSV Error:", err);
+        showToast("Failed to generate import CSV: " + (err.message || "Unknown error"), "error");
+      } finally {
+        downloadLearnerImportCsvBtn.disabled = false;
+        downloadLearnerImportCsvBtn.innerHTML = originalHTML;
       }
     });
   }

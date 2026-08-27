@@ -22,16 +22,6 @@ const markSchema = new mongoose.Schema({
   // ===== JUNIOR SCHOOL (Grades 1-9): Simple Score =====
   score: { type: Number, required: false, default: null }, // Single score for junior school
 
-  // ===== SENIOR SCHOOL (Grades 10-12): Single score input =====
-  // The teacher UI now submits one mark for senior school and stores it in score/finalScore.
-  continuousAssessment: { type: Number, default: null }, // Legacy field retained for compatibility
-  projectWork: { type: Number, default: null },          // Legacy field retained for compatibility
-  endTermExam: { type: Number, default: null },          // Legacy field retained for compatibility
-  
-  // Single submitted score for senior school
-  finalScore: { type: Number, default: null },           // Single score 0-100
-  performanceLevel: { type: String, default: null },     // EE, ME, AE, BE
-
   schoolId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: "School",
@@ -74,12 +64,14 @@ markSchema.index({
 // For Student & Class Performance queries
 markSchema.index({ schoolId: 1, grade: 1, stream: 1, year: 1, term: 1, assessment: 1 });
 
+// For Submitted Subjects audit queries
+markSchema.index({ schoolId: 1, year: 1, term: 1, assessment: 1, grade: 1, stream: 1 }, { name: "idx_submitted_subjects_audit" });
+
+// For Dean grade analysis when all streams are selected
+markSchema.index({ schoolId: 1, grade: 1, year: 1, term: 1, assessment: 1 }, { name: "idx_dean_grade_analysis" });
+
 // High-impact index for dean ranking / school-wide analytics
 markSchema.index({ schoolId: 1, year: 1, term: 1, assessment: 1, admissionNo: 1 });
-
-// 🆕 For Dean/Admin analytics queries that filter by performance level
-markSchema.index({ schoolId: 1, year: 1, term: 1, assessment: 1, performanceLevel: 1 });
-
 
 const Mark = mongoose.model("Mark", markSchema);
 export default Mark;

@@ -809,7 +809,6 @@ export const getAllUsers = async (req, res) => {
     if (query.role === 'student' && (normalizedGrade || normalizedStream)) {
       const enrollmentFilter = {
         schoolId: user.schoolId,
-        academicYear: new Date().getFullYear(), // Assume current year for active enrollments
         status: 'active'
       };
       if (normalizedGrade && normalizedGrade !== 'all') {

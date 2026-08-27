@@ -180,7 +180,7 @@ window.deanDebugCheckStudent = function(admissionNo) {
 };
 
 const CACHE_TTL = 15 * 60 * 1000; // 15 minutes
-const CACHE_KEY_PREFIX = "dean_analytics_cache_";
+const CACHE_KEY_PREFIX = "dean_analytics_cache_v2_";
 
 let schoolInfo = null;
 //.................................
@@ -1266,14 +1266,7 @@ function isSubjectEligibleForStudent(studentKey, subjectName, isSenior, eligibil
 
 function getSeniorSubjectScore(sub) {
   const isX = (v) => v === null || v === undefined || String(v).trim() === "" || (typeof v === 'string' && v.trim().toUpperCase() === "X");
-  if (!isX(sub.score)) return sub.score;
-
-  const ca = sub.continuousAssessment;
-  const pw = sub.projectWork;
-  const exam = sub.endTermExam;
-  const hasComponents = [ca, pw, exam].some(v => !isX(v));
-  if (!hasComponents) return "X";
-  return window.cbcUtils.calculateFinalScore(ca, pw, exam);
+  return isX(sub.score) ? "X" : sub.score;
 }
 
 /**
@@ -1511,7 +1504,6 @@ function processAnalysisData(allRaw, isSenior, assessment, allPrevRaw = null, ro
   const studentsMap = {};
   const subjectTotals = {};
   const subjectCounts = {};
-  const subjectTermStats = {}; // To track T1, T2, T3 means for trend line
   const missingExamsMap = {}; // 🆕 Use a map to group missed subjects by student/assessment
   const pathwayByAdmission = new Map();
   if (Array.isArray(roster)) {
@@ -1569,9 +1561,8 @@ function processAnalysisData(allRaw, isSenior, assessment, allPrevRaw = null, ro
 
         const isX = (v) => v === null || v === undefined || String(v).trim() === "" || (typeof v === 'string' && v.trim().toUpperCase() === "X");
         const hasSeniorScore = !isX(sub.score);
-        const seniorComponentsAbsent = isX(sub.endTermExam) && isX(sub.continuousAssessment) && isX(sub.projectWork);
         let isAbsent = isSenior
-            ? (!hasSeniorScore && seniorComponentsAbsent)
+            ? !hasSeniorScore
             : isX(sub.score);
 
         const score = isSenior ? getSeniorSubjectScore(sub) : sub.score;
@@ -1649,9 +1640,8 @@ function processAnalysisData(allRaw, isSenior, assessment, allPrevRaw = null, ro
       // Robust missing/absent detection (catches null, undefined, empty, or "X")
       const isX = (v) => v === null || v === undefined || String(v).trim() === "" || (typeof v === 'string' && v.trim().toUpperCase() === "X");
       const hasSeniorScore = !isX(sub.score);
-      const seniorComponentsAbsent = isX(sub.endTermExam) && isX(sub.continuousAssessment) && isX(sub.projectWork);
       let isAbsent = isSenior
-        ? (!hasSeniorScore && seniorComponentsAbsent)
+        ? !hasSeniorScore
         : (isX(sub.score) || sub.score === 0);
       
       const score = isSenior ? getSeniorSubjectScore(sub) : sub.score;
@@ -1739,8 +1729,7 @@ function processAnalysisData(allRaw, isSenior, assessment, allPrevRaw = null, ro
       .map(s => isAll ? s.adm : `${s.adm}_${s.assess}`)
   );
 
-  // 🆕 THIRD PASS: Calculate Subject Stats excluding disqualified learners
-  // This ensures Subject Means and Trend Lines only reflect consistent data from fully-tested students.
+  // 🆕 THIRD PASS: Calculate current subject means excluding disqualified learners.
   raw.forEach(m => {
     const key = isAll ? m.admissionNo : `${m.admissionNo}_${m.assessment}`;
     const student = studentsMap[key];
@@ -1758,13 +1747,6 @@ function processAnalysisData(allRaw, isSenior, assessment, allPrevRaw = null, ro
           const numScore = Number(score);
           const termNum = m.term;
           
-          // Collect per-term stats for the trend line
-          if (termNum >= 1 && termNum <= 3) {
-            if (!subjectTermStats[subName]) subjectTermStats[subName] = { 1: { s: 0, c: 0 }, 2: { s: 0, c: 0 }, 3: { s: 0, c: 0 } };
-            subjectTermStats[subName][termNum].s += numScore;
-            subjectTermStats[subName][termNum].c++;
-          }
-
           subjectTotals[subName] = (subjectTotals[subName] || 0) + numScore;
           subjectCounts[subName] = (subjectCounts[subName] || 0) + 1;
         }
@@ -2030,7 +2012,7 @@ function processAnalysisData(allRaw, isSenior, assessment, allPrevRaw = null, ro
   
   // Tables
   renderRankingTable(studentArray, sortedSubjects, isSenior, selectedStream);
-  renderSubjectStats(sortedSubjects, subjectTotals, subjectCounts, prevSubjectMeans, subjectTermStats);
+  renderSubjectStats(sortedSubjects, subjectTotals, subjectCounts, prevSubjectMeans, isSenior);
   renderMissingExamsTable(missingExamsList, streamDiscrepancies); // 🆕 Call renderer for missing exams
 }
 
@@ -2367,6 +2349,7 @@ async function downloadRankingAsPDF() {
   const foot = [buildFooterRow("TOTAL:", "total"), buildFooterRow("MEAN:", "mean")];
 
   const streamRankColIndex = headers.indexOf("Stream Rank");
+  const progressColIndex = headers.indexOf("Progress");
   doc.autoTable({ 
     startY: yPos, // Use the updated yPos
     head: [headers], 
@@ -2398,6 +2381,17 @@ async function downloadRankingAsPDF() {
         if (streamRankColIndex !== -1 && data.column.index === streamRankColIndex) {
           data.cell.styles.fontStyle = 'bold';
           data.cell.styles.textColor = [17, 77, 115];
+        }
+        if (progressColIndex !== -1 && data.column.index === progressColIndex) {
+          const progressValue = parseFloat(String(data.cell.raw).replace(/[^0-9+.-]/g, ''));
+          if (!Number.isNaN(progressValue)) {
+            data.cell.styles.textColor = progressValue > 0
+              ? [22, 163, 74]
+              : progressValue < 0
+                ? [220, 38, 38]
+                : [71, 85, 105];
+            data.cell.styles.fontStyle = 'bold';
+          }
         }
       }
       if (data.section === 'body' && tiedRowIndices.includes(data.row.index)) {
@@ -2894,6 +2888,7 @@ async function downloadSubjectPerformanceAsPDF() {
   if (!hasMeaningfulProgress && progressIdx !== -1) skipIndices.add(progressIdx);
 
   const headers = rawHeaders.filter((_, i) => !skipIndices.has(i));
+  const pdfProgressIdx = headers.indexOf("Progress");
   const tiedRowIndices = [];
 
   const rows = tbodyRows.map((tr, idx) => {
@@ -2914,6 +2909,17 @@ async function downloadSubjectPerformanceAsPDF() {
     rowPageBreak: 'avoid', // 🆕 Prevents subject rows from splitting
     margin: { bottom: 35 }, // 🆕 Space for signature
     didParseCell: (data) => {
+      if (data.section === 'body' && pdfProgressIdx !== -1 && data.column.index === pdfProgressIdx) {
+        const progressValue = parseFloat(String(data.cell.raw).replace(/[^0-9+.-]/g, ''));
+        if (!Number.isNaN(progressValue)) {
+          data.cell.styles.textColor = progressValue > 0
+            ? [22, 163, 74]
+            : progressValue < 0
+              ? [220, 38, 38]
+              : [71, 85, 105];
+          data.cell.styles.fontStyle = 'bold';
+        }
+      }
       if (data.section === 'body' && tiedRowIndices.includes(data.row.index)) {
         data.cell.styles.fillColor = [255, 249, 219];
       }
@@ -2984,7 +2990,7 @@ async function downloadSubjectPerformanceAsPDF() {
   }
 }
 
-function renderSubjectStats(subjects, totals, counts, prevMeans = {}, termStats = {}) {
+function renderSubjectStats(subjects, totals, counts, prevMeans = {}, isSenior = false) {
   if (!subjects.length) { subjectTableContainer.style.display = "none"; return; }
   subjectTableContainer.style.display = "block";
 
@@ -2996,7 +3002,8 @@ function renderSubjectStats(subjects, totals, counts, prevMeans = {}, termStats 
     return {
       name: s,
       mean,
-      count
+      count,
+      level: mean === null ? '-' : window.cbcUtils.getSubdivision(mean, filterGradeEl.value)
     };
   }).sort((a, b) => {
     if (a.mean === null && b.mean === null) return 0;
@@ -3017,35 +3024,8 @@ function renderSubjectStats(subjects, totals, counts, prevMeans = {}, termStats 
   const rankCounts = {};
   subjectList.forEach(s => { rankCounts[s.rank] = (rankCounts[s.rank] || 0) + 1; });
 
-  // Helper for generating sparkline SVG
-  const getTrendLine = (subName) => {
-    const stats = termStats[subName];
-    if (!stats) return "";
-    const points = [];
-    [1, 2, 3].forEach((t, i) => {
-      if (stats[t] && stats[t].c > 0) {
-        const val = stats[t].s / stats[t].c;
-        points.push({ x: i * 25 + 5, y: 25 - (val / 100 * 20), val: val.toFixed(0) });
-      }
-    });
-
-    // Prepare textual statistics for PDF export (picked up by innerText)
-    const trendText = points.map((p, i) => `T${i+1}:${p.val}%`).join(' ');
-    const hiddenLabel = `<span class="sr-only">${trendText}</span>`;
-
-    if (points.length < 2) return hiddenLabel + `<span style="color:#94a3b8; font-size:0.75rem;">${points[0]?.val || '-'}%</span>`;
-    
-    let path = `M ${points[0].x} ${points[0].y}`;
-    for(let j=1; j<points.length; j++) path += ` L ${points[j].x} ${points[j].y}`;
-    
-    return hiddenLabel + `<svg width="60" height="30" style="vertical-align:middle; overflow:visible;">
-      <path d="${path}" fill="none" stroke="#3498db" stroke-width="2" />
-      ${points.map(p => `<circle cx="${p.x}" cy="${p.y}" r="2" fill="#2980b9"><title>T: ${p.val}%</title></circle>`).join('')}
-    </svg>`;
-  };
-
   let html = `<table class="marks-table" style="width:100%; border-collapse: collapse;">
-    <thead><tr><th>Rank</th><th>Subject</th><th>Mean Score</th><th>Yearly Trend</th><th>Progress</th><th>Entries</th></tr></thead>
+    <thead><tr><th>Rank</th><th>Subject</th><th>Mean Score</th><th>Performance Level</th><th>Progress</th><th>Entries</th></tr></thead>
     <tbody>`;
   
   subjectList.forEach(s => {
@@ -3069,7 +3049,7 @@ function renderSubjectStats(subjects, totals, counts, prevMeans = {}, termStats 
       <td>${s.rank}</td>
       <td>${s.name}</td>
       <td>${s.mean !== null ? s.mean.toFixed(2) + '%' : 'N/A'}</td>
-      <td style="text-align:center; padding: 2px;">${getTrendLine(s.name)}</td>
+      <td>${s.level}</td>
       <td>${progressHtml}</td>
       <td>${s.count}</td>
     </tr>`;

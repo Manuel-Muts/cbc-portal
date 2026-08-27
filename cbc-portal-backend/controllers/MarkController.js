@@ -319,10 +319,7 @@ const processSingleMark = async (markData, reqUser, isNew = true, cachedContext 
     pathway,
     course,
     assessment,
-    score,
-    continuousAssessment,
-    projectWork,
-    endTermExam
+    score
   } = markData;
 
   const effectivePathway = isSeniorSchool ? normalizePathway(pathway || getSeniorPathway(course)) : null;
@@ -440,22 +437,9 @@ const processSingleMark = async (markData, reqUser, isNew = true, cachedContext 
   if (isSeniorSchool) {
     markFields.subject = null; markFields.pathway = effectivePathway; markFields.course = course;
     markFields.score = safeParse(score);
-    markFields.finalScore = markFields.score;
-    markFields.continuousAssessment = null;
-    markFields.projectWork = null;
-    markFields.endTermExam = null;
-
-    if (markFields.score !== null) {
-      markFields.performanceLevel = getPerformanceSubdivision(markFields.score, grade, customConfig);
-    } else {
-      markFields.performanceLevel = null;
-    }
   } else {
     markFields.subject = subject; markFields.pathway = null; markFields.course = null;
     markFields.score = safeParse(score); 
-    markFields.finalScore = null; markFields.performanceLevel = null;
-    // 🆕 Calculate performance level for junior school
-    markFields.performanceLevel = getPerformanceSubdivision(markFields.score, grade, customConfig);
   } 
   return markFields;
 };
@@ -1093,10 +1077,6 @@ export const getMarksByGrade = async (req, res) => {
               score: "$score",
               course: "$course",
               pathway: "$pathway",
-              continuousAssessment: "$continuousAssessment",
-              projectWork: "$projectWork",
-              endTermExam: "$endTermExam",
-              finalScore: "$finalScore"
             }
           }
         }
@@ -1195,10 +1175,6 @@ export const getClassMarks = async (req, res) => {
               score: "$score",
               course: "$course",
               pathway: "$pathway",
-              continuousAssessment: "$continuousAssessment",
-              projectWork: "$projectWork",
-              endTermExam: "$endTermExam",
-              finalScore: "$finalScore"
             }
           }
         }
@@ -1366,7 +1342,7 @@ export const broadcastResultsSMS = async (req, res) => {
       // 🆕 EXCLUSION LOGIC: Skip students with any missing marks or "X" (absences)
       // This ensures parents only receive the SMS if the performance profile is complete.
       const hasIncompleteMarks = sMarks.some(m => {
-        const score = isSenior ? m.finalScore : m.score;
+        const score = m.score;
         return score === null || score === undefined || String(score).toUpperCase() === "X";
       });
 
@@ -1387,7 +1363,7 @@ export const broadcastResultsSMS = async (req, res) => {
 
       sMarks.forEach(m => {
         const fullSub = isSenior ? (m.course || "Sub") : (m.subject || "Sub");
-        const score = isSenior ? m.finalScore : m.score;
+        const score = m.score;
         const abbr = getSubjectAbbr(fullSub);
         
         // Use X for absent, or round the score to save space
@@ -1565,8 +1541,7 @@ export const getSchoolWideRankings = async (req, res) => {
           grade: { $first: "$grade" },
           stream: { $first: "$stream" },
           studentId: { $first: "$studentId" },
-          // Extract either the Senior finalScore or Junior score
-          scores: { $push: { $ifNull: ["$finalScore", "$score"] } }
+          scores: { $push: "$score" }
         }
       },
       {
@@ -1664,8 +1639,7 @@ export const getSubmittedSubjectStats = async (req, res) => {
         $match: {
           $or: [
             { "score": { $ne: null } },
-            { "finalScore": { $ne: null } },
-            { "endTermExam": { $ne: null } }
+            { "score": { $ne: null } }
           ]
         }
       },

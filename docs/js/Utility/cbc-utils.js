@@ -240,22 +240,6 @@ window.cbcUtils = {
         const num = window.cbcUtils.getGradeNum(grade);
         return num >= 7 && num <= 9;
     },
-    /**
-     * Calculates weighted final score for Senior School (Grade 10-12)
-     */
-    calculateFinalScore: (ca, pw, exam) => {
-        const isAbsent = [ca, pw, exam].some(v => v === null || String(v).trim().toUpperCase() === 'X');
-        if (isAbsent) return "X";
-
-        const caVal = parseFloat(ca) || 0;
-        const pwVal = parseFloat(pw) || 0;
-        const examVal = parseFloat(exam) || 0;
-        const total = (caVal * 0.30) + (pwVal * 0.20) + (examVal * 0.50);
-        // Ensure score is between 0 and 100
-        const clampedTotal = Math.max(0, Math.min(100, total));
-        return Math.round(clampedTotal * 10) / 10; 
-    },
-
     getPerformanceLevel: (score, grade) => { 
         const isPrimary = window.cbcUtils.isPrimaryGrade(grade);
         const config = window.cbcUtils.customGradingConfig?.[isPrimary ? 'primary' : 'secondary'];

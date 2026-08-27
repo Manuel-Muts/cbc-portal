@@ -61,7 +61,7 @@ const SubmittedSubjectsModule = (function() {
 
         // 3. Populate Assessments
         if (ssAssessmentFilter && window.ASSESSMENT_MAPPING) { // Check if mapping is available
-            ssAssessmentFilter.innerHTML = '<option value="">-- Select Assessment --</option><option value="all">All Assessments</option>';
+            ssAssessmentFilter.innerHTML = '<option value="">-- Select Assessment --</option>';
             Object.entries(window.ASSESSMENT_MAPPING).forEach(([value, label]) => {
                 const opt = document.createElement("option");
                 opt.value = value;
@@ -69,7 +69,7 @@ const SubmittedSubjectsModule = (function() {
                 ssAssessmentFilter.appendChild(opt);
             });
             console.log("DEBUG: ssAssessmentFilter populated.");
-            ssAssessmentFilter.value = "all"; // Default to All for auditing
+            ssAssessmentFilter.value = "";
         }
         // 5. Populate Years
         if (ssYearFilter) {

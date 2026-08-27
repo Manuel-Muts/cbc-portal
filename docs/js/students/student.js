@@ -943,7 +943,7 @@ const displayStudentTables = async () => {
       let tbody = "<tbody>";
       list.forEach(m => {
         if (isSenior) {
-          const rawScore = m.score ?? m.finalScore ?? m.continuousAssessment ?? m.projectWork ?? m.endTermExam ?? null;
+          const rawScore = m.score ?? null;
           const scorePresent = rawScore !== undefined && rawScore !== null && String(rawScore).trim() !== "" && String(rawScore).trim().toUpperCase() !== "X";
           const scoreDisplay = scorePresent ? `${Number(rawScore)}%` : '<span style="color:#ef4444; font-weight:700;">ABS</span>';
           const levelDisplay = scorePresent ? window.cbcUtils.getSubdivision(Number(rawScore), m.grade || user.grade) : "-";
@@ -1001,7 +1001,7 @@ const displayStudentTables = async () => {
           let scoreCount = 0;
 
           list.forEach(m => {
-            const rawScore = m.score ?? m.finalScore ?? m.continuousAssessment ?? m.projectWork ?? m.endTermExam ?? null;
+            const rawScore = m.score ?? null;
             const scorePresent = rawScore !== undefined && rawScore !== null && String(rawScore).trim() !== "" && String(rawScore).trim().toUpperCase() !== "X";
             if (scorePresent) {
               const numericScore = Number(rawScore);

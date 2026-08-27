@@ -384,18 +384,18 @@ async function getImageBase64(url) {
     const tbody = document.querySelector("#marksTable tbody");
     tbody.innerHTML = "";
 
-    let totalFinalScore = 0;
+    let totalScore = 0;
     let validScoreCount = 0;
     let totalPoints = 0;
 
     studentMarks.forEach(m => {
-      const rawScore = m.score ?? m.finalScore ?? m.continuousAssessment ?? m.projectWork ?? m.endTermExam ?? null;
+      const rawScore = m.score ?? null;
       const isAbs = rawScore === null || rawScore === undefined || String(rawScore).trim() === "" || String(rawScore).toUpperCase() === "X";
-      const finalScore = isAbs ? null : Number(rawScore);
-      const fs = finalScore !== null ? finalScore : "-";
-      const points = finalScore !== null ? window.cbcUtils.getPoints(finalScore, reportGrade) : "-";
-      const perfLevel = finalScore !== null ? window.cbcUtils.getSubdivision(finalScore, reportGrade) : "N/A";
-      const remark = isAbs ? "ABSENT" : (finalScore !== null ? window.cbcUtils.getSubjectRemark(finalScore, m.course) : "-");
+      const numericScore = isAbs ? null : Number(rawScore);
+      const fs = numericScore !== null ? numericScore : "-";
+      const points = numericScore !== null ? window.cbcUtils.getPoints(numericScore, reportGrade) : "-";
+      const perfLevel = numericScore !== null ? window.cbcUtils.getSubdivision(numericScore, reportGrade) : "N/A";
+      const remark = isAbs ? "ABSENT" : (numericScore !== null ? window.cbcUtils.getSubjectRemark(numericScore, m.course) : "-");
 
       const tr = document.createElement("tr");
       tr.innerHTML = `
@@ -407,15 +407,15 @@ async function getImageBase64(url) {
       `;
       tbody.appendChild(tr);
 
-      if (finalScore !== null) {
-        totalFinalScore += Number(finalScore);
-        totalPoints += cbcUtils.getPoints(finalScore, reportGrade);
+      if (numericScore !== null) {
+        totalScore += Number(numericScore);
+        totalPoints += cbcUtils.getPoints(numericScore, reportGrade);
         validScoreCount++;
       }
     });
 
-    const meanFinalScore = validScoreCount > 0 ? (totalFinalScore / validScoreCount).toFixed(1) : 0;
-    updateReportSummary(meanFinalScore, totalPoints);
+    const meanScore = validScoreCount > 0 ? (totalScore / validScoreCount).toFixed(1) : 0;
+    updateReportSummary(meanScore, totalPoints);
   }
   // ===== JUNIOR SCHOOL (1-9): Subject-Based Report =====
   else {
