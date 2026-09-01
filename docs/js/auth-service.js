@@ -212,4 +212,29 @@ const authService = {
     }
 };
 
+/**
+ * INACTIVITY TIMEOUT HANDLER
+ * Automatically logs out user if inactive for 30 minutes
+ */
+(function initInactivityTimeout() {
+    let lastActivityTime = Date.now();
+    const INACTIVITY_TIMEOUT = 30 * 60 * 1000; // 30 minutes
+    const CHECK_INTERVAL = 60000; // Check every minute
+
+    // Track user activity
+    ['mousedown', 'keydown', 'scroll', 'touchstart'].forEach(event => {
+        document.addEventListener(event, () => {
+            lastActivityTime = Date.now();
+        }, { passive: true });
+    });
+
+    // Periodic inactivity check
+    setInterval(() => {
+        if (Date.now() - lastActivityTime > INACTIVITY_TIMEOUT) {
+            console.warn('[Inactivity] Session inactive for 30 minutes. Logging out...');
+            authService.logout();
+        }
+    }, CHECK_INTERVAL);
+})();
+
 window.authService = authService;
