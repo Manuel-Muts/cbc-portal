@@ -10,6 +10,7 @@ import { School } from '../models/school.js';
 import { User } from '../models/User.js';
 import SMSAllocation from '../models/SMSAllocation.js';
 import { applyMonthlySmsAllocation } from '../utils/smsBalance.js';
+import { refreshAllDashboardSummaries } from './dashboardSummaryService.js';
 //import { S3Client } from '@aws-sdk/client-s3';
 //import { Upload } from '@aws-sdk/lib-storage';
 
@@ -26,6 +27,18 @@ const BACKUPS_DIR = path.join(path.resolve(), 'backups', 'payments');
 //});
 
 export const startCronJobs = () => {
+  // 🆕 Cron Job: Refresh dashboard summary cache every 15 minutes.
+  // This precomputes compact values so dashboard requests return fast payloads.
+  cron.schedule('*/15 * * * *', async () => {
+    console.log('🕒 [Cron Job] Refreshing dashboard summaries...');
+    try {
+      const summaries = await refreshAllDashboardSummaries();
+      console.log(`✅ [Cron Job] Refreshed ${summaries.length} dashboard summaries.`);
+    } catch (err) {
+      console.error('❌ Error during dashboard summary refresh job:', err);
+    }
+  });
+
   // 🆕 Cron Job: Clean up orphaned StudentEnrollment records weekly
   // Runs every Sunday at 3:00 AM (0 3 * * 0)
   // This ensures that "Unknown Learner" ghost records are removed from the DB automatically.
@@ -234,6 +247,7 @@ export const startCronJobs = () => {
 
   // 🆕 Cron Job: Monthly automatic SMS allocation
   // Runs at 00:00 on the 1st of every month (server timezone)
+  // A new month starts with a fresh allocation; previous balance does not carry over.
   cron.schedule('0 0 1 * *', async () => {
     console.log('🕒 [Cron Job] Starting monthly SMS allocation to schools...');
     try {

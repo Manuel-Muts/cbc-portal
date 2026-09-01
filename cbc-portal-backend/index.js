@@ -30,6 +30,7 @@ import announcementRoutes from './routes/announcementRoutes.js';
 import electiveRoutes from "./routes/electiveRoutes.js";
 import subjectRoutes from "./routes/subjectRoutes.js";
 import studentRoutes from "./routes/studentRoutes.js";
+import dashboardSummaryRoutes from './routes/dashboardSummaryRoutes.js';
 import { User } from './models/User.js';
 import { loadEnvironmentFiles } from './utils/envConfig.js';
 
@@ -205,6 +206,7 @@ app.use('/api/expenses', expenseRoutes); // 🆕
 app.use('/api/settings', settingsRoutes); // New route
 app.use('/api/timetables', timetableRoutes); 
 app.use('/api/announcements', announcementRoutes);
+app.use('/api/dashboard', dashboardSummaryRoutes);
 app.use("/api/electives", electiveRoutes);
 app.use("/api/subjects", subjectRoutes);
 app.use("/api/learners", studentRoutes);

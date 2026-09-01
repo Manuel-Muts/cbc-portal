@@ -505,6 +505,28 @@ async function fetchWithAuth(url, options = {}) {
   return res.json();
 }
 
+// 🆕 Fetch dashboard summary from cache (precomputed by cron job)
+async function fetchDashboardSummary(forceRefresh = false) {
+  const cacheKey = 'dashboard_summary';
+  if (!forceRefresh) {
+    const cached = getAnalyticsCache(cacheKey);
+    if (cached) {
+      console.log('[Dashboard Summary] Using cached summary');
+      return cached;
+    }
+  }
+
+  try {
+    const summary = await fetchWithAuth(`${API_BASE}/dashboard/summary`);
+    setAnalyticsCache(cacheKey, summary);
+    console.log('[Dashboard Summary] Fetched and cached:', summary);
+    return summary;
+  } catch (err) {
+    console.error('Dashboard summary fetch error:', err);
+    return null;
+  }
+}
+
 function setupTabs() {
   const tabBtns = document.querySelectorAll(".menu li[data-tab]");
   const tabPanes = document.querySelectorAll(".tab-pane");
@@ -3270,13 +3292,14 @@ async function loadDeanProfile() {
     refreshBtn.className = 'btn secondary-btn';
     refreshBtn.innerHTML = '<i class="fas fa-sync-alt"></i> Refresh';
     refreshBtn.title = 'Refresh Dashboard Data';
-    refreshBtn.addEventListener('click', () => {
+    refreshBtn.addEventListener('click', async () => {
       // Clear relevant caches to ensure a fresh load
       Object.keys(localStorage).forEach(key => {
-        if (key.startsWith(CACHE_KEY_PREFIX) || key === 'dean_school_info_cache' || key === 'user_profile_cache' || key === 'dean_sms_summary_cache' || key === 'dean_teacher_sig_cache') {
+        if (key.startsWith(CACHE_KEY_PREFIX) || key === 'dean_school_info_cache' || key === 'user_profile_cache' || key === 'dean_sms_summary_cache' || key === 'dean_teacher_sig_cache' || key === 'dashboard_summary') {
           localStorage.removeItem(key);
         }
       });
+      await fetchDashboardSummary(true);
       window.location.reload();
     });
     headerActions.appendChild(refreshBtn);
@@ -3399,6 +3422,7 @@ async function loadDeanProfile() {
 
     setupTabs(); // Initialize tabs
     initFilters();
+    await fetchDashboardSummary(); // 🆕 Warm the precomputed dashboard summary cache for fast student/school summary access
 
     // 🆕 Update page title
     if (pageTitle) {

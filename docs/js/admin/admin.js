@@ -312,6 +312,40 @@ function getDisplaySchoolName(info) {
   return name ? String(name).trim() : "";
 }
 
+// 🆕 Fetch dashboard summary from cache (precomputed by cron job)
+async function fetchDashboardSummary(forceRefresh = false) {
+  const token = authService.getToken();
+  if (!token) return null;
+
+  const cacheKey = 'dashboard_summary';
+  if (!forceRefresh) {
+    const cached = readAdminCache(cacheKey);
+    if (cached) {
+      console.log('[Dashboard Summary] Using cached summary');
+      return cached;
+    }
+  }
+
+  try {
+    const res = await fetch(`${API_BASE}/dashboard/summary`, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+
+    if (!res.ok) {
+      console.warn(`Failed to fetch dashboard summary (Status: ${res.status})`);
+      return null;
+    }
+
+    const summary = await res.json();
+    writeAdminCache(cacheKey, summary);
+    console.log('[Dashboard Summary] Fetched and cached:', summary);
+    return summary;
+  } catch (err) {
+    console.error('Dashboard summary fetch error:', err);
+    return null;
+  }
+}
+
 async function loadSchoolInfo(forceRefresh = false) {
   const fields = "name,allowSignatureUpload,schoolType,headteacherSignatureUrl,status,smsCredits";
 
@@ -2751,6 +2785,7 @@ saveTermConfigBtn?.addEventListener("click", saveTermConfig);
     showAllocationLoadingIndicators();
     try {
       await loadSchoolInfo();
+      await fetchDashboardSummary(); // 🆕 Load cached dashboard summary
     } finally {
       hideAllocationLoadingIndicators();
     }
@@ -3300,10 +3335,11 @@ studentSearchBody.addEventListener("click", async (e) => {
           loadSubjectAllocations(), 
           loadClassAllocations(1, CLASS_ALLOC_LIMIT, true),
           loadSchoolInfo(true), // Force reload school info
-          fetchSmsHistorySummary(true) // 🆕 Force reload SMS stats
+          fetchSmsHistorySummary(true), // 🆕 Force reload SMS stats
+          fetchDashboardSummary(true) // 🆕 Force reload dashboard summary
         ]);
         results.forEach((r, idx) => {
-          if (r.status === "rejected") errors.push({ step: ["loadTeacherOptions", "loadSubjectAllocations", "loadClassAllocations", "loadSchoolInfo", "fetchSmsHistorySummary"][idx], error: r.reason });
+          if (r.status === "rejected") errors.push({ step: ["loadTeacherOptions", "loadSubjectAllocations", "loadClassAllocations", "loadSchoolInfo", "fetchSmsHistorySummary", "fetchDashboardSummary"][idx], error: r.reason });
         });
 
         refreshBtn.textContent = "✅ Refreshed!";
