@@ -43,7 +43,6 @@ const SubmittedSubjectsModule = (function() {
         if (ssTermFilter) {
             ssTermFilter.innerHTML = `
                 <option value="">-- Select Term --</option>
-                <option value="all">All Terms</option>
                 <option value="1">Term 1</option>
                 <option value="2">Term 2</option>
                 <option value="3">Term 3</option>

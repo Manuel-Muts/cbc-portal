@@ -793,14 +793,6 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 });
 
-    // 🆕 Auto-select the first allocation if available
-    if (allocations.length > 0 && allocations[0].subjects.length > 0) {
-      subjectAllocationSelect.value = "0_0"; // First class, first subject
-      selectedAllocationData = allocations[0];
-      selectedSubject = allocations[0].subjects[0];
-      if (marksTableContainer) marksTableContainer.style.display = "block";
-      checkForExistingDraft?.();
-    }
   }
 
   // ---------------------------

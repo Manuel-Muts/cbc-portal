@@ -72,7 +72,7 @@ function renderLazySchoolRankingsWidget() {
     return;
   }
 
-  if (term === "all" || assessment === "all") {
+  if (!term || !assessment || term === "all" || assessment === "all") {
     schoolRankingsTableWrap.innerHTML = `
       <div class="instruction-state" style="text-align:center; padding:40px; margin-top: 20px; background:#f8fafc; border-radius:12px; border: 1px dashed #cbd5e0; color:#64748b;">
         <h3 style="margin-top:0; color:#1e293b;">School-Wide Performance Rankings</h3>
@@ -519,7 +519,6 @@ async function fetchDashboardSummary(forceRefresh = false) {
   try {
     const summary = await fetchWithAuth(`${API_BASE}/dashboard/summary`);
     setAnalyticsCache(cacheKey, summary);
-    console.log('[Dashboard Summary] Fetched and cached:', summary);
     return summary;
   } catch (err) {
     console.error('Dashboard summary fetch error:', err);
@@ -3134,7 +3133,6 @@ function initFilters() {
     const currentMonth = new Date().getMonth() + 1; // 1-12
     const currentTerm = currentMonth <= 4 ? "1" : currentMonth <= 8 ? "2" : "3";
     filterTermEl.innerHTML = `
-      <option value="all">All Terms</option>
       <option value="1" ${currentTerm === "1" ? 'selected' : ''}>Term 1</option>
       <option value="2" ${currentTerm === "2" ? 'selected' : ''}>Term 2</option>
       <option value="3" ${currentTerm === "3" ? 'selected' : ''}>Term 3</option>
@@ -3143,7 +3141,7 @@ function initFilters() {
 
   // Populate Assessments
   if (filterAssessmentEl && window.ASSESSMENT_MAPPING) { // Check if mapping is available
-    filterAssessmentEl.innerHTML = '<option value="all">All Assessments</option>'; // Keep "All Assessments" option
+    filterAssessmentEl.innerHTML = '<option value="" selected>-- Select Assessment --</option>';
     Object.entries(window.ASSESSMENT_MAPPING).forEach(([value, label]) => {
       const opt = document.createElement("option");
       opt.value = value;
@@ -4361,6 +4359,33 @@ if (filterPathwayEl) {
 
 // 🆕 Centralized event listeners for buttons
 function attachDeanEventListeners() {
+  const menuToggle = document.getElementById("menuToggle");
+  const sidebar = document.querySelector(".sidebar");
+  let sidebarBackdrop = document.querySelector(".sidebar-backdrop");
+
+  if (!sidebarBackdrop) {
+    sidebarBackdrop = document.createElement("div");
+    sidebarBackdrop.className = "sidebar-backdrop";
+    document.body.appendChild(sidebarBackdrop);
+  }
+
+  const closeSidebar = () => {
+    sidebar?.classList.remove("show");
+    sidebarBackdrop?.classList.remove("active");
+    menuToggle?.setAttribute("aria-expanded", "false");
+    menuToggle?.setAttribute("aria-label", "Open navigation");
+  };
+
+  menuToggle?.addEventListener("click", () => {
+    const isOpen = sidebar?.classList.toggle("show") ?? false;
+    sidebarBackdrop?.classList.toggle("active", isOpen);
+    menuToggle.setAttribute("aria-expanded", String(isOpen));
+    menuToggle.setAttribute("aria-label", isOpen ? "Close navigation" : "Open navigation");
+  });
+
+  sidebarBackdrop.addEventListener("click", closeSidebar);
+  sidebar?.querySelectorAll("a, button").forEach((item) => item.addEventListener("click", closeSidebar));
+
   applyFiltersBtn?.addEventListener("click", generateReport);
   printReportBtn?.addEventListener("click", downloadRankingAsPDF);
   printSubjectReportBtn?.addEventListener("click", downloadSubjectPerformanceAsPDF);

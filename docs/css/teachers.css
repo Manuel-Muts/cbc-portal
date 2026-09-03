@@ -1428,15 +1428,15 @@ header.teacher-header {
   justify-content: space-between;
   flex-wrap: nowrap;
   gap: 8px;
-  padding: 4px 5%;
+  padding: 4px 0;
   min-height: 34px;
-  background: linear-gradient(135deg, #3b82f6 0%, #60a5fa 100%);
-  border-bottom: 1px solid rgba(255,255,255,0.18);
+  background: #ecfdf5;
+  border: 1px solid #6ee7b7;
   margin-top: 6px;
   position: sticky;
   top: 6px;
   z-index: 101;
-  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.12);
+  box-shadow: 0 2px 6px rgba(16, 185, 129, 0.12);
 }
 
 .teacher-subnav {
@@ -1450,41 +1450,79 @@ header.teacher-header + .teacher-subnav {
 }
 
 header.teacher-header .logo {
-  color: #ffffff !important;
+  color: #065f46 !important;
 }
 
 header.teacher-header .header-left,
 header.teacher-header .header-right {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 7px;
+}
+
+header.teacher-header .header-right {
+  margin-left: auto;
 }
 
 header.teacher-header #headerRefreshBtn {
-  width: 38px;
-  height: 34px;
+  width: 34px;
+  height: 30px;
   padding: 0;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  font-size: 1.2rem;
+  font-size: 1.05rem;
   line-height: 1;
+  background: #d1fae5;
+  border: 1px solid #6ee7b7;
+  color: #047857 !important;
+  border-radius: 8px;
   flex: 0 0 auto;
+}
+
+header.teacher-header .notification-btn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: 1px solid #6ee7b7;
+  border-radius: 50%;
+  background: #d1fae5;
+  color: #047857;
+  font-size: 1rem;
+  line-height: 1;
+  cursor: not-allowed;
+  opacity: 0.9;
+  flex: 0 0 auto;
+}
+
+header.teacher-header .notification-dot {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #f59e0b;
+  border: 1px solid #ecfdf5;
 }
 
 header.teacher-header .teacher-name {
   display: flex;
   align-items: center;
   gap: 8px;
-  color: white;
+  color: #065f46;
   font-size: 0.86rem;
   font-weight: 600;
 }
 
 header.teacher-header .teacher-name button {
-  background: rgba(255,255,255,0.16);
-  color: white;
-  border: 1px solid rgba(255,255,255,0.28);
+  background: #d1fae5;
+  color: #065f46;
+  border: 1px solid #6ee7b7;
   padding: 4px 8px;
   border-radius: 999px;
   font-size: 0.75rem;
@@ -1492,7 +1530,7 @@ header.teacher-header .teacher-name button {
 }
 
 header.teacher-header .teacher-name button:hover {
-  background: rgba(255,255,255,0.24);
+  background: #a7f3d0;
 }
 
 header.teacher-header .header-left {
@@ -1505,21 +1543,30 @@ header.teacher-header .school-pill {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  background: #eff6ff;
-  color: #1d4ed8;
+  background: #ffffff;
+  color: #047857;
   padding: 3px 8px;
   border-radius: 999px;
   font-size: 0.68rem;
   font-weight: 700;
-  border: 1px solid rgba(255,255,255,0.6);
+  border: 1px solid #6ee7b7;
   text-transform: uppercase;
   white-space: nowrap;
 }
 
+header.teacher-header #schoolName {
+  color: #047857 !important;
+  font-weight: 800 !important;
+}
+
 header.teacher-header .dean-btn {
-  background: #8e44ad;
-  border: 1px solid transparent;
-  color: #fff;
+  background: #059669;
+  border: 1px solid #047857;
+  color: #ffffff;
+}
+
+header.teacher-header .dean-btn:hover {
+  background: #047857;
 }
 
 header.teacher-header .profile-menu {
@@ -1529,26 +1576,25 @@ header.teacher-header .profile-menu {
 header.teacher-header .profile-trigger {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 4px 8px;
-  border: 1px solid rgba(255,255,255,0.24);
-  background: rgba(255,255,255,0.14);
-  color: #fff;
+  gap: 5px;
+  padding: 3px 6px;
+  border: 1px solid #6ee7b7;
+  background: #d1fae5;
+  color: #065f46;
   border-radius: 999px;
   cursor: pointer;
-  min-width: 150px;
+  min-width: 136px;
   justify-content: flex-start;
 }
 
 @media (max-width: 640px) {
   header.teacher-header #headerRefreshBtn {
-    width: 46px;
-    height: 40px;
-    font-size: 1.5rem;
-    background: transparent !important;
-    border: 0 !important;
-    box-shadow: none !important;
-    border-radius: 0;
+    width: 44px;
+    height: 42px;
+    font-size: 1.8rem !important;
+    background: #d1fae5 !important;
+    border: 1px solid #6ee7b7 !important;
+    border-radius: 8px;
   }
 }
 
@@ -1582,7 +1628,7 @@ header.teacher-header .profile-detail strong {
 
 header.teacher-header .profile-meta small,
 header.teacher-header .profile-detail span {
-  color: rgba(255,255,255,0.8);
+  color: #047857;
   font-size: 0.64rem;
 }
 
@@ -1641,6 +1687,44 @@ header.teacher-header .profile-detail strong {
 
 header.teacher-header .profile-detail span {
   color: #64748b;
+}
+
+header.teacher-header .profile-account-actions {
+  display: grid;
+  gap: 4px;
+  margin-bottom: 7px;
+}
+
+header.teacher-header .profile-account-action {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  padding: 6px 7px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: transparent;
+  color: #065f46;
+  font: inherit;
+  font-size: 0.72rem;
+  text-align: left;
+}
+
+header.teacher-header .profile-account-action i {
+  width: 14px;
+  color: #059669;
+  text-align: center;
+}
+
+header.teacher-header .profile-account-action small {
+  margin-left: auto;
+  color: #94a3b8;
+  font-size: 0.58rem;
+}
+
+header.teacher-header .profile-account-action:disabled {
+  cursor: not-allowed;
+  opacity: 0.78;
 }
 
 header.teacher-header .profile-logout-btn {
@@ -1723,6 +1807,24 @@ header.teacher-header .profile-logout-btn:hover {
 
 .subnav-btn.sign-btn:hover {
   background: #e2e8f0;
+}
+
+.teacher-subnav .dean-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 82px;
+  padding: 6px 8px;
+  font-size: 0.82rem;
+  background: #059669;
+  border-color: #047857;
+  color: #ffffff;
+  text-decoration: none;
+}
+
+.teacher-subnav .dean-btn:hover {
+  background: #047857;
+  color: #ffffff;
 }
 
 @media (max-width: 640px) {
@@ -1822,10 +1924,83 @@ header.teacher-header .profile-logout-btn:hover {
 .marks-controls .form-group select {
   width: 100%;
   padding: 12px 14px;
-  border: 1px solid #cbd5e0;
+  border: 1px solid #a7f3d0;
   border-radius: 12px;
   font-size: 0.95rem;
-  background: white;
+  background: #ecfdf5;
+  color: #064e3b;
+  font-weight: 700;
+}
+
+.marks-controls .form-group select:focus,
+.marks-controls .form-group input:focus {
+  border-color: #10b981;
+  outline: 2px solid rgba(16, 185, 129, 0.18);
+}
+
+#subjectAllocationSelect {
+  font-weight: 700 !important;
+}
+
+#myClassAnalysisWrap {
+  padding: 10px !important;
+  background: #f0fdf4;
+  border: 1px solid #a7f3d0;
+}
+
+#myClassAnalysisWrap > .filter-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(110px, 1fr)) minmax(130px, 0.9fr);
+  gap: 7px 8px;
+  align-items: end;
+  padding: 8px !important;
+  background: #ecfdf5 !important;
+  border: 1px solid #a7f3d0;
+  border-radius: 10px;
+}
+
+#myClassAnalysisWrap > .filter-grid .form-group label {
+  margin-bottom: 3px;
+  color: #047857;
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+#myClassAnalysisWrap > .filter-grid .form-group select {
+  min-height: 32px;
+  padding: 5px 7px;
+  border: 1px solid #a7f3d0;
+  border-radius: 8px;
+  background: #f0fdf4;
+  color: #064e3b;
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+
+#myClassAnalysisWrap > .filter-grid .form-group select:focus {
+  border-color: #10b981;
+  outline: 2px solid rgba(16, 185, 129, 0.18);
+}
+
+#myClassAnalysisWrap #generateReport {
+  min-height: 32px;
+  padding: 5px 10px;
+  white-space: nowrap;
+}
+
+@media (max-width: 768px) {
+  #myClassAnalysisWrap > .filter-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 7px;
+  }
+
+  #myClassAnalysisWrap > .filter-grid .form-group:last-child {
+    grid-column: 1 / -1;
+  }
+
+  #myClassAnalysisWrap #generateReport {
+    width: 100%;
+  }
 }
 
 .inline-alert {
@@ -1939,8 +2114,8 @@ header.teacher-header .profile-logout-btn:hover {
 @media (max-width: 768px) {
   /* Thin Horizontal Header */
   header.teacher-header {
-    height: 42px !important;
-    padding: 0 8px !important;
+    height: 40px !important;
+    padding: 0 !important;
     flex-direction: row !important;
     align-items: center !important;
     justify-content: space-between !important;
@@ -1951,7 +2126,7 @@ header.teacher-header .profile-logout-btn:hover {
   header.teacher-header .header-left {
     width: auto !important;
     justify-content: flex-start !important;
-    flex: 0 0 auto !important; /* Make it shrink to content size */
+    flex: 1 1 auto !important;
     overflow: hidden;
     min-width: 0;
   }
@@ -1975,13 +2150,37 @@ header.teacher-header .profile-logout-btn:hover {
     width: auto !important;
     justify-content: flex-end !important;
     flex: 0 0 auto !important;
-    gap: 3px !important;
+    gap: 2px !important;
   }
 
   header.teacher-header .btn {
-    padding: 3px 3px !important;
+    padding: 2px 3px !important;
     font-size: 0.52rem !important;
     border-radius: 4px !important;
+  }
+
+  header.teacher-header #headerRefreshBtn {
+    width: 36px;
+    height: 34px;
+    font-size: 1.45rem !important;
+  }
+
+  header.teacher-header .notification-btn {
+    width: 30px;
+    height: 30px;
+    font-size: 0.85rem;
+  }
+
+  header.teacher-header .profile-trigger {
+    min-width: 118px;
+    padding: 2px 5px;
+    gap: 4px;
+  }
+
+  header.teacher-header .profile-avatar {
+    width: 22px;
+    height: 22px;
+    font-size: 0.75rem;
   }
 
   #schoolName {
@@ -1989,12 +2188,60 @@ header.teacher-header .profile-logout-btn:hover {
     flex-grow: 1 !important; /* Allow it to take available space */
     order: 2 !important; /* Place it between header-left and header-right */
    
-    white-space: normal !important; /* Allow wrapping */
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
     left: auto !important; /* Remove absolute positioning */
     transform: none !important; /* Remove absolute positioning */
-    font-size: 0.55rem !important;
-    line-height: 0.9; /* Better line spacing for wrapping */
+    font-size: 0.62rem !important;
+    line-height: 1 !important;
      display: block !important;
+  }
+
+  .teacher-subnav {
+    padding: 4px 8px !important;
+    gap: 3px !important;
+  }
+
+  .teacher-subnav .subnav-left {
+    gap: 3px !important;
+  }
+
+  .teacher-subnav .subnav-btn {
+    min-width: 0 !important;
+    min-height: 30px;
+    padding: 5px 6px !important;
+    font-size: 0.68rem !important;
+    line-height: 1.1;
+  }
+
+  .teacher-subnav .dean-btn {
+    min-width: 0 !important;
+    padding: 5px 8px !important;
+    font-size: 0.68rem !important;
+  }
+
+  @media (max-width: 420px) {
+    header.teacher-header .profile-trigger {
+      min-width: 112px;
+      padding: 3px 5px;
+    }
+
+    header.teacher-header .profile-meta strong {
+      font-size: 0.68rem;
+    }
+
+    header.teacher-header .profile-meta small {
+      font-size: 0.56rem;
+    }
+
+    header.teacher-header .header-right {
+      gap: 1px !important;
+    }
+
+    #schoolName {
+      font-size: 0.58rem !important;
+    }
   }
 
   /* Allocations Section */

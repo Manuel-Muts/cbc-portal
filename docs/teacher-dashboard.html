@@ -28,12 +28,17 @@
 <body>
   
   <header class="teacher-header">
+    <button id="headerRefreshBtn" class="btn refresh-btn" type="button" title="Refresh Dashboard" aria-label="Refresh Dashboard">
+      <i class="fas fa-sync-alt" aria-hidden="true"></i>
+    </button>
     <div class="header-left">
       <span id="schoolName" class="school-pill"></span>
     </div>
     <div class="header-right">
-      <button id="headerRefreshBtn" class="btn refresh-btn" type="button" title="Refresh Dashboard">🔄</button>
-      <a href="/dean" id="deanDashboardBtn" class="btn dean-btn" style="display:none;">🎓 Dean Dashboard</a>
+      <button id="teacherNotificationsBtn" class="notification-btn" type="button" title="Notifications coming soon" aria-label="Notifications coming soon" disabled>
+        <span aria-hidden="true">🔔</span>
+        <span class="notification-dot" aria-hidden="true"></span>
+      </button>
       <div class="profile-menu">
         <button class="profile-trigger" id="teacherProfileTrigger" type="button" aria-expanded="false">
           <span class="profile-avatar" id="teacherProfileAvatar">T</span>
@@ -53,6 +58,18 @@
                 <span id="teacherProfileEmailDetail">teacher@example.com</span>
               </div>
             </div>
+            <div class="profile-account-actions" aria-label="Account settings">
+              <button class="profile-account-action" type="button" disabled>
+                <i class="fas fa-key" aria-hidden="true"></i>
+                <span>Change password</span>
+                <small>Soon</small>
+              </button>
+              <button class="profile-account-action" type="button" disabled>
+                <i class="fas fa-envelope" aria-hidden="true"></i>
+                <span>Change email</span>
+                <small>Soon</small>
+              </button>
+            </div>
             <button class="profile-logout-btn" id="teacherLogoutBtn" type="button">Log out</button>
           </div>
         </div>
@@ -67,6 +84,7 @@
       <button class="subnav-btn" data-tab="myClass" id="myClassTabBtn" style="display:none;">🏫 My Class</button>
       <button class="subnav-btn" data-tab="studyMaterials">📚  Materials</button>
       <button class="subnav-btn" data-tab="digitalSignature">🖊️ Signature</button>
+      <a href="/dean" id="deanDashboardBtn" class="subnav-btn dean-btn" style="display:none;">🎓 DEAN</a>
     </div>
   </nav>
 
@@ -92,7 +110,7 @@
           <div class="form-group">
             <label>Subject & Grade</label>
             <select id="subjectAllocationSelect" required>
-              <option value="">-- Select Subject/Grade --</option>
+              <option value="">-- Select Subject & Class --</option>
             </select>
           </div>
           

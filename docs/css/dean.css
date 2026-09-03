@@ -123,7 +123,7 @@ header #logoutBtn {
   .filters-section .filter-grid {
     display: grid !important;
     grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)) !important; /* Naturally creates multiple rows */
-    gap: 12px !important;
+    gap: 8px !important;
     overflow-x: visible !important; /* Disable scroll for filters */
     padding-bottom: 0;
   }
@@ -482,6 +482,247 @@ header #logoutBtn {
     box-shadow: 0 1px 3px rgba(0,0,0,0.1);
 }
 
+/* Keep the shared oversight controls compact without changing module filters. */
+.main-content > #contentArea > .filters-section {
+  padding: 7px 16px !important;
+  background: #ecfdf5 !important;
+  border-color: #6ee7b7;
+  box-shadow: 0 2px 5px rgba(16, 185, 129, 0.12);
+}
+
+.main-content > #contentArea > .filters-section h3 {
+  margin-bottom: 5px;
+  color: #065f46;
+}
+
+.main-content > #contentArea > .filters-section .filter-grid {
+  grid-template-columns: repeat(6, minmax(90px, 1fr)) auto;
+  gap: 6px;
+}
+
+.main-content > #contentArea > .filters-section .filter-group {
+  min-width: 0;
+}
+
+.main-content > #contentArea > .filters-section .filter-group label {
+  color: #047857;
+}
+
+.main-content > #contentArea > .filters-section #applyFiltersBtn {
+  white-space: nowrap;
+  padding: 0 12px;
+}
+
+.main-content > #contentArea > .filters-section .filter-group select,
+.main-content > #contentArea > .filters-section .filter-group input {
+  padding: 4px 6px;
+  font-size: 0.8rem;
+}
+
+.main-content > #contentArea > .filters-section .filter-group select,
+.main-content > #contentArea > .filters-section .filter-group input {
+  border-color: #a7f3d0;
+  color: #064e3b;
+}
+
+.main-content > #contentArea > .filters-section .filter-group select:focus,
+.main-content > #contentArea > .filters-section .filter-group input:focus {
+  border-color: #10b981;
+  outline: 2px solid rgba(16, 185, 129, 0.18);
+}
+
+.main-content > #contentArea > .filters-section #applyFiltersBtn {
+  height: 29px;
+  background: #059669;
+  color: #ffffff;
+}
+
+.main-content > #contentArea > .filters-section #applyFiltersBtn:hover {
+  background: #047857;
+}
+
+.main-content > #contentArea > .filters-section #baselineCheckboxesWrap {
+  background: #d1fae5 !important;
+  border-color: #6ee7b7 !important;
+  box-shadow: inset 0 1px 2px rgba(5, 150, 105, 0.08) !important;
+}
+
+.main-content > #contentArea > .filters-section #baselineCheckboxesWrap > label {
+  color: #065f46 !important;
+}
+
+.main-content > #contentArea > .filters-section #baselineCheckboxesWrap > div > label {
+  color: #064e3b !important;
+}
+
+.menu-toggle {
+  display: none;
+}
+
+.sidebar-close {
+  display: none;
+}
+
+#learnerMarksTab > .dashboard-card > .module-filters {
+  padding: 8px 12px !important;
+  margin-bottom: 12px !important;
+}
+
+#learnerMarksTab > .dashboard-card > .module-filters .filter-grid {
+  gap: 6px 8px;
+}
+
+#learnerMarksTab > .dashboard-card > .module-filters .filter-group label {
+  margin-bottom: 3px;
+  font-size: 0.75rem;
+}
+
+#learnerMarksTab > .dashboard-card > .module-filters .filter-group select,
+#learnerMarksTab > .dashboard-card > .module-filters .filter-group input {
+  min-height: 32px;
+  padding: 5px 7px;
+  font-size: 0.9rem;
+}
+
+#learnerMarksTab > .dashboard-card > .dashboard-card {
+  padding: 12px !important;
+}
+
+#learnerMarksTab > .dashboard-card > .dashboard-card > div:first-child {
+  gap: 10px !important;
+  margin-bottom: 10px !important;
+}
+
+#learnerMarksTab > .dashboard-card > .dashboard-card > div:first-child > div:nth-child(2) {
+  gap: 10px !important;
+}
+
+#learnerMarksTab #lmSearchInput {
+  min-height: 34px;
+  padding: 6px 9px !important;
+  font-size: 0.9rem;
+}
+
+#learnerMarksTab #lmSearchBtn {
+  min-height: 34px;
+  padding: 6px 16px !important;
+}
+
+#learnerMarksTab label[for="lmSearchInput"] {
+  margin-bottom: 5px !important;
+  font-size: 0.9rem;
+}
+
+/* Use the oversight palette across filter panels inside dashboard tabs. */
+#moduleTabContent .filters-section,
+#timetableTab > .dashboard-card > .filter-grid {
+  background: #ecfdf5 !important;
+  border-color: #a7f3d0 !important;
+  box-shadow: 0 2px 5px rgba(16, 185, 129, 0.1) !important;
+}
+
+#moduleTabContent .filters-section .filter-group label,
+#timetableTab > .dashboard-card > .filter-grid .filter-group label {
+  color: #047857;
+}
+
+#moduleTabContent .filters-section .filter-group select,
+#timetableTab > .dashboard-card > .filter-grid .filter-group select {
+  border-color: #a7f3d0;
+  color: #064e3b;
+}
+
+.main-content > #contentArea > .filters-section .filter-group select,
+#moduleTabContent .filters-section .filter-group select,
+#timetableTab > .dashboard-card > .filter-grid .filter-group select {
+  background-color: #ecfdf5 !important;
+}
+
+@media (max-width: 768px) {
+  .sidebar {
+    display: none !important;
+  }
+
+  .sidebar.show {
+    display: flex !important;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 240px;
+    height: 100vh;
+    z-index: 2000;
+  }
+
+  .menu-toggle {
+    display: inline-flex !important;
+    position: absolute;
+    top: 12px;
+    left: 12px;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+    width: 36px;
+    height: 36px;
+    margin-right: 10px;
+    padding: 0;
+    border: 0;
+    border-radius: 6px;
+    background: #ffffff;
+    color: #1e3a8a;
+    font-size: 1.2rem;
+    cursor: pointer;
+    z-index: 120;
+    box-shadow: 0 1px 3px rgba(15, 23, 42, 0.2);
+  }
+
+  .menu-toggle:hover,
+  .menu-toggle:focus-visible {
+    background: #dbeafe;
+  }
+
+  .main-content > .header .header-actions {
+    margin-left: 48px;
+  }
+
+  .sidebar-backdrop {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(15, 23, 42, 0.45);
+    z-index: 1999;
+  }
+
+  .sidebar-backdrop.active {
+    display: block;
+  }
+
+  .sidebar-close {
+    display: inline-flex;
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    align-items: center;
+    justify-content: center;
+    width: 38px;
+    height: 38px;
+    padding: 0;
+    border: 1px solid rgba(255, 255, 255, 0.45);
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.14);
+    color: #ffffff;
+    font-size: 1.15rem;
+    cursor: pointer;
+    z-index: 3;
+  }
+
+  .sidebar-close:hover,
+  .sidebar-close:focus-visible {
+    background: #ffffff;
+    color: #1e3a8a;
+    outline: none;
+  }
+}
+
 .filters-section h3 {
   margin-top: 0; /* Keep as is */
     margin-bottom: 12px; /* Reduced margin */
@@ -652,6 +893,42 @@ header #logoutBtn {
 /* 🆕 Ensure Submitted Subjects filters sit tight to the top when global filters are hidden */
 #submittedSubjectsTab {
     padding-top: 5px;
+}
+
+#submittedSubjectsTab > .filters-section {
+  padding: 10px 14px !important;
+  margin-bottom: 12px !important;
+}
+
+#submittedSubjectsTab > .filters-section > div:first-child {
+  margin-bottom: 8px !important;
+}
+
+#submittedSubjectsTab > .filters-section .filter-grid {
+  grid-template-columns: repeat(3, minmax(120px, 1fr)) minmax(140px, 0.9fr);
+  gap: 6px 8px;
+}
+
+#submittedSubjectsTab > .filters-section .filter-group {
+  min-width: 0;
+}
+
+#submittedSubjectsTab > .filters-section .filter-group label {
+  margin-bottom: 3px;
+  font-size: 0.7rem;
+}
+
+#submittedSubjectsTab > .filters-section .filter-group select {
+  min-height: 32px;
+  padding: 4px 7px;
+  font-size: 0.85rem;
+}
+
+#submittedSubjectsTab > .filters-section #loadSubmittedSubjectsBtn {
+  height: 32px !important;
+  margin-top: 0 !important;
+  padding: 0 10px;
+  white-space: nowrap;
 }
 .tab-pane { display: none; }
 .tab-pane.active { display: block; animation: tabFadeIn 0.3s ease-out; }
