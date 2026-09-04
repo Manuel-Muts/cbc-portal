@@ -244,6 +244,8 @@ const pathMap = {
   '/analysis': 'analysis.html',
   '/report': 'report.html',
   '/reset': 'reset.html',
+  '/privacy-policy': 'privacy.html',
+  '/terms-of-service': 'terms.html',
   '/contact': 'contact.html',
   '/accounts': 'accounts.html'
 };

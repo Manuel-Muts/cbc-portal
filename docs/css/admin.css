@@ -399,6 +399,54 @@ body {
   display: block;
 }
 
+.profile-account-actions {
+  display: grid;
+  gap: 6px;
+  margin: 14px 0 10px;
+}
+
+.profile-account-action {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  background: #f8fafc;
+  color: #475569;
+  text-align: left;
+  font-size: 0.78rem;
+}
+
+.profile-account-action small {
+  margin-left: auto;
+  color: #94a3b8;
+}
+
+.profile-account-action:disabled {
+  cursor: not-allowed;
+  opacity: 0.72;
+}
+
+.profile-policy-links {
+  display: flex;
+  justify-content: center;
+  gap: 12px;
+  margin: 8px 0 12px;
+  font-size: 0.7rem;
+}
+
+.profile-policy-links a {
+  color: #2563eb;
+  text-decoration: none;
+}
+
+.profile-policy-links a:hover,
+.profile-policy-links a:focus-visible {
+  text-decoration: underline;
+}
+
 .profile-card {
   background: white;
   border: 1px solid #e2e8f0;

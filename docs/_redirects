@@ -19,3 +19,5 @@
 /report              /report.html              200
 /student-accounts    /student-accounts.html    200
 /home                /index.html               200
+/privacy-policy      /privacy.html              200
+/terms-of-service    /terms.html                200

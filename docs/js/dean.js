@@ -50,10 +50,23 @@ let lastProcessedStudents = []; // 🆕 For reports tab
 let lastCompleteGradeStudents = []; // Complete grade records used for overall subject ranks
 let lastProcessedSubjects = []; // 🆕 For reports tab
 let currentElectiveAssignments = []; // 🆕 Cache elective assignments for debug and re-analysis
+let currentTermProgressMeans = [];
+const termProgressMeansCache = new Map();
 const lazyWidgetCache = {
   missingExams: null,
   rankings: null,
 };
+
+async function fetchTermProgressMeans(grade, year, stream) {
+  const cacheKey = `${grade}|${year}|${stream || "all"}`;
+  if (termProgressMeansCache.has(cacheKey)) return termProgressMeansCache.get(cacheKey);
+
+  const query = new URLSearchParams({ grade, year, stream: stream || "all" });
+  const data = await fetchWithAuth(`${API_BASE}/marks/grade-progress-means?${query}`);
+  const means = Array.isArray(data) ? data : [];
+  termProgressMeansCache.set(cacheKey, means);
+  return means;
+}
 
 function renderLazySchoolRankingsWidget() {
   const term = filterTermEl?.value;
@@ -422,7 +435,6 @@ if (!window.cbcUtils.getGradeOptionsForSchool) {
 
 function buildStudentTermProgressSeries(student) {
   if (!Array.isArray(currentAnalysisRawData) || !currentAnalysisRawData.length || !student) return [];
-
   const targetAdm = String(student.adm || student.admissionNo || "");
   const grade = filterGradeEl?.value;
   const selectedStream = filterStreamEl?.value || "all";
@@ -467,6 +479,34 @@ function buildStudentTermProgressSeries(student) {
       mean: data.count ? data.total / data.count : 0,
       label: sanitizePdfText(window.ASSESSMENT_MAPPING?.[assessment] || "")
     }));
+}
+
+function buildStudentTermProgressLines(student) {
+  if (!Array.isArray(currentTermProgressMeans) || !currentTermProgressMeans.length || !student) return [];
+
+  const targetAdm = String(student.adm || student.admissionNo || "");
+  const selectedAssessments = new Set(Array.from(document.querySelectorAll(".baseline-check:checked"))
+    .map(input => String(input.value)));
+  const assessmentKeys = Array.from(selectedAssessments).sort((a, b) => Number(a) - Number(b));
+  // Term 3 uses a charcoal line so it remains prominent in grayscale printouts.
+  const colors = { 1: "#2563eb", 2: "#059669", 3: "#111827" };
+
+  return [1, 2, 3].map(term => {
+    const points = currentTermProgressMeans
+      .filter(item => String(item.admissionNo) === targetAdm && Number(item.term) === term && selectedAssessments.has(String(item.assessment)))
+      .reduce((items, item) => {
+        items.set(String(item.assessment), { assessment: String(item.assessment), mean: Number(item.mean) });
+        return items;
+      }, new Map());
+
+    return {
+      term,
+      color: colors[term],
+      points: assessmentKeys
+        .filter(assessmentKey => points.has(assessmentKey))
+        .map(assessmentKey => points.get(assessmentKey))
+    };
+  }).filter(series => series.points.length > 0);
 }
 
 function getAnalyticsCache(key) {
@@ -661,6 +701,8 @@ async function generateReport() {
 
   const gradeNum = window.cbcUtils?.getGradeNum?.(grade) ?? 0;
   const isSenior = gradeNum >= 10;
+  const selectedStream = filterStreamEl?.value || "all";
+  currentTermProgressMeans = await fetchTermProgressMeans(grade, year, selectedStream).catch(() => []);
   const cacheKey = `${grade}_${term}_${year}_${assessment}_${filterStreamEl?.value || "all"}`;
   const cached = getAnalyticsCache(cacheKey); // Check cache
 
@@ -1560,8 +1602,6 @@ function processAnalysisData(allRaw, isSenior, assessment, allPrevRaw = null, ro
 
     if (predecessorAssessId) {
         prevBaselineData = streamFilteredRaw.filter(m => parseInt(m.assessment) === predecessorAssessId);
-    } else {
-        prevBaselineData = prevRaw; // Fallback to previous term's final data
     }
   } else {
     prevBaselineData = prevRaw;
@@ -3191,10 +3231,12 @@ function initFilters() {
 }
 
 async function loadDeanProfile() {
-  // 🆕 Show Initialization Overlay (similar to timetable.js)
-  const overlay = document.createElement('div');
+  // Reuse the first-paint overlay so the dashboard has one loading surface.
+  const existingOverlay = document.getElementById('deanInitOverlay');
+  const overlay = existingOverlay || document.createElement('div');
   overlay.id = 'deanInitOverlay';
-  overlay.style.cssText = `
+  if (!existingOverlay) {
+    overlay.style.cssText = `
     position: fixed; inset: 0;
     background:
       radial-gradient(circle at top left, rgba(147, 197, 253, 0.32), transparent 30%),
@@ -3203,8 +3245,8 @@ async function loadDeanProfile() {
     z-index: 20000; display: flex; align-items: center; justify-content: center;
     backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
     transition: opacity 0.4s ease; overflow: hidden;
-  `;
-  overlay.innerHTML = `
+    `;
+    overlay.innerHTML = `
     <div style="position: relative; width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; overflow: hidden; animation: deanShellFade 0.45s ease-out;">
       <span style="position:absolute; width: 280px; height: 280px; border-radius: 50%; background: rgba(96, 165, 250, 0.18); filter: blur(28px); top: 12%; left: 18%; animation: deanOrbFloat 7s ease-in-out infinite;"></span>
       <span style="position:absolute; width: 220px; height: 220px; border-radius: 50%; background: rgba(125, 211, 252, 0.18); filter: blur(24px); bottom: 10%; right: 18%; animation: deanOrbFloat 9s ease-in-out infinite reverse;"></span>
@@ -3256,8 +3298,9 @@ async function loadDeanProfile() {
         100% { opacity: 1; }
       }
     </style>
-  `;
-  document.body.appendChild(overlay);
+    `;
+    document.body.appendChild(overlay);
+  }
 
   // 🆕 Dynamically add Refresh button and group header actions
   const mainHeader = document.querySelector('.main-content header'); // Target the new header in main-content
@@ -3492,7 +3535,8 @@ async function loadDeanProfile() {
     // 🆕 Gracefully remove overlay once everything is ready
     setTimeout(() => {
       overlay.style.opacity = '0';
-      setTimeout(() => overlay.remove(), 400);
+        overlay.style.pointerEvents = 'none';
+        overlay.style.visibility = 'hidden';
     }, 600);
  
 
@@ -3947,12 +3991,13 @@ async function generateBulkReportCards() {
             tableWidth: 62
         });
 
+        const termProgressLines = buildStudentTermProgressLines(s);
         const progressSeries = buildStudentTermProgressSeries(s);
         const chartX = metaX + 68;
         const chartY = keyStartY;
         const chartW = 72;
         const chartH = 34;
-        if (progressSeries.length >= 1) {
+        if (termProgressLines.length >= 1 || progressSeries.length >= 1) {
             doc.setFont("helvetica", "bold").setFontSize(8).setTextColor(0, 0, 0);
             doc.text(sanitizePdfText("Term Progress"), chartX, chartY);
             doc.setDrawColor(203, 213, 225).setLineWidth(0.25).rect(chartX, chartY + 2, chartW, chartH);
@@ -3965,10 +4010,9 @@ async function generateBulkReportCards() {
             const minVal = 0;
             const ySteps = [0, 25, 50, 75, 100];
 
-            const points = progressSeries.map((point, index) => ({
-                x: plotX + (index / Math.max(progressSeries.length - 1, 1)) * plotW,
-                y: plotY + plotH - ((point.mean - minVal) / (maxVal - minVal || 1)) * plotH,
-            }));
+            const selectedAssessmentKeys = Array.from(document.querySelectorAll(".baseline-check:checked"))
+              .map(input => String(input.value))
+              .sort((a, b) => Number(a) - Number(b));
 
             doc.setDrawColor(226, 232, 240).setLineWidth(0.2);
             ySteps.forEach((step) => {
@@ -3989,29 +4033,47 @@ async function generateBulkReportCards() {
             doc.text(sanitizePdfText("Mean"), plotX - 8, plotY + plotH / 2, { align: "center", angle: -90 });
             doc.text(sanitizePdfText("Assessments"), plotX + plotW / 2, plotY + plotH + 8, { align: "center" });
 
-            doc.setDrawColor(37, 99, 235).setLineWidth(0.4);
-            points.forEach((point, index) => {
-                if (index > 0) {
-                    const prev = points[index - 1];
-                    doc.line(prev.x, prev.y, point.x, point.y);
-                }
-            });
-            doc.setFillColor(37, 99, 235);
-            points.forEach((point) => doc.circle(point.x, point.y, 0.9, 'F'));
+            const lines = termProgressLines.length
+              ? termProgressLines
+              : [{ term: null, color: "#2563eb", points: progressSeries.map((point, index) => ({
+                assessment: selectedAssessmentKeys[index],
+                mean: point.mean,
+              })) }];
 
-            doc.setFont("helvetica", "bold").setFontSize(5.8);
-            progressSeries.forEach((point, index) => {
-                const pointX = points[index].x;
-                const label = sanitizePdfText(point.label);
-                doc.text(label, pointX, plotY + plotH + 4, { align: "center" });
+            lines.forEach((line) => {
+              const points = line.points.map((point) => {
+                const assessmentIndex = selectedAssessmentKeys.indexOf(String(point.assessment));
+                return {
+                  x: plotX + (assessmentIndex / Math.max(selectedAssessmentKeys.length - 1, 1)) * plotW,
+                  y: plotY + plotH - ((point.mean - minVal) / (maxVal - minVal || 1)) * plotH,
+                  mean: point.mean,
+                };
+              });
+
+              const color = line.color || "#2563eb";
+              const rgb = color === "#059669" ? [5, 150, 105] : color === "#111827" ? [17, 24, 39] : [37, 99, 235];
+              doc.setDrawColor(...rgb).setLineWidth(line.term === 3 ? 0.65 : 0.4);
+              points.forEach((point, index) => {
+                if (index > 0) doc.line(points[index - 1].x, points[index - 1].y, point.x, point.y);
+              });
+              doc.setFillColor(...rgb);
+              points.forEach((point) => doc.circle(point.x, point.y, 0.9, 'F'));
+
+              if (line.term && points.length) {
+                const lastPoint = points[points.length - 1];
+                doc.setTextColor(...rgb).setFont("helvetica", "bold").setFontSize(5.8);
+                doc.text(`T${line.term}`, Math.min(lastPoint.x + 2, chartX + chartW - 2), lastPoint.y + 1.5);
+              }
             });
 
-            doc.setFont("helvetica", "bold").setFontSize(6.2);
-            progressSeries.forEach((point, index) => {
-                const pointX = points[index].x;
-                const valueText = sanitizePdfText(`${Math.round(point.mean)}%`);
-                doc.text(valueText, pointX, points[index].y - 2, { align: "center" });
+            doc.setTextColor(15, 23, 42).setFont("helvetica", "bold").setFontSize(5.8);
+            selectedAssessmentKeys.forEach((assessmentKey, index) => {
+              const pointX = plotX + (index / Math.max(selectedAssessmentKeys.length - 1, 1)) * plotW;
+              const label = sanitizePdfText(window.ASSESSMENT_MAPPING?.[assessmentKey] || `Assessment ${assessmentKey}`);
+              doc.text(label, pointX, plotY + plotH + 4, { align: "center" });
             });
+
+            doc.setTextColor(0, 0, 0);
         }
 
         const isSeniorGrade = cbcUtils.isSeniorGrade(gradeLabel);

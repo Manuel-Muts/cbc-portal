@@ -66,8 +66,18 @@
                                 <div class="profile-avatar large" id="profileAvatarLarge">A</div>
                                 <div class="profile-detail">
                                     <strong id="profileNameDetail">Admin</strong>
-                                    <span id="profileEmailDetail">admin@example.com</span>
+                                    <span id="profileEmailDetail" data-account-email>admin@example.com</span>
                                 </div>
+                            </div>
+                            <div class="profile-account-actions" aria-label="Account settings">
+                                <button class="profile-account-action" type="button" data-account-action="password">
+                                    <span aria-hidden="true">🔑</span>
+                                    <span>Change password</span>
+                                </button>
+                                <button class="profile-account-action" type="button" data-account-action="email">
+                                    <span aria-hidden="true">✉</span>
+                                    <span>Change email</span>
+                                </button>
                             </div>
                             <button class="profile-logout-btn" id="profileLogoutBtn" type="button">Log out</button>
                         </div>
@@ -529,6 +539,7 @@
 <!-- Config & Script -->
 <script src="js/config.js"></script>
 <script src="js/auth-service.js"></script>
+<script src="js/account-settings.js"></script>
 <script src="js/Utility/announcements.js"></script>
 <!-- jsPDF -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>

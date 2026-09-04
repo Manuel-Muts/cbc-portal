@@ -457,9 +457,12 @@ const TimetableModule = (function() {
         loadSharedActivityOrder();
         loadPlacementRules();
 
-        // 🆕 Show Initialization Overlay (similar to dean.js)
-        const overlay = document.createElement('div');
-        overlay.id = 'ttInitOverlay';
+        // Reuse the dean dashboard's single loading overlay.
+        const overlay = document.getElementById('deanInitOverlay') || document.createElement('div');
+        overlay.id = 'deanInitOverlay';
+        overlay.style.visibility = 'visible';
+        overlay.style.pointerEvents = 'auto';
+        overlay.style.opacity = '1';
         overlay.style.cssText = `
             position: fixed; inset: 0;
             background:
@@ -530,7 +533,7 @@ const TimetableModule = (function() {
             // setupUIStructure(); // Moved out of promise to ensure immediate availability
             populateDropdowns(); 
             
-            // Dashboard is built but covered by the #ttInitOverlay
+            // Dashboard is built but covered by the shared dean overlay.
             await fetchSchedulingContext();
             
             // 🆕 Populate initial stream and teacher options now that context is loaded
@@ -546,12 +549,17 @@ const TimetableModule = (function() {
             
             // 🆕 Remove the global overlay gracefully once fully ready
             overlay.style.opacity = '0';
-            setTimeout(() => overlay.remove(), 400);
+            overlay.style.pointerEvents = 'none';
+            overlay.style.visibility = 'hidden';
             
             isInitialized = true;
         }).catch(err => {
             console.error("Error during timetable initialization:", err);
-            if (overlay) overlay.remove(); // Ensure overlay is removed even on error
+            if (overlay) {
+                overlay.style.opacity = '0';
+                overlay.style.pointerEvents = 'none';
+                overlay.style.visibility = 'hidden';
+            }
         });
     }
 

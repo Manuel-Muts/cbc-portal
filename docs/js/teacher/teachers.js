@@ -558,13 +558,25 @@ document.addEventListener("DOMContentLoaded", () => {
   };
 
   const clearSchoolInfoCache = () => {
-    // Removed legacy teacher school cache cleanup; no frontend school-info cache used
+    const schoolId = teacher?.schoolId?._id || teacher?.schoolId;
+    if (schoolId) localStorage.removeItem(`teacher_school_name_${schoolId}`);
+  };
+
+  const getCachedSchoolName = () => {
+    const schoolId = teacher?.schoolId?._id || teacher?.schoolId;
+    if (!schoolId) return null;
+    return String(localStorage.getItem(`teacher_school_name_${schoolId}`) || '').trim() || null;
+  };
+
+  const cacheSchoolName = (name) => {
+    const schoolId = teacher?.schoolId?._id || teacher?.schoolId;
+    if (schoolId && name) localStorage.setItem(`teacher_school_name_${schoolId}`, name);
   };
 
   // 🆕 Get fallback school name from teacher profile
   const getFallbackSchoolName = () => {
     if (!teacher) return null;
-    const fallbackName = teacher.schoolName || teacher.school?.name || teacher.school?.schoolName || null;
+    const fallbackName = teacher.schoolName || teacher.school?.name || teacher.school?.schoolName || getCachedSchoolName();
     return String(fallbackName || "").trim() || null;
   };
 
@@ -617,6 +629,7 @@ document.addEventListener("DOMContentLoaded", () => {
       }
 
       const freshSchoolInfo = { name: schoolName };
+      cacheSchoolName(schoolName);
       schoolInfo = freshSchoolInfo;
       window.currentSchool = schoolInfo;
       updateSchoolNameUI(schoolInfo);
@@ -645,9 +658,10 @@ document.addEventListener("DOMContentLoaded", () => {
       schoolNameEl.style.fontWeight = "600";
     } else {
       const fallbackName = getFallbackSchoolName();
-      schoolNameEl.textContent = (fallbackName || "SCHOOL").toUpperCase();
-      schoolNameEl.style.color = "#bfdbfe";
-      schoolNameEl.style.fontWeight = "600";
+      if (!fallbackName) return;
+      schoolNameEl.textContent = fallbackName.toUpperCase();
+      schoolNameEl.style.color = "#047857";
+      schoolNameEl.style.fontWeight = "800";
     }
   }
 
@@ -1720,6 +1734,7 @@ document.addEventListener("DOMContentLoaded", () => {
       }
 
       const result = await res.json(); // Expecting { successCount, failureCount } from backend
+      let submissionToast = null;
 
       if (result.failureCount > 0) {
         let errorMessage = `Processed: ${result.successCount} saved, ${result.failureCount} failed.`; // Initial summary
@@ -1742,9 +1757,9 @@ document.addEventListener("DOMContentLoaded", () => {
             errorMessage += `\nOther failures:\n${otherErrors.join("\n")}`;
           }
         }
-        showToast(errorMessage, "error");
+        submissionToast = { message: errorMessage, type: "error" };
       } else {
-        showToast(`✅ Processed: ${result.successCount} mark(s) saved/updated.`, "success");
+        submissionToast = { message: `✅ Processed: ${result.successCount} mark(s) saved/updated.`, type: "success" };
       }
 
       if (result.successCount > 0) { // Check result.successCount from backend
@@ -1771,6 +1786,8 @@ document.addEventListener("DOMContentLoaded", () => {
         const submittedTabBtn = document.querySelector('[data-tab="submittedMarks"]');
         if (submittedTabBtn) submittedTabBtn.click();
       }
+
+      if (submissionToast) showToast(submissionToast.message, submissionToast.type);
     } catch (err) {
       console.error("Submit marks error:", err);
       showToast(err.message || "Error submitting marks", "error");
@@ -2228,8 +2245,6 @@ document.addEventListener("DOMContentLoaded", () => {
       const normalize = s => (s || '').toLowerCase().replace(/-/g, ' ').replace(/\s+/g, ' ').trim();
       const markSub = normalize(mark.subject);
       const markCourse = normalize(mark.course);
-
-      showToast("Loading learner for editing...", "info");
 
       const isSeniorSchool = markGradeNum >= 10 && markGradeNum <= 12;
 

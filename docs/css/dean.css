@@ -723,6 +723,19 @@ header #logoutBtn {
   }
 }
 
+@media (max-width: 768px) {
+  .main-content > #contentArea > .filters-section .filter-group select,
+  .main-content > #contentArea > .filters-section .filter-group input,
+  #moduleTabContent .filters-section .filter-group select,
+  #moduleTabContent .filters-section .filter-group input,
+  #timetableTab > .dashboard-card > .filter-grid .filter-group select,
+  #timetableTab > .dashboard-card > .filter-grid .filter-group input {
+    background-color: #ecfdf5 !important;
+    color: #064e3b !important;
+    border-color: #a7f3d0 !important;
+  }
+}
+
 .filters-section h3 {
   margin-top: 0; /* Keep as is */
     margin-bottom: 12px; /* Reduced margin */

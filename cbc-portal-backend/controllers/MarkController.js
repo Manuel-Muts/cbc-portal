@@ -1139,6 +1139,64 @@ export const getMarksByGrade = async (req, res) => {
   }
 };
 
+export const getGradeProgressMeans = async (req, res) => {
+  try {
+    const { grade, year, stream } = req.query;
+    const schoolId = req.user.schoolId;
+
+    if (!grade || !year) {
+      return res.status(400).json({ message: "Grade and year query parameters are required" });
+    }
+
+    const gradeStr = String(grade).trim();
+    const numericPart = gradeStr.match(/\d+/)?.[0];
+    const normalizedGrades = [gradeStr];
+    if (!gradeStr.toUpperCase().startsWith("PP") && gradeStr.toUpperCase() !== "PG" && numericPart) {
+      normalizedGrades.push(numericPart, `Grade ${numericPart}`);
+    }
+
+    const match = {
+      schoolId: new mongoose.Types.ObjectId(schoolId),
+      grade: { $in: [...new Set(normalizedGrades)] },
+      year: Number(year),
+      score: { $type: "number" }
+    };
+
+    if (stream && stream !== "all") match.stream = String(stream).trim();
+
+    const means = await Mark.aggregate([
+      { $match: match },
+      {
+        $group: {
+          _id: {
+            admissionNo: "$admissionNo",
+            studentName: "$studentName",
+            term: "$term",
+            assessment: "$assessment"
+          },
+          mean: { $avg: "$score" }
+        }
+      },
+      {
+        $project: {
+          _id: 0,
+          admissionNo: "$_id.admissionNo",
+          studentName: "$_id.studentName",
+          term: "$_id.term",
+          assessment: "$_id.assessment",
+          mean: { $round: ["$mean", 1] }
+        }
+      },
+      { $sort: { admissionNo: 1, term: 1, assessment: 1 } }
+    ]).allowDiskUse(true);
+
+    return res.json(means);
+  } catch (err) {
+    console.error("getGradeProgressMeans error:", err);
+    return res.status(500).json({ message: "Server error fetching grade progress means" });
+  }
+};
+
 export const getPaginatedMarksByGrade = getMarksByGrade;
 
 // ---------------------------

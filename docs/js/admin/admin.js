@@ -98,23 +98,18 @@
     overlay.style.cssText = `
       position: fixed; inset: 0;
       background:
-        radial-gradient(circle at top left, rgba(147, 197, 253, 0.32), transparent 30%),
-        radial-gradient(circle at bottom right, rgba(59, 130, 246, 0.2), transparent 38%),
-        linear-gradient(135deg, rgba(239, 246, 255, 0.92) 0%, rgba(224, 242, 254, 0.82) 42%, rgba(219, 234, 254, 0.76) 100%);
+        radial-gradient(circle at 18% 18%, rgba(125, 211, 252, 0.2), transparent 32%),
+        linear-gradient(135deg, rgba(219, 234, 254, 0.7), rgba(224, 242, 254, 0.48));
       z-index: 20000; display: flex; align-items: center; justify-content: center;
-      backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
-      transition: opacity 0.3s ease; overflow: hidden;
+      backdrop-filter: blur(14px) saturate(125%); -webkit-backdrop-filter: blur(14px) saturate(125%);
+      transition: opacity 0.4s ease; overflow: hidden;
     `;
     overlay.innerHTML = `
       <div style="position: relative; width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; overflow: hidden; animation: adminShellFade 0.45s ease-out;">
-        <span style="position:absolute; width: 280px; height: 280px; border-radius: 50%; background: rgba(96, 165, 250, 0.18); filter: blur(28px); top: 12%; left: 18%; animation: adminOrbFloat 7s ease-in-out infinite;"></span>
-        <span style="position:absolute; width: 220px; height: 220px; border-radius: 50%; background: rgba(125, 211, 252, 0.18); filter: blur(24px); bottom: 10%; right: 18%; animation: adminOrbFloat 9s ease-in-out infinite reverse;"></span>
-        <span style="position:absolute; width: 170px; height: 170px; border-radius: 50%; background: rgba(191, 219, 254, 0.24); filter: blur(22px); top: 38%; right: 28%; animation: adminOrbFloat 8s ease-in-out infinite;"></span>
-
-        <div style="position: relative; width: min(430px, 92vw); padding: 28px 28px 24px; border-radius: 28px; background: rgba(255, 255, 255, 0.72); border: 1px solid rgba(148, 163, 184, 0.28); box-shadow: 0 22px 60px rgba(37, 99, 235, 0.14), inset 0 1px 0 rgba(255,255,255,0.7); backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px); animation: adminCardRise 0.6s cubic-bezier(.2,.8,.2,1);">
+        <div class="admin-init-card" style="position: relative; overflow: hidden; min-width: min(320px, 82vw); padding: 24px 28px; border-radius: 18px; background: rgba(255, 255, 255, 0.5); border: 1px solid rgba(255, 255, 255, 0.7); box-shadow: 0 20px 60px rgba(30, 64, 175, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.8); backdrop-filter: blur(18px) saturate(135%); -webkit-backdrop-filter: blur(18px) saturate(135%); animation: adminCardRise 0.6s cubic-bezier(.2,.8,.2,1);">
           <div style="position:absolute; inset: 0 auto auto 0; width: 100%; height: 4px; border-radius: 28px 28px 0 0; background: linear-gradient(90deg, #2563eb, #38bdf8, #60a5fa, #2563eb); background-size: 200% 100%; animation: adminLoadBarSweep 2.6s ease-in-out infinite;"></div>
           <div style="display:flex; align-items:center; justify-content:center; gap:18px; margin-bottom: 16px;">
-            <div class="spinner" style="width: 48px; height: 48px; border-width: 4px; border-top-color: #2563eb; border-right-color: #60a5fa; display: inline-block; margin-right: 0; margin-bottom: 0; box-shadow: 0 0 0 4px rgba(37,99,235,0.08), 0 0 24px rgba(96,165,250,0.28);"></div>
+            <div class="spinner" style="width: 48px; height: 48px; border-width: 4px; border-top-color: #0ea5e9; border-right-color: #2563eb; display: inline-block; margin-right: 0; margin-bottom: 0; box-shadow: 0 0 0 5px rgba(14,165,233,0.08), 0 0 24px rgba(14,165,233,0.24);"></div>
             <div style="display:flex; align-items:center; gap:8px; background: rgba(37,99,235,0.07); border: 1px solid rgba(96,165,250,0.25); border-radius: 999px; padding: 6px 12px; color: #1d4ed8; font-size: 0.72rem; font-weight: 800; letter-spacing: 0.14em; text-transform: uppercase; font-family: 'Segoe UI', 'Trebuchet MS', sans-serif;">
               <span style="width:8px; height:8px; border-radius:50%; background:#22c55e; box-shadow:0 0 12px rgba(34,197,94,0.8); display:inline-block;"></span>
               Syncing
@@ -127,14 +122,22 @@
         </div>
       </div>
       <style>
+        .admin-init-card::before {
+          content: "";
+          position: absolute;
+          top: 0;
+          left: -35%;
+          width: 34%;
+          height: 4px;
+          z-index: 2;
+          background: linear-gradient(90deg, transparent, #ffffff 45%, #67e8f9 60%, transparent);
+          box-shadow: 0 0 16px rgba(103, 232, 249, 0.95), 0 0 5px rgba(255, 255, 255, 0.9);
+          animation: adminFirstPaintSweep 1.8s ease-in-out infinite;
+        }
         @keyframes adminLoadBarSweep {
           0% { background-position: 0% 50%; opacity: 0.8; }
           50% { background-position: 100% 50%; opacity: 1; }
           100% { background-position: 0% 50%; opacity: 0.8; }
-        }
-        @keyframes adminOrbFloat {
-          0%, 100% { transform: translate3d(0, 0, 0) scale(1); opacity: 0.7; }
-          50% { transform: translate3d(18px, -22px, 0) scale(1.08); opacity: 1; }
         }
         @keyframes adminCardRise {
           0% { opacity: 0; transform: translateY(18px) scale(0.98); }
@@ -147,6 +150,12 @@
         @keyframes adminShellFade {
           0% { opacity: 0; }
           100% { opacity: 1; }
+        }
+        @keyframes adminFirstPaintSweep {
+          0% { transform: translateX(0); opacity: 0; }
+          15% { opacity: 1; }
+          85% { opacity: 1; }
+          100% { transform: translateX(395%); opacity: 0; }
         }
       </style>
     `;
@@ -236,7 +245,7 @@
   let promotionProgressPercent;
   let subjectAllocPage = 1;
   const SUBJECT_ALLOC_LIMIT = 10;
-  const SUBJECT_ALLOC_SEARCH_LIMIT = 1000;
+  const SUBJECT_ALLOC_SEARCH_LIMIT = 100;
   let subjectAllocTotalPages = 1;
   let classAllocPage = 1;
   const CLASS_ALLOC_LIMIT = 10;
@@ -372,7 +381,7 @@ async function loadSchoolInfo(forceRefresh = false) {
 
   if (!forceRefresh) {
     const cachedSchoolInfo = readAdminCache('school_info');
-    if (cachedSchoolInfo) {
+    if (cachedSchoolInfo && resolveSchoolTypeKey(cachedSchoolInfo)) {
       schoolInfo = cachedSchoolInfo;
       currentSchoolInfo = cachedSchoolInfo;
       window.schoolInfo = cachedSchoolInfo;

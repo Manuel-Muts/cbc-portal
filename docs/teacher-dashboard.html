@@ -55,20 +55,22 @@
               <div class="profile-avatar large" id="teacherProfileAvatarLarge">T</div>
               <div class="profile-detail">
                 <strong id="teacherProfileNameDetail">Teacher</strong>
-                <span id="teacherProfileEmailDetail">teacher@example.com</span>
+                <span id="teacherProfileEmailDetail" data-account-email>teacher@example.com</span>
               </div>
             </div>
             <div class="profile-account-actions" aria-label="Account settings">
-              <button class="profile-account-action" type="button" disabled>
+              <button class="profile-account-action" type="button" data-account-action="password">
                 <i class="fas fa-key" aria-hidden="true"></i>
                 <span>Change password</span>
-                <small>Soon</small>
               </button>
-              <button class="profile-account-action" type="button" disabled>
+              <button class="profile-account-action" type="button" data-account-action="email">
                 <i class="fas fa-envelope" aria-hidden="true"></i>
                 <span>Change email</span>
-                <small>Soon</small>
               </button>
+            </div>
+            <div class="profile-policy-links">
+              <a href="/privacy-policy">Privacy Policy</a>
+              <a href="/terms-of-service">Terms of Service</a>
             </div>
             <button class="profile-logout-btn" id="teacherLogoutBtn" type="button">Log out</button>
           </div>
@@ -296,6 +298,7 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.28/jspdf.plugin.autotable.min.js"></script>
   <script src="js/config.js"></script>
   <script src="js/auth-service.js"></script>
+  <script src="js/account-settings.js"></script>
    <script src="js/Utility/announcements.js"></script>
   <script src="js/Utility/cbc-utils.js"></script>
    <script src="js/Utility/spinner.js"></script>

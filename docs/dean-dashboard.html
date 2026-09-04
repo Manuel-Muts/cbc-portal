@@ -55,12 +55,82 @@
 
     /* Utility for JS-added elements */
     .header-actions { display: flex; gap: 10px; align-items: center; }
+
+    /* Single first-paint loader used throughout dean dashboard startup. */
+    #deanInitOverlay {
+      position: fixed;
+      inset: 0;
+      z-index: 20000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background:
+        radial-gradient(circle at 18% 18%, rgba(125, 211, 252, 0.2), transparent 32%),
+        linear-gradient(135deg, rgba(219, 234, 254, 0.7), rgba(224, 242, 254, 0.48));
+      backdrop-filter: blur(14px) saturate(125%);
+      -webkit-backdrop-filter: blur(14px) saturate(125%);
+      opacity: 1;
+      transition: opacity 0.4s ease;
+    }
+
+    #deanInitOverlay .dean-first-paint-card {
+      position: relative;
+      overflow: hidden;
+      min-width: min(320px, 82vw);
+      padding: 24px 28px;
+      border: 1px solid rgba(255, 255, 255, 0.7);
+      border-radius: 18px;
+      background: rgba(255, 255, 255, 0.5);
+      box-shadow: 0 20px 60px rgba(30, 64, 175, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.8);
+      backdrop-filter: blur(18px) saturate(135%);
+      -webkit-backdrop-filter: blur(18px) saturate(135%);
+      color: #0f172a;
+      text-align: center;
+      font-family: 'Segoe UI', 'Trebuchet MS', sans-serif;
+    }
+
+    #deanInitOverlay .dean-first-paint-card::before {
+      content: "";
+      position: absolute;
+      top: 0;
+      left: -45%;
+      width: 42%;
+      height: 3px;
+      background: #38bdf8;
+      box-shadow: 0 0 18px rgba(56, 189, 248, 0.8);
+      animation: deanFirstPaintSweep 2.2s ease-in-out infinite;
+    }
+
+    #deanInitOverlay .dean-first-paint-spinner {
+      width: 36px;
+      height: 36px;
+      margin: 0 auto 12px;
+      border: 4px solid rgba(37, 99, 235, 0.2);
+      border-top-color: #0ea5e9;
+      border-right-color: #2563eb;
+      border-radius: 50%;
+      box-shadow: 0 0 0 5px rgba(14, 165, 233, 0.08), 0 0 24px rgba(14, 165, 233, 0.24);
+      animation: deanFirstPaintSpin 0.8s linear infinite;
+    }
+
+    @keyframes deanFirstPaintSpin { to { transform: rotate(360deg); } }
+    @keyframes deanFirstPaintSweep {
+      0% { transform: translateX(0); opacity: 0.45; }
+      50% { opacity: 1; }
+      100% { transform: translateX(345%); opacity: 0.45; }
+    }
   </style>
  <meta http-equiv="Content-Security-Policy" 
   content="style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com; font-src https://fonts.gstatic.com https://cdnjs.cloudflare.com;">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
 </head>
 <body>
+  <div id="deanInitOverlay" aria-live="polite">
+    <div class="dean-first-paint-card">
+      <div class="dean-first-paint-spinner" aria-hidden="true"></div>
+      <strong>Loading Dean's Panel...</strong>
+    </div>
+  </div>
   <div id="toastContainer"></div>
 
   <div class="dashboard-wrapper">

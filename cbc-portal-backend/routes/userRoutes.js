@@ -19,6 +19,7 @@ import {
   getStudentByAdmission,
   getClassTeacher,
   changePassword,
+  changeEmail,
   toggleDeanStatus,
   updateSignature,
   bulkDeleteStudentsByClass,
@@ -66,6 +67,7 @@ router.use(verifyToken);
 
 router.get("/user", getUser);
 router.put("/change-password", changePassword);
+router.put("/change-email", changeEmail);
 router.put("/profile/signature", updateSignature);
 
 // ---------------------------

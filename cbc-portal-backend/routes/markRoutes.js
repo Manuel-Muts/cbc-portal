@@ -7,6 +7,7 @@ import {
   deleteMark,
   getStudentMarks,
   getMarksByGrade,
+  getGradeProgressMeans,
   getMarksByGradeAndStudents, // 🆕 Import new function
   getSchoolWideRankings,
   bulkAddUpdateMarks,
@@ -53,6 +54,7 @@ router.delete("/:id", VerifyToken, deleteMark);
 router.get("/by-grade-and-students", VerifyToken, getMarksByGradeAndStudents); // 🆕 New route
 // Class teacher route
 router.get("/by-grade", VerifyToken, isClassTeacher, getMarksByGrade);
+router.get("/grade-progress-means", VerifyToken, isDean, getGradeProgressMeans);
 router.get("/paginated-by-grade", VerifyToken, isClassTeacher, getPaginatedMarksByGrade);
 router.get("/school-wide-rankings", VerifyToken, isClassTeacher, getSchoolWideRankings);
 

@@ -1220,7 +1220,7 @@ export const getUser = async (req, res) => {
   try {
     let user = await User.findById(req.user.id)
       .select("-password -classTeacherPassword -resetCode -resetCodeExpires -resetAttempts -resetVerified")
-      .populate("schoolId", "status"); // 🆕 Populate school to retrieve its status
+      .populate("schoolId", "name status");
 
     if (!user) {
       return res.status(404).json({ msg: "User not found" });
@@ -1240,6 +1240,7 @@ export const getUser = async (req, res) => {
     return res.status(200).json({
       ...userObj,
       schoolStatus: userObj.schoolId?.status || "Active",
+      schoolName: userObj.schoolId?.name || userObj.schoolName || null,
       schoolId: userObj.schoolId?._id || userObj.schoolId,
       isDean: !!userObj.isDean,
       classGrade: userObj.assignedClass || userObj.classGrade || null,
@@ -1491,6 +1492,54 @@ export const changePassword = async (req, res) => {
 
   } catch (err) {
     console.error("ChangePassword Error:", err);
+    res.status(500).json({ message: "Server error" });
+  }
+};
+
+// ---------------------------
+// CHANGE EMAIL (Authenticated Users)
+// ---------------------------
+export const changeEmail = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { currentPassword, newEmail } = req.body;
+    const normalizedEmail = String(newEmail || '').trim().toLowerCase();
+
+    if (!currentPassword) {
+      return res.status(400).json({ message: "Current password is required" });
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
+      return res.status(400).json({ message: "Enter a valid email address" });
+    }
+
+    const user = await User.findById(userId);
+    if (!user) return res.status(404).json({ message: "User not found" });
+
+    const isMatch = await bcrypt.compare(currentPassword, user.password);
+    if (!isMatch) return res.status(403).json({ message: "Current password incorrect" });
+
+    if (String(user.email || '').toLowerCase() === normalizedEmail) {
+      return res.status(400).json({ message: "New email must be different from the current email" });
+    }
+
+    const existingUser = await User.findOne({ email: normalizedEmail, _id: { $ne: user._id } }).select('_id');
+    if (existingUser) return res.status(409).json({ message: "Email is already in use" });
+
+    user.email = normalizedEmail;
+    await user.save();
+
+    const sanitizedUser = user.toObject();
+    delete sanitizedUser.password;
+    delete sanitizedUser.classTeacherPassword;
+    delete sanitizedUser.resetCode;
+    delete sanitizedUser.resetCodeExpires;
+    delete sanitizedUser.resetAttempts;
+    delete sanitizedUser.resetVerified;
+
+    res.json({ message: "Email changed successfully", user: sanitizedUser });
+  } catch (err) {
+    if (err?.code === 11000) return res.status(409).json({ message: "Email is already in use" });
+    console.error("ChangeEmail Error:", err);
     res.status(500).json({ message: "Server error" });
   }
 };

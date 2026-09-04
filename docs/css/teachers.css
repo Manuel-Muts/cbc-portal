@@ -1727,6 +1727,24 @@ header.teacher-header .profile-account-action:disabled {
   opacity: 0.78;
 }
 
+header.teacher-header .profile-policy-links {
+  display: flex;
+  justify-content: center;
+  gap: 12px;
+  margin: 8px 0 12px;
+  font-size: 0.7rem;
+}
+
+header.teacher-header .profile-policy-links a {
+  color: #2563eb;
+  text-decoration: none;
+}
+
+header.teacher-header .profile-policy-links a:hover,
+header.teacher-header .profile-policy-links a:focus-visible {
+  text-decoration: underline;
+}
+
 header.teacher-header .profile-logout-btn {
   width: 100%;
   border: none;
@@ -2112,6 +2130,14 @@ header.teacher-header .profile-logout-btn:hover {
    REFINED MOBILE RESPONSIVENESS
 ============================== */
 @media (max-width: 768px) {
+  .marks-controls .form-group select,
+  .marks-controls .form-group input,
+  #myClassAnalysisWrap > .filter-grid .form-group select {
+    background-color: #ecfdf5 !important;
+    color: #064e3b !important;
+    border-color: #a7f3d0 !important;
+  }
+
   /* Thin Horizontal Header */
   header.teacher-header {
     height: 40px !important;
