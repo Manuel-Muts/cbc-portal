@@ -545,27 +545,6 @@ async function fetchWithAuth(url, options = {}) {
   return res.json();
 }
 
-// 🆕 Fetch dashboard summary from cache (precomputed by cron job)
-async function fetchDashboardSummary(forceRefresh = false) {
-  const cacheKey = 'dashboard_summary';
-  if (!forceRefresh) {
-    const cached = getAnalyticsCache(cacheKey);
-    if (cached) {
-      console.log('[Dashboard Summary] Using cached summary');
-      return cached;
-    }
-  }
-
-  try {
-    const summary = await fetchWithAuth(`${API_BASE}/dashboard/summary`);
-    setAnalyticsCache(cacheKey, summary);
-    return summary;
-  } catch (err) {
-    console.error('Dashboard summary fetch error:', err);
-    return null;
-  }
-}
-
 function setupTabs() {
   const tabBtns = document.querySelectorAll(".menu li[data-tab]");
   const tabPanes = document.querySelectorAll(".tab-pane");
@@ -2556,8 +2535,20 @@ async function downloadRankingAsPDF() {
     .filter(s => s.progress < 0)
     .sort((a, b) => a.progress - b.progress).slice(0, 3);
 
+  const subjectPerformance = (lastProcessedSubjects || []).map(subject => {
+    const scores = (lastProcessedStudents || [])
+      .map(student => student.subjects?.[subject])
+      .filter(score => score !== undefined && score !== null && score !== "" && String(score).toUpperCase() !== "X" && !Number.isNaN(Number(score)))
+      .map(Number);
+    return {
+      subject,
+      mean: scores.length ? scores.reduce((total, score) => total + score, 0) / scores.length : null,
+      count: scores.length
+    };
+  }).filter(item => item.mean !== null).sort((a, b) => b.mean - a.mean);
+
   // Only add a new page if there's data to display
-  if (improvedStudents.length > 0 || droppedStudents.length > 0) {
+  if (improvedStudents.length > 0 || droppedStudents.length > 0 || subjectPerformance.length > 0) {
     doc.addPage();
     let zoneAnalysisY = 20;
 
@@ -2626,6 +2617,83 @@ async function downloadRankingAsPDF() {
         tableWidth: 80,
         margin: { left: 14 }
       });
+    }
+
+    if (subjectPerformance.length > 0) {
+      const subjectChartY = zoneAnalysisY + (improvedStudents.length > 0 || droppedStudents.length > 0 ? 48 : 8);
+      const chartX = 27;
+      const chartY = subjectChartY + 12;
+      const chartWidth = pageWidth - 42;
+      const chartHeight = 70;
+      const chartBottom = chartY + chartHeight;
+      const barSlotWidth = chartWidth / subjectPerformance.length;
+      const barWidth = Math.max(2.5, Math.min(12, barSlotWidth * 0.58));
+
+      doc.setFontSize(11);
+      doc.setFont("helvetica", "bold");
+      doc.setTextColor(30, 41, 59);
+      doc.text("SUBJECT PERFORMANCE BY MEAN SCORE", 14, subjectChartY);
+
+      // Draw a percentage grid and axes behind the bars.
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(7);
+      for (let percentage = 0; percentage <= 100; percentage += 20) {
+        const gridY = chartBottom - (percentage / 100) * chartHeight;
+        doc.setDrawColor(226, 232, 240);
+        doc.setLineWidth(0.25);
+        doc.line(chartX, gridY, chartX + chartWidth, gridY);
+        doc.setTextColor(100, 116, 139);
+        doc.text(`${percentage}%`, chartX - 4, gridY + 2, { align: "right" });
+      }
+      doc.setDrawColor(71, 85, 105);
+      doc.setLineWidth(0.45);
+      doc.line(chartX, chartY, chartX, chartBottom);
+      doc.line(chartX, chartBottom, chartX + chartWidth, chartBottom);
+
+      subjectPerformance.forEach((item, index) => {
+        const mean = Math.max(0, Math.min(100, Number(item.mean) || 0));
+        const barHeight = Math.max(1, (mean / 100) * chartHeight);
+        const barX = chartX + (index * barSlotWidth) + ((barSlotWidth - barWidth) / 2);
+        const barY = chartBottom - barHeight;
+        const barColor = mean < 40
+          ? [220, 38, 38]
+          : mean < 50
+            ? [245, 158, 11]
+            : mean < 70
+              ? [37, 99, 235]
+              : [16, 185, 129];
+
+        doc.setFillColor(...barColor);
+        doc.roundedRect(barX, barY, barWidth, barHeight, 1.2, 1.2, "F");
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(6.5);
+        doc.setTextColor(30, 41, 59);
+        doc.text(`${mean.toFixed(1)}%`, barX + (barWidth / 2), Math.max(chartY - 1, barY - 2), { align: "center" });
+
+        const shortLabel = cbcUtils.getAbbreviatedSubjectName(item.subject || "Subject");
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(7.5);
+        doc.setTextColor(30, 41, 59);
+        doc.text(String(shortLabel), barX + (barWidth / 2), chartBottom + 5, { angle: 45, align: "left" });
+      });
+
+      const legendY = chartBottom + 27;
+      const legend = [
+        ["Weak", [220, 38, 38]],
+        ["Developing", [245, 158, 11]],
+        ["Satisfactory", [37, 99, 235]],
+        ["Strong", [16, 185, 129]]
+      ];
+      let legendX = chartX;
+      doc.setFontSize(7);
+      legend.forEach(([label, color]) => {
+        doc.setFillColor(...color);
+        doc.roundedRect(legendX, legendY - 3, 4, 4, 1, 1, "F");
+        doc.setTextColor(71, 85, 99);
+        doc.text(label, legendX + 6, legendY);
+        legendX += 28;
+      });
+      doc.setTextColor(0, 0, 0);
     }
 
     // Add page numbers to the new zone analysis page
@@ -3336,11 +3404,10 @@ async function loadDeanProfile() {
     refreshBtn.addEventListener('click', async () => {
       // Clear relevant caches to ensure a fresh load
       Object.keys(localStorage).forEach(key => {
-        if (key.startsWith(CACHE_KEY_PREFIX) || key === 'dean_school_info_cache' || key === 'user_profile_cache' || key === 'dean_sms_summary_cache' || key === 'dean_teacher_sig_cache' || key === 'dashboard_summary') {
+        if (key.startsWith(CACHE_KEY_PREFIX) || key === 'dean_school_info_cache' || key === 'user_profile_cache' || key === 'dean_sms_summary_cache' || key === 'dean_teacher_sig_cache') {
           localStorage.removeItem(key);
         }
       });
-      await fetchDashboardSummary(true);
       window.location.reload();
     });
     headerActions.appendChild(refreshBtn);
@@ -3463,8 +3530,6 @@ async function loadDeanProfile() {
 
     setupTabs(); // Initialize tabs
     initFilters();
-    await fetchDashboardSummary(); // 🆕 Warm the precomputed dashboard summary cache for fast student/school summary access
-
     // 🆕 Update page title
     if (pageTitle) {
       pageTitle.textContent = "Dean's Panel";
@@ -3875,10 +3940,19 @@ async function generateBulkReportCards() {
           ];
         });
 
+        const hasSubjectProgress = rows.some(row => row[2] && row[2] !== "N/A" && row[2] !== "-");
+        const progressColumnIndex = hasSubjectProgress ? 2 : -1;
+        const reportHeaders = hasSubjectProgress
+          ? headers
+          : headers.map((headerRow) => headerRow.filter((_, index) => index !== 2));
+        const reportRows = hasSubjectProgress
+          ? rows.map(row => row.map((value, index) => index === 2 && value === "N/A" ? "" : value))
+          : rows.map(row => row.filter((_, index) => index !== 2));
+
         doc.autoTable({
             startY: tableStartY,
-            head: headers,
-            body: rows,
+            head: reportHeaders,
+            body: reportRows,
             theme: 'grid',
             headStyles: { fillColor: [147, 197, 253], textColor: [15, 23, 42] },
             styles: { fontSize: 7.5, cellPadding: 2, lineWidth: 0.2, lineColor: [0, 0, 0] },
@@ -3886,15 +3960,16 @@ async function generateBulkReportCards() {
             didParseCell: (data) => {
               if (data.section !== 'body') return;
 
-              const isRankingColumn = data.column.index >= 3
-                && data.column.index < (hasGradeStreams ? 5 : 4);
+              const rankingStartIndex = hasSubjectProgress ? 3 : 2;
+              const isRankingColumn = data.column.index >= rankingStartIndex
+                && data.column.index < rankingStartIndex + (hasGradeStreams ? 2 : 1);
               if (isRankingColumn && /^\d+\/\d+$/.test(String(data.cell.raw))) {
                 data.cell.customRankText = String(data.cell.raw);
                 data.cell.text = [];
                 return;
               }
 
-              if (data.column.index !== 2) return;
+              if (data.column.index !== progressColumnIndex) return;
 
               const progressValue = parseFloat(String(data.cell.raw));
               if (Number.isNaN(progressValue)) return;

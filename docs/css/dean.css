@@ -724,6 +724,20 @@ header #logoutBtn {
 }
 
 @media (max-width: 768px) {
+  /* Keep all dean filter controls mint on mobile; generic select rules appear later. */
+  .main-content .filters-section .filter-group select,
+  .main-content .filters-section .filter-group input,
+  .main-content .module-filters .filter-group select,
+  .main-content .module-filters .filter-group input,
+  #moduleTabContent .filters-section .filter-group select,
+  #moduleTabContent .filters-section .filter-group input,
+  #timetableTab .filter-grid .filter-group select,
+  #timetableTab .filter-grid .filter-group input {
+    background-color: #ecfdf5 !important;
+    color: #064e3b !important;
+    border-color: #a7f3d0 !important;
+  }
+
   .main-content > #contentArea > .filters-section .filter-group select,
   .main-content > #contentArea > .filters-section .filter-group input,
   #moduleTabContent .filters-section .filter-group select,

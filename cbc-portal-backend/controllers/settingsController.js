@@ -1,6 +1,8 @@
 // controllers/settingsController.js
 import Setting from "../models/Setting.js";
 import { School } from "../models/school.js";
+import { User } from "../models/User.js";
+import { createNotificationsForUsers } from './notificationController.js';
 
 export const getMarksEditSettings = async (req, res) => {
   try {
@@ -41,6 +43,17 @@ export const updateMarksEditSettings = async (req, res) => {
       { value: allowTeacherSubmittedMarkEdits },
       { upsert: true, new: true }
     ).lean();
+
+    if (allowTeacherSubmittedMarkEdits === true) {
+      const teachers = await User.find({ schoolId: req.user.schoolId, role: 'teacher' }).select('_id').lean();
+      await createNotificationsForUsers({
+        userIds: teachers.map(teacher => teacher._id),
+        schoolId: req.user.schoolId,
+        type: 'marks_edit_reopened',
+        title: 'Marks editing reopened',
+        message: `Marks editing is now open for Term ${term}, ${year}.`
+      });
+    }
 
     res.json({
       message: `Marks edit settings for Term ${term}, Year ${year} updated successfully.`,

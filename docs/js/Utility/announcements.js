@@ -4,6 +4,8 @@
  */
 const AnnouncementSystem = (() => {
     const STORAGE_KEY = 'cbc_dismissed_announcements';
+    const CACHE_KEY = 'cbc_active_announcements_cache';
+    const CACHE_DURATION = 5 * 60 * 1000;
 
     async function init() {
         const token = window.authService?.getToken();
@@ -22,12 +24,34 @@ const AnnouncementSystem = (() => {
         }
 
         try {
-            const response = await fetch(`${window.config.api.baseURL}/announcements/active`, {
-                headers: { 'Authorization': `Bearer ${token}` }
-            });
-            
-            if (!response.ok) return;
-            const announcements = await response.json();
+            let announcements;
+            const cached = sessionStorage.getItem(CACHE_KEY);
+
+            if (cached) {
+                try {
+                    const { timestamp, data } = JSON.parse(cached);
+                    if (Date.now() - timestamp < CACHE_DURATION && Array.isArray(data)) {
+                        announcements = data;
+                    } else {
+                        sessionStorage.removeItem(CACHE_KEY);
+                    }
+                } catch (e) {
+                    sessionStorage.removeItem(CACHE_KEY);
+                }
+            }
+
+            if (!announcements) {
+                const response = await fetch(`${window.config.api.baseURL}/announcements/active`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+
+                if (!response.ok) return;
+                announcements = await response.json();
+                sessionStorage.setItem(CACHE_KEY, JSON.stringify({
+                    timestamp: Date.now(),
+                    data: announcements
+                }));
+            }
             
             const dismissed = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
             

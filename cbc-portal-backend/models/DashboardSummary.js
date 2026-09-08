@@ -15,11 +15,13 @@ const dashboardSummarySchema = new mongoose.Schema({
   totalStudents: { type: Number, default: 0 },
   activeStudents: { type: Number, default: 0 },
   feesCollected: { type: Number, default: 0 },
+  termFeesCollected: { type: Number, default: 0 },
   feesPending: { type: Number, default: 0 },
   monthlyExpenses: { type: Number, default: 0 },
+  termExpenses: { type: Number, default: 0 },
+  activeTerm: { type: String, default: 'Term 1' },
   smsCredits: { type: Number, default: 0 },
   unreadAnnouncements: { type: Number, default: 0 },
-  pendingMarks: { type: Number, default: 0 },
   updatedAt: { type: Date, default: Date.now }
 }, { timestamps: true });
 

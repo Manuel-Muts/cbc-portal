@@ -59,6 +59,7 @@
   document.head.appendChild(compactStyle);
 
   let schoolInfo = null;
+  let dashboardSummary = null;
 
   const clearSchoolInfoCache = () => {
     // Removed admin school-info cache handling — always use fresh data
@@ -105,15 +106,10 @@
       transition: opacity 0.4s ease; overflow: hidden;
     `;
     overlay.innerHTML = `
-      <div style="position: relative; width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; overflow: hidden; animation: adminShellFade 0.45s ease-out;">
-        <div class="admin-init-card" style="position: relative; overflow: hidden; min-width: min(320px, 82vw); padding: 24px 28px; border-radius: 18px; background: rgba(255, 255, 255, 0.5); border: 1px solid rgba(255, 255, 255, 0.7); box-shadow: 0 20px 60px rgba(30, 64, 175, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.8); backdrop-filter: blur(18px) saturate(135%); -webkit-backdrop-filter: blur(18px) saturate(135%); animation: adminCardRise 0.6s cubic-bezier(.2,.8,.2,1);">
-          <div style="position:absolute; inset: 0 auto auto 0; width: 100%; height: 4px; border-radius: 28px 28px 0 0; background: linear-gradient(90deg, #2563eb, #38bdf8, #60a5fa, #2563eb); background-size: 200% 100%; animation: adminLoadBarSweep 2.6s ease-in-out infinite;"></div>
-          <div style="display:flex; align-items:center; justify-content:center; gap:18px; margin-bottom: 16px;">
-            <div class="spinner" style="width: 48px; height: 48px; border-width: 4px; border-top-color: #0ea5e9; border-right-color: #2563eb; display: inline-block; margin-right: 0; margin-bottom: 0; box-shadow: 0 0 0 5px rgba(14,165,233,0.08), 0 0 24px rgba(14,165,233,0.24);"></div>
-            <div style="display:flex; align-items:center; gap:8px; background: rgba(37,99,235,0.07); border: 1px solid rgba(96,165,250,0.25); border-radius: 999px; padding: 6px 12px; color: #1d4ed8; font-size: 0.72rem; font-weight: 800; letter-spacing: 0.14em; text-transform: uppercase; font-family: 'Segoe UI', 'Trebuchet MS', sans-serif;">
-              <span style="width:8px; height:8px; border-radius:50%; background:#22c55e; box-shadow:0 0 12px rgba(34,197,94,0.8); display:inline-block;"></span>
-              Syncing
-            </div>
+        <div style="position: relative; width: min(760px, 88vw); display: flex; align-items: center; justify-content: center; overflow: visible; animation: adminShellFade 0.45s ease-out;">
+        <div class="admin-init-card" style="position: relative; overflow: visible; width: 100%; padding: 24px 28px; background: transparent; border: 0; box-shadow: none; backdrop-filter: none; -webkit-backdrop-filter: none; animation: adminCardRise 0.6s cubic-bezier(.2,.8,.2,1);">
+          <div style="display:flex; align-items:center; justify-content:center; margin-bottom: 18px;">
+            <div class="spinner" style="width: 56px; height: 56px; border-width: 4px; border-top-color: #0ea5e9; border-right-color: #2563eb; display: inline-block; margin: 0; box-shadow: 0 0 0 6px rgba(14,165,233,0.08), 0 0 30px rgba(14,165,233,0.3);"></div>
           </div>
           <div style="text-align:center;">
             <h2 style="margin: 0 0 10px; color: #0f172a; font-size: clamp(1.4rem, 2vw, 1.8rem); font-weight: 900; letter-spacing: -0.04em; text-transform: uppercase; font-family: 'Segoe UI', 'Trebuchet MS', 'Arial Black', sans-serif; text-shadow: 0 1px 0 rgba(255,255,255,0.4); animation: adminTextFade 0.9s ease-out;">Admin Panel</h2>
@@ -122,23 +118,6 @@
         </div>
       </div>
       <style>
-        .admin-init-card::before {
-          content: "";
-          position: absolute;
-          top: 0;
-          left: -35%;
-          width: 34%;
-          height: 4px;
-          z-index: 2;
-          background: linear-gradient(90deg, transparent, #ffffff 45%, #67e8f9 60%, transparent);
-          box-shadow: 0 0 16px rgba(103, 232, 249, 0.95), 0 0 5px rgba(255, 255, 255, 0.9);
-          animation: adminFirstPaintSweep 1.8s ease-in-out infinite;
-        }
-        @keyframes adminLoadBarSweep {
-          0% { background-position: 0% 50%; opacity: 0.8; }
-          50% { background-position: 100% 50%; opacity: 1; }
-          100% { background-position: 0% 50%; opacity: 0.8; }
-        }
         @keyframes adminCardRise {
           0% { opacity: 0; transform: translateY(18px) scale(0.98); }
           100% { opacity: 1; transform: translateY(0) scale(1); }
@@ -150,12 +129,6 @@
         @keyframes adminShellFade {
           0% { opacity: 0; }
           100% { opacity: 1; }
-        }
-        @keyframes adminFirstPaintSweep {
-          0% { transform: translateX(0); opacity: 0; }
-          15% { opacity: 1; }
-          85% { opacity: 1; }
-          100% { transform: translateX(395%); opacity: 0; }
         }
       </style>
     `;
@@ -331,6 +304,8 @@ async function fetchDashboardSummary(forceRefresh = false) {
     const cached = readAdminCache(cacheKey);
     if (cached) {
       console.log('[Dashboard Summary] Using cached summary');
+      dashboardSummary = cached;
+      renderAdminOverview(cached);
       return cached;
     }
   }
@@ -346,13 +321,73 @@ async function fetchDashboardSummary(forceRefresh = false) {
     }
 
     const summary = await res.json();
+    dashboardSummary = summary;
     writeAdminCache(cacheKey, summary);
+    renderAdminOverview(summary);
     console.log('[Dashboard Summary] Fetched and cached:', summary);
     return summary;
   } catch (err) {
     console.error('Dashboard summary fetch error:', err);
     return null;
   }
+}
+
+function renderAdminOverview(summary) {
+  if (!summary) return;
+  const money = value => `KES ${Number(value || 0).toLocaleString()}`;
+  const setMetric = (id, value) => {
+    const element = document.getElementById(id);
+    if (element) element.textContent = value;
+  };
+
+  setMetric("adminMetricStudents", Number(summary.totalStudents || 0).toLocaleString());
+  setMetric("adminMetricFees", money(summary.feesCollected));
+  setMetric("adminMetricExpenses", money(summary.monthlyExpenses));
+  setMetric("adminMetricFeesTerm", `${summary.activeTerm || "Current term"}: ${money(summary.termFeesCollected)}`);
+  setMetric("adminMetricExpensesTerm", `${summary.activeTerm || "Current term"}: ${money(summary.termExpenses)}`);
+  setMetric("adminMetricSms", Number(summary.smsCredits || 0).toLocaleString());
+  setMetric("adminMetricAnnouncements", Number(summary.unreadAnnouncements || 0).toLocaleString());
+
+  const adminNameElement = document.getElementById("adminOverviewName");
+  const adminName = window.currentAdminProfile?.name || window.currentAdminProfile?.fullName || window.currentAdminProfile?.username || "Admin";
+  if (adminNameElement) adminNameElement.textContent = String(adminName).trim() || "Admin";
+
+  const dateElement = document.getElementById("adminOverviewDate");
+  const schoolElement = document.getElementById("adminOverviewSchool");
+  if (dateElement) dateElement.textContent = new Date().toLocaleDateString(undefined, { month: "long", day: "numeric", year: "numeric" });
+  if (schoolElement) schoolElement.textContent = schoolInfo?.name || "Your school";
+
+  const signals = document.getElementById("adminOverviewSignals");
+  if (!signals) return;
+  const items = [];
+  if (Number(summary.smsCredits || 0) < 10) items.push("SMS credits are running low.");
+  if (Number(summary.unreadAnnouncements || 0) > 0) items.push(`${Number(summary.unreadAnnouncements).toLocaleString()} active announcements are visible.`);
+  if (items.length === 0) items.push("Everything looks clear for now.");
+  signals.innerHTML = items.map(item => `<li>${item}</li>`).join("");
+}
+
+function setupAdminWelcomeCarousel() {
+  const welcomePanel = document.querySelector(".admin-welcome-panel");
+  if (!welcomePanel) return;
+
+  const slides = welcomePanel.querySelectorAll(".admin-welcome-slide");
+  if (slides.length < 2) return;
+
+  let currentSlide = 0;
+  let slideInterval;
+  const showNextSlide = () => {
+    slides[currentSlide].classList.remove("active");
+    currentSlide = (currentSlide + 1) % slides.length;
+    slides[currentSlide].classList.add("active");
+  };
+  const restart = () => {
+    clearInterval(slideInterval);
+    slideInterval = setInterval(showNextSlide, 7000);
+  };
+
+  welcomePanel.addEventListener("mouseenter", () => clearInterval(slideInterval));
+  welcomePanel.addEventListener("mouseleave", restart);
+  restart();
 }
 
 async function loadSchoolInfo(forceRefresh = false) {
@@ -457,26 +492,6 @@ async function loadSchoolInfo(forceRefresh = false) {
 function renderSchoolInfo() {
   if (!schoolInfo) return;
 
-  if (profileMenuTrigger) {
-    profileMenuTrigger.addEventListener('click', (event) => {
-      event.stopPropagation();
-      const isOpen = profileDropdown?.classList.contains('show');
-      profileDropdown?.classList.toggle('show', !isOpen);
-      profileMenuTrigger.setAttribute('aria-expanded', String(!isOpen));
-    });
-  }
-
-  document.addEventListener('click', () => {
-    profileDropdown?.classList.remove('show');
-    profileMenuTrigger?.setAttribute('aria-expanded', 'false');
-  });
-
-  if (profileLogoutBtn) {
-    profileLogoutBtn.addEventListener('click', () => {
-      authService.logout();
-    });
-  }
-
   // Debug: show resolved schoolType and config to help diagnose dropdown population
   try { console.debug("renderSchoolInfo: schoolInfo.schoolType=", schoolInfo.schoolType, "getSchoolConfig=", getSchoolConfig()); } catch (e) {}
 
@@ -495,8 +510,8 @@ function renderSchoolInfo() {
   if (profileRole) profileRole.textContent = labelText;
   if (profileNameDetail) profileNameDetail.textContent = displayNameInitial || 'Admin';
   if (profileEmailDetail) profileEmailDetail.textContent = currentUser?.email || 'admin@example.com';
-  if (profileAvatar) profileAvatar.textContent = initial;
-  if (profileAvatarLarge) profileAvatarLarge.textContent = initial;
+  if (profileAvatar) profileAvatar.innerHTML = '<i class="fas fa-user" aria-hidden="true"></i>';
+  if (profileAvatarLarge) profileAvatarLarge.innerHTML = '<i class="fas fa-user" aria-hidden="true"></i>';
 
   // Replace "Admin Portal" branding with School Name at the top of the sidebar
   if (sidebarBrandLogo) {
@@ -551,6 +566,29 @@ function renderSchoolInfo() {
     }
  }
 }
+
+function setupProfileMenu() {
+  if (!profileMenuTrigger || !profileDropdown) return;
+
+  profileMenuTrigger.addEventListener('click', (event) => {
+    event.stopPropagation();
+    const isOpen = profileDropdown.classList.contains('show');
+    profileDropdown.classList.toggle('show', !isOpen);
+    profileMenuTrigger.setAttribute('aria-expanded', String(!isOpen));
+  });
+
+  document.addEventListener('click', (event) => {
+    if (event.target instanceof Node && profileMenuTrigger.closest('.profile-menu')?.contains(event.target)) return;
+    profileDropdown.classList.remove('show');
+    profileMenuTrigger.setAttribute('aria-expanded', 'false');
+  });
+
+  profileLogoutBtn?.addEventListener('click', () => {
+    authService.logout();
+  });
+}
+
+setupProfileMenu();
 
 
 /**
@@ -939,10 +977,15 @@ function attachAdminSignatureLogic() {
   const applyElectivesSidebarVisibility = () => {
     const navItem = document.querySelector('.menu li[data-section="electivesSection"]');
     const electivesSection = document.getElementById("electivesSection");
+    const overviewAction = document.querySelector('.admin-overview-electives-action');
     const showElectives = supportsElectivesManagement();
 
     if (navItem) {
       navItem.style.display = showElectives ? "" : "none";
+    }
+
+    if (overviewAction) {
+      overviewAction.style.display = showElectives ? "" : "none";
     }
 
     if (!showElectives && electivesSection) {
@@ -2424,6 +2467,7 @@ async function openHistoryModal(studentId) {
 
     // Map section IDs to display names
     const sectionTitles = {
+      "adminOverviewSection": "Overview",
       "subjectAllocSection": "Subject Allocations",
       "announcementSection": "School Announcements",
       "classAllocSection": "Class Allocations",
@@ -2488,6 +2532,12 @@ async function openHistoryModal(studentId) {
           } else if (targetId === "electivesSection") {
          window.ElectivesAdmin?.init();
         }
+      });
+    });
+
+    document.querySelectorAll("[data-overview-section]").forEach(action => {
+      action.addEventListener("click", () => {
+        document.querySelector(`.menu li[data-section="${action.dataset.overviewSection}"]`)?.click();
       });
     });
 
@@ -2806,6 +2856,7 @@ saveTermConfigBtn?.addEventListener("click", saveTermConfig);
     ]);
     initTeacherDropdownPagination();
     setupNavigation();
+    setupAdminWelcomeCarousel();
   } catch (err) { 
     console.error("Initial load error:", err); 
   } finally {

@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ADMIN</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
     <link rel="icon" type="image/png" href="/images/favicon.png"/> 
     <link rel="stylesheet" href="css/admin.css" />
     <link rel="stylesheet" href="css/announcements.css">
@@ -24,8 +25,9 @@
 
         <div class="sidebar-scroll">
             <ul class="menu">
+                <li class="active" data-section="adminOverviewSection"><span class="menu-icon">▦</span><span>Overview</span></li>
                 <li data-section="announcementSection"><span class="menu-icon">📢</span><span>Announcements & SMS</span></li>
-                <li class="active" data-section="subjectAllocSection"><span class="menu-icon">🗂️</span><span>Subject Allocations</span></li>
+                <li data-section="subjectAllocSection"><span class="menu-icon">🗂️</span><span>Subject Allocations</span></li>
                 <li data-section="classAllocSection"><span class="menu-icon">🏫</span><span>Class Allocations</span></li>
                 <li data-section="searchSection"><span class="menu-icon">🔎</span><span>Learner Search</span></li>
 
@@ -50,9 +52,13 @@
             </div>
             <div class="topbar-actions">
                 <button id="refreshBtn" class="topbar-refresh-btn" type="button">🔄 Refresh</button>
+                <button id="adminNotificationsBtn" class="admin-notification-btn" type="button" aria-label="Notifications" title="Notifications">
+                    <i class="fas fa-bell" aria-hidden="true"></i>
+                    <span class="admin-notification-dot" aria-hidden="true"></span>
+                </button>
                 <div class="profile-menu">
-                    <button class="profile-trigger" id="profileMenuTrigger" type="button" aria-expanded="false">
-                        <span class="profile-avatar" id="profileAvatar">A</span>
+                    <button class="profile-trigger" id="profileMenuTrigger" type="button" aria-expanded="false" aria-label="Open administrator profile menu" title="Administrator profile">
+                        <span class="profile-avatar" id="profileAvatar"><i class="fas fa-user" aria-hidden="true"></i></span>
                         <span class="profile-meta">
                             <strong id="profileName">Admin</strong>
                             <small id="profileRole">Administrator</small>
@@ -63,7 +69,7 @@
                         <div class="profile-card">
                             <div class="profile-card-title">Admin Profile</div>
                             <div class="profile-card-user">
-                                <div class="profile-avatar large" id="profileAvatarLarge">A</div>
+                                <div class="profile-avatar large" id="profileAvatarLarge"><i class="fas fa-user" aria-hidden="true"></i></div>
                                 <div class="profile-detail">
                                     <strong id="profileNameDetail">Admin</strong>
                                     <span id="profileEmailDetail" data-account-email>admin@example.com</span>
@@ -87,6 +93,48 @@
         </header>
 
         <section id="contentArea">
+        <!-- Admin Overview -->
+        <div id="adminOverviewSection" class="tab-section admin-overview-section">
+            <section class="admin-welcome-panel">
+                <div class="admin-welcome-slides" aria-hidden="true">
+                    <div class="admin-welcome-slide active" style="background-image: url('https://images.unsplash.com/photo-1509062522246-3755977927d7?auto=format&fit=crop&w=1800&q=85');"></div>
+                    <div class="admin-welcome-slide" style="background-image: url('https://images.unsplash.com/photo-1588072432836-e10032774350?auto=format&fit=crop&w=1800&q=85');"></div>
+                    <div class="admin-welcome-slide" style="background-image: url('https://images.unsplash.com/photo-1523240795612-9a054b0db644?auto=format&fit=crop&w=1800&q=85');"></div>
+                </div>
+                <div>
+                    <p class="admin-overview-eyebrow">Administration overview</p>
+                    <h2>Welcome back, <span id="adminOverviewName">Admin</span></h2>
+                    <p>Keep your school operations visible, organized, and ready for action.</p>
+                </div>
+                <div class="admin-overview-period"><span id="adminOverviewDate">Today</span><strong id="adminOverviewSchool">Your school</strong></div>
+            </section>
+
+            <div id="adminOverviewMetrics" class="admin-overview-metrics" aria-label="School summary">
+                <article class="admin-overview-metric"><span class="admin-metric-icon">♙</span><strong id="adminMetricStudents">--</strong><span>Learners</span></article>
+                <article class="admin-overview-metric"><span class="admin-metric-icon">◈</span><div class="admin-financial-metric"><strong id="adminMetricFees">--</strong><small id="adminMetricFeesTerm">Term --</small></div><span>Fees collected</span></article>
+                <article class="admin-overview-metric"><span class="admin-metric-icon">▣</span><div class="admin-financial-metric"><strong id="adminMetricExpenses">--</strong><small id="adminMetricExpensesTerm">Term --</small></div><span>Year expenses</span></article>
+                <article class="admin-overview-metric"><span class="admin-metric-icon">✉</span><strong id="adminMetricSms">--</strong><span>SMS credits</span></article>
+                <article class="admin-overview-metric"><span class="admin-metric-icon">▤</span><strong id="adminMetricAnnouncements">--</strong><span>Announcements</span></article>
+            </div>
+
+            <div class="admin-overview-columns">
+                <section class="admin-overview-panel">
+                    <div class="admin-overview-panel-heading"><div><p class="admin-overview-eyebrow">Move quickly</p><h3>Quick actions</h3></div></div>
+                    <div class="admin-quick-actions">
+                        <button type="button" data-overview-section="subjectAllocSection">🗂️ Assign subjects</button>
+                        <button type="button" data-overview-section="classAllocSection">🏫 Assign class teachers</button>
+                        <button type="button" data-overview-section="searchSection">🔎 Search learners</button>
+                        <button type="button" data-overview-section="announcementSection">📢 Post announcement</button>
+                        <button type="button" data-overview-section="termConfigSection">📅 Configure term</button>
+                        <button type="button" class="admin-overview-electives-action" data-overview-section="electivesSection" style="display: none;">⚙️ Manage electives</button>
+                    </div>
+                </section>
+                <section class="admin-overview-panel admin-attention-panel">
+                    <div class="admin-overview-panel-heading"><div><p class="admin-overview-eyebrow">Needs attention</p><h3>Current signals</h3></div></div>
+                    <ul id="adminOverviewSignals"><li>Loading dashboard signals...</li></ul>
+                </section>
+            </div>
+        </div>
     <!-- 1. Subject Allocation Tab -->
     <div id="subjectAllocSection" class="tab-section">
       <div class="card allocation-card">

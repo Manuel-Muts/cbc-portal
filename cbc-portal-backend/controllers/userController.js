@@ -18,6 +18,7 @@ import Mark from '../models/mark.js'; // 🆕 Import Mark model
 import Payment from '../models/Payment.js'; // 🆕 Import Payment model
 import {Material} from '../models/Material.js'; // 🆕 Import Material model
 import { normalizePathway } from '../utils/pathwayUtils.js';
+import { createNotificationsForUsers } from './notificationController.js';
 
 // 🆕 Helper to auto-format phone numbers (extracted from registerUser)
 const formatContact = (contact) => {
@@ -929,6 +930,13 @@ export const assignSubjects = async (req, res) => {
 
     await teacher.save();
     cache.clearByPattern(String(teacher.schoolId)); // Invalidate cache
+    await createNotificationsForUsers({
+      userIds: [teacher._id],
+      schoolId: teacher.schoolId,
+      type: 'subject_assigned',
+      title: 'New subject allocation',
+      message: `You have been assigned ${normalizedSubjects.join(', ')} for ${gradeStr}${streamStr ? ` ${streamStr}` : ''}.`
+    });
     res.json({ message: 'Subjects assigned successfully', teacher });
   } catch (err) {
     console.error("AssignSubjects Error:", err);
@@ -1119,6 +1127,14 @@ export const assignClassTeacher = async (req, res) => {
 
     await teacher.save();
     cache.clearByPattern(String(teacher.schoolId)); // Invalidate cache
+
+    await createNotificationsForUsers({
+      userIds: [teacher._id],
+      schoolId: teacher.schoolId,
+      type: 'class_reassigned',
+      title: 'Class assignment updated',
+      message: `You are now assigned to ${normalizedGrade}${stream ? ` ${stream}` : ''} as class teacher.`
+    });
 
     // Email the class teacher credentials (if email exists)
     if (teacher.email) {

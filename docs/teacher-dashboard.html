@@ -18,30 +18,34 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="default" />
   <meta name="apple-mobile-web-app-title" content="CompetenceHub" />
   
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.28/jspdf.plugin.autotable.min.js"></script>
-
- 
   <!-- Google Font -->
   <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600&display=swap" rel="stylesheet">
 </head>
 <body>
   
   <header class="teacher-header">
-    <button id="headerRefreshBtn" class="btn refresh-btn" type="button" title="Refresh Dashboard" aria-label="Refresh Dashboard">
-      <i class="fas fa-sync-alt" aria-hidden="true"></i>
-    </button>
     <div class="header-left">
-      <span id="schoolName" class="school-pill"></span>
+      <div class="teacher-brand-lockup">
+        <strong class="teacher-brand-name"><span>Competence</span><em>Hub</em></strong>
+        <span id="schoolName" class="school-pill"></span>
+      </div>
+      <button id="headerRefreshBtn" class="btn refresh-btn" type="button" title="Refresh Dashboard" aria-label="Refresh Dashboard">
+        <i class="fas fa-sync-alt" aria-hidden="true"></i>
+        <span>Refresh</span>
+      </button>
     </div>
     <div class="header-right">
-      <button id="teacherNotificationsBtn" class="notification-btn" type="button" title="Notifications coming soon" aria-label="Notifications coming soon" disabled>
-        <span aria-hidden="true">🔔</span>
-        <span class="notification-dot" aria-hidden="true"></span>
+      <button id="teacherNotificationsBtn" class="notification-btn" type="button" title="Notifications" aria-label="Open notifications" aria-expanded="false">
+        <i class="fas fa-bell" aria-hidden="true"></i>
+        <span class="notification-count" id="teacherNotificationDot" aria-hidden="true"></span>
       </button>
+      <div class="teacher-notification-menu" id="teacherNotificationMenu" hidden>
+        <div class="teacher-notification-heading"><strong>Notifications</strong><button type="button" id="markTeacherNotificationsRead">Mark all read</button></div>
+        <div id="teacherNotificationList" class="teacher-notification-list"><p>Loading notifications...</p></div>
+      </div>
       <div class="profile-menu">
-        <button class="profile-trigger" id="teacherProfileTrigger" type="button" aria-expanded="false">
-          <span class="profile-avatar" id="teacherProfileAvatar">T</span>
+        <button class="profile-trigger" id="teacherProfileTrigger" type="button" aria-expanded="false" aria-label="Open teacher profile menu" title="Teacher profile">
+          <span class="profile-avatar" id="teacherProfileAvatar"><i class="fas fa-user" aria-hidden="true"></i></span>
           <span class="profile-meta">
             <strong id="teacherProfileName">Teacher</strong>
             <small id="teacherProfileRole">Teacher</small>
@@ -69,8 +73,8 @@
               </button>
             </div>
             <div class="profile-policy-links">
-              <a href="/privacy-policy">Privacy Policy</a>
-              <a href="/terms-of-service">Terms of Service</a>
+              <a href="/privacy-policy"><i class="fas fa-shield-halved" aria-hidden="true"></i><span>Privacy Policy</span></a>
+              <a href="/terms-of-service"><i class="fas fa-file-contract" aria-hidden="true"></i><span>Terms of Service</span></a>
             </div>
             <button class="profile-logout-btn" id="teacherLogoutBtn" type="button">Log out</button>
           </div>
@@ -80,24 +84,79 @@
   </header>
 
   <nav class="teacher-subnav">
-    <div class="subnav-left">
-      <button class="subnav-btn active" data-tab="enterMarks">📊 Enter Marks</button>
+    <button class="teacher-nav-toggle" id="teacherNavToggle" type="button" aria-expanded="false" aria-controls="teacherNavLinks" aria-label="Open dashboard navigation">
+      <i class="fas fa-bars" aria-hidden="true"></i>
+      <span>Menu</span>
+    </button>
+    <div class="subnav-left" id="teacherNavLinks">
+      <button class="subnav-btn active" data-tab="teacherOverview">▦ Overview</button>
+      <button class="subnav-btn" data-tab="enterMarks">📊 Enter Marks</button>
       <button class="subnav-btn" data-tab="submittedMarks">📋 Submitted Marks</button>
       <button class="subnav-btn" data-tab="myClass" id="myClassTabBtn" style="display:none;">🏫 My Class</button>
       <button class="subnav-btn" data-tab="studyMaterials">📚  Materials</button>
       <button class="subnav-btn" data-tab="digitalSignature">🖊️ Signature</button>
       <a href="/dean" id="deanDashboardBtn" class="subnav-btn dean-btn" style="display:none;">🎓 DEAN</a>
     </div>
+    <div class="teacher-nav-overlay" id="teacherNavOverlay" aria-hidden="true"></div>
   </nav>
 
 <div id="toastContainer"></div>
   <main>
-    <!-- =================== MY ALLOCATIONS =================== -->
-    <section class="allocations-section">
-      <div id="allocationsContainer" class="allocations-grid"></div>
-    </section>
+    <div id="teacherOverview" class="tab-pane active">
+      <section class="teacher-overview">
+        <section class="overview-hero" aria-label="Teacher dashboard highlights">
+          <div class="overview-hero-slides" aria-hidden="true">
+            <div class="overview-hero-slide active" style="background-image: url('https://images.unsplash.com/photo-1509062522246-3755977927d7?auto=format&fit=crop&w=1800&q=85');"></div>
+            <div class="overview-hero-slide" style="background-image: url('https://images.unsplash.com/photo-1588072432836-e10032774350?auto=format&fit=crop&w=1800&q=85');"></div>
+            <div class="overview-hero-slide" style="background-image: url('https://images.unsplash.com/photo-1523240795612-9a054b0db644?auto=format&fit=crop&w=1800&q=85');"></div>
+          </div>
+          <div class="overview-heading">
+            <div>
+              <div class="overview-heading-top">
+                <p class="overview-eyebrow">Teacher dashboard</p>
+                <p class="overview-current-date" id="overviewCurrentDate">Today</p>
+              </div>
+              <h1>Welcome back, <span id="overviewTeacherName">Teacher</span></h1>
+            </div>
+            <div class="overview-term-strip" aria-label="Current academic period">
+              <span id="overviewTerm">Loading term...</span>
+              <strong id="overviewYear"></strong>
+            </div>
+          </div>
+          <p class="overview-hero-caption">
+            <span class="overview-desktop-caption">Manage marks, assignments, and reading materials with ease.</span>
+            <span class="overview-mobile-caption"><i class="fas fa-mobile-screen-button overview-mobile-icon" aria-hidden="true"></i>Manage marks, assignments, and reading materials from the comfort of your phone.</span>
+          </p>
+        </section>
 
-    <div id="enterMarks" class="tab-pane active">
+        <div class="overview-summary-grid" aria-label="Teaching summary">
+          <article class="overview-summary-card">
+            <span class="overview-card-icon">▦</span>
+            <div><strong id="overviewClassCount">0</strong><span>Assigned classes</span></div>
+          </article>
+          <article class="overview-summary-card">
+            <span class="overview-card-icon">▤</span>
+            <div><strong id="overviewSubjectCount">0</strong><span>Teaching subjects</span></div>
+          </article>
+          <article class="overview-summary-card">
+            <span class="overview-card-icon">◈</span>
+            <div><strong id="overviewGradeCount">0</strong><span>Grade levels</span></div>
+          </article>
+        </div>
+
+        <section class="overview-allocations" aria-labelledby="overviewAllocationsTitle">
+          <div class="overview-section-heading">
+            <div><p class="overview-eyebrow">Your teaching load</p></div>
+            <button type="button" class="overview-link" data-tab-target="enterMarks">Enter marks <span aria-hidden="true">→</span></button>
+          </div>
+          <div id="overviewAllocationsList" class="overview-allocation-list">
+            <p class="overview-empty-state">Loading your allocations...</p>
+          </div>
+        </section>
+      </section>
+    </div>
+
+    <div id="enterMarks" class="tab-pane">
     <!-- =================== MARKS ENTRY (TABLE-BASED) =================== -->
     <section class="marks-section">
       <h2>📊 ENTER LEARNERS MARKS</h2>

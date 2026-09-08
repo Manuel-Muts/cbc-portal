@@ -32,6 +32,22 @@ document.addEventListener("DOMContentLoaded", async () => {
   const smartRefreshBtn = document.getElementById("smartRefreshBtn");
   const logoutBtn = document.getElementById("logoutBtn");
 
+  const materialTabs = document.querySelectorAll(".materials-tab");
+  const materialPanels = document.querySelectorAll(".materials-panel");
+  materialTabs.forEach(tab => {
+    tab.addEventListener("click", () => {
+      materialTabs.forEach(item => {
+        const isActive = item === tab;
+        item.classList.toggle("active", isActive);
+        item.setAttribute("aria-selected", String(isActive));
+      });
+
+      materialPanels.forEach(panel => {
+        panel.hidden = panel.id !== tab.getAttribute("aria-controls");
+      });
+    });
+  });
+
   // ---------------------------
   // HELPER FUNCTIONS (Logic Consolidation)
   // ---------------------------
@@ -400,7 +416,9 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (!progressContainer) {
       progressContainer = document.createElement("div");
       progressContainer.id = "uploadProgressContainer";
-      progressContainer.style.cssText = "margin-bottom: 15px; width: 100%; background: #e9ecef; border-radius: 4px; overflow: hidden; display: none; box-shadow: inset 0 1px 2px rgba(0,0,0,.1);";
+      progressContainer.setAttribute("role", "progressbar");
+      progressContainer.setAttribute("aria-label", "Upload progress");
+      progressContainer.style.display = "none";
       // Insert before submit button if possible
       if (uploadBtn.parentNode) {
         uploadBtn.parentNode.insertBefore(progressContainer, uploadBtn);
@@ -411,40 +429,41 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     // Always ensure the internal progress bar element is injected and reset
     progressContainer.innerHTML = `
-      <div id="uploadProgressBar" style="width: 0%; height: 20px; background: #28a745; transition: width 0.1s linear; text-align: center; color: white; font-size: 12px; line-height: 20px; font-weight: bold;">0%</div>
+      <div id="uploadProgressBar" role="presentation" style="width: 1%;">1%</div>
     `;
     
     const progressBar = document.getElementById("uploadProgressBar");
     progressContainer.style.display = "block";
-    progressBar.style.width = "0%";
-    progressBar.textContent = "0%";
-
-    // Ensure error toast function exists
-    const showToast = window.showToast || ((msg) => alert(msg));
-    const showConfirm = window.showConfirm || ((msg) => confirm(msg));
+    progressContainer.setAttribute("aria-valuenow", "1");
+    progressBar.style.width = "1%";
+    progressBar.textContent = "1%";
 
     const xhr = new XMLHttpRequest();
 
     // Track upload progress
-    xhr.upload.onprogress = (e) => {
+    xhr.upload.addEventListener("progress", (e) => {
       if (e.lengthComputable) {
-        const percentComplete = Math.round((e.loaded / e.total) * 100);
+        const percentComplete = Math.max(1, Math.min(100, Math.round((e.loaded / e.total) * 100)));
         progressBar.style.width = `${percentComplete}%`;
         progressBar.textContent = `${percentComplete}%`;
+        progressContainer.setAttribute("aria-valuenow", String(percentComplete));
       }
-    };
+    });
 
     xhr.open("POST", `${API_BASE}/materials/add`, true);
     xhr.setRequestHeader("Authorization", `Bearer ${token}`);
 
     xhr.onload = () => {
       if (xhr.status >= 200 && xhr.status < 300) {
+        progressBar.style.width = "100%";
+        progressBar.textContent = "100%";
+        progressContainer.setAttribute("aria-valuenow", "100");
         materialsForm.reset();
 
         // Clear cache on new upload
         localStorage.removeItem("teacher_materials_cache");
 
-        showToast("Study material uploaded successfully!", "success");
+        showToast("Upload completed successfully.", "success");
         // Ensure toast is visible before refreshing the materials list
         setTimeout(() => {
           loadMaterials(1, true); // Force refresh and reset to page 1
@@ -498,7 +517,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       // Clear cache on delete
       localStorage.removeItem("teacher_materials_cache");
 
-      showToast("Study material deleted successfully", "success");
+      showToast("Deletion completed successfully.", "success");
       // Ensure toast is visible before re-rendering the list
       setTimeout(() => {
         loadMaterials(currentPage, true);

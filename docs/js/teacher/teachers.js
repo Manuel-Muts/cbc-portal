@@ -74,6 +74,71 @@ document.addEventListener("DOMContentLoaded", () => {
     return res;
   }
 
+  async function setupTeacherNotifications() {
+    const button = document.getElementById("teacherNotificationsBtn");
+    const menu = document.getElementById("teacherNotificationMenu");
+    const list = document.getElementById("teacherNotificationList");
+    const dot = document.getElementById("teacherNotificationDot");
+    const markReadButton = document.getElementById("markTeacherNotificationsRead");
+    if (!button || !menu || !list) return;
+
+    let notifications = [];
+    const render = () => {
+      const unread = notifications.filter(item => !item.readAt);
+      if (dot) {
+        dot.textContent = unread.length > 99 ? "99+" : String(unread.length);
+        dot.hidden = unread.length === 0;
+      }
+      button.setAttribute("aria-label", unread.length ? `Open notifications (${unread.length} unread)` : "Open notifications");
+      list.innerHTML = notifications.length
+        ? notifications.map(item => `<article class="teacher-notification-item${item.readAt ? "" : " unread"}"><strong>${item.title}</strong><span>${item.message}</span><time>${new Date(item.createdAt).toLocaleString()}</time></article>`).join("")
+        : "<p>No personal notifications.</p>";
+    };
+
+    const markNotificationsAsRead = async () => {
+      await fetchWithAuth(`${API_BASE}/notifications/mine/read`, { method: "POST" });
+      notifications = notifications.map(item => ({ ...item, readAt: item.readAt || new Date().toISOString() }));
+      render();
+    };
+
+    try {
+      const response = await fetchWithAuth(`${API_BASE}/notifications/mine`);
+      notifications = await response.json();
+      render();
+    } catch (error) {
+      list.innerHTML = "<p>Notifications are unavailable right now.</p>";
+    }
+
+    button.addEventListener("click", async event => {
+      event.stopPropagation();
+      const isOpen = !menu.hidden;
+      menu.hidden = isOpen;
+      button.setAttribute("aria-expanded", String(!isOpen));
+      if (!isOpen && notifications.some(item => !item.readAt)) {
+        try {
+          await markNotificationsAsRead();
+        } catch (error) { console.warn("Could not mark notifications as read", error); }
+      }
+    });
+    markReadButton?.addEventListener("click", async () => {
+      markReadButton.disabled = true;
+      try {
+        await markNotificationsAsRead();
+      } catch (error) {
+        console.warn("Could not mark all notifications as read", error);
+        window.showToast?.("Could not mark notifications as read. Please try again.", "error");
+      } finally {
+        markReadButton.disabled = false;
+      }
+    });
+    document.addEventListener("click", event => {
+      if (!menu.contains(event.target) && event.target !== button && !menu.hidden) {
+        menu.hidden = true;
+        button.setAttribute("aria-expanded", "false");
+      }
+    });
+  }
+
   // ---------------------------
   // DOM ELEMENTS
   // ---------------------------
@@ -111,6 +176,36 @@ document.addEventListener("DOMContentLoaded", () => {
   const submittedMarksContainer = document.getElementById("submittedMarksContainer");
   const submittedMarksStatusMessage = document.getElementById("submittedMarksStatusMessage");
   const myClassTabBtn = document.getElementById("myClassTabBtn");
+  const overviewTeacherName = document.getElementById("overviewTeacherName");
+  const overviewTerm = document.getElementById("overviewTerm");
+  const overviewYear = document.getElementById("overviewYear");
+  const overviewCurrentDate = document.getElementById("overviewCurrentDate");
+  const overviewClassCount = document.getElementById("overviewClassCount");
+  const overviewSubjectCount = document.getElementById("overviewSubjectCount");
+  const overviewGradeCount = document.getElementById("overviewGradeCount");
+  const overviewAllocationsList = document.getElementById("overviewAllocationsList");
+
+  const overviewHero = document.querySelector(".overview-hero");
+  if (overviewHero) {
+    const heroSlides = overviewHero.querySelectorAll(".overview-hero-slide");
+    let currentHeroSlide = 0;
+    let heroInterval;
+
+    function showHeroSlide(index) {
+      heroSlides[currentHeroSlide].classList.remove("active");
+      currentHeroSlide = (index + heroSlides.length) % heroSlides.length;
+      heroSlides[currentHeroSlide].classList.add("active");
+    }
+
+    const restartHeroInterval = () => {
+      clearInterval(heroInterval);
+      heroInterval = setInterval(() => showHeroSlide(currentHeroSlide + 1), 6000);
+    };
+
+    overviewHero.addEventListener("mouseenter", () => clearInterval(heroInterval));
+    overviewHero.addEventListener("mouseleave", restartHeroInterval);
+    restartHeroInterval();
+  }
 
   // Global variables for submitted marks pagination
   let submittedMarksCurrentPage = 1;
@@ -151,7 +246,25 @@ document.addEventListener("DOMContentLoaded", () => {
   function setupTabs() {
     const subnavBtns = document.querySelectorAll(".subnav-btn");
     const tabPanes = document.querySelectorAll("main > .tab-pane");
+    const nav = document.querySelector(".teacher-subnav");
+    const navToggle = document.getElementById("teacherNavToggle");
+    const navOverlay = document.getElementById("teacherNavOverlay");
     let submittedMarksLoading = false;
+
+    const closeMobileNav = () => {
+      nav?.classList.remove("nav-open");
+      navToggle?.setAttribute("aria-expanded", "false");
+      navToggle?.setAttribute("aria-label", "Open dashboard navigation");
+      navOverlay?.setAttribute("aria-hidden", "true");
+    };
+
+    navToggle?.addEventListener("click", () => {
+      const isOpen = nav?.classList.toggle("nav-open") === true;
+      navToggle.setAttribute("aria-expanded", String(isOpen));
+      navToggle.setAttribute("aria-label", isOpen ? "Close dashboard navigation" : "Open dashboard navigation");
+      navOverlay?.setAttribute("aria-hidden", String(!isOpen));
+    });
+    navOverlay?.addEventListener("click", closeMobileNav);
 
     // 🆕 Lazy load submitted marks when tab is clicked
     const loadSubmittedMarksOnce = async () => {
@@ -186,7 +299,20 @@ document.addEventListener("DOMContentLoaded", () => {
     };
 
     subnavBtns.forEach(btn => {
-      btn.addEventListener("click", () => activateTab(btn));
+      btn.addEventListener("click", () => {
+        activateTab(btn);
+        closeMobileNav();
+      });
+    });
+
+    document.querySelectorAll("[data-tab-target]").forEach(action => {
+      action.addEventListener("click", () => {
+        const targetButton = document.querySelector(`.subnav-btn[data-tab="${action.dataset.tabTarget}"]`);
+        if (targetButton) {
+          activateTab(targetButton);
+          closeMobileNav();
+        }
+      });
     });
   }
 
@@ -318,6 +444,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const STUDENTS_PER_PAGE = 15;
 
   setupTeacherProfileMenu();
+  setupTeacherNotifications();
 
   // 🆕 LOAD ACTIVE TERM FROM CONFIGURATION
   async function loadActiveTerm() {
@@ -424,7 +551,7 @@ document.addEventListener("DOMContentLoaded", () => {
     if (teacherProfileRole) teacherProfileRole.textContent = labelText;
     if (teacherProfileNameDetail) teacherProfileNameDetail.textContent = displayName || "Teacher";
     if (teacherProfileEmailDetail) teacherProfileEmailDetail.textContent = teacher.email || "teacher@example.com";
-    if (teacherProfileAvatar) teacherProfileAvatar.textContent = initial;
+    if (teacherProfileAvatar) teacherProfileAvatar.innerHTML = '<i class="fas fa-user" aria-hidden="true"></i>';
     if (teacherProfileAvatarLarge) teacherProfileAvatarLarge.textContent = initial;
 
     const deanDashboardBtn = document.getElementById("deanDashboardBtn");
@@ -599,6 +726,10 @@ document.addEventListener("DOMContentLoaded", () => {
     const fallbackName = getFallbackSchoolName();
     if (fallbackName) {
       updateSchoolNameUI({ name: fallbackName });
+
+      // Reuse the cached school name when returning from another dashboard page.
+      // The header refresh action clears this cache when fresh data is needed.
+      if (getCachedSchoolName()) return;
     }
 
     try {
@@ -736,9 +867,55 @@ document.addEventListener("DOMContentLoaded", () => {
       });
 
       populateSubjectAllocations(teacherAllocations);
+      renderTeacherOverview();
     } else {
       console.warn("⚠️ No subjectAllocations in response");
     }
+  }
+
+  function renderTeacherOverview() {
+    if (!overviewAllocationsList) return;
+
+    const displayName = String(teacher?.name || teacher?.fullName || teacher?.username || "Teacher").trim();
+    const subjects = new Set();
+    const grades = new Set();
+
+    teacherAllocations.forEach(allocation => {
+      (allocation.subjects || []).forEach(subject => subjects.add(subject));
+      if (allocation.grade) grades.add(allocation.grade);
+    });
+
+    if (overviewTeacherName) overviewTeacherName.textContent = displayName;
+    if (overviewTerm) overviewTerm.textContent = activeTermValue || "Current term";
+    if (overviewYear) overviewYear.textContent = String(new Date().getFullYear());
+    if (overviewCurrentDate) {
+      overviewCurrentDate.textContent = new Date().toLocaleDateString(undefined, { month: "long", day: "numeric", year: "numeric" });
+    }
+    if (overviewClassCount) overviewClassCount.textContent = String(teacherAllocations.length);
+    if (overviewSubjectCount) overviewSubjectCount.textContent = String(subjects.size);
+    if (overviewGradeCount) overviewGradeCount.textContent = String(grades.size);
+
+    if (!teacherAllocations.length) {
+      overviewAllocationsList.innerHTML = '<p class="overview-empty-state">No teaching allocations found.</p>';
+      return;
+    }
+
+    overviewAllocationsList.innerHTML = teacherAllocations.map(allocation => `
+      <article class="overview-allocation-row">
+        <div class="overview-allocation-grade"><span aria-hidden="true">🏫</span><strong>${escapeOverviewText(allocation.classLabel || allocation.grade || "Class")}</strong></div>
+        <span class="overview-allocation-subjects" title="${escapeOverviewText((allocation.subjects || []).join(" · "))}">${escapeOverviewText((allocation.subjects || []).map(subject => window.cbcUtils?.getAbbreviatedSubjectName?.(subject) || subject).join(" · ") || "No subjects listed")}</span>
+      </article>
+    `).join("");
+  }
+
+  function escapeOverviewText(value) {
+    return String(value).replace(/[&<>'"]/g, character => ({
+      "&": "&amp;",
+      "<": "&lt;",
+      ">": "&gt;",
+      "'": "&#39;",
+      '"': "&quot;"
+    }[character]));
   }
 
   // ---------------------------
@@ -2442,6 +2619,7 @@ document.addEventListener("DOMContentLoaded", () => {
     renderSignatureUI(teacher);
     
     await loadTeacherAllocations();
+    renderTeacherOverview();
     
     // 🆕 LAZY LOAD: Submitted marks will load only when the tab is clicked
     // await loadSubmittedMarks();
