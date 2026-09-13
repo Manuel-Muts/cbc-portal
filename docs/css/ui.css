@@ -15,27 +15,27 @@ Controlss
 }
 
 /* Ensure links are visible on the blue gradient header */
-nav ul li a,
-nav ul li a.contact-link,
+nav:not(.home-header nav) ul li a,
+nav:not(.home-header nav) ul li a.contact-link,
 .contact-link {
   color: black !important;
   border-color: rgba(255, 255, 255, 0.4) !important;
 }
 
-nav ul {
+nav:not(.home-header nav) ul {
   display: flex;
   list-style: none;
   gap: 20px;
 }
 
-nav ul li a {
+nav:not(.home-header nav) ul li a {
   text-decoration: none;
   transition: color 0.3s;
   font-weight: 500;
 }
 
-nav ul li a:hover,
-nav ul li a.active {
+nav:not(.home-header nav) ul li a:hover,
+nav:not(.home-header nav) ul li a.active {
   color: #2804c7;
   border-color: #ffdd57 !important;
 }
@@ -249,7 +249,7 @@ nav ul li a.active {
 
 /* Happy Schools Slider */
 .happy-schools-section {
-    padding: 60px 24px 80px;
+    padding: 60px 24px 20px;
     background: linear-gradient(180deg, rgba(255,255,255,0.95), rgba(241,245,255,0.95));
 }
 
@@ -469,7 +469,7 @@ footer {
 
 /* MOBILE */
 @media (max-width: 768px) {
-  nav ul {
+    nav:not(.home-header nav) ul {
     position: fixed;
     top: 0;
     right: -100%; /* hidden off screen */
@@ -485,7 +485,7 @@ footer {
     z-index: 999;
   }
 
-  nav ul.active {
+    nav:not(.home-header nav) ul.active {
     right: 0; /* slide in */
   }
 
@@ -497,15 +497,15 @@ footer {
     z-index: 1001;
   }
 
-  nav ul.active {
+    nav:not(.home-header nav) ul.active {
     right: 0; /* slide in */
   }
 
-  nav ul li {
+    nav:not(.home-header nav) ul li {
     width: 100%;
   }
 
-  nav ul li a {
+    nav:not(.home-header nav) ul li a {
     display: block;
     font-size: 1.2rem;
     width: 100%;

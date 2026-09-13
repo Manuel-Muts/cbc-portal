@@ -62,8 +62,12 @@
   let dashboardSummary = null;
 
   const clearSchoolInfoCache = () => {
-    // Removed admin school-info cache handling — always use fresh data
-    // Intentionally left as a no-op to avoid accidental stale cache usage
+    try {
+      localStorage.removeItem(`${ADMIN_CACHE_PREFIX}school_info`);
+      localStorage.removeItem(`${ADMIN_CACHE_PREFIX}${getAdminSchoolInfoCacheKey()}`);
+    } catch (error) {
+      console.warn('[ADMIN CACHE] Unable to clear school info cache:', error);
+    }
   };
 
   const applySidebarBrandName = (name) => {
@@ -294,6 +298,11 @@ function getDisplaySchoolName(info) {
   return name ? String(name).trim() : "";
 }
 
+function getAdminSchoolInfoCacheKey() {
+  const schoolId = localStorage.getItem("schoolId");
+  return schoolId ? `school_info_${schoolId}` : "school_info";
+}
+
 // 🆕 Fetch dashboard summary from cache (precomputed by cron job)
 async function fetchDashboardSummary(forceRefresh = false) {
   const token = authService.getToken();
@@ -391,7 +400,7 @@ function setupAdminWelcomeCarousel() {
 }
 
 async function loadSchoolInfo(forceRefresh = false) {
-  const fields = "name,allowSignatureUpload,schoolType,headteacherSignatureUrl,status,smsCredits";
+  const fields = "name,schoolCode,allowSignatureUpload,schoolType,headteacherSignatureUrl,status,smsCredits";
 
   const getFallbackProfileName = async () => {
     try {
@@ -415,8 +424,8 @@ async function loadSchoolInfo(forceRefresh = false) {
   };
 
   if (!forceRefresh) {
-    const cachedSchoolInfo = readAdminCache('school_info');
-    if (cachedSchoolInfo && resolveSchoolTypeKey(cachedSchoolInfo)) {
+    const cachedSchoolInfo = readAdminCache(getAdminSchoolInfoCacheKey());
+    if (cachedSchoolInfo && cachedSchoolInfo.schoolCode && resolveSchoolTypeKey(cachedSchoolInfo)) {
       schoolInfo = cachedSchoolInfo;
       currentSchoolInfo = cachedSchoolInfo;
       window.schoolInfo = cachedSchoolInfo;
@@ -447,6 +456,7 @@ async function loadSchoolInfo(forceRefresh = false) {
     const data = await res.json();
     const parsedData = {
       name: String(data?.name || "").trim(),
+      schoolCode: String(data?.schoolCode || "").trim().toUpperCase(),
       allowSignatureUpload: data?.allowSignatureUpload,
       schoolType: data?.schoolType || data?.type || data?.school_type || data?.schooltype || data?.['school-type'] || null,
       headteacherSignatureUrl: data?.headteacherSignatureUrl || null,
@@ -459,7 +469,7 @@ async function loadSchoolInfo(forceRefresh = false) {
       if (fallbackName) parsedData.name = fallbackName;
     }
 
-    writeAdminCache('school_info', parsedData);
+    writeAdminCache(getAdminSchoolInfoCacheKey(), parsedData);
 
     schoolInfo = parsedData;
     currentSchoolInfo = parsedData;
@@ -479,7 +489,7 @@ async function loadSchoolInfo(forceRefresh = false) {
   } catch (err) {
     console.error("School info error:", err);
     const fallbackName = await getFallbackProfileName();
-    const cachedFallback = readAdminCache('school_info');
+    const cachedFallback = readAdminCache(getAdminSchoolInfoCacheKey());
     schoolInfo = { ...(cachedFallback || {}), ...(schoolInfo || {}), name: fallbackName || (cachedFallback?.name) || "School Name" };
     currentSchoolInfo = schoolInfo;
     window.schoolInfo = schoolInfo;
@@ -496,6 +506,10 @@ function renderSchoolInfo() {
   try { console.debug("renderSchoolInfo: schoolInfo.schoolType=", schoolInfo.schoolType, "getSchoolConfig=", getSchoolConfig()); } catch (e) {}
 
   const displayName = getDisplaySchoolName(schoolInfo) || "School Name";
+  const headerSchoolCode = document.getElementById("adminHeaderSchoolCode");
+  if (headerSchoolCode) {
+    headerSchoolCode.textContent = `School code: ${schoolInfo.schoolCode || "--"}`;
+  }
   if (displayName && displayName !== "School Name") {
     applySidebarBrandName(displayName);
   }
@@ -589,6 +603,89 @@ function setupProfileMenu() {
 }
 
 setupProfileMenu();
+
+async function setupAdminNotifications() {
+  const button = document.getElementById("adminNotificationsBtn");
+  const menu = document.getElementById("adminNotificationMenu");
+  const list = document.getElementById("adminNotificationList");
+  const dot = document.querySelector(".admin-notification-dot");
+  const markReadButton = document.getElementById("markAdminNotificationsRead");
+  if (!button || !menu || !list) return;
+
+  let notifications = [];
+  const escapeHtml = value => String(value || "").replace(/[&<>'"]/g, character => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;"
+  }[character]));
+
+  const render = () => {
+    const unread = notifications.filter(item => !item.readAt);
+    if (dot) {
+      dot.textContent = unread.length > 99 ? "99+" : String(unread.length);
+      dot.hidden = unread.length === 0;
+    }
+    button.setAttribute("aria-label", unread.length ? `Open notifications (${unread.length} unread)` : "Open notifications");
+    list.innerHTML = notifications.length
+      ? notifications.map((item, index) => `
+          <button type="button" class="admin-notification-item${item.readAt ? "" : " unread"}" data-notification-index="${index}">
+            <strong>${escapeHtml(item.title)}</strong>
+            <span>${escapeHtml(item.message)}</span>
+            <time>${escapeHtml(new Date(item.createdAt).toLocaleString())}</time>
+          </button>`).join("")
+      : "<p style=\"padding:12px 4px; margin:0; color:#64748b; font-size:.78rem;\">No notifications.</p>";
+  };
+
+  const markNotificationsAsRead = async () => {
+    await secureFetch(`${API_BASE}/notifications/mine/read`, { method: "POST" });
+    notifications = notifications.map(item => ({ ...item, readAt: item.readAt || new Date().toISOString() }));
+    render();
+  };
+
+  const loadNotifications = async () => {
+    try {
+      const response = await secureFetch(`${API_BASE}/notifications/mine`);
+      notifications = Array.isArray(response) ? response : [];
+      render();
+    } catch (error) {
+      list.innerHTML = "<p style=\"padding:12px 4px; margin:0; color:#b91c1c; font-size:.78rem;\">Notifications are unavailable.</p>";
+    }
+  };
+
+  await loadNotifications();
+
+  button.addEventListener("click", async event => {
+    event.stopPropagation();
+    const isOpen = !menu.hidden;
+    menu.hidden = isOpen;
+    button.setAttribute("aria-expanded", String(!isOpen));
+    if (!isOpen && notifications.some(item => !item.readAt)) {
+      try { await markNotificationsAsRead(); } catch (error) { console.warn("Could not mark notifications as read", error); }
+    }
+  });
+
+  list.addEventListener("click", event => {
+    const item = event.target.closest("[data-notification-index]");
+    if (!item) return;
+    const notification = notifications[Number(item.dataset.notificationIndex)];
+    if (!notification) return;
+    if (notification.type === "learner_created") window.location.href = "/users";
+    else if (notification.type === "subject_assigned") window.location.href = "/admin?section=subjectAllocSection";
+    else if (notification.type === "class_reassigned") window.location.href = "/admin?section=classAllocSection";
+  });
+
+  markReadButton?.addEventListener("click", async event => {
+    event.stopPropagation();
+    try { await markNotificationsAsRead(); } catch (error) { window.showToast?.("Could not mark notifications as read.", "error"); }
+  });
+
+  document.addEventListener("click", event => {
+    if (!menu.contains(event.target) && event.target !== button && !menu.hidden) {
+      menu.hidden = true;
+      button.setAttribute("aria-expanded", "false");
+    }
+  });
+}
+
+setupAdminNotifications();
 
 
 /**
@@ -1934,7 +2031,8 @@ confirmPromotionBtn.addEventListener("click", async () => {
 
     const searching = !showUnassignedOnly && (subjectAllocSearchQuery || subjectAllocGradeQuery);
     const effectiveLimit = searching ? SUBJECT_ALLOC_SEARCH_LIMIT : limit;
-    const CACHE_KEY = `subject_allocations_p${page}_l${effectiveLimit}_un${showUnassignedOnly}_s${encodeURIComponent(subjectAllocSearchQuery)}_g${encodeURIComponent(subjectAllocGradeQuery)}`;
+    const schoolCacheKey = localStorage.getItem("schoolId") || "global";
+    const CACHE_KEY = `subject_allocations_${schoolCacheKey}_p${page}_l${effectiveLimit}_un${showUnassignedOnly}_s${encodeURIComponent(subjectAllocSearchQuery)}_g${encodeURIComponent(subjectAllocGradeQuery)}`;
     if (!force) {
       const cached = localStorage.getItem(CACHE_KEY);
       if (cached) {
@@ -2032,7 +2130,8 @@ confirmPromotionBtn.addEventListener("click", async () => {
     if (classAllocTableBody.dataset.loading === "true") return;
     classAllocTableBody.dataset.loading = "true";
 
-     const CACHE_KEY = `class_allocations_p${page}`;
+    const schoolCacheKey = localStorage.getItem("schoolId") || "global";
+    const CACHE_KEY = `class_allocations_${schoolCacheKey}_p${page}`;
     if (!force) {
       const cached = localStorage.getItem(CACHE_KEY);
       if (cached) {
@@ -2542,7 +2641,10 @@ async function openHistoryModal(studentId) {
     });
 
     // Initialize: Activate the first section-based tab on load
-    const active = document.querySelector(".menu li.active[data-section]") || document.querySelector(".menu li[data-section]");
+    const requestedSection = new URLSearchParams(window.location.search).get("section");
+    const active = (requestedSection && document.querySelector(`.menu li[data-section="${requestedSection}"]`))
+      || document.querySelector(".menu li.active[data-section]")
+      || document.querySelector(".menu li[data-section]");
     if (active) active.click();
   }
 

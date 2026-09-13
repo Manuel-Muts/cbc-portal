@@ -87,3 +87,7 @@ export const sendCredentialsEmail = async ({ name, email, rawPassword }) => {
 
   console.log(`✅ Credentials email sent successfully to ${email}`);
 };
+
+export const generateLearnerUsername = (admission, schoolCode) => {
+  return `${String(admission).trim()}${String(schoolCode).trim().toUpperCase()}`;
+};

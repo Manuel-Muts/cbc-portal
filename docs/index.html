@@ -19,10 +19,35 @@
   <meta name="twitter:image" content="/images/favicon.png" />
   <link rel="canonical" href="https://competencehub.co.ke" />
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
-  <link rel="stylesheet" href="css/style.css" />
+  <link rel="stylesheet" href="css/style.css?v=20260911-2" />
   <link rel="stylesheet" href="css/ui.css" />
   <link rel="stylesheet" href="css/modals/modal.css" />
   <link rel="stylesheet" href="css/assistant.css" />
+  <style>
+    .home-header { display:flex; align-items:center; justify-content:space-between; gap:20px; }
+    .home-header nav { margin-left:auto; }
+    .home-header nav ul { display:flex; align-items:center; gap:10px; list-style:none; margin:0; padding:0; }
+    .home-header nav ul li { list-style:none; margin:0; padding:0; }
+    .home-header .drawer-close-item { display:none; }
+    .home-header nav ul li > a,
+    .home-header .dropbtn { display:inline-flex; align-items:center; min-height:38px; padding:6px 12px; border:1px solid transparent; border-radius:10px; color:#f8fbfc; font-family:Poppins, sans-serif; font-size:1rem; font-weight:600; line-height:1; text-decoration:none; background:transparent; }
+    .home-header .dropbtn { appearance:none; cursor:pointer; }
+    .home-header .menu-toggle { display:none; appearance:none; -webkit-appearance:none; width:30px; height:26px; padding:0; border:0; background:transparent; box-shadow:none; flex-direction:column; gap:4px; }
+    .home-header .hamburger-line { display:block; width:22px; height:2px; border-radius:999px; background:#fbbf24 !important; box-shadow:0 0 6px rgba(251,191,36,.28); }
+    .home-back-to-top-wrap { display:grid !important; place-items:center !important; align-self:stretch; width:100%; flex:0 0 auto; }
+    .home-back-to-top { display:inline-flex !important; justify-self:center; float:none !important; margin:0 auto; }
+    @media (max-width:768px) {
+      .home-header nav ul { position:fixed; top:0; right:-100%; width:min(216px, calc(100vw - 24px)); max-width:calc(100vw - 24px); height:100vh; padding:58px 14px 24px; flex-direction:column; align-items:flex-start; gap:7px; background:linear-gradient(165deg, #123c4a 0%, #0f766e 72%, #159a8a 100%); visibility:hidden; z-index:1100; transition:right 0.24s ease, visibility 0.24s ease; }
+      .home-header nav ul.active { right:0; visibility:visible; display:flex !important; }
+      .home-header .drawer-close-item { display:block; position:absolute; top:14px; right:18px; width:auto; }
+      .home-header .drawer-close { display:inline-flex; align-items:center; justify-content:center; width:34px; height:34px; padding:0; border:1px solid rgba(251,191,36,.72); border-radius:50%; color:#fff; background:rgba(18,60,74,.72); box-shadow:0 5px 14px rgba(4,47,46,.24), inset 0 0 0 1px rgba(255,255,255,.12); font-size:1.45rem; font-weight:700; line-height:1; cursor:pointer; }
+      .home-header nav ul li > a,
+      .home-header .dropbtn { min-height:42px; padding:8px 12px; font-size:0.94rem; white-space:normal; }
+      .home-header .dropdown-content { position:static; width:100%; min-width:0; margin-top:4px; border-radius:8px; box-shadow:none; }
+      .home-header .dropdown-content a { padding:8px 10px; font-size:0.82rem; line-height:1.25; white-space:normal; }
+      .home-header .menu-toggle { display:inline-flex; }
+    }
+  </style>
   <link rel="icon" type="image/png" href="/images/favicon.png"/>
   <link rel="apple-touch-icon" href="/images/favicon.png" />
   <link rel="manifest" href="/manifest.json" />
@@ -41,11 +66,17 @@
 </script>
 
 <!-- Header -->
-<header>
-  <div class="logo">COMPETENCEHUB</div>
+<header class="home-header" style="background:linear-gradient(110deg,#123c4a 0%,#0f766e 58%,#159a8a 100%);">
+  <a class="home-brand" href="/" aria-label="CompetenceHub home" style="display:inline-flex;align-items:center;gap:9px;color:inherit;text-decoration:none;">
+    <img src="images/favicon.png" alt="" class="home-brand-mark" width="30" height="30" loading="eager" aria-hidden="true" style="width:30px;height:30px;max-width:30px;max-height:30px;flex:0 0 30px;object-fit:contain;" />
+    <span class="home-brand-name" style="color:#f8fbfc;font-size:1.12rem;font-weight:800;line-height:1;white-space:nowrap;"><span>Competence</span><em style="color:#fbbf24;font-style:normal;">Hub</em></span>
+  </a>
 
   <nav>
     <ul id="navMenu">
+      <li class="drawer-close-item">
+        <button type="button" class="drawer-close" id="homeMenuClose" aria-label="Close navigation">&times;</button>
+      </li>
       <li class="dropdown" id="aboutDropdown">
         <button type="button" class="dropbtn" id="aboutDropdownToggle" aria-haspopup="true" aria-expanded="false">About</button>
         <div class="dropdown-content" id="aboutDropdownMenu">
@@ -57,7 +88,11 @@
     </ul>
   </nav>
 
-  <div class="menu-toggle" id="menuToggle">☰</div>
+  <button type="button" class="menu-toggle" id="menuToggle" aria-label="Open navigation" aria-expanded="false">
+    <span class="hamburger-line" aria-hidden="true"></span>
+    <span class="hamburger-line" aria-hidden="true"></span>
+    <span class="hamburger-line" aria-hidden="true"></span>
+  </button>
 </header>
 
 <div class="menu-overlay" id="menuOverlay"></div>
@@ -218,6 +253,12 @@ and real-time academic insights tailored for modern institutions.
   </div>
 </section>
 
+<div class="home-back-to-top-wrap">
+  <button type="button" class="home-back-to-top" id="homeBackToTop" aria-label="Back to top" title="Back to top">
+    <span aria-hidden="true">↑</span> Back to top
+  </button>
+</div>
+
 <!-- Footer -->
 <footer>
   <p> 
@@ -341,6 +382,11 @@ document.addEventListener("DOMContentLoaded", () => {
       submitBtn.disabled = false;
       submitBtn.textContent = originalText;
     }
+  });
+
+  const backToTopButton = document.getElementById("homeBackToTop");
+  backToTopButton?.addEventListener("click", () => {
+    window.scrollTo({ top: 0, behavior: "smooth" });
   });
 });
 </script>

@@ -1527,6 +1527,7 @@ header.teacher-header .teacher-brand-name {
   font-size: 1rem;
   line-height: 1;
   white-space: nowrap;
+  text-shadow: 0 0 8px rgba(30, 58, 95, 0.22);
 }
 
 header.teacher-header .teacher-brand-name span {
@@ -1536,6 +1537,7 @@ header.teacher-header .teacher-brand-name span {
 header.teacher-header .teacher-brand-name em {
   color: #f59e0b;
   font-style: normal;
+  text-shadow: 0 0 8px rgba(245, 158, 11, 0.42);
 }
 
 header.teacher-header .school-pill {
@@ -1645,6 +1647,282 @@ header.teacher-header .notification-count[hidden] { display: none; }
 .teacher-notification-item strong { color: #164e63; font-size: .78rem; }
 .teacher-notification-item span { color: #64748b; font-size: .72rem; line-height: 1.35; }
 .teacher-notification-item time { color: #94a3b8; font-size: .65rem; }
+
+.marks-roster-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  border: 1px solid #dbe7f2;
+  border-radius: 10px;
+  background: #f8fafc;
+}
+
+.marks-roster-actions[hidden] {
+  display: none !important;
+}
+
+.marks-roster-actions p {
+  margin: 0;
+  color: #64748b;
+  font-size: 0.78rem;
+}
+
+.marks-roster-actions .btn {
+  flex: 0 0 auto;
+  padding: 7px 12px;
+  font-size: 0.78rem;
+}
+
+.marks-learner-search {
+  display: grid;
+  gap: 2px;
+  flex: 0 0 130px;
+}
+
+.marks-learner-search[hidden] {
+  display: none !important;
+}
+
+.marks-learner-search label {
+  color: #475569;
+  font-size: 0.66rem;
+  font-weight: 700;
+}
+
+.marks-learner-search-controls {
+  display: flex;
+  gap: 6px;
+}
+
+.marks-learner-search input {
+  min-width: 0;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 4px 6px;
+  border: 1px solid #cbd5e1;
+  border-radius: 5px;
+  font: inherit;
+  font-size: 0.72rem;
+}
+
+.marks-learner-search input::placeholder {
+  color: #94a3b8;
+  font-size: 0.66rem;
+  opacity: 1;
+}
+
+.marks-learner-search-field {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  overflow: hidden;
+  border: 1px solid #cbd5e1;
+  border-radius: 5px;
+  background: #fff;
+}
+
+.marks-learner-search-field input {
+  flex: 1;
+  min-width: 0;
+  padding-right: 4px;
+  border: 0;
+  outline: 0;
+  background: transparent;
+}
+
+.marks-learner-search-btn {
+  position: static;
+  display: grid;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  place-items: center;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: #64748b;
+  cursor: pointer;
+  font-size: 0.65rem;
+  z-index: 1;
+}
+
+.marks-learner-clear-btn {
+  display: grid;
+  width: 20px;
+  height: 20px;
+  flex: 0 0 20px;
+  margin-right: 3px;
+  padding: 0;
+  place-items: center;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: #64748b;
+  cursor: pointer;
+  font-size: 0.65rem;
+}
+
+.marks-learner-search-btn:hover,
+.marks-learner-search-btn:focus-visible {
+  background: #dbeafe;
+  color: #2563eb;
+  outline: none;
+}
+
+.marks-learner-search-btn[hidden] {
+  display: none !important;
+}
+
+.marks-learner-clear-btn[hidden] {
+  display: none !important;
+}
+
+.marks-step-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: 20px;
+  margin-bottom: 15px;
+  padding-bottom: 10px;
+  border-bottom: 2px solid #f0f0f0;
+}
+
+.marks-step-heading h3 {
+  flex: 1;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.marks-step-actions {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+
+.marks-step-heading .marks-roster-actions {
+  flex: 0 0 auto;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+.marks-step-heading .marks-roster-actions p {
+  display: none;
+}
+
+.marks-step-heading .marks-roster-actions .btn {
+  white-space: nowrap;
+}
+
+.marks-step-heading .marks-learner-search {
+  margin: 0;
+}
+
+.teacher-learner-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: rgba(15, 23, 42, 0.56);
+  backdrop-filter: blur(4px);
+}
+
+.teacher-learner-modal {
+  position: relative;
+  isolation: isolate;
+  width: min(520px, 100%);
+  max-height: min(720px, calc(100dvh - 32px));
+  overflow-y: auto;
+  border: 1px solid rgba(167, 243, 208, 0.8);
+  border-radius: 16px;
+  background: #f8fffc;
+  box-shadow: 0 24px 70px rgba(15, 23, 42, 0.3), 0 0 0 6px rgba(236, 253, 245, 0.16);
+}
+
+.teacher-learner-modal-header {
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px 18px 14px;
+  color: #ecfdf5;
+  background:
+    linear-gradient(135deg, #064e3b 0%, #0f766e 56%, #0e7490 100%);
+}
+
+.teacher-learner-modal-header::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  opacity: 0.24;
+  background-image:
+    linear-gradient(30deg, rgba(255,255,255,0.2) 12%, transparent 12.5%, transparent 87%, rgba(255,255,255,0.2) 87.5%, rgba(255,255,255,0.2)),
+    linear-gradient(150deg, rgba(255,255,255,0.16) 12%, transparent 12.5%, transparent 87%, rgba(255,255,255,0.16) 87.5%, rgba(255,255,255,0.16));
+  background-size: 28px 48px;
+}
+
+.teacher-learner-eyebrow {
+  margin: 0 0 4px;
+  color: #a7f3d0;
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.teacher-learner-modal-header h3,
+.teacher-learner-modal-header p:last-child {
+  margin: 0;
+}
+
+.teacher-learner-modal-header h3 { color: #fff; font-size: 1.15rem; }
+.teacher-learner-modal-header p:last-child { margin-top: 4px; color: #ccfbf1; font-size: 0.74rem; }
+
+.teacher-learner-close {
+  width: 28px;
+  height: 28px;
+  border: 1px solid rgba(255,255,255,0.28);
+  border-radius: 7px;
+  background: rgba(255,255,255,0.1);
+  color: #ecfdf5;
+  font-size: 1.25rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.teacher-learner-form { padding: 16px 18px 18px; }
+.teacher-learner-form-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.teacher-learner-form label { display: grid; gap: 4px; color: #334155; font-size: 0.72rem; font-weight: 700; }
+.teacher-learner-form input,
+.teacher-learner-form select { width: 100%; box-sizing: border-box; padding: 6px 7px; border: 1px solid #b7e4d0; border-radius: 6px; background: #fff; color: #0f172a; font: inherit; font-size: 0.74rem; }
+.teacher-learner-form input:focus,
+.teacher-learner-form select:focus { border-color: #0f766e; outline: 2px solid rgba(20, 184, 166, 0.16); }
+.teacher-learner-form-note { margin: 12px 0 0; padding: 8px 10px; border-left: 3px solid #14b8a6; border-radius: 5px; background: #ecfdf5; color: #47706b; font-size: 0.7rem; line-height: 1.4; }
+.teacher-learner-modal-actions { display: flex; justify-content: flex-end; gap: 7px; margin-top: 14px; }
+
+@media (max-width: 520px) {
+  .marks-roster-actions { align-items: stretch; flex-direction: column; }
+  .marks-roster-actions .btn { width: 100%; }
+  .marks-step-heading { align-items: flex-start; flex-direction: column; gap: 8px; }
+  .marks-step-actions { width: 100%; align-items: flex-end; }
+  .marks-step-heading .marks-roster-actions { width: auto; }
+  .marks-learner-search { min-width: 0; flex: 1; flex-basis: auto; }
+  .teacher-learner-form-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .teacher-learner-modal-header, .teacher-learner-form { padding-left: 14px; padding-right: 14px; }
+}
 
 header.teacher-header .teacher-name {
   display: flex;
@@ -2356,6 +2634,10 @@ header.teacher-header .profile-logout-btn:hover {
   color: #ffffff;
 }
 
+.teacher-subnav [hidden] {
+  display: none !important;
+}
+
 @media (max-width: 640px) {
   .teacher-overview {
     margin-top: 14px;
@@ -2647,18 +2929,18 @@ header.teacher-header .profile-logout-btn:hover {
 }
 
 .marks-controls .form-group label {
-  margin-bottom: 8px;
+  margin-bottom: 4px;
   color: #475569;
-  font-size: 0.92rem;
+  font-size: 0.7rem;
 }
 
 .marks-controls .form-group input,
 .marks-controls .form-group select {
   width: 100%;
-  padding: 12px 14px;
+  padding: 7px;
   border: 1px solid #a7f3d0;
-  border-radius: 12px;
-  font-size: 0.95rem;
+  border-radius: 6px;
+  font-size: 0.85rem;
   background: #ecfdf5;
   color: #064e3b;
   font-weight: 700;
@@ -2867,12 +3149,13 @@ header.teacher-header .profile-logout-btn:hover {
   /* Thin Horizontal Header */
   header.teacher-header {
     height: 40px !important;
-    padding: 0 !important;
+    padding: 0 8px !important;
     flex-direction: row !important;
     align-items: center !important;
     justify-content: space-between !important;
     gap: 3px !important;
     text-align: left;
+    z-index: 3010;
   }
 
   header.teacher-header .header-left {
@@ -2903,6 +3186,7 @@ header.teacher-header .profile-logout-btn:hover {
     justify-content: flex-end !important;
     flex: 0 0 auto !important;
     gap: 2px !important;
+    margin-right: 4px;
   }
 
   header.teacher-header .btn {
@@ -2928,14 +3212,24 @@ header.teacher-header .profile-logout-btn:hover {
   }
 
   header.teacher-header .notification-btn {
-    width: 30px;
-    height: 30px;
+    width: 42px;
+    height: 40px;
     font-size: 0.85rem;
+    touch-action: manipulation;
+  }
+
+  header.teacher-header .teacher-notification-menu {
+    top: calc(100% + 8px);
+    left: 12px;
+    right: 12px;
+    width: auto;
+    max-width: none;
   }
 
   header.teacher-header .profile-trigger {
-    width: 30px;
-    height: 30px;
+    width: 42px;
+    height: 40px;
+    touch-action: manipulation;
   }
 
   header.teacher-header .profile-avatar {
@@ -3034,6 +3328,12 @@ header.teacher-header .profile-logout-btn:hover {
   .marks-section { margin: 8px !important; padding: 10px 6px !important; border-radius: 8px !important; }
   .marks-controls { padding: 10px !important; border-radius: 8px !important; }
   .marks-controls .form-grid { grid-template-columns: 1fr 1fr !important; gap: 8px !important; }
+  .marks-controls .form-group input,
+  .marks-controls .form-group select {
+    padding: 6px !important;
+    font-size: 0.76rem !important;
+    border-radius: 6px !important;
+  }
   
   #loadStudentsBtn { width: 100% !important; padding: 10px !important; font-size: 0.82rem !important; }
 
@@ -3221,6 +3521,10 @@ header.teacher-header .profile-logout-btn:hover {
   .teacher-subnav .dean-btn:focus-visible {
     background: #e2f0e5 !important;
     border-left-color: #78b784 !important;
+  }
+
+  .teacher-subnav [hidden] {
+    display: none !important;
   }
 }
 

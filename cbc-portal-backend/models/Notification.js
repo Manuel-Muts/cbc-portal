@@ -3,7 +3,7 @@ import mongoose from 'mongoose';
 const notificationSchema = new mongoose.Schema({
   recipientId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, index: true },
   schoolId: { type: mongoose.Schema.Types.ObjectId, ref: 'School', required: true, index: true },
-  type: { type: String, enum: ['marks_edit_reopened', 'subject_assigned', 'class_reassigned'], required: true },
+  type: { type: String, enum: ['marks_edit_reopened', 'subject_assigned', 'class_reassigned', 'learner_created'], required: true },
   title: { type: String, required: true },
   message: { type: String, required: true },
   readAt: { type: Date, default: null },

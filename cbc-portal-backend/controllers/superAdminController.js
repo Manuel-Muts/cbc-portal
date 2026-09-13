@@ -9,6 +9,7 @@ import Setting from '../models/Setting.js';
 import LoginAttempt from '../models/LoginAttempt.js';
 import cache from "../utils/cacheManager.js";
 import axios from 'axios';
+import crypto from 'crypto';
 
 const parseBoolean = (value) => {
   if (typeof value === 'boolean') return value;
@@ -16,6 +17,19 @@ const parseBoolean = (value) => {
     return ['true', 'on', '1', 'yes'].includes(value.toLowerCase());
   }
   return false;
+};
+
+const generateUniqueSchoolCode = async () => {
+  const letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+  const characters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+  let schoolCode;
+  do {
+    const randomBytes = crypto.randomBytes(4);
+    const codeCharacters = Array.from(randomBytes, (byte) => characters[byte % characters.length]);
+    codeCharacters[randomBytes[0] % codeCharacters.length] = letters[randomBytes[1] % letters.length];
+    schoolCode = codeCharacters.join('');
+  } while (await School.exists({ schoolCode }));
+  return schoolCode;
 };
 
 // ---------------------------
@@ -27,8 +41,9 @@ export const createSchool = async (req, res) => {
       return res.status(403).json({ msg: 'Only super-admins can create schools' });
 
     const { name, adminEmail, address, contactNumber } = req.body;
-    if (!name || !adminEmail) 
+    if (!name || !adminEmail)
       return res.status(400).json({ msg: 'Name and admin email are required' });
+    const schoolCode = await generateUniqueSchoolCode();
 
     const existingSchool = await School.findOne({ name });
     if (existingSchool) 
@@ -45,6 +60,7 @@ export const createSchool = async (req, res) => {
 
     const school = await School.create({ 
       name, 
+      schoolCode,
       adminEmail, 
       address, 
       contactNumber,

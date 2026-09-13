@@ -206,6 +206,7 @@
 
   async function refreshLastAdmissionBadge(selectedRole = 'student') {
     if (!lastAdmissionBadge) return;
+    const admissionInput = document.getElementById('userAdmission');
     lastAdmissionBadge.textContent = 'Highest: ...';
     lastAdmissionBadge.style.display = 'inline-flex';
     try {
@@ -215,6 +216,10 @@
       lastAdmissionValue = lastAdmission;
       if (lastAdmission !== null && lastAdmission !== undefined && lastAdmission !== '') {
         lastAdmissionBadge.textContent = `Highest: ${lastAdmission}`;
+        const nextAdmission = Number.parseInt(lastAdmission, 10);
+        if (admissionInput && !admissionInput.value.trim() && Number.isFinite(nextAdmission)) {
+          admissionInput.value = String(nextAdmission + 1);
+        }
       } else {
         lastAdmissionBadge.textContent = 'Highest: N/A';
       }
@@ -585,6 +590,10 @@ if (usersNextPageBtn) {
   }
 
   if (registerForm) {
+    document.getElementById("userName")?.addEventListener("input", event => {
+      event.target.value = event.target.value.toUpperCase();
+    });
+
     registerForm.addEventListener("submit", async e => {
       e.preventDefault();
       const submitBtn = registerForm.querySelector("button[type='submit']");
@@ -593,7 +602,7 @@ if (usersNextPageBtn) {
       submitBtn.textContent = "Registering...";
 
       const role = document.getElementById("userRole").value;
-      const name = document.getElementById("userName").value.trim();
+      const name = document.getElementById("userName").value.trim().toUpperCase();
       const email = document.getElementById("userEmail").value.trim();
       const admission = document.getElementById("userAdmission").value.trim();
       const grade = document.getElementById("studentGrade").value;
@@ -647,7 +656,7 @@ if (usersNextPageBtn) {
       });
 
       if (res) {
-        showFeedback(registerFeedback, "User registered successfully", "success");
+        showFeedback(registerFeedback, res.msg || "User registered successfully", res.emailError ? "error" : "success");
         registerForm.reset();
         userRoleSelect.dispatchEvent(new Event("change"));
         clearUsersCache();

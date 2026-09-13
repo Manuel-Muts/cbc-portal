@@ -9,6 +9,7 @@ import LoginAttempt from '../models/LoginAttempt.js';
 import {
   findUserByEmail,
   generateRawPassword,
+  generateLearnerUsername,
   sendCredentialsEmail
 } from '../utils/authHelpers.js';
 import cache from "../utils/cacheManager.js";
@@ -157,6 +158,7 @@ export const registerUser = async (req, res) => {
     const rolesNeedingSchool = ["admin", "accounts","teacher", "student", "parent", "classteacher"];
 
     let { name, email, role, admission, schoolId, grade, academicYear, stream, contact, pathway, gender, dateOfBirth } = req.body;
+    name = String(name || "").trim().toUpperCase();
     const normalizedEmail = email ? String(email).trim().toLowerCase() : undefined;
     const formattedContact = formatContact(contact);
     const normalizedGender = gender ? String(gender).trim() : null;
@@ -227,13 +229,24 @@ export const registerUser = async (req, res) => {
 
     // Student registration can be restricted per school
     if (role === "student" && schoolIdToAssign) {
-      const targetSchool = await School.findById(schoolIdToAssign);
+      const targetSchool = await School.findById(schoolIdToAssign).select("registrationOpen termConfig schoolCode");
       if (!targetSchool) {
         return res.status(404).json({ msg: "School not found" });
+      }
+      if (!targetSchool.schoolCode) {
+        return res.status(400).json({ msg: "This school needs a school code before learners can be registered" });
       }
       if (targetSchool.registrationOpen === false && admin.role !== 'super_admin') {
         return res.status(403).json({ msg: "You have been restricted to register new learners, please contact MutsTech." });
       }
+    }
+
+    let activeEnrollmentTerm = "Term 1";
+    if (role === "student" && schoolIdToAssign) {
+      const schoolTermConfig = await School.findById(schoolIdToAssign)
+        .select("termConfig.activeTerm")
+        .lean();
+      activeEnrollmentTerm = schoolTermConfig?.termConfig?.activeTerm || "Term 1";
     }
 
     // ----------------------------
@@ -264,6 +277,11 @@ export const registerUser = async (req, res) => {
     if (role === "student") {
       const existingStudent = await Student.findOne({ admission, schoolId: schoolIdToAssign });
       if (existingStudent) {
+        const existingSchool = await School.findById(schoolIdToAssign).select("schoolCode").lean();
+        if (!existingSchool?.schoolCode) {
+          return res.status(400).json({ msg: "This school needs a school code before learners can be registered" });
+        }
+        existingStudent.username = existingStudent.username || generateLearnerUsername(admission, existingSchool.schoolCode);
         if (formattedContact) existingStudent.contact = formattedContact;
         if (name) existingStudent.name = name;
         if (grade) existingStudent.grade = normalizeGrade(grade);
@@ -283,6 +301,7 @@ export const registerUser = async (req, res) => {
             if (grade) enrollment.grade = normalizeGrade(grade);
             if (stream) enrollment.stream = String(stream).trim();
             if (pathway) enrollment.pathway = normalizePathway(pathway);
+            enrollment.term = activeEnrollmentTerm;
             enrollment.status = "active"; 
             await enrollment.save();
         } else {
@@ -293,6 +312,7 @@ export const registerUser = async (req, res) => {
               pathway: normalizePathway(pathway) || null,
               stream: stream ? String(stream).trim() : null,
               academicYear: currentYear,
+              term: activeEnrollmentTerm,
               status: "active"
             });
             await enrollment.save();
@@ -315,17 +335,23 @@ export const registerUser = async (req, res) => {
     // Build explicit payloads to avoid accidental fields (like admission:null) sneaking in
     let newUser;
     if (role === "student") {
+      const targetSchool = await School.findById(schoolIdToAssign).select("schoolCode").lean();
+      if (!targetSchool?.schoolCode) {
+        return res.status(400).json({ msg: "This school needs a school code before learners can be registered" });
+      }
+      const username = generateLearnerUsername(admission, targetSchool.schoolCode);
       const payload = {
         name,
         role,
         admission,
+        username,
         grade: normalizeGrade(grade),
         pathway: normalizePathway(pathway) || null,
         password: hashedPassword,
         contact: formattedContact,
         gender: normalizedGender,
         dateOfBirth: normalizedDateOfBirth,
-        passwordMustChange: false,
+        passwordMustChange: true,
         schoolId: schoolIdToAssign,
         createdBy: admin._id
       };
@@ -380,6 +406,7 @@ export const registerUser = async (req, res) => {
           pathway: normalizePathway(pathway) || null,
           stream: stream ? String(stream).trim() : null, // 🆕 Optional for all grades
           academicYear: academicYear || new Date().getFullYear(),
+          term: activeEnrollmentTerm,
           status: "active"
         });
 
@@ -397,9 +424,9 @@ export const registerUser = async (req, res) => {
     // ----------------------------
     // SEND EMAIL (if not student)
     // ----------------------------
-    if (role !== "student" && email) {
+    if (role !== "student" && normalizedEmail) {
       try {
-        await sendCredentialsEmail({ name, email, rawPassword });
+        await sendCredentialsEmail({ name, email: normalizedEmail, rawPassword });
       } catch (err) {
         return res.status(201).json({
           msg: `${role} registered, but failed to send email`,
@@ -430,7 +457,7 @@ export const registerUser = async (req, res) => {
 
 
 export const loginUser = async (req, res) => {
-  const { role, email, fullname, admission, password } = req.body;
+  const { role, email, username, password } = req.body;
   const normalizedRole = role ? String(role).trim().toLowerCase() : undefined;
   const normalizedEmail = email ? String(email).trim().toLowerCase() : undefined;
 
@@ -453,21 +480,49 @@ export const loginUser = async (req, res) => {
     // STUDENT/LEARNER LOGIN
     // ---------------------------
     if (normalizedRole === "student" || normalizedRole === "learner") {
-      if (!fullname || !admission) {
+      if (!username || !password) {
         // Record attempt (no user found yet)
-        await LoginAttempt.create({ identifier: admission || null, roleAttempted: normalizedRole, success: false, ip: req.ip, userAgent: req.headers['user-agent'] });
-        return res.status(400).json({ message: "Full name and admission number required" });
+        await LoginAttempt.create({ identifier: username || null, roleAttempted: normalizedRole, success: false, ip: req.ip, userAgent: req.headers['user-agent'] });
+        return res.status(400).json({ message: "Username and password required" });
       }
 
-      user = await User.findOne({ role: "student", admission });
+      const normalizedUsername = String(username).trim().toLowerCase();
+      user = await User.findOne({ role: "student", username: normalizedUsername });
+      const attemptFilter = user
+        ? { userId: user._id, roleAttempted: normalizedRole, success: false }
+        : { identifier: normalizedUsername, roleAttempted: normalizedRole, ip: req.ip, success: false };
+      const recentFailures = await LoginAttempt.countDocuments({
+        ...attemptFilter,
+        createdAt: { $gte: new Date(Date.now() - 15 * 60 * 1000) }
+      });
+      if (recentFailures >= 5) {
+        return res.status(429).json({ message: "Too many failed attempts. Try again in 15 minutes." });
+      }
       if (!user) {
-        await LoginAttempt.create({ identifier: admission, roleAttempted: normalizedRole, success: false, ip: req.ip, userAgent: req.headers['user-agent'] });
-        return res.status(400).json({ message: "Invalid admission number" });
+        await LoginAttempt.create({ identifier: normalizedUsername, roleAttempted: normalizedRole, success: false, ip: req.ip, userAgent: req.headers['user-agent'] });
+        return res.status(400).json({ message: "Invalid username" });
       }
 
-      if (user.name.toLowerCase() !== fullname.toLowerCase()) {
-        await LoginAttempt.create({ userId: user._id, identifier: admission, roleAttempted: normalizedRole, schoolId: user.schoolId, success: false, ip: req.ip, userAgent: req.headers['user-agent'] });
-        return res.status(400).json({ message: "Full name does not match" });
+      const isPasswordValid = await bcrypt.compare(String(password), user.password);
+      if (!isPasswordValid) {
+        await LoginAttempt.create({ userId: user._id, identifier: normalizedUsername, roleAttempted: normalizedRole, schoolId: user.schoolId, success: false, ip: req.ip, userAgent: req.headers['user-agent'] });
+        const failedAttempts = await LoginAttempt.countDocuments({
+          userId: user._id,
+          roleAttempted: normalizedRole,
+          success: false,
+          createdAt: { $gte: new Date(Date.now() - 15 * 60 * 1000) }
+        });
+        if (failedAttempts >= 5) {
+          return res.status(429).json({ message: "Too many failed attempts. Try again in 15 minutes." });
+        }
+        return res.status(400).json({ message: "Invalid username or password" });
+      }
+
+      // Existing learners use their admission number as the initial password.
+      // Require those accounts to choose a private password after this login.
+      if (!user.passwordMustChange && String(password) === String(user.admission).trim()) {
+        user.passwordMustChange = true;
+        await user.save();
       }
     } 
     // ---------------------------
@@ -618,6 +673,10 @@ export const loginUser = async (req, res) => {
     delete sanitizedUser.resetCodeExpires;
     delete sanitizedUser.resetAttempts;
     delete sanitizedUser.resetVerified;
+    delete sanitizedUser.guardianOtpCode;
+    delete sanitizedUser.guardianOtpExpires;
+    delete sanitizedUser.guardianOtpAttempts;
+    delete sanitizedUser.guardianOtpVerified;
 
     // ✅ SEND RESPONSE ONCE
     return res.json({ token, user: sanitizedUser });
@@ -1191,7 +1250,7 @@ export const getClassTeacherAllocations = async (req, res) => {
     }
 
     const query = { assignedClass: { $ne: null }, role: 'teacher' };
-    if (req.user.role === 'admin') query.schoolId = req.user.schoolId;
+    if (req.user.schoolId) query.schoolId = req.user.schoolId;
 
     const total = await User.countDocuments(query);
     const classTeachers = await User.find(query)
@@ -1348,6 +1407,14 @@ export const removeClassTeacher = async (req, res) => {
       return res.status(403).json({ message: 'You can only remove class teachers in your school' });
     }
 
+    const removedClass = teacher.assignedClass;
+    const removedStream = teacher.assignedStream;
+    const removedClassLabel = removedClass
+      ? (String(removedClass).toUpperCase().startsWith("PP") || String(removedClass).toUpperCase().startsWith("PG")
+        ? `${normalizeClassGradeValue(removedClass)}${removedStream ? ` ${removedStream}` : ''}`
+        : `Grade ${normalizeClassGradeValue(removedClass)}${removedStream ? ` ${removedStream}` : ''}`)
+      : "your assigned class";
+
     teacher.assignedClass = null;
     teacher.isClassTeacher = false;
     teacher.classTeacherPassword = null;
@@ -1359,14 +1426,16 @@ export const removeClassTeacher = async (req, res) => {
     if (teacher.email) {
       await sendEmail({
         to: teacher.email,
-        subject: 'Class Teacher Removal',
+        subject: 'ClassTeacher Removal',
         text: `Hello ${teacher.name},
 
-         You have been removed as class teacher. You still retain your teacher role credentials.`,
+      You have been removed as class teacher for ${removedClassLabel}.
+
+      Your regular teacher account remains active, and your login details have not changed.`,
         html: `
           <p>Hello <strong>${teacher.name}</strong>,</p>
-          <p>You have been removed as class teacher. You still retain your teacher role credentials.</p>
-         
+          <p>You have been removed as class teacher for <strong>${removedClassLabel}</strong>.</p>
+          <p>Your regular teacher account remains active, and your login details have not changed.</p>
         `
       });
     }
@@ -1465,7 +1534,6 @@ export const changePassword = async (req, res) => {
 
     user.password = await bcrypt.hash(newPassword, 10);
     user.passwordMustChange = false;
-
     await user.save();
 
     // Fetch school for version
@@ -2001,6 +2069,10 @@ export const bulkRegisterUsers = async (req, res) => {
 
     const results = { successCount: 0, failureCount: 0, errors: [] };
     const currentYear = new Date().getFullYear();
+    const schoolTermConfig = await School.findById(schoolIdToAssign)
+      .select("termConfig.activeTerm")
+      .lean();
+    const activeEnrollmentTerm = schoolTermConfig?.termConfig?.activeTerm || "Term 1";
 
     // Pre-fetch all existing students by admission number in one go
     const admissions = studentsToProcess.map(s => s.admission).filter(Boolean);
@@ -2034,6 +2106,7 @@ export const bulkRegisterUsers = async (req, res) => {
               grade: normalizedGrade, 
               stream: stream ? String(stream).trim() : null, 
               pathway: normalizePathway(pathway), 
+              term: activeEnrollmentTerm,
               status: "active" 
             });
           } else {
@@ -2044,6 +2117,7 @@ export const bulkRegisterUsers = async (req, res) => {
               pathway: normalizePathway(pathway) || null,
               stream: stream ? String(stream).trim() : null,
               academicYear: currentYear,
+              term: activeEnrollmentTerm,
               status: "active"
             });
           }
@@ -2086,6 +2160,7 @@ export const bulkRegisterUsers = async (req, res) => {
             pathway: normalizePathway(pathway) || null,
             stream: stream ? String(stream).trim() : null,
             academicYear: currentYear,
+            term: activeEnrollmentTerm,
             status: "active"
           });
 

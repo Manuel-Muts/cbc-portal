@@ -21,10 +21,23 @@ document.addEventListener("DOMContentLoaded", function () {
   const backButton = document.getElementById("backButton");
   const stepNextButton = document.getElementById("stepNextButton");
   const submitButton = document.getElementById("submitButton");
+  const loginFeedback = document.getElementById("loginFeedback");
   const formSteps = Array.from(document.querySelectorAll(".form-step"));
 
   let selectedRole = "";
   let credentialStage = 0;
+
+  function showLoginError(message) {
+    if (!loginFeedback) return;
+    loginFeedback.textContent = message;
+    loginFeedback.classList.remove("hidden");
+  }
+
+  function clearLoginError() {
+    if (!loginFeedback) return;
+    loginFeedback.textContent = "";
+    loginFeedback.classList.add("hidden");
+  }
 
   function setActiveStep(stepIndex) {
     formSteps.forEach((step) => {
@@ -60,13 +73,13 @@ document.addEventListener("DOMContentLoaded", function () {
     const showFirstCredential = credentialStage === 0;
 
     if (isLearner) {
-      firstnameLabel.textContent = "Full Name";
-      firstnameField.placeholder = "Enter your full name";
+      firstnameLabel.textContent = "Username";
+      firstnameField.placeholder = "Example: 567D45A";
       emailLabel.textContent = "Email";
       emailField.placeholder = "Enter your email";
-      admissionLabel.textContent = credentialStage === 1 ? "Admission Number" : "Password";
-      admissionField.placeholder = credentialStage === 1 ? "Enter your admission number" : "Enter your password";
-      admissionField.type = credentialStage === 1 ? "text" : "password";
+      admissionLabel.textContent = showFirstCredential ? "Username" : "Password";
+      admissionField.placeholder = showFirstCredential ? "Enter your username" : "Enter your password";
+      admissionField.type = showFirstCredential ? "text" : "password";
     } else {
       firstnameLabel.textContent = "Full Name";
       firstnameField.placeholder = "Enter your full name";
@@ -95,10 +108,17 @@ document.addEventListener("DOMContentLoaded", function () {
       hideElement(submitButton);
       showElement(stepNextButton);
     } else {
-      hideElement(firstnameLabel.parentElement);
-      hideElement(firstnameField);
-      hideElement(emailLabel.parentElement);
-      hideElement(emailField);
+      if (isLearner) {
+        hideElement(firstnameLabel.parentElement);
+        hideElement(firstnameField);
+        hideElement(emailLabel.parentElement);
+        hideElement(emailField);
+      } else {
+        hideElement(firstnameLabel.parentElement);
+        hideElement(firstnameField);
+        hideElement(emailLabel.parentElement);
+        hideElement(emailField);
+      }
 
       showElement(admissionLabel.parentElement);
       showElement(admissionField);
@@ -108,7 +128,8 @@ document.addEventListener("DOMContentLoaded", function () {
   }
 
   function startCredentialFlow() {
-    if (!roleSelect.value) return alert("Please select your role before continuing.");
+    clearLoginError();
+    if (!roleSelect.value) return showLoginError("Please select a role before continuing.");
     selectedRole = roleSelect.value;
     credentialStage = 0;
     setActiveStep(2);
@@ -134,12 +155,13 @@ document.addEventListener("DOMContentLoaded", function () {
   }
 
   function advanceCredentialStage() {
+    clearLoginError();
     const isLearner = selectedRole === "student" || selectedRole === "learner";
     if (credentialStage === 0) {
       if (isLearner) {
-        if (!firstnameField.value.trim()) return alert("Please enter your full name before continuing.");
+        if (!firstnameField.value.trim()) return showLoginError("Please enter your username before continuing.");
       } else {
-        if (!emailField.value.trim()) return alert("Please enter your email before continuing.");
+        if (!emailField.value.trim()) return showLoginError("Please enter your email before continuing.");
       }
       credentialStage = 1;
       updateCredentialStage();
@@ -389,7 +411,7 @@ document.addEventListener("DOMContentLoaded", function () {
     });
 
     const data = await res.json().catch(() => { throw new Error("Invalid server response"); });
-    if (!res.ok) throw new Error(data.message || "Request failed");
+    if (!res.ok) throw new Error(data.message || data.msg || "Request failed");
     return data;
   }
 
@@ -398,8 +420,9 @@ document.addEventListener("DOMContentLoaded", function () {
   // ---------------------------
   async function handleLogin(e) {
     e.preventDefault();
+    clearLoginError();
     const selectedRole = roleSelect.value;
-    if (!selectedRole) return alert("Please select your role.");
+    if (!selectedRole) return showLoginError("Please select a role before logging in.");
 
     let payload = { role: selectedRole.toLowerCase() };
     
@@ -407,15 +430,15 @@ document.addEventListener("DOMContentLoaded", function () {
     if (payload.role === 'superadmin' || payload.role === 'superAdmin') payload.role = 'super_admin';
 
     if (selectedRole === "student" || selectedRole === "learner") {
-      const fullname = firstnameField.value.trim();
-      const admission = admissionField.value.trim();
-      if (!fullname || !admission) return alert("Enter full name and admission number.");
-      payload.fullname = fullname;
-      payload.admission = admission;
+      const username = firstnameField.value.trim();
+      const password = admissionField.value.trim();
+      if (!username || !password) return showLoginError("Enter your username and password.");
+      payload.username = username;
+      payload.password = password;
     } else {
       const email = emailField.value.trim().toLowerCase();
       const password = passwordField.value.trim();
-      if (!email || !password) return alert("Enter email and password.");
+      if (!email || !password) return showLoginError("Enter your email and password.");
       payload.email = email;
       payload.password = password;
     }
@@ -463,7 +486,7 @@ document.addEventListener("DOMContentLoaded", function () {
       if (data.user.schoolId) localStorage.setItem("schoolId", data.user.schoolId);
 
       // Open password change modal if required
-      if ((["teacher", "admin", "accounts"].includes(selectedRole)) && data.user.passwordMustChange) {
+      if ((["teacher", "admin", "accounts", "student", "learner"].includes(selectedRole)) && data.user.passwordMustChange) {
         openChangePasswordModal();
         window.spinner?.hide(submitBtn);
         return;
@@ -477,7 +500,7 @@ document.addEventListener("DOMContentLoaded", function () {
       window.location.href = redirectUrl;
     } catch (err) {
       console.error(err);
-      alert(err.message);
+      showLoginError(err.message || "Unable to sign in. Please try again.");
       // Reset button on error (remove loading + dot state)
       window.spinner?.hide(submitBtn);
       if (submitBtn) {
@@ -505,6 +528,10 @@ document.addEventListener("DOMContentLoaded", function () {
   // CHANGE PASSWORD MODAL
   // ---------------------------
   const changePasswordModal = document.getElementById("changePasswordModal");
+  const closeChangePasswordModal = () => {
+    changePasswordModal?.classList.add("hidden");
+  };
+
   window.openChangePasswordModal = function () {
     changePasswordModal.classList.remove("hidden");
     const userKey = config?.auth?.userKey || "loggedInUser";
@@ -521,20 +548,20 @@ document.addEventListener("DOMContentLoaded", function () {
     }
   };
 
-  document.getElementById("cancelChangePasswordBtn")?.addEventListener("click", () => {
-    changePasswordModal.classList.add("hidden");
-  });
+  document.getElementById("closeChangePasswordBtn")?.addEventListener("click", closeChangePasswordModal);
+  document.getElementById("cancelChangePasswordBtn")?.addEventListener("click", closeChangePasswordModal);
+
 
   changePasswordForm?.addEventListener("submit", async function (e) {
     e.preventDefault();
     const newPassword = changePasswordForm.querySelector("input[name='newPassword']").value.trim();
     const currentPasswordInput = changePasswordForm.querySelector("input[name='currentPassword']");
     const currentPassword = currentPasswordInput?.value.trim();
-
     if (!newPassword || newPassword.length < 8) return alert("New password must be at least 8 characters.");
 
     // Retrieve token reliably using the key from config
     const tokenKey = config?.auth?.tokenKey || "authToken";
+    const userKey = config?.auth?.userKey || "user";
     const token = window.authService?.getToken() || localStorage.getItem(tokenKey);
     
     const selectedRole = localStorage.getItem("userRole");
@@ -555,7 +582,6 @@ document.addEventListener("DOMContentLoaded", function () {
 
       const data = await apiRequest("change-password", "PUT", payload, token);
       localStorage.setItem(tokenKey, data.token); // Persist the new token returned after password change
-      const userKey = config?.auth?.userKey || "loggedInUser";
       localStorage.setItem(userKey, JSON.stringify(data.user));
       if (data.user.schoolId) localStorage.setItem("schoolId", data.user.schoolId);
 

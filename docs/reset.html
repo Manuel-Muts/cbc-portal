@@ -13,11 +13,14 @@
 <main class="reset-wrap">
     <form id="resetForm" class="reset-form" autocomplete="off" novalidate>
       
-      <!-- Native Header -->
+      <!-- Password reset header -->
       <header class="card-head">
-        <h1>Password Reset</h1>
+        <div class="reset-title-row">
+          <span class="reset-header-label">Secure account access</span>
+          <h1>Password Reset</h1>
+        </div>
         <p class="lead">
-          Admins, Teachers & Accounts  only.
+          Reset access for Learners, administrators, teachers, and accounts users.
         </p>
         <hr class="header-divider">
       </header>
@@ -28,13 +31,16 @@
         <!--<label for="role">Role</label>-->
         <select id="role" name="role" required aria-required="true">
           <option value="">-- Select role --</option>
+          <option value="student">Learner</option>
           <option value="teacher">Teacher</option>
           <option value="admin">Admin</option>
           <option value="accounts">Accounts</option>
         </select>
 
-        <label for="email">Registered email</label>
-        <input id="email" name="email" type="email" placeholder="emmanuel@example.com" required />
+        <div id="identityGroup" class="reset-identity-group hidden">
+          <label for="email" id="identityLabel">Registered email</label>
+          <input id="email" name="email" type="email" placeholder="emmanuel@example.com" required />
+        </div>
 
         <div class="button-group">
           <button id="sendCodeBtn" type="button" class="btn primary" aria-live="polite">
@@ -51,7 +57,7 @@
       <section id="stepCode" class="step" aria-labelledby="stepCodeTitle">
         <h2 id="stepCodeTitle" class="sr-only">Verify OTP</h2>
 
-        <p class="muted">Enter the 6-digit code sent to your email. (Check spam if you don't see it.)</p>
+        <p id="codeDeliveryText" class="muted">Enter the 6-digit code sent to your email. (Check spam if you don't see it.)</p>
 
         <!-- OTP boxes (progressive enhancement) -->
         <div id="otpBoxes" class="otp-boxes" aria-hidden="false">
@@ -62,10 +68,6 @@
           <input inputmode="numeric" pattern="[0-9]*" maxlength="1" class="otp" aria-label="Digit 5" />
           <input inputmode="numeric" pattern="[0-9]*" maxlength="1" class="otp" aria-label="Digit 6" />
         </div>
-
-        <!-- Single fallback input (kept for compatibility) -->
-        <label for="code" class="sr-only">OTP code</label>
-        <input id="code" name="code" type="text" inputmode="numeric" pattern="[0-9]*" placeholder="123456" class="hidden-fallback" />
 
         <div class="button-group">
           <button id="verifyCodeBtn" type="button" class="btn primary">

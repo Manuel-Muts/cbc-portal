@@ -27,6 +27,9 @@ document.addEventListener("DOMContentLoaded", () => {
 
   const roleInput = document.getElementById("role");
   const emailInput = document.getElementById("email");
+  const identityGroup = document.getElementById("identityGroup");
+  const identityLabel = document.getElementById("identityLabel");
+  const codeDeliveryText = document.getElementById("codeDeliveryText");
   const codeInput = document.getElementById("code"); // fallback single field
   const otpBoxes = Array.from(document.querySelectorAll(".otp"));
   const resendBtn = document.getElementById("resendBtn");
@@ -52,6 +55,26 @@ document.addEventListener("DOMContentLoaded", () => {
   // To change the API endpoint, update config.js
   const API_BASE = config.api.baseURL + '/reset';
 
+  function isLearnerReset() {
+    return roleInput.value.trim().toLowerCase() === "student";
+  }
+
+  function updateResetIdentityField() {
+    const hasRole = Boolean(roleInput.value.trim());
+    const learner = isLearnerReset();
+    identityGroup?.classList.toggle("hidden", !hasRole);
+    if (identityLabel) identityLabel.textContent = learner ? "Learner username" : "Registered email";
+    if (emailInput) {
+      emailInput.type = learner ? "text" : "email";
+      emailInput.placeholder = learner ? "Example: 567k7p2" : "emmanuel@example.com";
+    }
+    if (codeDeliveryText) {
+      codeDeliveryText.textContent = learner
+        ? "A verification code has been sent to the parent or guardian phone number registered for this learner."
+        : "Enter the 6-digit code sent to your email. (Check spam if you don't see it.)";
+    }
+  }
+
   // -------------------------
   // Frontend rate-limit / resend protection
   // -------------------------
@@ -72,8 +95,10 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // Load previous state
   const saved = loadState();
-  if (saved.email && emailInput) emailInput.value = saved.email; //
+  if ((saved.email || saved.username) && emailInput) emailInput.value = saved.email || saved.username; //
   if (saved.role && roleInput) roleInput.value = saved.role; //
+  updateResetIdentityField();
+  roleInput.addEventListener("change", updateResetIdentityField);
 
   // -------------------------
   // Step helpers
@@ -314,7 +339,8 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // -------------------------
   const role = roleInput.value.trim();
-  const email = emailInput.value.trim();
+  const identity = emailInput.value.trim();
+  const learner = isLearnerReset();
 
   // -------------------------
   // Basic validations
@@ -324,7 +350,7 @@ document.addEventListener("DOMContentLoaded", () => {
     setFeedback(feedbackEmail, "Please select a role.", "error"); 
     return; 
   }
-  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { 
+  if (!identity || (!learner && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(identity))) {
     emailInput.classList.add("input-error"); 
     setFeedback(feedbackEmail, "Please enter a valid email.", "error"); 
     return; 
@@ -341,7 +367,7 @@ document.addEventListener("DOMContentLoaded", () => {
   // -------------------------
   // Save to session for resume
   // -------------------------
-  saveState({ role, email }); //
+  saveState({ role, email: learner ? "" : identity, username: learner ? identity : "" });
 
   setFeedback(feedbackEmail, "Verifying user...");
 
@@ -352,7 +378,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const verifyRes = await fetchWithTimeout(`${API_BASE}/verify-user`, {
       method: "POST", //
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ role, email }) //
+      body: JSON.stringify(learner ? { role, username: identity } : { role, email: identity })
     });
 
     const verifyData = await verifyRes.json().catch(() => ({}));
@@ -369,7 +395,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const reqRes = await fetchWithTimeout(`${API_BASE}/request`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email })
+      body: JSON.stringify(learner ? { role, username: identity } : { role, email: identity })
     });
 
     const reqData = await reqRes.json().catch(() => ({}));
@@ -381,7 +407,7 @@ document.addEventListener("DOMContentLoaded", () => {
     pushReqHistory();
     startResendCooldown(RESEND_COOLDOWN);
 
-    setFeedback(feedbackEmail, "Reset code sent! Check your email.", "success");
+    setFeedback(feedbackEmail, learner ? "Code sent to the parent or guardian phone." : "Reset code sent! Check your email.", "success");
     showStep(stepCode);
     setTimeout(() => { otpBoxes[0].focus(); }, 250);
 
@@ -399,6 +425,7 @@ document.addEventListener("DOMContentLoaded", () => {
   clearBtn.addEventListener("click", () => {
     roleInput.value = ""; //
     emailInput.value = ""; //
+    updateResetIdentityField();
     clearInputErrors();
     setFeedback(feedbackEmail, "");
     clearState();
@@ -408,9 +435,10 @@ document.addEventListener("DOMContentLoaded", () => {
 // Resend button
 // -------------------------
 resendBtn.addEventListener("click", withLoading(resendBtn, async () => {
-  const email = emailInput.value.trim();
-  if (!email) {
-    setFeedback(feedbackCode, "No email to resend to.", "error");
+  const identity = emailInput.value.trim();
+  const learner = isLearnerReset();
+  if (!identity) {
+    setFeedback(feedbackCode, "No username or email to resend to.", "error");
     return;
   }
   if (!canRequestNow()) {
@@ -423,7 +451,7 @@ resendBtn.addEventListener("click", withLoading(resendBtn, async () => {
     const res = await fetchWithTimeout(`${API_BASE}/request`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email })
+      body: JSON.stringify(learner ? { role: "student", username: identity } : { role: roleInput.value, email: identity })
     });
 
     const data = await res.json().catch(() => ({}));
@@ -436,7 +464,7 @@ resendBtn.addEventListener("click", withLoading(resendBtn, async () => {
     pushReqHistory();
     startResendCooldown(RESEND_COOLDOWN);
 
-    setFeedback(feedbackCode, "Code resent. Check your email.", "success");
+    setFeedback(feedbackCode, learner ? "Code resent to the parent or guardian phone." : "Code resent. Check your email.", "success");
     setTimeout(() => otpBoxes[0].focus(), 200);
 
   } catch (err) {
@@ -450,7 +478,8 @@ resendBtn.addEventListener("click", withLoading(resendBtn, async () => {
   // -------------------------
   async function doVerifyCode() {
     clearInputErrors();
-    const email = emailInput.value.trim();
+    const identity = emailInput.value.trim();
+    const learner = isLearnerReset();
     const code = getOtpValue();
     if (!code || code.length !== 6) {
       otpBoxes.forEach(b => b.classList.add("input-error"));
@@ -464,7 +493,7 @@ resendBtn.addEventListener("click", withLoading(resendBtn, async () => {
       const res = await fetchWithTimeout(`${API_BASE}/verify`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, code })
+        body: JSON.stringify(learner ? { role: "student", username: identity, code } : { role: roleInput.value, email: identity, code })
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
@@ -488,7 +517,8 @@ resendBtn.addEventListener("click", withLoading(resendBtn, async () => {
   // -------------------------
   async function doResetPassword() {
     clearInputErrors();
-    const email = emailInput.value.trim();
+    const identity = emailInput.value.trim();
+    const learner = isLearnerReset();
     const code = getOtpValue();
     const password = newPasswordInput.value.trim();
 
@@ -497,7 +527,7 @@ resendBtn.addEventListener("click", withLoading(resendBtn, async () => {
       setFeedback(feedbackPassword, "Password must be at least 8 characters.", "error");
       return;
     }
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    if (!learner && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(identity)) {
       emailInput.classList.add("input-error");
       setFeedback(feedbackPassword, "Invalid email.", "error");
       return;
@@ -514,7 +544,7 @@ resendBtn.addEventListener("click", withLoading(resendBtn, async () => {
       const res = await fetchWithTimeout(`${API_BASE}/new-password`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, code, password })
+        body: JSON.stringify(learner ? { role: "student", username: identity, code, password } : { role: roleInput.value, email: identity, code, password })
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {

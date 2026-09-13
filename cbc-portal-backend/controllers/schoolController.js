@@ -167,7 +167,7 @@ export const getMySchool = async (req, res) => {
 
     let cacheSuffix = '';
     if (fields) cacheSuffix = `_fields_${fields.replace(/\s+/g, '_')}`;
-    if (isStudentLiteFetch) cacheSuffix = '_student_lite';
+    else if (isStudentLiteFetch) cacheSuffix = '_student_lite';
     else if (includeLogo) cacheSuffix = '_full_with_logo';
     else cacheSuffix = '_full_no_logo';
 
@@ -177,11 +177,11 @@ export const getMySchool = async (req, res) => {
       return res.json(cached);
     }
 
-    let projectionFields = "name address status allowSignatureUpload schoolType smsCredits";
+    let projectionFields = "name schoolCode address status allowSignatureUpload schoolType smsCredits";
 
     if (fields) {
       const selectedFields = fields
-        .split(',')
+        .split(/\s+/)
         .map((field) => field.trim())
         .filter(Boolean);
       if (includeLogo) {
@@ -213,6 +213,7 @@ export const getMySchool = async (req, res) => {
 
     const response = normalizeResponse({
       name: school.name,
+      schoolCode: school.schoolCode || "",
       address: school.address,
       allowSignatureUpload: school.allowSignatureUpload !== false,
       schoolType: school.schoolType || 'full',

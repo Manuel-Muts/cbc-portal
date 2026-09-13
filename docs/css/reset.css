@@ -12,34 +12,72 @@ body {
 }
 
 .reset-form {
-  max-width: 420px;
+  max-width: 380px;
   width: 95%;
   background: rgba(255, 255, 255, 0.85) !important; /* Slightly more transparent to blend better */
   backdrop-filter: blur(15px);
   -webkit-backdrop-filter: blur(15px);
-  border-radius: 20px !important;
+  border-radius: 16px !important;
   box-shadow: 0 8px 20px rgba(0, 0, 0, 0.18) !important;
   border: 1px solid rgba(255, 255, 255, 0.18) !important;
-  padding: 22px 22px 20px !important;
+  padding: 16px 18px 16px !important;
   text-align: center;
   margin: 24px 12px;
   box-sizing: border-box;
 }
 
+.card-head {
+  margin: -16px -18px 15px;
+  padding: 16px 18px 14px;
+  border-radius: 16px 16px 12px 12px;
+  background: linear-gradient(135deg, #0f766e 0%, #155e75 58%, #164e63 100%);
+  box-shadow: inset 0 -1px 0 rgba(255, 255, 255, 0.18);
+}
+
 .card-head h1 {
-  font-size: 1.8rem; 
-  color: #1e3a8a; /* Deep professional blue */
-  margin: 0; 
+  font-size: 1.18rem;
+  color: #ffffff;
+  margin: 0;
   font-weight: 800;
-  letter-spacing: -0.02em;
+  letter-spacing: 0;
+  white-space: nowrap;
+}
+
+.reset-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  flex-wrap: nowrap;
+}
+
+.reset-header-label {
+  display: inline-block;
+  padding: 4px 9px;
+  border: 1px solid rgba(204, 251, 241, 0.8);
+  border-radius: 999px;
+  background: rgba(204, 251, 241, 0.16);
+  color: #ccfbf1;
+  font-size: 0.54rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  line-height: 1;
+  text-transform: uppercase;
 }
 
 .card-head .lead {
-  font-size: 0.9rem; color: #334155; margin: 10px 0 0; font-weight: 600; line-height: 1.5;
+  max-width: 290px;
+  margin: 6px auto 0;
+  color: #d9fffa;
+  font-size: 0.76rem;
+  font-weight: 600;
+  line-height: 1.4;
 }
 
 .header-divider {
-  margin: 20px 0 25px; border: 0; border-top: 1px solid #e2e8f0;
+  margin: 13px 0 15px;
+  border: 0;
+  border-top: 1px solid rgba(204, 251, 241, 0.3);
 }
 
 .reset-form .form-group {
@@ -47,12 +85,16 @@ body {
   text-align: left;
 }
 
+.reset-form .hidden {
+  display: none !important;
+}
+
 .reset-form label {
   display: block;
-  margin-bottom: 8px;
+  margin-bottom: 5px;
   font-weight: 600;
   color: #475569;
-  font-size: 0.9rem;
+  font-size: 0.78rem;
   padding-left: 4px;
 }
 
@@ -63,15 +105,15 @@ body {
 .reset-form select,
 .reset-form .otp {
   width: 100% !important;
-  padding: 10px 12px;
+  padding: 8px 10px;
   border: 1px solid #d1d5db;
   border-radius: 10px;
-  font-size: 0.95rem;
+  font-size: 0.88rem;
   background-color: #f8fafc;
   color: #1f2937;
   transition: all 0.3s ease;
   box-sizing: border-box;
-  margin-bottom: 12px;
+  margin-bottom: 8px;
 }
 
 .reset-form input:focus,
@@ -83,27 +125,51 @@ body {
   background-color: #fff;
 }
 
+.reset-form #role {
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 0.94rem;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  color: #183b56;
+  background: linear-gradient(180deg, #ffffff 0%, #f0fdfa 100%);
+  border-color: #8ddbd1;
+  cursor: pointer;
+}
+
+.reset-form #role option {
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 0.94rem;
+  font-weight: 700;
+  color: #183b56;
+  background: #ffffff;
+}
+
+.reset-form #role option[value=""] {
+  color: #64748b;
+  font-weight: 700;
+}
+
 .reset-form .otp-container {
   display: flex;
   justify-content: center;
-  gap: 8px;
-  margin: 20px 0;
+  gap: 6px;
+  margin: 12px 0;
 }
 
 .reset-form .otp {
-  width: 45px !important;
+  width: 38px !important;
   text-align: center;
   margin: 0;
   font-weight: 700;
-  font-size: 1.2rem;
+  font-size: 1rem;
 }
 
 .reset-form button {
   width: 100%;
-  padding: 10px 14px;
+  padding: 8px 10px;
   border: none;
   border-radius: 10px;
-  font-size: 0.92rem;
+  font-size: 0.82rem;
   font-weight: 600;
   cursor: pointer;
   transition: all 0.25s ease;
@@ -118,11 +184,11 @@ body {
 }
 
 .reset-help-text {
-  margin-top: 35px;
-  font-size: 0.82rem;
+  margin-top: 20px;
+  font-size: 0.72rem;
   color: #475569;
-  line-height: 1.6;
-  padding: 14px 18px;
+  line-height: 1.4;
+  padding: 10px 12px;
   background: rgba(37, 99, 235, 0.06); /* Very subtle blue tint */
   border-radius: 10px;
   border-left: 4px solid #2563eb; /* Visual indicator for "Info" */
@@ -130,7 +196,7 @@ body {
 }
 
 .back-to-login {
-  margin-top: 20px;
+  margin-top: 12px;
 }
 
 .back-to-login a {
@@ -138,8 +204,8 @@ body {
   color: #2563eb;
   text-decoration: none;
   font-weight: 700;
-  font-size: 0.9rem;
-  padding: 10px 24px;
+  font-size: 0.78rem;
+  padding: 7px 16px;
   background: #eff6ff; /* Soft blue background */
   border: 1px solid #bfdbfe; /* Clean, light border */
   border-radius: 12px;
@@ -174,10 +240,10 @@ body {
 }
 
 .reset-form .feedback {
-  padding: 10px 15px;
-  margin-bottom: 15px;
+  padding: 7px 10px;
+  margin-bottom: 10px;
   border-radius: 8px;
-  font-size: 0.9rem;
+  font-size: 0.78rem;
   font-weight: 500;
   text-align: center;
 }
@@ -206,15 +272,15 @@ body {
 }
 
 .reset-form #pwStrengthBar {
-  height: 8px;
+  height: 6px;
   border-radius: 4px;
   margin-top: 5px;
   transition: width 0.3s ease-in-out, background 0.3s ease-in-out;
 }
 
 .reset-form #pwStrengthText {
-  font-size: 0.85rem;
-  margin-top: 5px;
+  font-size: 0.72rem;
+  margin-top: 3px;
   color: #666;
 }
 
@@ -243,7 +309,7 @@ body {
   background: none;
   border: none;
   color: #007bff;
-  font-size: 0.9rem;
+  font-size: 0.78rem;
   cursor: pointer;
   padding: 0;
   margin-top: 10px;
@@ -256,7 +322,7 @@ body {
 }
 
 .reset-form #resendTimer {
-  font-size: 0.9rem;
+  font-size: 0.78rem;
   color: #6c757d;
   margin-left: 5px;
 }
@@ -279,7 +345,7 @@ body {
 }
 
 .reset-form .step {
-  padding: 10px 0;
+  padding: 5px 0;
 }
 
 .reset-form .step:not(.active) {
@@ -297,8 +363,8 @@ body {
 
 .reset-form .button-group {
   display: flex;
-  gap: 10px;
-  margin-top: 20px;
+  gap: 8px;
+  margin-top: 14px;
 }
 
 .reset-form .button-group button {
@@ -311,9 +377,70 @@ body {
 footer { /* Target the footer element directly */
   margin-top: auto; /* Pushes footer to the absolute bottom of the page */
   width: 100%;
-  padding: 20px;
+  padding: 12px;
   text-align: center;
   color: #ffffff; /* Make it fully white for visibility */
-  font-size: 0.8rem;
+  font-size: 0.7rem;
   background: rgba(0, 0, 0, 0.3); /* A slightly darker, semi-transparent background */
+}
+
+@media (max-width: 480px) {
+  .reset-form {
+    width: calc(100% - 24px);
+    max-width: 350px;
+    padding: 14px 14px 12px !important;
+    margin: 14px 12px;
+    border-radius: 14px !important;
+  }
+
+  .card-head {
+    margin: -14px -14px 12px;
+    padding: 14px 14px 12px;
+    border-radius: 14px 14px 10px 10px;
+  }
+
+  .card-head h1 {
+    font-size: 0.98rem;
+  }
+
+  .reset-title-row {
+    gap: 6px;
+  }
+
+  .reset-header-label {
+    padding: 3px 6px;
+    font-size: 0.48rem;
+    letter-spacing: 0.08em;
+  }
+
+  .card-head .lead {
+    font-size: 0.72rem;
+  }
+
+  .header-divider {
+    margin: 11px 0 12px;
+  }
+
+  .reset-form .otp-boxes {
+    gap: 4px;
+    margin: 9px 0;
+  }
+
+  .reset-form .otp {
+    width: 34px !important;
+    min-height: 38px;
+    padding: 6px 2px;
+    font-size: 0.95rem;
+  }
+
+  .reset-form .button-group {
+    gap: 6px;
+    margin-top: 11px;
+  }
+
+  .reset-form button {
+    min-height: 36px;
+    padding: 7px 8px;
+    font-size: 0.76rem;
+  }
 }

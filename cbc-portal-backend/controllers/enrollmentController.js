@@ -1,14 +1,253 @@
 //controllers/enrollmentController.js
 import mongoose from "mongoose";
+import bcrypt from "bcryptjs";
+import { generateLearnerUsername } from "../utils/authHelpers.js";
 import StudentEnrollment from "../models/StudentEnrollment.js";
 import LearnerElective from "../models/LearnerElective.js";
 import { User } from "../models/User.js";
+import { School } from "../models/school.js";
+import { Student } from "../models/RoleModels.js";
+import { generateRawPassword } from "../utils/authHelpers.js";
 import { normalizePathway } from "../utils/pathwayUtils.js";
+import { createNotificationsForUsers } from "./notificationController.js";
 
 const SENIOR_PATHWAYS = ["STEM", "Social Sciences", "Arts & Sports Science"];
 
 const escapeRegex = (text) => {
   return text.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, "\\$&");
+};
+
+const normalizeTeacherGrade = (value) => {
+  const text = String(value || "").trim();
+  if (!text) return "";
+  if (/^(PG|PP1|PP2)$/i.test(text)) return text.toUpperCase();
+  const match = text.match(/\d+/);
+  return match ? `Grade ${match[0]}` : text;
+};
+
+const parseClassLabel = (classLabel) => {
+  const match = String(classLabel || "").trim().match(/^(?:Grade\s+)?(PP\d|PG|\d+)(?:\s+)?([A-Z0-9]+)?$/i);
+  if (!match) return null;
+  return {
+    grade: normalizeTeacherGrade(match[1]),
+    stream: match[2] ? String(match[2]).trim().toUpperCase() : null
+  };
+};
+
+const teacherCanAccessClass = (teacher, parsedClass) => {
+  if (!teacher || !["teacher", "classteacher"].includes(teacher.role)) return false;
+  if (teacher.isDean) return true;
+
+  const allocationMatches = (teacher.allocations || []).some((allocation) => {
+    const allocationGrade = normalizeTeacherGrade(allocation.grade);
+    const allocationStream = allocation.stream ? String(allocation.stream).trim().toUpperCase() : null;
+    return allocationGrade === parsedClass.grade && allocationStream === parsedClass.stream;
+  });
+  const assignedClassMatches = normalizeTeacherGrade(teacher.assignedClass) === parsedClass.grade
+    && (teacher.assignedStream ? String(teacher.assignedStream).trim().toUpperCase() : null) === parsedClass.stream;
+
+  return allocationMatches || (teacher.isClassTeacher && assignedClassMatches);
+};
+
+const getTeacherForClass = async (userId, schoolId, parsedClass) => {
+  const teacher = await User.findById(userId)
+    .select("role schoolId isDean isClassTeacher assignedClass assignedStream allocations")
+    .lean();
+  if (!teacher || String(teacher.schoolId) !== String(schoolId) || !teacherCanAccessClass(teacher, parsedClass)) return null;
+  return teacher;
+};
+
+export const findLearnerForMarksEntry = async (req, res) => {
+  try {
+    const parsedClass = parseClassLabel(req.params.classLabel);
+    const admission = String(req.query.admission || "").trim();
+    if (!req.user?.schoolId || !parsedClass || !admission) {
+      return res.status(400).json({ message: "A valid class and admission number are required" });
+    }
+
+    const teacher = await getTeacherForClass(req.user.id, req.user.schoolId, parsedClass);
+    if (!teacher) return res.status(403).json({ message: "You are not assigned to this class" });
+
+    const student = await User.findOne({
+      schoolId: req.user.schoolId,
+      role: "student",
+      admission
+    }).select("name admission").lean();
+    if (!student) return res.status(404).json({ message: "Learner not found in this class" });
+
+    const enrollment = await StudentEnrollment.findOne({
+      studentId: student._id,
+      schoolId: req.user.schoolId,
+      academicYear: new Date().getFullYear(),
+      grade: parsedClass.grade,
+      stream: parsedClass.stream,
+      status: "active"
+    }).lean();
+    if (!enrollment) return res.status(404).json({ message: "Learner not found in this class" });
+
+    return res.json({
+      student: {
+        _id: student._id,
+        name: student.name,
+        admissionNo: student.admission,
+        grade: enrollment.grade,
+        stream: enrollment.stream,
+        pathway: enrollment.pathway
+      }
+    });
+  } catch (error) {
+    console.error("Find learner for marks entry error:", error);
+    res.status(500).json({ message: "Failed to find learner" });
+  }
+};
+
+/**
+ * CREATE A LEARNER FROM TEACHER MARKS ENTRY
+ * Creates the student account and current-year enrollment in one teacher-scoped flow.
+ */
+export const createLearnerForMarksEntry = async (req, res) => {
+  try {
+    const { classLabel } = req.params;
+    const { name, admission, contact, gender, dateOfBirth, pathway, academicYear, term } = req.body;
+    const parsedClass = parseClassLabel(classLabel);
+
+    if (!req.user?.schoolId || !parsedClass) {
+      return res.status(400).json({ message: "A valid class is required" });
+    }
+
+    const teacher = await User.findById(req.user.id)
+      .select("name role roles schoolId isDean isClassTeacher assignedClass assignedStream allocations")
+      .lean();
+    const isTeacher = teacher && ["teacher", "classteacher"].includes(teacher.role);
+    if (!isTeacher || String(teacher.schoolId) !== String(req.user.schoolId)) {
+      return res.status(403).json({ message: "Only teachers can create learners from marks entry" });
+    }
+
+    const teachesSelectedClass = (teacher.allocations || []).some((allocation) => {
+      const allocationGrade = normalizeTeacherGrade(allocation.grade);
+      const allocationStream = allocation.stream ? String(allocation.stream).trim().toUpperCase() : null;
+      return allocationGrade === parsedClass.grade && allocationStream === parsedClass.stream;
+    });
+    const assignedClassMatches = normalizeTeacherGrade(teacher.assignedClass) === parsedClass.grade
+      && (teacher.assignedStream ? String(teacher.assignedStream).trim().toUpperCase() : null) === parsedClass.stream;
+
+    if (!teacher.isDean && !teachesSelectedClass && !(teacher.isClassTeacher && assignedClassMatches)) {
+      return res.status(403).json({ message: "You are not assigned to this class" });
+    }
+
+    const normalizedName = String(name || "").trim().toUpperCase();
+    const normalizedAdmission = String(admission || "").trim();
+    if (!normalizedName || !normalizedAdmission) {
+      return res.status(400).json({ message: "Learner name and admission number are required" });
+    }
+
+    const existingStudent = await User.findOne({ schoolId: req.user.schoolId, role: "student", admission: normalizedAdmission }).select("_id").lean();
+    if (existingStudent) {
+      return res.status(409).json({ message: "A learner with this admission number already exists" });
+    }
+
+    const school = await School.findById(req.user.schoolId).select("schoolCode").lean();
+    if (!school?.schoolCode) {
+      return res.status(400).json({ message: "This school needs a school code before learners can be registered" });
+    }
+
+    const year = Number(academicYear) || new Date().getFullYear();
+    const rawPassword = generateRawPassword("student", normalizedAdmission);
+    const student = new Student({
+      name: normalizedName,
+      role: "student",
+      admission: normalizedAdmission,
+      username: generateLearnerUsername(normalizedAdmission, school.schoolCode),
+      grade: parsedClass.grade,
+      pathway: normalizePathway(pathway) || null,
+      contact: contact ? String(contact).trim() : null,
+      gender: gender ? String(gender).trim() : null,
+      dateOfBirth: dateOfBirth || null,
+      password: await bcrypt.hash(rawPassword, 10),
+      passwordMustChange: true,
+      schoolId: req.user.schoolId,
+      createdBy: req.user.id
+    });
+    await student.save();
+
+    try {
+      const enrollment = await StudentEnrollment.create({
+        studentId: student._id,
+        schoolId: req.user.schoolId,
+        academicYear: year,
+        grade: parsedClass.grade,
+        stream: parsedClass.stream,
+        pathway: normalizePathway(pathway) || null,
+        term: ["1", "2", "3"].includes(String(term)) ? `Term ${term}` : "Term 1",
+        status: "active"
+      });
+      student.enrollmentId = enrollment._id;
+      await student.save();
+    } catch (error) {
+      await Student.deleteOne({ _id: student._id });
+      throw error;
+    }
+
+    try {
+      const classTeachers = await User.find({
+        schoolId: req.user.schoolId,
+        role: { $in: ["teacher", "classteacher"] }
+      })
+        .select("allocations isClassTeacher assignedClass assignedStream")
+        .lean();
+
+      const schoolAdmins = await User.find({
+        schoolId: req.user.schoolId,
+        role: "admin"
+      })
+        .select("_id")
+        .lean();
+
+      const recipientIds = Array.from(new Set([
+        ...classTeachers
+          .filter((candidate) => {
+            const allocationMatches = (candidate.allocations || []).some((allocation) => {
+              const allocationGrade = normalizeTeacherGrade(allocation.grade);
+              const allocationStream = allocation.stream ? String(allocation.stream).trim().toUpperCase() : null;
+              return allocationGrade === parsedClass.grade && allocationStream === parsedClass.stream;
+            });
+            const assignedClassMatches = normalizeTeacherGrade(candidate.assignedClass) === parsedClass.grade
+              && (candidate.assignedStream ? String(candidate.assignedStream).trim().toUpperCase() : null) === parsedClass.stream;
+            return allocationMatches || (candidate.isClassTeacher && assignedClassMatches);
+          })
+          .map((candidate) => String(candidate._id)),
+        ...schoolAdmins.map((adminUser) => String(adminUser._id))
+      ]));
+
+      await createNotificationsForUsers({
+        userIds: recipientIds,
+        schoolId: req.user.schoolId,
+        type: "learner_created",
+        title: "Learner created by teacher",
+        message: `${teacher.name} created learner ${normalizedName} (Admission: ${normalizedAdmission}) for ${classLabel}.`
+      });
+    } catch (notificationError) {
+      console.warn("Learner created, but notification could not be saved:", notificationError.message);
+    }
+
+    res.status(201).json({
+      message: "Learner created and enrolled successfully",
+      student: {
+        _id: student._id,
+        name: student.name,
+        admissionNo: student.admission,
+        grade: parsedClass.grade,
+        stream: parsedClass.stream,
+        pathway: normalizePathway(pathway) || null
+      }
+    });
+  } catch (error) {
+    if (error?.code === 11000) {
+      return res.status(409).json({ message: "A learner with this admission number already exists" });
+    }
+    console.error("Create learner for marks entry error:", error);
+    res.status(500).json({ message: "Failed to create learner" });
+  }
 };
 
 /**
@@ -585,5 +824,43 @@ export const getUniqueStreams = async (req, res) => {
   } catch (err) {
     console.error("getUniqueStreams error:", err);
     res.status(500).json({ message: "Server error fetching streams" });
+  }
+};
+
+export const checkLearnerNameForMarksEntry = async (req, res) => {
+  try {
+    const parsedClass = parseClassLabel(req.params.classLabel);
+    const name = String(req.query.name || "").trim();
+    if (!req.user?.schoolId || !parsedClass || !name) {
+      return res.status(400).json({ message: "A valid class and learner name are required" });
+    }
+
+    const teacher = await getTeacherForClass(req.user.id, req.user.schoolId, parsedClass);
+    if (!teacher) return res.status(403).json({ message: "You are not assigned to this class" });
+
+    const classEnrollments = await StudentEnrollment.find({
+      schoolId: req.user.schoolId,
+      academicYear: new Date().getFullYear(),
+      grade: parsedClass.grade,
+      stream: parsedClass.stream,
+      status: "active"
+    }).select("studentId").lean();
+    const studentIds = classEnrollments.map((enrollment) => enrollment.studentId);
+    const namePattern = new RegExp(`^${escapeRegex(name)}$`, "i");
+    const matches = await User.find({
+      _id: { $in: studentIds },
+      role: "student",
+      name: namePattern
+    }).select("name admission").limit(10).lean();
+
+    res.json({
+      matches: matches.map((student) => ({
+        name: student.name,
+        admissionNo: student.admission
+      }))
+    });
+  } catch (error) {
+    console.error("Check learner name for marks entry error:", error);
+    res.status(500).json({ message: "Failed to check learner name" });
   }
 };

@@ -201,7 +201,26 @@
 
       <!-- Step 2: Marks Entry Table -->
       <div id="marksTableContainer" style="display: none;">
-        <h3>Step 2: Enter Marks for Each Learner</h3>
+        <div class="marks-step-heading">
+          <h3>Step 2: Enter Marks for Each Learner</h3>
+          <div class="marks-step-actions">
+            <div id="findLearnerAction" class="marks-learner-search" hidden>
+              <label for="findLearnerAdmission">Search Learner</label>
+              <div class="marks-learner-search-field">
+                <input type="text" id="findLearnerAdmission" inputmode="numeric" placeholder="Admission number">
+                <button type="button" id="findLearnerBtn" class="marks-learner-search-btn" aria-label="Search learner" title="Search learner" hidden>
+                  <i class="fas fa-search" aria-hidden="true"></i>
+                </button>
+                <button type="button" id="clearLearnerSearchBtn" class="marks-learner-clear-btn" aria-label="Clear admission search" title="Clear search" hidden>
+                  <i class="fas fa-times" aria-hidden="true"></i>
+                </button>
+              </div>
+            </div>
+            <div id="createLearnerAction" class="marks-roster-actions" hidden>
+              <button type="button" id="createLearnerBtn" class="btn secondary-btn">+ Create Learner</button>
+            </div>
+          </div>
+        </div>
         <div id="marksEntryScrollWrapper" class="marks-entry-scroll-wrapper">
           <table id="marksEntryTable" class="marks-entry-table">
             <thead>
@@ -363,6 +382,7 @@
    <script src="js/Utility/spinner.js"></script>
   <script src="js/ui.js"></script>
   <script src="js/Utility/subject-data.js"></script>
+  <script src="js/teacher/learner-enrollment.js"></script>
   <script src="js/teacher/teachers.js"></script>
   <script src="js/classteacher/analysis.js"></script>
 </body>

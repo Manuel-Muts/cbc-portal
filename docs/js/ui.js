@@ -62,6 +62,16 @@ document.addEventListener("DOMContentLoaded", () => {
  const toggle = document.getElementById("menuToggle");
 const menu = document.getElementById("navMenu");
 const overlay = document.getElementById("menuOverlay");
+const closeButton = document.getElementById("homeMenuClose");
+
+const closeMobileMenu = () => {
+  if (menu) menu.classList.remove("active");
+  if (overlay) overlay.classList.remove("active");
+  if (toggle) {
+    toggle.setAttribute("aria-expanded", "false");
+    toggle.setAttribute("aria-label", "Open navigation");
+  }
+};
 
     // --- 1A. OFFLINE / NO INTERNET FALLBACK ---
     let offlineNoticeShown = false;
@@ -130,8 +140,6 @@ const overlay = document.getElementById("menuOverlay");
         const installPromptState = {
             deferredPrompt: null,
             isInstalled: false,
-            dismissed: false,
-            bannerVisible: false,
             installCompleteNotified: false,
             installRequested: false
         };
@@ -183,23 +191,6 @@ const overlay = document.getElementById("menuOverlay");
             document.head.appendChild(themeMeta);
         }
 
-        const installBanner = document.createElement('div');
-        installBanner.id = 'pwaInstallBanner';
-        installBanner.innerHTML = `
-          <div class="pwa-install-card">
-            <div>
-              <strong>Install CompetenceHub</strong>
-              <p>Open it as an app for faster access on your device.</p>
-            </div>
-            <div class="pwa-install-actions">
-              <button id="pwaInstallBtn" class="pwa-install-btn">Install</button>
-              <button id="pwaDismissBtn" class="pwa-dismiss-btn">Later</button>
-            </div>
-          </div>
-        `;
-        installBanner.style.display = 'none';
-        document.body.appendChild(installBanner);
-
         const installFab = document.createElement('button');
         installFab.id = 'pwaInstallFab';
         installFab.className = 'pwa-install-fab';
@@ -208,18 +199,6 @@ const overlay = document.getElementById("menuOverlay");
         installFab.style.display = 'none';
         document.body.appendChild(installFab);
 
-        const showInstallBanner = () => {
-            if (installPromptState.isInstalled || installPromptState.dismissed || installPromptState.bannerVisible) return;
-            installPromptState.bannerVisible = true;
-            installBanner.style.display = 'block';
-            installFab.style.display = 'inline-flex';
-        };
-
-        const hideInstallBanner = () => {
-            installPromptState.bannerVisible = false;
-            installBanner.style.display = 'none';
-        };
-
         const handleInstall = async () => {
             if (installPromptState.deferredPrompt) {
                 installPromptState.installRequested = true;
@@ -227,7 +206,6 @@ const overlay = document.getElementById("menuOverlay");
                 installPromptState.deferredPrompt.prompt();
                 const { outcome } = await installPromptState.deferredPrompt.userChoice;
                 installPromptState.deferredPrompt = null;
-                hideInstallBanner();
                 installFab.style.display = 'none';
 
                 if (outcome === 'accepted') {
@@ -242,36 +220,25 @@ const overlay = document.getElementById("menuOverlay");
             }
         };
 
-        const installBtn = installBanner.querySelector('#pwaInstallBtn');
-        const dismissBtn = installBanner.querySelector('#pwaDismissBtn');
-        if (installBtn) installBtn.addEventListener('click', handleInstall);
-        if (dismissBtn) dismissBtn.addEventListener('click', () => {
-            installPromptState.dismissed = true;
-            hideInstallBanner();
-            installFab.style.display = 'none';
-        });
-
         installFab.addEventListener('click', handleInstall);
 
         window.addEventListener('beforeinstallprompt', (event) => {
             event.preventDefault();
             installPromptState.deferredPrompt = event;
             installFab.style.display = 'inline-flex';
-            setTimeout(showInstallBanner, 1200);
         });
 
         const showInstallCompleteMessage = () => {
             if (installPromptState.installCompleteNotified) return;
             installPromptState.installCompleteNotified = true;
             persistInstallState(true, true);
-            showToast('Installation complete. Open the app anytime from your device home screen.', 'success');
+            showToast('Installation started. Check your home screen in a few moments.', 'info');
         };
 
         window.addEventListener('appinstalled', () => {
             installPromptState.isInstalled = true;
             persistInstallState(true, false);
             installFab.style.display = 'none';
-            hideInstallBanner();
             if (installPromptState.installRequested || window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone) {
                 showInstallCompleteMessage();
             }
@@ -293,9 +260,8 @@ const overlay = document.getElementById("menuOverlay");
         });
 
         document.addEventListener('visibilitychange', () => {
-            if (document.visibilityState === 'visible' && installPromptState.deferredPrompt && !installPromptState.isInstalled && !installPromptState.dismissed) {
+            if (document.visibilityState === 'visible' && installPromptState.deferredPrompt && !installPromptState.isInstalled) {
                 installFab.style.display = 'inline-flex';
-                showInstallBanner();
             }
             if (document.visibilityState === 'visible') {
                 checkStandaloneState();
@@ -310,15 +276,26 @@ const overlay = document.getElementById("menuOverlay");
 
 if (toggle) {
   toggle.addEventListener("click", () => {
-    if (menu) menu.classList.toggle("active");
-    if (overlay) overlay.classList.toggle("active");
+    const isOpen = menu ? menu.classList.toggle("active") : false;
+    if (overlay) overlay.classList.toggle("active", isOpen);
+    toggle.setAttribute("aria-expanded", String(isOpen));
+    toggle.setAttribute("aria-label", isOpen ? "Close navigation" : "Open navigation");
   });
 }
 
 if (overlay) {
   overlay.addEventListener("click", () => {
-    if (menu) menu.classList.remove("active");
-    overlay.classList.remove("active");
+    closeMobileMenu();
+  });
+}
+
+if (closeButton) {
+  closeButton.addEventListener("click", closeMobileMenu);
+}
+
+if (menu) {
+  menu.querySelectorAll("a").forEach((link) => {
+    link.addEventListener("click", closeMobileMenu);
   });
 }
     // --- 2. RELIABILITY SLIDER ---
@@ -481,38 +458,6 @@ if (overlay) {
       font-weight: bold;
       border-top: 2px solid #cbd5e0;
     }
-
-    /* PWA install banner */
-    #pwaInstallBanner {
-      position: fixed;
-      left: 50%;
-      top: 20px;
-      transform: translateX(-50%);
-      z-index: 12000;
-      width: min(92vw, 480px);
-    }
-    .pwa-install-card {
-      background: linear-gradient(135deg, #0f766e, #2563eb);
-      color: white;
-      border-radius: 14px;
-      padding: 14px 16px;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 12px;
-      box-shadow: 0 12px 30px rgba(15, 23, 42, 0.25);
-    }
-    .pwa-install-card p { margin: 4px 0 0; font-size: 0.9rem; opacity: 0.95; }
-    .pwa-install-actions { display: flex; gap: 8px; }
-    .pwa-install-btn, .pwa-dismiss-btn {
-      border: none;
-      border-radius: 999px;
-      padding: 8px 12px;
-      font-weight: 700;
-      cursor: pointer;
-    }
-    .pwa-install-btn { background: white; color: #0f172a; }
-    .pwa-dismiss-btn { background: rgba(255,255,255,0.16); color: white; }
 
     .pwa-install-fab {
       position: fixed;

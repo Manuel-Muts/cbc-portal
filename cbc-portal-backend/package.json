@@ -6,6 +6,8 @@
   "scripts": {
     "start": "node index.js",
     "dev": "nodemon index.js",
+    "migrate-learner-usernames": "node scripts/migrateLearnerUsernames.js",
+    "remove-legacy-firstname": "node scripts/removeLegacyFirstname.js",
     "remove-legacy-mark-fields": "node scripts/removeLegacyMarkFields.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },

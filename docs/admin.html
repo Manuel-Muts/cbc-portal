@@ -47,7 +47,10 @@
     <main class="main">
         <header class="topbar">
             <div class="topbar-main">
-                <span class="topbar-badge">Administration</span>
+                <div class="admin-header-label-row">
+                    <span class="topbar-badge">Administration</span>
+                    <span id="adminHeaderSchoolCode" class="admin-header-school-code">School code: --</span>
+                </div>
                 <h1 id="pageTitle">Subject Allocations</h1>
             </div>
             <div class="topbar-actions">
@@ -56,6 +59,13 @@
                     <i class="fas fa-bell" aria-hidden="true"></i>
                     <span class="admin-notification-dot" aria-hidden="true"></span>
                 </button>
+                <div id="adminNotificationMenu" class="admin-notification-menu" hidden>
+                    <div class="admin-notification-menu-header">
+                        <strong>Notifications</strong>
+                        <button id="markAdminNotificationsRead" type="button">Mark all read</button>
+                    </div>
+                    <div id="adminNotificationList" class="admin-notification-list"></div>
+                </div>
                 <div class="profile-menu">
                     <button class="profile-trigger" id="profileMenuTrigger" type="button" aria-expanded="false" aria-label="Open administrator profile menu" title="Administrator profile">
                         <span class="profile-avatar" id="profileAvatar"><i class="fas fa-user" aria-hidden="true"></i></span>

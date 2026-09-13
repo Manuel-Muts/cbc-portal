@@ -4,7 +4,7 @@
  * and ensure PDF generation libraries (jsPDF, html2canvas) are always available.
  */
 
-const CACHE_NAME = 'cbc-portal-v1';
+const CACHE_NAME = 'cbc-portal-v2';
 const OFFLINE_URL = '/offline.html';
 
 // URLs of external libraries to pre-cache

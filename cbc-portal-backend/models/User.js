@@ -81,6 +81,13 @@ const userSchema = new mongoose.Schema({
     required: function () { return this.role === "student"; },
     sparse: true
   },
+  username: {
+    type: String,
+    lowercase: true,
+    trim: true,
+    sparse: true,
+    unique: true
+  },
   // Numeric suffix extracted from `admission` for fast max lookups
   numericAdmission: {
     type: Number,

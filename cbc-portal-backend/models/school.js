@@ -3,6 +3,15 @@ import mongoose from 'mongoose';
 
 const schoolSchema = new mongoose.Schema({
   name: { type: String, required: true },
+  schoolCode: {
+    type: String,
+    required: true,
+    uppercase: true,
+    trim: true,
+    match: /^[A-Z0-9]{3,8}$/,
+    unique: true,
+    sparse: true
+  },
   adminEmail: { type: String, required: true, unique: true },
   status: { type: String, enum: ["Active", "Suspended"], default: "Active" },
   logo: { type: String, default: "" }, // Cloudinary URL or base64 image string

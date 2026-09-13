@@ -110,7 +110,7 @@
 }
 
 /* --- Landing Page Header & Navigation --- */
-header {
+header:not(.home-header) {
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -184,7 +184,7 @@ header {
   display: inline-block;
 }
 
-.dropdown .dropbtn {
+.dropdown:not(#aboutDropdown) .dropbtn {
   /* Inherit existing nav link styles */
   padding: 8px 16px; /* Adjust padding to match other nav links */
   text-decoration: none;
@@ -201,11 +201,11 @@ header {
   font: inherit;
 }
 
-.dropdown .dropbtn:hover {
+.dropdown:not(#aboutDropdown) .dropbtn:hover {
   color: #2563eb !important; /* Highlight on hover */
 }
 
-.dropdown .dropbtn {
+.dropdown:not(#aboutDropdown) .dropbtn {
   cursor: pointer;
 }
 

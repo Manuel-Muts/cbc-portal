@@ -7,7 +7,10 @@ import { adminSearchStudent,
       getMyEnrollment, 
       cleanOrphanedEnrollments, 
       getStudentsByClass, 
-      getUniqueStreams } from "../controllers/enrollmentController.js";
+      getUniqueStreams,
+      createLearnerForMarksEntry,
+      findLearnerForMarksEntry,
+      checkLearnerNameForMarksEntry } from "../controllers/enrollmentController.js";
 import  verifyToken  from "../middleware/verifyToken.js";
 
 
@@ -18,6 +21,9 @@ router.get("/admin-search", verifyToken, adminSearchStudent);
 
 // Get students by class (for teachers to load students for marks entry)
 router.get("/class/:classLabel", verifyToken, getStudentsByClass);
+router.get("/class/:classLabel/learner", verifyToken, findLearnerForMarksEntry);
+router.get("/class/:classLabel/learner/name-check", verifyToken, checkLearnerNameForMarksEntry);
+router.post("/class/:classLabel/learner", verifyToken, createLearnerForMarksEntry);
 
 // Student route - get current enrollment with stream
 router.get("/my-enrollment", verifyToken, getMyEnrollment);

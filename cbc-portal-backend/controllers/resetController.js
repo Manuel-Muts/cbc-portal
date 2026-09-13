@@ -1,6 +1,7 @@
 // controllers/resetController.js
 import bcrypt from "bcryptjs";
 import { User } from "../models/User.js";
+import sendSMS from "../utils/sendSMS.js";
 
 
 // ----------------------------------
@@ -9,26 +10,28 @@ import { User } from "../models/User.js";
 const generateCode = () =>
   Math.floor(100000 + Math.random() * 900000).toString();
 
-
 // ============================================================
 // 0️⃣ VERIFY USER (role + email)
 // ============================================================
 export const verifyUser = async (req, res) => {
-  const { role, email } = req.body; //
+  const { role, email, username } = req.body;
 
-  if (!role || !email) { //
+  if (!role || ((!email) && (!username))) {
     return res.status(400).json({ msg: "Missing required fields" }); //
   }
 
   try {
-    const user = await User.findOne({ email });
+    const isLearner = ["student", "learner"].includes(String(role).toLowerCase());
+    const user = isLearner
+      ? await User.findOne({ role: "student", username: String(username).trim().toLowerCase() })
+      : await User.findOne({ email: String(email).trim().toLowerCase() });
     if (!user) {
       return res.status(404).json({ msg: "User not found" });
     }
 
     // Check role - Allow matches for primary role OR class teacher designation
-    const roleMatches = 
-      user.role === role || 
+    const roleMatches =
+      user.role === String(role).toLowerCase() ||
       (role === "classteacher" && user.isClassTeacher === true);
 
     if (!roleMatches) {
@@ -49,12 +52,15 @@ export const verifyUser = async (req, res) => {
 import fetch from "node-fetch"; // or native fetch if Node >=18
 
 export const requestReset = async (req, res) => {
-  const { email } = req.body;
-  if (!email) return res.status(400).json({ msg: "Email is required" });
+  const { email, username, role } = req.body;
+  const isLearner = ["student", "learner"].includes(String(role || "").toLowerCase());
+  if ((!isLearner && !email) || (isLearner && !username)) return res.status(400).json({ msg: isLearner ? "Username is required" : "Email is required" });
 
   try {
-    const user = await User.findOne({ email });
-    if (!user) return res.status(404).json({ msg: "No account with that email" });
+    const user = isLearner
+      ? await User.findOne({ role: "student", username: String(username).trim().toLowerCase() })
+      : await User.findOne({ email: String(email).trim().toLowerCase() });
+    if (!user) return res.status(404).json({ msg: isLearner ? "No learner account with that username" : "No account with that email" });
 
     // Generate 6-digit OTP
     const code = generateCode();
@@ -65,6 +71,13 @@ export const requestReset = async (req, res) => {
     user.resetAttempts = 0;
     user.resetCodeExpires = Date.now() + 10 * 60 * 1000; // 10 mins
     await user.save();
+
+    if (isLearner) {
+      if (!user.contact) return res.status(400).json({ msg: "No parent or guardian phone number is registered" });
+      const smsResult = await sendSMS(user.contact, `CompetenceHub password reset code: ${code}. It expires in 10 minutes. Do not share this code.`);
+      if (!smsResult) return res.status(503).json({ msg: "Unable to send code to the parent or guardian phone" });
+      return res.json({ msg: "Reset code sent to the parent or guardian phone" });
+    }
 
     // -------------------------
     // Send email via Brevo API
@@ -123,13 +136,16 @@ export const requestReset = async (req, res) => {
 // 2️⃣ VERIFY RESET CODE
 // ============================================================
    export const verifyResetCode = async (req, res) => {
-  const { email, code } = req.body;
+    const { email, username, code, role } = req.body;
 
-  if (!email || !code)
-    return res.status(400).json({ msg: "Email & code are required" });
+    const isLearner = ["student", "learner"].includes(String(role || "").toLowerCase());
+    if ((!isLearner && !email) || (isLearner && !username) || !code)
+      return res.status(400).json({ msg: isLearner ? "Username and code are required" : "Email and code are required" });
 
   try {
-    const user = await User.findOne({ email });
+      const user = isLearner
+        ? await User.findOne({ role: "student", username: String(username).trim().toLowerCase() })
+        : await User.findOne({ email: String(email).trim().toLowerCase() });
     if (!user)
       return res.status(404).json({ msg: "User not found" });
 
@@ -166,13 +182,16 @@ export const requestReset = async (req, res) => {
 // 3️⃣ SET NEW PASSWORD
 // ============================================================
 export const setNewPassword = async (req, res) => {
-  const { email, code, password } = req.body;
+  const { email, username, role, code, password } = req.body;
+  const isLearner = ["student", "learner"].includes(String(role || "").toLowerCase());
 
-  if (!email || !code || !password)
+  if (((!isLearner && !email) || (isLearner && !username)) || !code || !password)
     return res.status(400).json({ msg: "Missing fields" });
 
   try {
-    const user = await User.findOne({ email });
+    const user = isLearner
+      ? await User.findOne({ role: "student", username: String(username).trim().toLowerCase() })
+      : await User.findOne({ email: String(email).trim().toLowerCase() });
     if (!user)
       return res.status(404).json({ msg: "User not found" });
 

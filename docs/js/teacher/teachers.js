@@ -101,13 +101,18 @@ document.addEventListener("DOMContentLoaded", () => {
       render();
     };
 
-    try {
-      const response = await fetchWithAuth(`${API_BASE}/notifications/mine`);
-      notifications = await response.json();
-      render();
-    } catch (error) {
-      list.innerHTML = "<p>Notifications are unavailable right now.</p>";
-    }
+    const loadNotifications = async () => {
+      try {
+        const response = await fetchWithAuth(`${API_BASE}/notifications/mine`);
+        notifications = await response.json();
+        render();
+      } catch (error) {
+        list.innerHTML = "<p>Notifications are unavailable right now.</p>";
+      }
+    };
+
+    await loadNotifications();
+    document.addEventListener("teacher-notifications-updated", loadNotifications);
 
     button.addEventListener("click", async event => {
       event.stopPropagation();
@@ -422,6 +427,7 @@ document.addEventListener("DOMContentLoaded", () => {
   // 🆕 Reset table when context changes to prevent data pollution across terms/assessments
   [marksAssessmentSelect, marksYearInput].forEach(el => {
     el?.addEventListener("change", async () => {
+      window.TeacherLearnerEnrollment?.updateVisibility?.();
       if (marksEntryTableBody && marksEntryTableBody.innerHTML !== "") {
         resetMarksTable();
       }
@@ -556,7 +562,8 @@ document.addEventListener("DOMContentLoaded", () => {
 
     const deanDashboardBtn = document.getElementById("deanDashboardBtn");
     if (deanDashboardBtn) {
-      deanDashboardBtn.style.display = isDean ? "inline-flex" : "none";
+      deanDashboardBtn.hidden = !isDean;
+      deanDashboardBtn.style.display = isDean ? "inline-flex" : "";
     }
 
     const isClassTeacher = Boolean(
@@ -577,7 +584,8 @@ document.addEventListener("DOMContentLoaded", () => {
 
     const digitalSignatureTab = document.querySelector(".subnav-btn[data-tab='digitalSignature']");
     if (digitalSignatureTab) {
-      digitalSignatureTab.style.display = isClassTeacher ? "inline-flex" : "none";
+      digitalSignatureTab.hidden = !isClassTeacher;
+      digitalSignatureTab.style.display = isClassTeacher ? "inline-flex" : "";
     }
 
     if (digitalSignatureContent && teacher && isClassTeacher) {
@@ -993,6 +1001,7 @@ document.addEventListener("DOMContentLoaded", () => {
     subjectAllocationSelect.addEventListener("change", () => {
       const optionKey = subjectAllocationSelect.value;
       if (optionKey === "") {
+        window.TeacherLearnerEnrollment?.updateVisibility?.();
         if (marksTableContainer) marksTableContainer.style.display = "none";
         selectedAllocationData = null;
         selectedSubject = null;
@@ -1010,6 +1019,7 @@ document.addEventListener("DOMContentLoaded", () => {
       
       selectedAllocationData = teacherAllocations[classIndex];
       selectedSubject = selectedOption.dataset.subject; // 🆕 Get selected subject
+      window.TeacherLearnerEnrollment?.updateVisibility?.();
       
       allMarksEntered = new Map(); // Clear marks when subject/class changes
       
@@ -1687,10 +1697,10 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
-  async function loadStudentsWithPage(page) {
+  async function loadStudentsWithPage(page, forceRefresh = false) {
     let students = [];
     try {
-      const response = await loadStudentsForSubject(selectedAllocationData.classLabel, page);
+      const response = await loadStudentsForSubject(selectedAllocationData.classLabel, page, forceRefresh);
       students = response.students || response;
       const totalPages = response.totalPages || 1;
       window.lastStudentsFetchTotalPages = totalPages; // Store globally for pagination controls
@@ -1711,6 +1721,32 @@ document.addEventListener("DOMContentLoaded", () => {
       updateStudentsPaginationControls(students); // Re-render to hide spinner
     }
   }
+
+  window.TeacherLearnerEnrollment?.init({
+    getContext: () => ({
+      classLabel: selectedAllocationData?.classLabel,
+      subject: selectedSubject,
+      assessment: marksAssessmentSelect?.value,
+      term: marksTermSelect?.value,
+      year: marksYearInput?.value
+    }),
+    reloadStudents: async (createdStudent) => {
+      if (!selectedAllocationData || !createdStudent?._id) return;
+
+      if (marksEntryTableBody.querySelector(`tr[data-student-id="${createdStudent._id}"]`)) {
+        showToast("This learner is already in the marks table.", "info");
+        return false;
+      }
+
+      // Add only the newly created learner; preserve the current roster rows and marks.
+      displayStudentsInMarksTable([createdStudent]);
+      loadedStudents = [...loadedStudents, createdStudent];
+      window.lastStudentsFetchTotalCount = (window.lastStudentsFetchTotalCount || 0) + 1;
+      updateStudentsPaginationControls(loadedStudents);
+      setMarksEntryEnabled(true);
+      return true;
+    }
+  });
 
   // ---------------------------
   // NEW: SUBMIT ALL MARKS

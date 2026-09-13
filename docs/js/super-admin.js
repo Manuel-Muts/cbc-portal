@@ -182,7 +182,8 @@ function invalidateAdminManagementCaches({ lists = true } = {}) {
               <div class="card-item" id="totalAdmins" style="flex:1; padding:10px; border:1px solid #ccc;">Admins: -</div>
               <div class="card-item" id="totalTeachers" style="flex:1; padding:10px; border:1px solid #ccc;">Teachers: -</div>
               <div class="card-item" id="totalStudents" style="flex:1; padding:10px; border:1px solid #ccc;">Students: -</div>
-            </div><br>
+            </div>
+            <br>
 
             <h3>Charts</h3>
             <div class="chart-scroll" id="teachersChartWrap">
@@ -212,7 +213,6 @@ setCache(cacheKey, metrics);
         document.getElementById("totalAdmins").textContent = `Admins: ${metrics.totalAdmins}`;
         document.getElementById("totalTeachers").textContent = `Teachers: ${metrics.totalTeachers}`;
         document.getElementById("totalStudents").textContent = `Students: ${metrics.totalStudents}`;
-
 
         const ctx = document.getElementById("teachersStudentsPerSchoolChart");
         if (!ctx) break;
@@ -741,6 +741,7 @@ setCache(cacheKey, metrics);
             <tr>
               <th>#</th>
               <th>School Name</th>
+              <th>School Code</th>
               <th>Admin Email</th>
               <th>Address</th>
               <th>Type</th>
@@ -750,7 +751,7 @@ setCache(cacheKey, metrics);
             </tr>
           </thead>
           <tbody id="schoolsTable">
-            <tr><td colspan="8" style="text-align:center">Loading...</td></tr>
+            <tr><td colspan="9" style="text-align:center">Loading...</td></tr>
           </tbody>
         </table>
         <p id="noSchoolsFound" style="display:none; text-align:center; margin-top:10px; color:#888;">No results found</p>
@@ -908,7 +909,7 @@ setCache(cacheKey, metrics);
       if (!force && cached) {
         data = cached;
       } else {
-        tableBody.innerHTML = '<tr><td colspan="8" style="text-align:center">Loading...</td></tr>';
+        tableBody.innerHTML = '<tr><td colspan="9" style="text-align:center">Loading...</td></tr>';
         const res = await authFetch(`/schools?page=${page}&limit=10&search=${encodeURIComponent(search)}`);
         if (!res) return;
         data = await res.json();
@@ -949,6 +950,7 @@ if (nextSchoolsBtn) {
             <tr>
               <td>${i + 1}</td>
               <td><strong>${s.name}</strong></td>
+              <td style="font-weight:800; color:#0f766e; letter-spacing:.08em;">${s.schoolCode || 'Pending'}</td>
               <td>${s.adminEmail}</td>
               <td>${s.address || ''}</td>
               <td>${s.schoolType === 'primary_junior' ? 'Primary + Junior' : s.schoolType === 'senior' ? 'Senior' : 'Full'}</td>
