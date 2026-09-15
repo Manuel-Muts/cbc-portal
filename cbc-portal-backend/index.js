@@ -33,6 +33,7 @@ import studentRoutes from "./routes/studentRoutes.js";
 import dashboardSummaryRoutes from './routes/dashboardSummaryRoutes.js';
 import notificationRoutes from './routes/notificationRoutes.js';
 import { User } from './models/User.js';
+import Mark from './models/mark.js';
 import { loadEnvironmentFiles } from './utils/envConfig.js';
 
 loadEnvironmentFiles({ env: process.env.NODE_ENV || 'development' });
@@ -402,6 +403,13 @@ mongoose.connect(mongoURI, mongooseOptions)
       await User.syncIndexes();
     } catch (err) {
       // Ignore index sync issues during startup.
+    }
+
+    try {
+      await Mark.syncIndexes();
+      console.log("✅ Mark indexes synchronized for paper-aware submissions.");
+    } catch (err) {
+      console.error("⚠️ Mark index synchronization failed:", err.message || err);
     }
     
     // 🚀 Start scheduled background tasks (Materials cleanup & Payment backups)

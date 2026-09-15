@@ -31,6 +31,9 @@ export const buildTeacherMarksQuery = (baseQuery = {}, academicContext = {}) => 
   return {
     ...baseQuery,
     year,
-    term
+    term,
+    // Generated Paper 1 + Paper 2 totals are for Dean analysis only.
+    // Teacher-submitted combined marks have isPaperTotal false or unset and remain visible.
+    isPaperTotal: { $ne: true }
   };
 };

@@ -40,6 +40,16 @@ const smsBroadcastProgressBar = document.getElementById("smsBroadcastProgressBar
 const smsBroadcastProgressText = document.getElementById("smsBroadcastProgressText");
 const cancelSmsBroadcastBtn = document.getElementById("cancelSmsBroadcastBtn");
 
+function sanitize(value) {
+  return String(value ?? "").replace(/[&<>"']/g, character => ({
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    '"': "&quot;",
+    "'": "&#39;"
+  }[character]));
+}
+
 let deanProfileData = null;
 let smsBroadcastAbortController = null; // 🆕 Track broadcast session for cancellation
 let currentAnalysisRawData = null;
@@ -682,7 +692,7 @@ async function generateReport() {
   const isSenior = gradeNum >= 10;
   const selectedStream = filterStreamEl?.value || "all";
   currentTermProgressMeans = await fetchTermProgressMeans(grade, year, selectedStream).catch(() => []);
-  const cacheKey = `${grade}_${term}_${year}_${assessment}_${filterStreamEl?.value || "all"}`;
+  const cacheKey = `paper-columns-v2_${grade}_${term}_${year}_${assessment}_${filterStreamEl?.value || "all"}`;
   const cached = getAnalyticsCache(cacheKey); // Check cache
 
   if (cached) {
@@ -1546,6 +1556,7 @@ function processAnalysisData(allRaw, isSenior, assessment, allPrevRaw = null, ro
   const studentsMap = {};
   const subjectTotals = {};
   const subjectCounts = {};
+  const subjectLearnerScores = new Map();
   const missingExamsMap = {}; // 🆕 Use a map to group missed subjects by student/assessment
   const pathwayByAdmission = new Map();
   if (Array.isArray(roster)) {
@@ -1572,12 +1583,27 @@ function processAnalysisData(allRaw, isSenior, assessment, allPrevRaw = null, ro
   let prevBaselineData = null;
   if (assessment !== "all") {
     const currentId = parseInt(assessment);
-    // 🆕 Identify which assessments the Dean has marked as academic milestones for progress tracking
-    const allowedBaselines = Array.from(document.querySelectorAll('.baseline-check:checked')).map(cb => parseInt(cb.value));
+    const assessmentConfig = Array.isArray(window.assessmentConfig) ? window.assessmentConfig : [];
+    const customAssessmentIds = new Set(
+      assessmentConfig
+        .filter(item => item.system !== true)
+        .map(item => Number(item.id))
+    );
+    const isCustomAssessment = customAssessmentIds.has(currentId);
 
-    const predecessorAssessId = [...new Set(streamFilteredRaw.map(m => parseInt(m.assessment)))]
+    let predecessorAssessId;
+    if (isCustomAssessment) {
+      // Custom assessments compare automatically with the nearest earlier custom assessment.
+      predecessorAssessId = [...new Set(streamFilteredRaw.map(m => parseInt(m.assessment)))]
+        .filter(id => id < currentId && customAssessmentIds.has(id))
+        .sort((a, b) => b - a)[0];
+    } else {
+      // Built-in milestones remain manually selectable through the baseline checkboxes.
+      const allowedBaselines = Array.from(document.querySelectorAll('.baseline-check:checked')).map(cb => parseInt(cb.value));
+      predecessorAssessId = [...new Set(streamFilteredRaw.map(m => parseInt(m.assessment)))]
         .filter(id => id < currentId && allowedBaselines.includes(id))
-        .sort((a, b) => b - a)[0]; // Get the closest previous ID in this term
+        .sort((a, b) => b - a)[0];
+    }
 
     if (predecessorAssessId) {
         prevBaselineData = streamFilteredRaw.filter(m => parseInt(m.assessment) === predecessorAssessId);
@@ -1668,7 +1694,7 @@ function processAnalysisData(allRaw, isSenior, assessment, allPrevRaw = null, ro
         stream: m.stream || "Unassigned", // Fix: Retain stream for grouped analysis
         pathway: pathwayValue || undefined,
         assess: isAll ? "Overall" : (m.assessment || "N/A"), 
-        subjects: {}, _sum: {}, _cnt: {},
+        subjects: {}, subjectPapers: {}, _sum: {}, _cnt: {},
         hasAbsence: false
       };
     }
@@ -1685,6 +1711,16 @@ function processAnalysisData(allRaw, isSenior, assessment, allPrevRaw = null, ro
         : (isX(sub.score) || sub.score === 0);
       
       const score = isSenior ? getSeniorSubjectScore(sub) : sub.score;
+
+      if (!isSenior) {
+        if (!studentsMap[key].subjectPapers[subName]) {
+          studentsMap[key].subjectPapers[subName] = { paper1: null, paper2: null, total: null };
+        }
+        const paperType = sub.paper || 'combined';
+        if (paperType === 'paper1') studentsMap[key].subjectPapers[subName].paper1 = score;
+        else if (paperType === 'paper2') studentsMap[key].subjectPapers[subName].paper2 = score;
+        else if (sub.isPaperTotal === true || paperType === 'combined') studentsMap[key].subjectPapers[subName].total = score;
+      }
 
       // Robust absence flag setting
       const isExplicitlyAbsent = isAbsent || score === null || score === undefined || (typeof score === 'string' && score.trim().toUpperCase() === "X");
@@ -1707,6 +1743,10 @@ function processAnalysisData(allRaw, isSenior, assessment, allPrevRaw = null, ro
           studentsMap[key]._cnt[subName] = (studentsMap[key]._cnt[subName] || 0) + 1;
           studentsMap[key].subjects[subName] = parseFloat((studentsMap[key]._sum[subName] / studentsMap[key]._cnt[subName]).toFixed(1));
         }
+      }
+
+      if (!isSenior && studentsMap[key].subjectPapers[subName]?.total !== null && studentsMap[key].subjectPapers[subName]?.total !== undefined) {
+        studentsMap[key].subjects[subName] = studentsMap[key].subjectPapers[subName].total;
       }
       }
     });
@@ -1785,13 +1825,34 @@ function processAnalysisData(allRaw, isSenior, assessment, allPrevRaw = null, ro
         
         if (score !== "" && score !== null && !isNaN(score) && scoreStr !== "X") {
           const numScore = Number(score);
-          const termNum = m.term;
-          
-          subjectTotals[subName] = (subjectTotals[subName] || 0) + numScore;
-          subjectCounts[subName] = (subjectCounts[subName] || 0) + 1;
+          const learnerSubjectKey = `${key}::${subName}`;
+          const current = subjectLearnerScores.get(learnerSubjectKey) || {
+            subject: subName,
+            paper1: null,
+            paper2: null,
+            total: null,
+            combined: null
+          };
+          const paperType = m.paper || "combined";
+          if (paperType === "paper1") current.paper1 = numScore;
+          else if (paperType === "paper2") current.paper2 = numScore;
+          else if (m.isPaperTotal === true) current.total = numScore;
+          else current.combined = numScore;
+          subjectLearnerScores.set(learnerSubjectKey, current);
         }
       });
     }
+  });
+
+  subjectLearnerScores.forEach(entry => {
+    const resolvedScore = entry.total !== null
+      ? entry.total
+      : entry.paper1 !== null && entry.paper2 !== null
+        ? entry.paper1 + entry.paper2
+        : entry.combined;
+    if (resolvedScore === null || resolvedScore === undefined) return;
+    subjectTotals[entry.subject] = (subjectTotals[entry.subject] || 0) + resolvedScore;
+    subjectCounts[entry.subject] = (subjectCounts[entry.subject] || 0) + 1;
   });
 
   // 🆕 IDENTIFY UNGRADED LEARNERS: Compare roster against marks fetched
@@ -2072,11 +2133,21 @@ function calculateStreamDiscrepancies(streamExpectedSubjectsMap, allSubjectsInGr
 }
 
 function renderRankingTable(students, subjects, isSenior, selectedStream = "all") {
-  // Identify tied ranks using the display rank shown in the table
-  const rankCounts = {};
+  const hasStreamRank = students.some(s => {
+    const stream = String(s.stream || "").trim();
+    return stream && stream.toLowerCase() !== "unassigned";
+  });
+
+  // Identify ties in either ranking column shown in the table
+  const overallRankCounts = {};
+  const streamRankCounts = {};
   students.forEach(s => {
-    const rankValue = s.displayRank ?? s.rank;
-    rankCounts[rankValue] = (rankCounts[rankValue] || 0) + 1;
+    const overallRankValue = s.overallRank ?? s.rank;
+    const streamRankValue = s.streamRank;
+    overallRankCounts[overallRankValue] = (overallRankCounts[overallRankValue] || 0) + 1;
+    const streamKey = String(s.stream || "Unassigned");
+    if (!streamRankCounts[streamKey]) streamRankCounts[streamKey] = {};
+    streamRankCounts[streamKey][streamRankValue] = (streamRankCounts[streamKey][streamRankValue] || 0) + 1;
   });
 
   // const classMean = students.length ? students.reduce((acc, s) => acc + (s.mean || 0), 0) / students.length : 0; // Not used here
@@ -2087,14 +2158,40 @@ function renderRankingTable(students, subjects, isSenior, selectedStream = "all"
   }
 
   const totalHeader = !isSenior ? '<th class="total-column-header">Total</th>' : '';
-  const rankLabel = selectedStream && selectedStream !== "all" ? "Stream Rank" : "Overall Rank";
+  const subjectColumns = subjects.flatMap(subject => {
+    const hasPapers = !isSenior && students.some(student => {
+      const papers = student.subjectPapers?.[subject];
+      return papers && (papers.paper1 !== null || papers.paper2 !== null);
+    });
+    return hasPapers
+      ? [{ subject, paper: 'paper1' }, { subject, paper: 'paper2' }, { subject, paper: 'total' }]
+      : [{ subject, paper: 'single' }];
+  });
+  const subjectHeaderTop = [];
+  const subjectHeaderBottom = [];
+  for (let index = 0; index < subjectColumns.length;) {
+    const column = subjectColumns[index];
+    const label = sanitize(window.cbcUtils.getAbbreviatedSubjectName(column.subject));
+    if (column.paper === 'paper1') {
+      subjectHeaderTop.push(`<th colspan="3" style="text-align:center; vertical-align:middle;">${label}</th>`);
+      subjectHeaderBottom.push('<th data-pdf-header="true">P1</th><th data-pdf-header="true">P2</th><th data-pdf-header="true">Total</th>');
+      index += 3;
+    } else {
+      subjectHeaderTop.push(`<th rowspan="2" data-pdf-header="true">${label}</th>`);
+      index += 1;
+    }
+  }
+  const fixedHeader = (label, className = '') => `<th rowspan="2"${className ? ` class="${className}"` : ''} data-pdf-header="true">${label}</th>`;
+  const rankHeaders = `${fixedHeader('Overall Rank')}${hasStreamRank ? fixedHeader('Stream Rank') : ''}`;
   let html = `<table class="marks-table" style="width:100%; border-collapse: collapse;">
-    <thead><tr><th>${rankLabel}</th><th>Name</th><th>Adm</th>${subjects.map(s => `<th>${s} <small style="display:block; font-size:0.6rem; font-weight:normal; opacity:0.7;">(Score & Pts)</small></th>`).join("")}${totalHeader}<th>Mean</th><th>Progress</th><th>Total Points</th><th>Level</th></tr></thead>
+    <thead><tr>${rankHeaders}${fixedHeader('Name')}${fixedHeader('Adm')}${subjectHeaderTop.join('')}${!isSenior ? fixedHeader('Total', 'total-column-header') : ''}${fixedHeader('Mean')}${fixedHeader('Progress')}${fixedHeader('Total Points')}${fixedHeader('Level')}</tr><tr>${subjectHeaderBottom.join('')}</tr></thead>
     <tbody>`;
   
   students.forEach((s, idx) => {
-    const rankValue = s.displayRank ?? s.rank;
-    const isTied = rankCounts[rankValue] > 1;
+    const overallRankValue = s.overallRank ?? s.rank ?? '-';
+    const streamRankValue = s.streamRank ?? '-';
+    const streamKey = String(s.stream || "Unassigned");
+    const isTied = overallRankCounts[overallRankValue] > 1 || (hasStreamRank && streamRankCounts[streamKey]?.[streamRankValue] > 1);
     const tiedClass = isTied ? ' class="tied-rank"' : '';
     const totalCell = !isSenior ? `<td>${s.total}</td>` : ''; // Total column for junior school
 
@@ -2107,9 +2204,10 @@ function renderRankingTable(students, subjects, isSenior, selectedStream = "all"
     }
     // Store progress value in a data attribute for PDF generation (used in PDF export)
     html += `<tr${tiedClass} data-progress="${s.progress !== null ? s.progress : ''}">
-      <td>${rankValue}</td><td>${s.name}</td><td>${s.adm}</td>
-      ${subjects.map(sub => {
-        const score = s.subjects[sub];
+      <td>${overallRankValue}</td>${hasStreamRank ? `<td>${streamRankValue}</td>` : ''}<td>${s.name}</td><td>${s.adm}</td>
+      ${subjectColumns.map(column => {
+        const papers = s.subjectPapers?.[column.subject];
+        const score = column.paper === 'paper1' ? papers?.paper1 : column.paper === 'paper2' ? papers?.paper2 : column.paper === 'total' ? papers?.total : s.subjects[column.subject];
         const isAbs = score === undefined || score === null || String(score).toUpperCase() === "X";
         if (isAbs) {
           return `<td><span style="color:#64748b; font-weight:700; font-size:0.95rem;">-</span></td>`;
@@ -2131,11 +2229,16 @@ function renderRankingTable(students, subjects, isSenior, selectedStream = "all"
   const groupMeanSum = students.reduce((acc, s) => acc + (s.mean || 0), 0);
 
   html += `</tbody><tfoot style="background-color: #f8fafc; font-weight: bold; border-top: 2px solid #cbd5e0;">`;
+  const fixedColumnCount = hasStreamRank ? 4 : 3;
   
   // TOTAL Row
-  html += `<tr><td colspan="3" style="text-align: right; padding: 8px;">TOTAL:</td>`;
-  subjects.forEach(sub => {
-    const subSum = students.reduce((acc, s) => acc + (s.subjects[sub] || 0), 0);
+  html += `<tr><td colspan="${fixedColumnCount}" style="text-align: right; padding: 8px;">TOTAL:</td>`;
+  subjectColumns.forEach(column => {
+    const subSum = students.reduce((acc, s) => {
+      const papers = s.subjectPapers?.[column.subject];
+      const score = column.paper === 'paper1' ? papers?.paper1 : column.paper === 'paper2' ? papers?.paper2 : column.paper === 'total' ? papers?.total : s.subjects[column.subject];
+      return acc + (Number(score) || 0);
+    }, 0);
     html += `<td style="text-align: center; padding: 8px;">${subSum.toFixed(0)}</td>`; // Subject total
   });
   if (!isSenior) {
@@ -2148,10 +2251,18 @@ function renderRankingTable(students, subjects, isSenior, selectedStream = "all"
   html += `</tr>`;
 
   // MEAN Row
-  html += `<tr><td colspan="3" style="text-align: right; padding: 8px;">MEAN:</td>`;
-  subjects.forEach(sub => {
-    const subSum = students.reduce((acc, s) => acc + (s.subjects[sub] || 0), 0);
-    const subCount = students.filter(s => s.subjects[sub] !== undefined && s.subjects[sub] !== null).length || 1; // Count for subject mean
+  html += `<tr><td colspan="${fixedColumnCount}" style="text-align: right; padding: 8px;">MEAN:</td>`;
+  subjectColumns.forEach(column => {
+    const subSum = students.reduce((acc, s) => {
+      const papers = s.subjectPapers?.[column.subject];
+      const score = column.paper === 'paper1' ? papers?.paper1 : column.paper === 'paper2' ? papers?.paper2 : column.paper === 'total' ? papers?.total : s.subjects[column.subject];
+      return acc + (Number(score) || 0);
+    }, 0);
+    const subCount = students.filter(s => {
+      const papers = s.subjectPapers?.[column.subject];
+      const score = column.paper === 'paper1' ? papers?.paper1 : column.paper === 'paper2' ? papers?.paper2 : column.paper === 'total' ? papers?.total : s.subjects[column.subject];
+      return score !== undefined && score !== null;
+    }).length || 1;
     html += `<td style="text-align: center; padding: 8px;">${(subSum / subCount).toFixed(2)}</td>`;
   });
   if (!isSenior) {
@@ -2254,14 +2365,43 @@ async function downloadRankingAsPDF() {
   yPos += 2; // Reduced spacing before the table begins
 
   // OPTIMIZATION: Extract column mapping once to avoid repeated indexOf lookups
-  const rawHeaders = Array.from(table.querySelectorAll("thead th")).map(th => th.textContent.trim());
+  const headerRows = Array.from(table.querySelectorAll("thead tr"));
+  const rawHeaders = (() => {
+    if (headerRows.length < 2) {
+      return Array.from(headerRows[0]?.querySelectorAll("th") || []).map(th => th.textContent.trim());
+    }
+
+    const topCells = Array.from(headerRows[0].querySelectorAll("th"));
+    const bottomCells = Array.from(headerRows[1].querySelectorAll("th"));
+    const orderedHeaders = [];
+    let bottomIndex = 0;
+
+    topCells.forEach(cell => {
+      const span = Number(cell.colSpan) || 1;
+      if (span > 1) {
+        const parentLabel = cell.textContent.trim();
+        for (let index = 0; index < span; index += 1) {
+          const childLabel = bottomCells[bottomIndex]?.textContent.trim() || "";
+          orderedHeaders.push(`${parentLabel} ${childLabel}`.trim());
+          bottomIndex += 1;
+        }
+      } else {
+        orderedHeaders.push(cell.textContent.trim());
+      }
+    });
+
+    return orderedHeaders;
+  })();
   // 🆕 Support both Primary/Junior ("Name", "Adm") and Senior ("Student Name", "Admission No") labels
   const nameIdx = rawHeaders.findIndex(h => h.toLowerCase().includes("name"));
   const admIdx = rawHeaders.findIndex(h => h.toLowerCase().includes("adm"));
   const progressIdx = rawHeaders.indexOf("Progress"); // Index of the progress column
   const levelIdx = rawHeaders.length - 1;
   const rankHeaderIndex = rawHeaders.findIndex(h => /rank/i.test(h));
-  const isStreamFilter = selectedStream !== "all";
+  const rankHeaderIndices = new Set(rawHeaders
+    .map((header, idx) => /rank/i.test(header) ? idx : -1)
+    .filter(idx => idx !== -1));
+  const hasStreamRankColumn = rawHeaders.includes("Stream Rank");
   const nameLabelForProgress = nameIdx !== -1 ? rawHeaders[nameIdx] : "Name";
 
   // Determine which columns to skip for PDF clarity
@@ -2280,11 +2420,10 @@ async function downloadRankingAsPDF() {
   rawHeaders.forEach((header, idx) => {
     if (skipIndices.has(idx)) return;
     if (idx === rankHeaderIndex) {
-      if (isStreamFilter) {
-        headers.push("Overall Rank", "Stream Rank");
-      } else {
-        headers.push(header);
-      }
+      headers.push("Overall Rank");
+      if (hasStreamRankColumn) headers.push("Stream Rank");
+    } else if (rankHeaderIndices.has(idx)) {
+      return;
     } else {
       headers.push(header);
     }
@@ -2315,14 +2454,12 @@ async function downloadRankingAsPDF() {
       if (skipIndices.has(colIdx)) return;
       if (colIdx === rankHeaderIndex) {
         const student = lastProcessedStudents[rowIdx] || {};
-        if (isStreamFilter) {
-          const overallRankValue = student.overallRank ?? student.rank ?? '-';
-          const streamRankValue = student.streamRank ?? '-';
-          filteredCells.push(overallRankValue, streamRankValue);
-        } else {
-          const displayRankValue = student.displayRank ?? student.overallRank ?? student.rank ?? '-';
-          filteredCells.push(displayRankValue);
-        }
+        const overallRankValue = student.overallRank ?? student.rank ?? '-';
+        const streamRankValue = student.streamRank ?? '-';
+        filteredCells.push(overallRankValue);
+        if (hasStreamRankColumn) filteredCells.push(streamRankValue);
+      } else if (rankHeaderIndices.has(colIdx)) {
+        return;
       } else {
         filteredCells.push(td.textContent.trim());
       }
@@ -2336,6 +2473,15 @@ async function downloadRankingAsPDF() {
     if (!specialHeaderNames.has(header)) acc.push({ idx, header });
     return acc;
   }, []);
+  const rankingSubjectColumns = (lastProcessedSubjects || []).flatMap(subject => {
+    const hasPapers = !isPrimary && lastProcessedStudents.some(student => {
+      const papers = student.subjectPapers?.[subject];
+      return papers && (papers.paper1 !== null || papers.paper2 !== null);
+    });
+    return hasPapers
+      ? [{ subject, paper: 'paper1' }, { subject, paper: 'paper2' }, { subject, paper: 'total' }]
+      : [{ subject, paper: 'single' }];
+  });
 
   const groupCount = lastProcessedStudents?.length || 1;
   const groupTotalMarks = (lastProcessedStudents || []).reduce((acc, s) => acc + (s.total || 0), 0);
@@ -2349,9 +2495,18 @@ async function downloadRankingAsPDF() {
     row.push({ content: label, colSpan: Math.max(1, labelSpan) });
 
     subjectColumns.forEach((subjectCol, subjectIndex) => {
-      const subjectName = lastProcessedSubjects?.[subjectIndex] || subjectCol.header;
-      const subjectSum = (lastProcessedStudents || []).reduce((acc, s) => acc + (Number(s.subjects?.[subjectName]) || 0), 0);
-      const subjectCount = (lastProcessedStudents || []).filter(s => s.subjects?.[subjectName] !== undefined && s.subjects?.[subjectName] !== null && s.subjects?.[subjectName] !== "" && s.subjects?.[subjectName] !== "X" && s.subjects?.[subjectName] !== "x").length || 1;
+      const column = rankingSubjectColumns[subjectIndex];
+      const subjectName = column?.subject || lastProcessedSubjects?.[subjectIndex] || subjectCol.header;
+      const subjectSum = (lastProcessedStudents || []).reduce((acc, s) => {
+        const papers = s.subjectPapers?.[subjectName];
+        const score = column?.paper === 'paper1' ? papers?.paper1 : column?.paper === 'paper2' ? papers?.paper2 : column?.paper === 'total' ? papers?.total : s.subjects?.[subjectName];
+        return acc + (Number(score) || 0);
+      }, 0);
+      const subjectCount = (lastProcessedStudents || []).filter(s => {
+        const papers = s.subjectPapers?.[subjectName];
+        const score = column?.paper === 'paper1' ? papers?.paper1 : column?.paper === 'paper2' ? papers?.paper2 : column?.paper === 'total' ? papers?.total : s.subjects?.[subjectName];
+        return score !== undefined && score !== null && score !== "" && score !== "X" && score !== "x";
+      }).length || 1;
       const value = type === "total"
         ? subjectSum.toFixed(0)
         : (subjectSum / subjectCount).toFixed(2);
@@ -2388,11 +2543,33 @@ async function downloadRankingAsPDF() {
 
   const foot = [buildFooterRow("TOTAL:", "total"), buildFooterRow("MEAN:", "mean")];
 
+  const pdfHeaderTop = [];
+  const pdfHeaderBottom = [];
+  let hasPaperHeaderGroup = false;
+  for (let index = 0; index < headers.length;) {
+    const match = String(headers[index]).match(/^(.+) (P1|P2|Total)$/);
+    const nextHeaders = headers.slice(index, index + 3);
+    if (match && nextHeaders.length === 3 && nextHeaders[0].endsWith(' P1') && nextHeaders[1].endsWith(' P2') && nextHeaders[2].endsWith(' Total')) {
+      pdfHeaderTop.push({
+        content: match[1],
+        colSpan: 3,
+        styles: { halign: 'center', valign: 'middle' }
+      });
+      pdfHeaderBottom.push('P1', 'P2', 'Total');
+      hasPaperHeaderGroup = true;
+      index += 3;
+    } else {
+      pdfHeaderTop.push({ content: headers[index], rowSpan: 2 });
+      index += 1;
+    }
+  }
+  const pdfHead = hasPaperHeaderGroup ? [pdfHeaderTop, pdfHeaderBottom] : [headers];
+
   const streamRankColIndex = headers.indexOf("Stream Rank");
   const progressColIndex = headers.indexOf("Progress");
   doc.autoTable({ 
     startY: yPos, // Use the updated yPos
-    head: [headers], 
+    head: pdfHead,
     body: rows, 
     foot: foot || [],
     theme: 'grid', // Use 'grid' theme for borders
@@ -3132,6 +3309,7 @@ function renderSubjectStats(subjects, totals, counts, prevMeans = {}, isSenior =
       name: s,
       mean,
       count,
+      points: mean === null ? '-' : window.cbcUtils.getPoints(mean, filterGradeEl.value),
       level: mean === null ? '-' : window.cbcUtils.getSubdivision(mean, filterGradeEl.value)
     };
   }).sort((a, b) => {
@@ -3154,7 +3332,7 @@ function renderSubjectStats(subjects, totals, counts, prevMeans = {}, isSenior =
   subjectList.forEach(s => { rankCounts[s.rank] = (rankCounts[s.rank] || 0) + 1; });
 
   let html = `<table class="marks-table" style="width:100%; border-collapse: collapse;">
-    <thead><tr><th>Rank</th><th>Subject</th><th>Mean Score</th><th>Performance Level</th><th>Progress</th><th>Entries</th></tr></thead>
+    <thead><tr><th>Rank</th><th>Subject</th><th>Mean Score</th><th>Points</th><th>Performance Level</th><th>Progress</th><th>Entries</th></tr></thead>
     <tbody>`;
   
   subjectList.forEach(s => {
@@ -3176,8 +3354,9 @@ function renderSubjectStats(subjects, totals, counts, prevMeans = {}, isSenior =
     const tiedClass = isTied ? ' class="tied-rank"' : '';
     html += `<tr${tiedClass}>
       <td>${s.rank}</td>
-      <td>${s.name}</td>
+      <td>${sanitize(window.cbcUtils.getAbbreviatedSubjectName(s.name))}</td>
       <td>${s.mean !== null ? s.mean.toFixed(2) + '%' : 'N/A'}</td>
+      <td>${s.points}</td>
       <td>${s.level}</td>
       <td>${progressHtml}</td>
       <td>${s.count}</td>
@@ -3201,7 +3380,7 @@ function renderBaselineCheckboxes() {
     wrap.className = "filter-item"; 
     wrap.style.cssText = "grid-column: 1 / -1; margin-top: 10px; padding: 12px; background: #f8fafc; border-radius: 12px; border: 1px solid #e2e8f0; box-shadow: inset 0 1px 2px rgba(0,0,0,0.02);";
 
-    const mapping = window.ASSESSMENT_MAPPING || {};
+    const assessments = (window.getEnabledAssessments?.() || []).filter(assessment => assessment.system === true);
     const defaults = [1, 5, 8]; // IDs for Opener, Midterm, Endterm
 
     let html = `<label style="display:block; font-size:0.7rem; font-weight:800; color:#64748b; margin-bottom:10px; text-transform:uppercase;">
@@ -3209,11 +3388,11 @@ function renderBaselineCheckboxes() {
                 </label>
                 <div style="display:flex; flex-wrap:wrap; gap:18px;">`;
     
-    Object.entries(mapping).forEach(([id, label]) => {
-        const checked = defaults.includes(parseInt(id)) ? 'checked' : '';
+    assessments.forEach(assessment => {
+      const checked = defaults.includes(Number(assessment.id)) ? 'checked' : '';
         html += `
             <label style="font-size:0.78rem; display:flex; align-items:center; gap:8px; cursor:pointer; color: #1e293b; font-weight: 600;">
-                <input type="checkbox" class="baseline-check" value="${id}" ${checked} style="width: 16px; height: 16px; cursor:pointer;"> ${label}
+          <input type="checkbox" class="baseline-check" value="${assessment.id}" ${checked} style="width: 16px; height: 16px; cursor:pointer;"> ${assessment.name}
             </label>
         `;
     });
@@ -3248,15 +3427,14 @@ function initFilters() {
   }
 
   // Populate Assessments
-  if (filterAssessmentEl && window.ASSESSMENT_MAPPING) { // Check if mapping is available
+  if (filterAssessmentEl) {
     filterAssessmentEl.innerHTML = '<option value="" selected>-- Select Assessment --</option>';
-    Object.entries(window.ASSESSMENT_MAPPING).forEach(([value, label]) => {
+    (window.getEnabledAssessments?.() || []).forEach(assessment => {
       const opt = document.createElement("option");
-      opt.value = value;
-      opt.textContent = label;
+      opt.value = assessment.id;
+      opt.textContent = assessment.name;
       filterAssessmentEl.appendChild(opt);
-    }
-    );
+    });
   }
 
   // 🆕 Initialize Baseline Checkboxes
@@ -3264,9 +3442,12 @@ function initFilters() {
 
   // Populate school grades based on the shared cbc-utils school-type config
   const grades = window.cbcUtils?.getGradeOptionsForSchool?.() || [];
+  if (filterGradeEl) {
+    filterGradeEl.innerHTML = '<option value="">-- Select Grade --</option>';
+  }
   grades.forEach(g => { // Iterate over grades
     const opt = document.createElement("option"); opt.value = g; opt.textContent = g;
-    filterGradeEl.appendChild(opt);
+    filterGradeEl?.appendChild(opt);
   });
 
   // Populate Pathway filter for Senior/Full school types
@@ -3296,6 +3477,228 @@ function initFilters() {
   } catch (e) {
     console.warn('Pathway filter init failed', e);
   }
+}
+
+function setupAssessmentManagement() {
+  const list = document.getElementById('assessmentConfigList');
+  const addButton = document.getElementById('addAssessmentBtn');
+  const message = document.getElementById('assessmentConfigMessage');
+  const modal = document.getElementById('assessmentCreateModal');
+  const codeInput = document.getElementById('newAssessmentCode');
+  const titleInput = document.getElementById('newAssessmentTitle');
+  const closeModalButton = document.getElementById('closeAssessmentModalBtn');
+  const cancelModalButton = document.getElementById('cancelAssessmentModalBtn');
+  const saveNewAssessmentButton = document.getElementById('saveNewAssessmentBtn');
+  if (!list || !addButton || !modal || !codeInput || !titleInput || !saveNewAssessmentButton) return;
+
+  let assessments = [];
+  let currentPage = 1;
+  let totalPages = 1;
+  const pageSize = 10;
+  const showMessage = (text, type = 'info') => {
+    if (!message) return;
+    message.textContent = text;
+    message.style.color = type === 'error' ? '#b91c1c' : '#166534';
+  };
+
+  const render = () => {
+    list.innerHTML = assessments.map((assessment, index) => `
+      <div data-assessment-index="${index}" style="display:grid; grid-template-columns:90px minmax(180px,1fr) 110px 100px 180px; gap:10px; align-items:center; padding:10px 0; border-bottom:1px solid #e2e8f0;">
+        <input class="assessment-id" type="number" min="1" value="${assessment.id}" ${assessment.system ? 'readonly' : ''} aria-label="Assessment ID">
+        <input class="assessment-name" type="text" maxlength="80" value="${String(assessment.name).replace(/&/g, '&amp;').replace(/"/g, '&quot;')}" ${assessment.system ? 'readonly' : ''} aria-label="Assessment name">
+        <label style="display:flex; gap:6px; align-items:center;"><input class="assessment-enabled" type="checkbox" ${assessment.enabled !== false ? 'checked' : ''}> Enabled</label>
+        <span style="font-size:.8rem; color:#64748b;">${assessment.system ? 'Built-in' : 'Custom'}</span>
+        <div style="display:flex; gap:6px; justify-content:flex-end;">
+          ${assessment.system ? '' : `<button type="button" class="btn secondary-btn assessment-edit-btn" data-index="${index}" title="Edit assessment"><i class="fas fa-edit"></i> Edit</button><button type="button" class="btn danger-btn assessment-delete-btn" data-index="${index}" title="Delete assessment"><i class="fas fa-trash"></i> Delete</button>`}
+        </div>
+      </div>`).join('') + `
+      <div style="display:flex; justify-content:center; align-items:center; gap:12px; padding-top:16px;">
+        <button type="button" class="btn secondary-btn assessment-page-prev" ${currentPage <= 1 ? 'disabled' : ''}>Previous</button>
+        <span style="font-size:.85rem; color:#64748b;">Page ${currentPage} of ${totalPages}</span>
+        <button type="button" class="btn secondary-btn assessment-page-next" ${currentPage >= totalPages ? 'disabled' : ''}>Next</button>
+      </div>`;
+
+    list.querySelector('.assessment-page-prev')?.addEventListener('click', () => load(currentPage - 1));
+    list.querySelector('.assessment-page-next')?.addEventListener('click', () => load(currentPage + 1));
+  };
+
+  const load = async (page = 1) => {
+    const token = authService.getToken();
+    const response = await fetch(`${API_BASE}/settings/assessments?page=${page}&limit=${pageSize}`, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.message || 'Could not load assessments.');
+    assessments = Array.isArray(data.assessments) ? data.assessments : [];
+    currentPage = data.page || page;
+    totalPages = data.totalPages || 1;
+    render();
+  };
+
+  const loadAllAssessments = async () => {
+    const token = authService.getToken();
+    const response = await fetch(`${API_BASE}/settings/assessments`, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.message || 'Could not load assessments.');
+    return Array.isArray(data.assessments) ? data.assessments : [];
+  };
+
+  const getNextAssessmentCode = async () => {
+    const allAssessments = await loadAllAssessments();
+    return Math.max(8, ...allAssessments.map(item => Number(item.id) || 0)) + 1;
+  };
+  const closeModal = () => {
+    modal.hidden = true;
+    modal.style.display = 'none';
+    titleInput.value = '';
+  };
+  const openModal = async () => {
+    codeInput.value = await getNextAssessmentCode();
+    titleInput.value = '';
+    modal.hidden = false;
+    modal.style.display = 'flex';
+    requestAnimationFrame(() => titleInput.focus());
+  };
+
+  addButton.addEventListener('click', openModal);
+  closeModalButton?.addEventListener('click', closeModal);
+  cancelModalButton?.addEventListener('click', closeModal);
+  modal.addEventListener('click', event => {
+    if (event.target === modal) closeModal();
+  });
+
+  list.addEventListener('click', async event => {
+    const editButton = event.target.closest('.assessment-edit-btn');
+    const deleteButton = event.target.closest('.assessment-delete-btn');
+    const index = Number((editButton || deleteButton)?.dataset.index);
+    if (!Number.isInteger(index) || !assessments[index]) return;
+
+    if (editButton) {
+      codeInput.value = assessments[index].id;
+      titleInput.value = assessments[index].name;
+      modal.dataset.editIndex = String(index);
+      modal.hidden = false;
+      modal.style.display = 'flex';
+      requestAnimationFrame(() => titleInput.focus());
+      return;
+    }
+
+    if (deleteButton) {
+      if (!window.showConfirm || !(await window.showConfirm(`Delete assessment "${assessments[index].name}"?`))) return;
+      deleteButton.disabled = true;
+      try {
+        const response = await fetch(`${API_BASE}/settings/assessments/${assessments[index].id}`, {
+          method: 'DELETE',
+          headers: { Authorization: `Bearer ${authService.getToken()}` }
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.message || 'Could not delete assessment.');
+        await load(Math.min(currentPage, totalPages));
+        const latestAssessments = await loadAllAssessments();
+        window.assessmentConfig = latestAssessments;
+        window.ASSESSMENT_MAPPING = Object.fromEntries(latestAssessments.map(item => [item.id, item.name]));
+        initFilters();
+        showMessage('Assessment deleted.');
+      } catch (error) {
+        showMessage(error.message, 'error');
+        deleteButton.disabled = false;
+      }
+    }
+  });
+
+  const saveButton = document.createElement('button');
+  saveButton.type = 'button';
+  saveButton.className = 'btn secondary-btn';
+  saveButton.textContent = 'Save Changes';
+  saveButton.style.marginTop = '16px';
+  list.after(saveButton);
+  saveButton.addEventListener('click', async () => {
+    const rows = [...list.querySelectorAll('[data-assessment-index]')];
+    const payload = await loadAllAssessments();
+    rows.forEach((row, index) => {
+      const current = assessments[index];
+      const target = payload.find(item => Number(item.id) === Number(current.id));
+      if (!target) return;
+      target.id = Number(row.querySelector('.assessment-id').value);
+      target.name = row.querySelector('.assessment-name').value.trim();
+      target.enabled = row.querySelector('.assessment-enabled').checked;
+    });
+    saveButton.disabled = true;
+    saveButton.setAttribute('aria-busy', 'true');
+    saveButton.innerHTML = '<span class="spinner" aria-hidden="true"></span> Saving...';
+    try {
+      const token = authService.getToken();
+      const response = await fetch(`${API_BASE}/settings/assessments`, {
+        method: 'PUT',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ assessments: payload })
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.message || 'Could not save assessments.');
+      await load(currentPage);
+      const latestAssessments = await loadAllAssessments();
+      window.assessmentConfig = latestAssessments;
+      window.ASSESSMENT_MAPPING = Object.fromEntries(latestAssessments.map(item => [item.id, item.name]));
+      initFilters();
+      showMessage('Assessment setup saved.');
+    } catch (error) {
+      showMessage(error.message, 'error');
+    } finally {
+      saveButton.disabled = false;
+      saveButton.removeAttribute('aria-busy');
+      saveButton.textContent = 'Save Changes';
+    }
+  });
+
+  saveNewAssessmentButton.addEventListener('click', async () => {
+    const title = titleInput.value.trim();
+    if (!title) {
+      showMessage('Enter an assessment title before creating it.', 'error');
+      titleInput.focus();
+      return;
+    }
+
+    const editIndex = Number(modal.dataset.editIndex);
+    const isEditing = Number.isInteger(editIndex) && assessments[editIndex];
+    const newAssessment = isEditing
+      ? { ...assessments[editIndex], name: title }
+      : { id: Number(codeInput.value), name: title, enabled: true, sortOrder: assessments.length + 1, system: false };
+    saveNewAssessmentButton.disabled = true;
+    saveNewAssessmentButton.setAttribute('aria-busy', 'true');
+    saveNewAssessmentButton.innerHTML = isEditing
+      ? '<span class="spinner" aria-hidden="true"></span> Saving...'
+      : '<span class="spinner" aria-hidden="true"></span> Creating...';
+    try {
+      const token = authService.getToken();
+      const response = await fetch(`${API_BASE}/settings/assessments`, {
+        method: 'PUT',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ assessments: isEditing ? assessments.map((item, index) => index === editIndex ? newAssessment : item) : [...assessments, newAssessment] })
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.message || 'Could not create assessment.');
+      await load(currentPage);
+      const latestAssessments = await loadAllAssessments();
+      window.assessmentConfig = latestAssessments;
+      window.ASSESSMENT_MAPPING = Object.fromEntries(latestAssessments.map(item => [item.id, item.name]));
+      initFilters();
+      closeModal();
+      delete modal.dataset.editIndex;
+      showMessage(isEditing ? `Assessment ${title} updated successfully.` : `Assessment ${title} created successfully.`);
+    } catch (error) {
+      showMessage(error.message, 'error');
+    } finally {
+      saveNewAssessmentButton.disabled = false;
+      saveNewAssessmentButton.removeAttribute('aria-busy');
+      saveNewAssessmentButton.innerHTML = isEditing
+        ? '<i class="fas fa-save"></i> Save Changes'
+        : '<i class="fas fa-check"></i> Save &amp; Create Assessment';
+    }
+  });
+
+  load().catch(error => showMessage(error.message, 'error'));
 }
 
 async function loadDeanProfile() {
@@ -3416,15 +3819,23 @@ async function loadDeanProfile() {
   }
 
   try {
-    deanProfileData = await authService.getUserProfile(["teacher", "classteacher"]);
+    deanProfileData = await authService.getUserProfile(["teacher", "classteacher"], { forceRefresh: true });
     if (!deanProfileData) {
       if (overlay) overlay.remove();
       return;
     }
 
-    console.log("DEBUG: Is Dean flag at redirection check:", deanProfileData.isDean);
+    const hasDeanAccess = deanProfileData.isDean === true ||
+      deanProfileData.role === 'dean' ||
+      (Array.isArray(deanProfileData.roles) && deanProfileData.roles.includes('dean'));
+    console.log("DEBUG: Dean access check:", {
+      isDean: deanProfileData.isDean,
+      role: deanProfileData.role,
+      roles: deanProfileData.roles,
+      hasDeanAccess
+    });
 
-    if (!deanProfileData.isDean) {
+    if (!hasDeanAccess) {
       alert("Only Deans can access this page.");
       return window.location.href = "/teacher";
     }
@@ -3529,7 +3940,9 @@ async function loadDeanProfile() {
     }
 
     setupTabs(); // Initialize tabs
+    await window.loadAssessmentConfig?.();
     initFilters();
+    setupAssessmentManagement();
     // 🆕 Update page title
     if (pageTitle) {
       pageTitle.textContent = "Dean's Panel";
@@ -3606,8 +4019,16 @@ async function loadDeanProfile() {
  
 
   } catch (error) {
-    console.error(error.message || "Unable to load dean profile.");
-    window.location.href = "/teacher";
+    console.error("Unable to initialize dean dashboard:", error);
+    const message = document.createElement('div');
+    message.style.cssText = 'position:fixed; inset:20px; z-index:30001; display:flex; align-items:center; justify-content:center; padding:24px; text-align:center; color:#991b1b; background:#fff7ed; border:1px solid #fdba74; border-radius:12px; font:600 1rem/1.5 sans-serif;';
+    message.textContent = 'The Dean dashboard could not finish loading. Open the browser console for the specific error, then use Refresh to try again.';
+    document.body.appendChild(message);
+    if (overlay) {
+      overlay.style.opacity = '0';
+      overlay.style.pointerEvents = 'none';
+      overlay.style.visibility = 'hidden';
+    }
   }
 }
 

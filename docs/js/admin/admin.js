@@ -60,6 +60,7 @@
 
   let schoolInfo = null;
   let dashboardSummary = null;
+  let adminSchoolInfoRequest = null;
 
   const clearSchoolInfoCache = () => {
     try {
@@ -400,6 +401,10 @@ function setupAdminWelcomeCarousel() {
 }
 
 async function loadSchoolInfo(forceRefresh = false) {
+  if (adminSchoolInfoRequest && !forceRefresh) {
+    return adminSchoolInfoRequest;
+  }
+
   const fields = "name,schoolCode,allowSignatureUpload,schoolType,headteacherSignatureUrl,status,smsCredits";
 
   const getFallbackProfileName = async () => {
@@ -423,79 +428,91 @@ async function loadSchoolInfo(forceRefresh = false) {
     }
   };
 
-  if (!forceRefresh) {
-    const cachedSchoolInfo = readAdminCache(getAdminSchoolInfoCacheKey());
-    if (cachedSchoolInfo && cachedSchoolInfo.schoolCode && resolveSchoolTypeKey(cachedSchoolInfo)) {
-      schoolInfo = cachedSchoolInfo;
-      currentSchoolInfo = cachedSchoolInfo;
-      window.schoolInfo = cachedSchoolInfo;
+  adminSchoolInfoRequest = (async () => {
+    if (!forceRefresh) {
+      const cachedSchoolInfo = readAdminCache(getAdminSchoolInfoCacheKey());
+      if (cachedSchoolInfo && cachedSchoolInfo.schoolCode && resolveSchoolTypeKey(cachedSchoolInfo)) {
+        schoolInfo = cachedSchoolInfo;
+        currentSchoolInfo = cachedSchoolInfo;
+        window.schoolInfo = cachedSchoolInfo;
+        try {
+          const resolvedKey = resolveSchoolTypeKey(cachedSchoolInfo);
+          window.schoolTypeKey = resolvedKey;
+          window.schoolConfig = resolvedKey ? SCHOOL_TYPES[resolvedKey] : null;
+        } catch (e) {
+          console.warn('Failed to resolve schoolTypeKey from cache', e);
+        }
+        renderSchoolInfo();
+        return schoolInfo;
+      }
+    }
+
+    try {
+      const token = authService.getToken();
+      if (!token) return null;
+
+      const res = await fetch(`${API_BASE}/users/my-school?includeLogo=false&fields=${fields}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+
+      if (!res.ok) {
+        throw new Error(`Failed to fetch school info (Status: ${res.status})`);
+      }
+
+      const data = await res.json();
+      const parsedData = {
+        name: String(data?.name || "").trim(),
+        schoolCode: String(data?.schoolCode || "").trim().toUpperCase(),
+        allowSignatureUpload: data?.allowSignatureUpload,
+        schoolType: data?.schoolType || data?.type || data?.school_type || data?.schooltype || data?.['school-type'] || null,
+        headteacherSignatureUrl: data?.headteacherSignatureUrl || null,
+        status: data?.status,
+        smsCredits: data?.smsCredits
+      };
+
+      if (!parsedData.name) {
+        const fallbackName = await getFallbackProfileName();
+        if (fallbackName) parsedData.name = fallbackName;
+      }
+
+      writeAdminCache(getAdminSchoolInfoCacheKey(), parsedData);
+
+      schoolInfo = parsedData;
+      currentSchoolInfo = parsedData;
+      window.schoolInfo = parsedData;
+
       try {
-        const resolvedKey = resolveSchoolTypeKey(cachedSchoolInfo);
+        const resolvedKey = resolveSchoolTypeKey(parsedData);
         window.schoolTypeKey = resolvedKey;
         window.schoolConfig = resolvedKey ? SCHOOL_TYPES[resolvedKey] : null;
       } catch (e) {
-        console.warn('Failed to resolve schoolTypeKey from cache', e);
+        console.warn('Failed to resolve schoolTypeKey', e);
+        window.schoolTypeKey = null;
+        window.schoolConfig = null;
       }
+
       renderSchoolInfo();
-      return;
-    }
-  }
-
-  try {
-    const token = authService.getToken();
-    if (!token) return;
-
-    const res = await fetch(`${API_BASE}/users/my-school?includeLogo=false&fields=${fields}`, {
-      headers: { Authorization: `Bearer ${token}` }
-    });
-
-    if (!res.ok) {
-      throw new Error(`Failed to fetch school info (Status: ${res.status})`);
-    }
-
-    const data = await res.json();
-    const parsedData = {
-      name: String(data?.name || "").trim(),
-      schoolCode: String(data?.schoolCode || "").trim().toUpperCase(),
-      allowSignatureUpload: data?.allowSignatureUpload,
-      schoolType: data?.schoolType || data?.type || data?.school_type || data?.schooltype || data?.['school-type'] || null,
-      headteacherSignatureUrl: data?.headteacherSignatureUrl || null,
-      status: data?.status,
-      smsCredits: data?.smsCredits
-    };
-
-    if (!parsedData.name) {
+      return schoolInfo;
+    } catch (err) {
+      console.error("School info error:", err);
       const fallbackName = await getFallbackProfileName();
-      if (fallbackName) parsedData.name = fallbackName;
-    }
-
-    writeAdminCache(getAdminSchoolInfoCacheKey(), parsedData);
-
-    schoolInfo = parsedData;
-    currentSchoolInfo = parsedData;
-    window.schoolInfo = parsedData;
-
-    try {
-      const resolvedKey = resolveSchoolTypeKey(parsedData);
-      window.schoolTypeKey = resolvedKey;
-      window.schoolConfig = resolvedKey ? SCHOOL_TYPES[resolvedKey] : null;
-    } catch (e) {
-      console.warn('Failed to resolve schoolTypeKey', e);
+      const cachedFallback = readAdminCache(getAdminSchoolInfoCacheKey());
+      schoolInfo = { ...(cachedFallback || {}), ...(schoolInfo || {}), name: fallbackName || (cachedFallback?.name) || "School Name" };
+      currentSchoolInfo = schoolInfo;
+      window.schoolInfo = schoolInfo;
       window.schoolTypeKey = null;
       window.schoolConfig = null;
+      renderSchoolInfo();
+      return schoolInfo;
     }
+  })();
 
-    renderSchoolInfo();
-  } catch (err) {
-    console.error("School info error:", err);
-    const fallbackName = await getFallbackProfileName();
-    const cachedFallback = readAdminCache(getAdminSchoolInfoCacheKey());
-    schoolInfo = { ...(cachedFallback || {}), ...(schoolInfo || {}), name: fallbackName || (cachedFallback?.name) || "School Name" };
-    currentSchoolInfo = schoolInfo;
-    window.schoolInfo = schoolInfo;
-    window.schoolTypeKey = null;
-    window.schoolConfig = null;
-    renderSchoolInfo();
+  try {
+    return await adminSchoolInfoRequest;
+  } finally {
+    if (!forceRefresh) {
+      adminSchoolInfoRequest = null;
+    }
   }
 }
 
@@ -2945,7 +2962,10 @@ saveTermConfigBtn?.addEventListener("click", saveTermConfig);
     // Ensure school info is loaded first so grade-related dropdowns can populate
     showAllocationLoadingIndicators();
     try {
-      await loadSchoolInfo();
+      const resolvedSchoolInfo = await loadSchoolInfo();
+      if (resolvedSchoolInfo) {
+        applySchoolTypeToGradeSelectors();
+      }
       await fetchDashboardSummary(); // 🆕 Load cached dashboard summary
     } finally {
       hideAllocationLoadingIndicators();

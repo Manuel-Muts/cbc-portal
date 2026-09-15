@@ -29,7 +29,7 @@ const LearnerMarksModule = (function() {
 
   const API_BASE = config.api.baseURL;
   let gradeOptions = []; // 🆕 Now dynamic, not const
-  const assessmentMapping = window.ASSESSMENT_MAPPING || { 1: "Assessment 1", 2: "Assessment 2", 3: "Assessment 3" };
+  const getAssessmentMapping = () => window.ASSESSMENT_MAPPING || { 1: "Opener", 5: "Midterm", 8: "Endterm" };
 
   // 🆕 Get grade options based on current school type
   function getGradeOptionsForSchool() {
@@ -343,8 +343,8 @@ const LearnerMarksModule = (function() {
 
     if (lmAssessmentSelect) {
       lmAssessmentSelect.innerHTML = `<option value="">-- Select Assessment --</option>` +
-        Object.entries(assessmentMapping)
-          .map(([value, label]) => `<option value="${value}">${label}</option>`)
+        (window.getEnabledAssessments?.() || Object.entries(getAssessmentMapping()).map(([id, name]) => ({ id, name })))
+          .map(assessment => `<option value="${assessment.id}">${assessment.name}</option>`)
           .join('');
     }
 
@@ -763,7 +763,7 @@ const LearnerMarksModule = (function() {
     });
   }
 
-  function init() {
+  async function init() {
     if (isInitialized) return;
     lmGradeSelect = document.getElementById("lmGradeSelect");
     lmTermSelect = document.getElementById("lmTermSelect");
@@ -784,6 +784,8 @@ const LearnerMarksModule = (function() {
       console.warn("LearnerMarksModule: missing required DOM elements.");
       return;
     }
+
+    await window.loadAssessmentConfig?.();
 
     // 🆕 Start watching for school type changes
     watchSchoolTypeChanges();

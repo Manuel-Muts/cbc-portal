@@ -157,6 +157,7 @@
         <li data-tab="timetableTab"><a href="#"><i class="fas fa-calendar-alt"></i> Timetable Module</a></li>
 
         <li data-tab="smsResultsTab"><a href="#"><i class="fas fa-paper-plane"></i> SMS Results</a></li> 
+        <li data-tab="assessmentSettingsTab"><a href="#"><i class="fas fa-list-ol"></i>Create Assessment</a></li>
         <li><button id="configureGradingBtn" class="btn secondary-btn" style="width:100%; text-align:left; margin-top: 10px;"><i class="fas fa-cogs"></i> Configure Grading</button></li>
         <!-- Configure Grading button will be added dynamically by dean.js -->
       </ul>
@@ -283,6 +284,45 @@
         </div>
 
       <div id="moduleTabContent">
+        <div id="assessmentSettingsTab" class="tab-pane">
+          <div class="dashboard-card">
+            <div style="display:flex; justify-content:space-between; align-items:center; gap:16px; margin-bottom:18px;">
+              <div>
+                <h3 style="margin:0;">Assessment Setup</h3>
+                <p style="margin:6px 0 0; color:#64748b;">Create one-time assessments such as JESMA 2. Enabled assessments appear in dean and teacher mark-entry dropdowns.</p>
+              </div>
+              <button id="addAssessmentBtn" type="button" class="btn primary-btn"><i class="fas fa-plus"></i> Add Assessment</button>
+            </div>
+            <div id="assessmentConfigMessage" role="status" style="margin-bottom:12px;"></div>
+            <div id="assessmentConfigList"></div>
+            <div id="assessmentCreateModal" hidden role="dialog" aria-modal="true" aria-labelledby="assessmentCreateTitle" style="position:fixed; inset:0; z-index:30000; display:none; align-items:center; justify-content:center; padding:20px; background:rgba(15,23,42,.52);">
+              <div style="width:min(440px,100%); background:#fff; border-radius:14px; padding:24px; box-shadow:0 24px 70px rgba(15,23,42,.28);">
+                <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom:18px;">
+                  <h3 id="assessmentCreateTitle" style="margin:0;">Create Assessment</h3>
+                  <button id="closeAssessmentModalBtn" type="button" class="btn secondary-btn" aria-label="Close">&times;</button>
+                </div>
+                <div style="margin-bottom:14px;">
+                  <label for="newAssessmentCode" style="display:block; font-weight:700; margin-bottom:6px;">Assessment code</label>
+                  <input id="newAssessmentCode" type="number" readonly style="width:100%; box-sizing:border-box; background:#f1f5f9;">
+                  <small style="display:block; margin-top:5px; color:#64748b;">Generated automatically and used internally by the marks system.</small>
+                </div>
+                <div style="margin-bottom:20px;">
+                  <label for="newAssessmentTitle" style="display:block; font-weight:700; margin-bottom:6px;">Assessment title</label>
+                  <input id="newAssessmentTitle" type="text" maxlength="80" required placeholder="e.g. JESMA 001" style="width:100%; box-sizing:border-box;">
+                </div>
+                <label style="display:flex; gap:8px; align-items:center; margin-bottom:20px;">
+                  <input id="newAssessmentEnabled" type="checkbox" checked>
+                  Enabled in teacher and dean dropdowns
+                </label>
+                <div style="display:flex; justify-content:flex-end; gap:10px;">
+                  <button id="cancelAssessmentModalBtn" type="button" class="btn secondary-btn">Cancel</button>
+                  <button id="saveNewAssessmentBtn" type="button" class="btn primary-btn"><i class="fas fa-check"></i> Save &amp; Create Assessment</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
         <!-- Submitted Subjects Tab Pane -->
         <div id="submittedSubjectsTab" class="tab-pane">
           <!-- Module Specific Filters -->
@@ -333,7 +373,7 @@
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
               <div>
                 <h3 style="margin: 0;">Enter Missing Mark</h3>
-                <p style="margin: 6px 0 0; color: #64748b; font-size: 0.95rem;">Search a learner and edit existing or Misssing Mark</p>
+                <p style="margin: 6px 0 0; color: #64748b; font-size: 0.95rem;">Search a learner and edit existing or Missing Mark</p>
               </div>
             </div>
 

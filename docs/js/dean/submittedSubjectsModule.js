@@ -20,7 +20,7 @@ const SubmittedSubjectsModule = (function() {
      * Initializes the Submitted Subjects Module.
      * Populates filters and attaches event listeners.
      */
-    function init() {
+    async function init() {
         if (isInitialized) return;
         console.log("📊 Submitted Subjects Module Initialized.");
 
@@ -29,6 +29,7 @@ const SubmittedSubjectsModule = (function() {
         ssYearFilter = document.getElementById("ssYearFilter");
         loadSubmittedSubjectsBtn = document.getElementById("loadSubmittedSubjectsBtn");
         submittedSubjectsTableWrap = document.getElementById("submittedSubjectsTableWrap");
+        await window.loadAssessmentConfig?.();
         populateFilters();
         attachEventListeners();
         isInitialized = true;
@@ -59,12 +60,12 @@ const SubmittedSubjectsModule = (function() {
         }
 
         // 3. Populate Assessments
-        if (ssAssessmentFilter && window.ASSESSMENT_MAPPING) { // Check if mapping is available
+        if (ssAssessmentFilter) {
             ssAssessmentFilter.innerHTML = '<option value="">-- Select Assessment --</option>';
-            Object.entries(window.ASSESSMENT_MAPPING).forEach(([value, label]) => {
+            (window.getEnabledAssessments?.() || []).forEach(assessment => {
                 const opt = document.createElement("option");
-                opt.value = value;
-                opt.textContent = label;
+                opt.value = assessment.id;
+                opt.textContent = assessment.name;
                 ssAssessmentFilter.appendChild(opt);
             });
             console.log("DEBUG: ssAssessmentFilter populated.");
@@ -160,8 +161,15 @@ const SubmittedSubjectsModule = (function() {
             };
         }
 
+        const paper = String(item.paper || "combined").trim().toLowerCase().replace(/\s+/g, "");
+        const subjectName = window.cbcUtils?.getAbbreviatedSubjectName?.(item.subject) || item.subject || "";
+        const paperLabel = ["paper1", "p1", "1"].includes(paper)
+            ? " P1"
+            : ["paper2", "p2", "2"].includes(paper)
+                ? " P2"
+                : "";
         grouped[key].subjects.push({
-            name: item.subject,
+            name: `${subjectName}${paperLabel}`,
             count: item.count
         });
     });

@@ -151,6 +151,10 @@ document.addEventListener("DOMContentLoaded", () => {
   const marksTableContainer = document.getElementById("marksTableContainer");
   const marksTermSelect = document.getElementById("marksTermSelect");
   const marksAssessmentSelect = document.getElementById("marksAssessmentSelect");
+  const marksPaperGroup = document.getElementById("marksPaperGroup");
+  const marksPaperSelect = document.getElementById("marksPaperSelect");
+  const marksPaperOutOfGroup = document.getElementById("marksPaperOutOfGroup");
+  const marksPaperOutOfSelect = document.getElementById("marksPaperOutOfSelect");
   const marksYearInput = document.getElementById("marksYearInput");
   const loadStudentsBtn = document.getElementById("loadStudentsBtn");
   const marksEntryTable = document.getElementById("marksEntryTable");
@@ -402,6 +406,22 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
+  function isJuniorPaperSubject(grade, subject) {
+    const gradeNumber = window.cbcUtils?.getGradeNum?.(grade) || Number(String(grade || '').match(/\d+/)?.[0]);
+    const normalizedSubject = String(subject || '').trim().toLowerCase();
+    return gradeNumber >= 7 && gradeNumber <= 9 && ['english', 'kiswahili'].includes(normalizedSubject);
+  }
+
+  function updatePaperControls() {
+    const showPaperControls = isJuniorPaperSubject(selectedAllocationData?.grade, selectedSubject);
+    if (marksPaperGroup) marksPaperGroup.hidden = !showPaperControls;
+    if (marksPaperOutOfGroup) marksPaperOutOfGroup.hidden = !showPaperControls || marksPaperSelect?.value === 'combined';
+    if (!showPaperControls) {
+      if (marksPaperSelect) marksPaperSelect.value = 'combined';
+      if (marksPaperOutOfSelect) marksPaperOutOfSelect.value = '50';
+    }
+  }
+
   // 🆕 FUNCTION TO SET DEFAULT TERM (called after loadActiveTerm completes)
   function setDefaultTermFromActiveTerm() {
     if (marksTermSelect) {
@@ -425,8 +445,9 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   // 🆕 Reset table when context changes to prevent data pollution across terms/assessments
-  [marksAssessmentSelect, marksYearInput].forEach(el => {
+  [marksAssessmentSelect, marksYearInput, marksPaperSelect, marksPaperOutOfSelect].forEach(el => {
     el?.addEventListener("change", async () => {
+      if (el === marksPaperSelect) updatePaperControls();
       window.TeacherLearnerEnrollment?.updateVisibility?.();
       if (marksEntryTableBody && marksEntryTableBody.innerHTML !== "") {
         resetMarksTable();
@@ -929,16 +950,16 @@ document.addEventListener("DOMContentLoaded", () => {
   // ---------------------------
   // ASSESSMENT SELECT POPULATE
   // ---------------------------
-  (function populateAssessments() {
+  (async function populateAssessments() {
     const selectElements = [assessmentSelect, marksAssessmentSelect].filter(el => el);
-    const mapping = window.ASSESSMENT_MAPPING || {};
+    const assessments = await (window.loadAssessmentConfig?.() || Promise.resolve([]));
 
     selectElements.forEach(select => {
       select.innerHTML = '<option value="">-- Select Assessment --</option>';
-      Object.entries(mapping).forEach(([value, label]) => {
+      assessments.filter(assessment => assessment.enabled !== false).forEach(assessment => {
         const opt = document.createElement("option");
-        opt.value = value;
-        opt.textContent = label;
+        opt.value = assessment.id;
+        opt.textContent = assessment.name;
         select.appendChild(opt);
       });
     });
@@ -1019,6 +1040,7 @@ document.addEventListener("DOMContentLoaded", () => {
       
       selectedAllocationData = teacherAllocations[classIndex];
       selectedSubject = selectedOption.dataset.subject; // 🆕 Get selected subject
+      updatePaperControls();
       window.TeacherLearnerEnrollment?.updateVisibility?.();
       
       allMarksEntered = new Map(); // Clear marks when subject/class changes
@@ -1286,13 +1308,14 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // Helper to get unique key for allMarksEntered Map
   const getMarkEntryKey = (studentId) => 
-    `${studentId}_${selectedSubject}_${marksTermSelect.value}_${marksAssessmentSelect.value}_${marksYearInput.value}`;
+    `${studentId}_${selectedSubject}_${marksPaperSelect?.value || 'combined'}_${marksPaperOutOfSelect?.value || '100'}_${marksTermSelect.value}_${marksAssessmentSelect.value}_${marksYearInput.value}`;
 
   // ---------------------------
   // NEW: DISPLAY STUDENTS IN MARKS TABLE
   // ---------------------------
   function displayStudentsInMarksTable(students) {
     const isSeniorSchool = students.length > 0 ? window.cbcUtils.isSeniorGrade(students[0].grade) : false;
+    const selectedPaper = marksPaperSelect?.value || 'combined';
 
    // 🆕 Update table title to show selected subject
     const marksControlsSection = document.querySelector('.marks-controls');
@@ -1304,11 +1327,13 @@ document.addEventListener("DOMContentLoaded", () => {
         titleElement.className = 'selected-subject-title';
         marksControlsSection.insertAdjacentElement('afterend', titleElement);
       }
-      titleElement.innerHTML = `<p style="font-size: 1.1rem; color: #2b6cb0; font-weight: 600; margin: 10px 0;">📍 Subject: <strong>${selectedSubject}</strong></p>`;
+      const paperLabel = selectedPaper === 'paper1' ? ' P1' : selectedPaper === 'paper2' ? ' P2' : '';
+      titleElement.innerHTML = `<p style="font-size: 1.1rem; color: #2b6cb0; font-weight: 600; margin: 10px 0;">Subject: <strong>${selectedSubject}${paperLabel}</strong></p>`;
     }
 
     // Update table header for marks column
-    marksColumnHeader.innerHTML = "Marks (%)";
+    const selectedOutOf = selectedPaper === 'combined' ? 100 : Number(marksPaperOutOfSelect?.value || 50);
+    marksColumnHeader.innerHTML = `Marks (/${selectedOutOf})`;
 
     // Add student rows
     students.forEach(student => { // student here is from the current page
@@ -1330,6 +1355,8 @@ document.addEventListener("DOMContentLoaded", () => {
           term: Number(marksTermSelect.value),
           year: Number(marksYearInput.value),
           assessment: Number(marksAssessmentSelect.value),
+          paper: selectedPaper,
+          outOf: selectedOutOf,
           _id: null
         };
         if (isSeniorSchool) {
@@ -1391,15 +1418,15 @@ document.addEventListener("DOMContentLoaded", () => {
         if (inputValue.toUpperCase().includes('X')) {
             inputValue = 'X';
         } else if (inputValue !== '') {
-            // 3. Handle numeric input: ensure it's within 0-100
+            // 3. Handle numeric input: ensure it's within the selected paper maximum
             let num = parseInt(inputValue, 10);
             if (isNaN(num)) {
                 inputValue = ''; // Clear if not a valid number
             } else if (num < 0) {
                 inputValue = '0';
-            } else if (num > 100) {
+            } else if (num > (marksPaperSelect?.value === 'combined' ? 100 : Number(marksPaperOutOfSelect?.value || 50))) {
                   inputValue = ''; // Clear if exceeding 100
-                  showToast("Marks cannot exceed 100. Input cleared.", "warning");
+              showToast(`Marks cannot exceed ${marksPaperSelect?.value === 'combined' ? 100 : Number(marksPaperOutOfSelect?.value || 50)}. Input cleared.`, "warning");
             }
         }
 
@@ -1432,8 +1459,13 @@ document.addEventListener("DOMContentLoaded", () => {
       term: Number(term),
       year: Number(year),
       assessment: Number(assessment),
+      paper: marksPaperSelect?.value || 'combined',
+      outOf: marksPaperSelect?.value === 'combined' ? 100 : Number(marksPaperOutOfSelect?.value || 50),
       _id: null // Will be populated if editing an existing mark
     };
+
+    markData.paper = marksPaperSelect?.value || 'combined';
+    markData.outOf = markData.paper === 'combined' ? 100 : Number(marksPaperOutOfSelect?.value || 50);
 
     if (isSeniorSchool) {
       markData.course = selectedSubject;
@@ -1784,6 +1816,8 @@ document.addEventListener("DOMContentLoaded", () => {
           term: markData.term,
           year: markData.year,
           assessment: markData.assessment,
+          paper: markData.paper || 'combined',
+          outOf: markData.paper === 'combined' ? 100 : Number(markData.outOf || 50),
           _id: markData._id // Include _id if it's an existing mark for update
         };
 
@@ -1860,6 +1894,8 @@ document.addEventListener("DOMContentLoaded", () => {
           term: markData.term,
           year: markData.year,
           assessment: markData.assessment,
+          paper: markData.paper || 'combined',
+          outOf: markData.paper === 'combined' ? 100 : Number(markData.outOf || 50),
           _id: markData._id // Include _id if it's an existing mark for update
         };
 
@@ -2130,8 +2166,9 @@ document.addEventListener("DOMContentLoaded", () => {
       // Normalize grade (e.g., "5" vs "Grade 5") to ensure consistent grouping
       const gradeNorm = window.cbcUtils.normalizeGrade(grade);
       const streamVal = m.stream || '';
-      // Form key by Subject, Assessment, Grade, Stream, Term, Year
-      const key = `${subjectKey}_${m.assessment}_${gradeNorm}_${streamVal}_${m.term}_${m.year}`;
+      const paperVal = m.paper || 'combined';
+      // Form key by Subject, Assessment, Grade, Stream, Paper, Term, Year
+      const key = `${subjectKey}_${m.assessment}_${gradeNorm}_${streamVal}_${paperVal}_${m.term}_${m.year}`;
 
       if (!grouped[key]) grouped[key] = [];
       grouped[key].push(m);
@@ -2186,7 +2223,17 @@ document.addEventListener("DOMContentLoaded", () => {
         const gradeMatch = (headerInfo.grade || "").toString().match(/\d+/);
         const gradeNum = gradeMatch ? parseInt(gradeMatch[0]) : 0;
         const groupIsSenior = window.cbcUtils.isSeniorGrade(headerInfo.grade);
-        const subjectDisplay = groupIsSenior ? `${headerInfo.pathway || 'N/A'} - ${headerInfo.course || 'N/A'}` : (headerInfo.subject || '').replace(/-/g, ' ');
+        const rawSubjectDisplay = groupIsSenior
+          ? `${headerInfo.pathway || 'N/A'} - ${headerInfo.course || 'N/A'}`
+          : (headerInfo.subject || '').replace(/-/g, ' ');
+        const normalizedSubjectDisplay = rawSubjectDisplay.trim().toLowerCase();
+        const isJuniorPaperSubject = !groupIsSenior && ['english', 'kiswahili'].includes(normalizedSubjectDisplay);
+        const paperSuffix = isJuniorPaperSubject && headerInfo.paper === 'paper1'
+          ? ' P1'
+          : isJuniorPaperSubject && headerInfo.paper === 'paper2'
+            ? ' P2'
+            : '';
+        const subjectDisplay = `${rawSubjectDisplay}${paperSuffix}`;
         
         // 🆕 Include Stream in the display title (e.g. Grade 7 B)
         const streamLabel = headerInfo.stream ? ` ${headerInfo.stream}` : '';
@@ -2403,7 +2450,8 @@ document.addEventListener("DOMContentLoaded", () => {
         const isSenior = window.cbcUtils.isSeniorGrade(m.grade);
         const subjectKey = isSenior ? (m.course || 'no-course') : (m.subject || 'no-subject');
         const streamVal = m.stream || '';
-        return `${subjectKey}_${m.assessment}_${gradeNorm}_${streamVal}_${m.term}_${m.year}` === key;
+        const paperVal = m.paper || 'combined';
+        return `${subjectKey}_${m.assessment}_${gradeNorm}_${streamVal}_${paperVal}_${m.term}_${m.year}` === key;
       });
 
       if (!marksToDelete.length) return;
@@ -2447,7 +2495,8 @@ document.addEventListener("DOMContentLoaded", () => {
         const subjectKey = isSenior ? (mark.course || 'no-course') : (mark.subject || 'no-subject');
         const gradeNorm = window.cbcUtils.normalizeGrade(mark.grade);
         const streamVal = mark.stream || '';
-        return `${subjectKey}_${mark.assessment}_${gradeNorm}_${streamVal}_${mark.term}_${mark.year}`;
+        const paperVal = mark.paper || 'combined';
+        return `${subjectKey}_${mark.assessment}_${gradeNorm}_${streamVal}_${paperVal}_${mark.term}_${mark.year}`;
       })();
 
       // Robust Grade extraction (from mark object)
@@ -2493,6 +2542,20 @@ document.addEventListener("DOMContentLoaded", () => {
 
       // 3. Trigger a 'change' on the allocation select to update internal state
       subjectAllocationSelect.dispatchEvent(new Event('change', { bubbles: true }));
+
+      // Restore the submitted record's paper context before building its edit key.
+      // Otherwise a Paper 1/2 record can be loaded under the previously selected
+      // combined-paper context and be displayed with the wrong input limit.
+      const markPaper = ['paper1', 'paper2'].includes(String(mark.paper || '').toLowerCase())
+        ? String(mark.paper).toLowerCase()
+        : 'combined';
+      if (marksPaperSelect) marksPaperSelect.value = markPaper;
+      if (marksPaperOutOfSelect) {
+        marksPaperOutOfSelect.value = markPaper === 'combined'
+          ? '50'
+          : String(mark.outOf || 50);
+      }
+      updatePaperControls();
 
       // 🆕 Set single edit mode AFTER change event which triggers resetMarksTable
       isSingleEditMode = true;
@@ -2552,7 +2615,8 @@ document.addEventListener("DOMContentLoaded", () => {
         const subjectKey = isSenior ? (mark.course || 'no-course') : (mark.subject || 'no-subject');
         const gradeNorm = window.cbcUtils.normalizeGrade(mark.grade);
         const streamVal = mark.stream || '';
-        return `${subjectKey}_${mark.assessment}_${gradeNorm}_${streamVal}_${mark.term}_${mark.year}`;
+        const paperVal = mark.paper || 'combined';
+        return `${subjectKey}_${mark.assessment}_${gradeNorm}_${streamVal}_${paperVal}_${mark.term}_${mark.year}`;
       })();
 
       if (!await showConfirm("Are you sure you want to permanently delete this mark? This action cannot be undone.")) return;

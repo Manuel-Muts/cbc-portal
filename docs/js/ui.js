@@ -589,6 +589,49 @@ window.showToast = showToast;
 window.showConfirm = showConfirm;
 window.ASSESSMENT_MAPPING = ASSESSMENT_MAPPING;
 
+let assessmentConfigPromise = null;
+window.loadAssessmentConfig = async (forceRefresh = false) => {
+  if (assessmentConfigPromise && !forceRefresh) return assessmentConfigPromise;
+
+  assessmentConfigPromise = (async () => {
+    try {
+      const token = window.authService?.getToken?.();
+      const baseUrl = window.config?.api?.baseURL;
+      if (!token || !baseUrl) return Object.entries(ASSESSMENT_MAPPING).map(([id, name]) => ({ id: Number(id), name, enabled: true, system: true }));
+
+      const response = await fetch(`${baseUrl}/settings/assessments`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (!response.ok) throw new Error(`Assessment configuration request failed (${response.status})`);
+
+      const data = await response.json();
+      const assessments = Array.isArray(data.assessments) ? data.assessments : [];
+      window.assessmentConfig = assessments;
+      window.ASSESSMENT_MAPPING = Object.fromEntries(assessments.map(item => [item.id, item.name]));
+      return assessments;
+    } catch (error) {
+      console.warn('Using default assessment configuration:', error);
+      window.assessmentConfig = Object.entries(ASSESSMENT_MAPPING).map(([id, name]) => ({ id: Number(id), name, enabled: true, system: true }));
+      window.ASSESSMENT_MAPPING = { ...ASSESSMENT_MAPPING };
+      return window.assessmentConfig;
+    } finally {
+      if (!forceRefresh) assessmentConfigPromise = null;
+    }
+  })();
+
+  return assessmentConfigPromise;
+};
+
+window.getEnabledAssessments = () => {
+  const configured = Array.isArray(window.assessmentConfig) ? window.assessmentConfig : [];
+  if (configured.length > 0) return configured.filter(assessment => assessment.enabled !== false);
+  return Object.entries(window.ASSESSMENT_MAPPING || {}).map(([id, name]) => ({
+    id: Number(id),
+    name,
+    enabled: true
+  }));
+};
+
 // 🆕 SERVICE WORKER REGISTRATION
 // Pre-caches external libraries to ensure they are available offline and speed up PDF generation.
 if ('serviceWorker' in navigator) {

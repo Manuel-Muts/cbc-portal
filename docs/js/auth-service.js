@@ -31,7 +31,7 @@ const authService = {
     /**
      * Fetches user profile with caching and role authorization
      */
-    getUserProfile: async (allowedRoles = []) => {
+    getUserProfile: async (allowedRoles = [], options = {}) => {
         const token = authService.getToken();
 
         if (!token) {
@@ -42,7 +42,7 @@ const authService = {
         const CACHE_DURATION = 15 * 60 * 1000; // 15 minutes
 
         // Check cache first
-        const cached = localStorage.getItem(CACHE_KEY);
+        const cached = options.forceRefresh ? null : localStorage.getItem(CACHE_KEY);
 
         if (cached) {
             try {

@@ -9,6 +9,7 @@
     "migrate-learner-usernames": "node scripts/migrateLearnerUsernames.js",
     "remove-legacy-firstname": "node scripts/removeLegacyFirstname.js",
     "remove-legacy-mark-fields": "node scripts/removeLegacyMarkFields.js",
+    "migrate-mark-paper-support": "node scripts/migrateMarkPaperSupport.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "type": "module",

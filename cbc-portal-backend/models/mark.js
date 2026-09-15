@@ -41,6 +41,11 @@ const markSchema = new mongoose.Schema({
 
   assessment: { type: Number, required: true },
 
+  // Junior Grades 7-9 English/Kiswahili may be submitted as separate papers.
+  paper: { type: String, enum: ["combined", "paper1", "paper2"], default: "combined" },
+  outOf: { type: Number, enum: [20, 30, 40, 50, 60, 70, 100], default: 100 },
+  isPaperTotal: { type: Boolean, default: false },
+
   teacherId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: "User",
@@ -53,8 +58,8 @@ const markSchema = new mongoose.Schema({
 // For Duplication Checks & Controller uniqueness logic
 // Optimized for batching: narrows down to context (school/year/term/subject) first, then students.
 markSchema.index({
-  schoolId: 1, year: 1, term: 1, assessment: 1, subject: 1, pathway: 1, course: 1, admissionNo: 1
-}, { name: "idx_uniqueness_check", unique: true });
+  schoolId: 1, year: 1, term: 1, assessment: 1, subject: 1, paper: 1, pathway: 1, course: 1, admissionNo: 1
+}, { name: "idx_uniqueness_check_v2", unique: true });
 
 // For Teacher Dashboard queries (getMarks)
 markSchema.index({ 

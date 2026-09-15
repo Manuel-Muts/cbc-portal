@@ -164,23 +164,44 @@
       <!-- Step 1: Select Subject/Class Allocation -->
       <div class="marks-controls">
         <div class="section-header">
-          <h3>Step 1: Select Your Subject/Grade & Assessment</h3>
+          <h3>Step 1: Select Assessment, Subject & Grade</h3>
         
         </div>
         <div class="form-grid">
+          <div class="form-group">
+            <label>Assessment</label>
+            <select id="marksAssessmentSelect" required></select>
+          </div>
+
           <div class="form-group">
             <label>Subject & Grade</label>
             <select id="subjectAllocationSelect" required>
               <option value="">-- Select Subject & Class --</option>
             </select>
           </div>
+
+            <div class="form-group" id="marksPaperGroup" hidden>
+              <label for="marksPaperSelect">Paper</label>
+              <select id="marksPaperSelect">
+                <option value="combined">Combined</option>
+                <option value="paper1">Paper 1</option>
+                <option value="paper2">Paper 2</option>
+              </select>
+            </div>
+
+            <div class="form-group" id="marksPaperOutOfGroup" hidden>
+              <label for="marksPaperOutOfSelect">Out of</label>
+              <select id="marksPaperOutOfSelect">
+                <option value="20">20</option>
+                <option value="30">30</option>
+                <option value="40">40</option>
+                <option value="50" selected>50</option>
+                <option value="60">60</option>
+                <option value="70">70</option>
+              </select>
+            </div>
           
-            <div class="form-group">
-            <label>Assessment</label>
-            <select id="marksAssessmentSelect" required></select>
-          </div>
-          
-          <div class="form-group">
+          <div class="form-group" hidden>
             <label><strong>Term</strong></label>
             <select id="marksTermSelect" required disabled>
               <option value="">-- Select Term --</option>
@@ -191,7 +212,7 @@
           </div>
 
         
-          <div class="form-group">
+          <div class="form-group" hidden>
             <label>Year</label>
             <input style="width: 50px;" type="number" id="marksYearInput" min="2025" max="2090" readonly />
           </div>

@@ -51,6 +51,13 @@ const schoolSchema = new mongoose.Schema({
     term3: { type: Boolean, default: true },
     activeTerm: { type: String, enum: ['Term 1', 'Term 2', 'Term 3'], default: 'Term 1' }
   },
+  assessmentConfig: [{
+    id: { type: Number, required: true, min: 1 },
+    name: { type: String, required: true, trim: true, maxlength: 80 },
+    enabled: { type: Boolean, default: true },
+    sortOrder: { type: Number, default: 0 },
+    system: { type: Boolean, default: false }
+  }],
   version: { type: Number, default: 1 },       // <-- version increments on suspension
   paybill: { type: String, default: "" },      // M-Pesa paybill number (for C2B manual payments)
   createdAt: { type: Date, default: Date.now }

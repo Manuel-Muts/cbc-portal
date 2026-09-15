@@ -170,6 +170,127 @@ const validateSeniorElectiveSelection = (studentPathway, allSubmittedCourses) =>
 };
 
 const SENIOR_NON_GRADED_SUBJECTS = ["PE"];
+const DEFAULT_ASSESSMENT_IDS = new Set([1, 5, 8]);
+const PAPER_SUBJECTS = new Set(["english", "kiswahili"]);
+const PAPER_OUT_OF_VALUES = new Set([20, 30, 40, 50, 60, 70]);
+
+const getPaperSubmission = (markData) => {
+  const gradeNum = getGradeLevel(markData.grade);
+  const subject = String(markData.subject || "").trim().toLowerCase();
+  const isPaperSubject = gradeNum >= 7 && gradeNum <= 9 && PAPER_SUBJECTS.has(subject);
+  const paper = isPaperSubject ? String(markData.paper || "combined").toLowerCase() : "combined";
+  const outOf = paper === "combined" ? 100 : Number(markData.outOf);
+
+  if (!isPaperSubject && paper !== "combined") {
+    throw new Error("Paper 1 and Paper 2 are available only for English and Kiswahili in Grades 7-9.");
+  }
+  if (!["combined", "paper1", "paper2"].includes(paper)) {
+    throw new Error("Invalid paper selection.");
+  }
+  if (paper !== "combined" && !PAPER_OUT_OF_VALUES.has(outOf)) {
+    throw new Error("Paper maximum must be one of 20, 30, 40, 50, 60, or 70.");
+  }
+  return { paper, outOf };
+};
+
+const rebuildPaperTotals = async (schoolId, marks = [], teacherId) => {
+  const contexts = new Map();
+  marks.forEach(mark => {
+    const gradeNum = getGradeLevel(mark.grade);
+    const subject = String(mark.subject || '').trim();
+    const normalizedSubject = subject.toLowerCase();
+    if (gradeNum < 7 || gradeNum > 9 || !PAPER_SUBJECTS.has(normalizedSubject)) return;
+    if (!['paper1', 'paper2'].includes(String(mark.paper || '').toLowerCase())) return;
+
+    const key = [mark.admissionNo, subject, mark.grade, mark.stream || '', mark.term, mark.year, mark.assessment].join('|');
+    contexts.set(key, {
+      admissionNo: mark.admissionNo,
+      studentName: mark.studentName,
+      studentId: mark.studentId,
+      enrollmentId: mark.enrollmentId,
+      grade: mark.grade,
+      stream: mark.stream || null,
+      subject,
+      term: Number(mark.term),
+      year: Number(mark.year),
+      assessment: Number(mark.assessment),
+      teacherId: mark.teacherId || teacherId
+    });
+  });
+
+  for (const context of contexts.values()) {
+    const paperMarks = await Mark.find({
+      schoolId,
+      admissionNo: context.admissionNo,
+      subject: context.subject,
+      grade: context.grade,
+      stream: context.stream,
+      term: context.term,
+      year: context.year,
+      assessment: context.assessment,
+      paper: { $in: ['paper1', 'paper2'] }
+    }).select('paper score').lean();
+
+    const paper1 = paperMarks.find(mark => mark.paper === 'paper1');
+    const paper2 = paperMarks.find(mark => mark.paper === 'paper2');
+    const score1 = Number(paper1?.score);
+    const score2 = Number(paper2?.score);
+    if (!paper1 || !paper2 || !Number.isFinite(score1) || !Number.isFinite(score2)) {
+      await Mark.deleteOne({
+        schoolId,
+        admissionNo: context.admissionNo,
+        subject: context.subject,
+        grade: context.grade,
+        stream: context.stream,
+        term: context.term,
+        year: context.year,
+        assessment: context.assessment,
+        paper: 'combined',
+        isPaperTotal: true
+      });
+      continue;
+    }
+
+    await Mark.findOneAndUpdate(
+      {
+        schoolId,
+        admissionNo: context.admissionNo,
+        subject: context.subject,
+        grade: context.grade,
+        stream: context.stream,
+        term: context.term,
+        year: context.year,
+        assessment: context.assessment,
+        paper: 'combined'
+      },
+      {
+        $set: {
+          studentId: context.studentId,
+          studentName: context.studentName,
+          score: score1 + score2,
+          outOf: 100,
+          isPaperTotal: true,
+          teacherId: context.teacherId,
+          enrollmentId: context.enrollmentId
+        },
+        $setOnInsert: {
+          schoolId,
+          admissionNo: context.admissionNo,
+          grade: context.grade,
+          stream: context.stream,
+          term: context.term,
+          year: context.year,
+          assessment: context.assessment,
+          subject: context.subject,
+          pathway: null,
+          course: null,
+          paper: 'combined'
+        }
+      },
+      { upsert: true, new: true, setDefaultsOnInsert: true }
+    );
+  }
+};
 
 const isExcludedSeniorSubject = (subject) => {
   const normalized = normalizeSeniorSubjectName(subject);
@@ -303,7 +424,7 @@ const processSingleMark = async (markData, reqUser, isNew = true, cachedContext 
   // 🚀 Optimization: Use gradingConfig from cachedContext if available to prevent N+1 queries
   let customConfig = cachedContext?.gradingConfig;
   if (!customConfig && !cachedContext) {
-    const school = await School.findById(reqUser.schoolId).select("gradingConfig").lean();
+    const school = await School.findById(reqUser.schoolId).select("gradingConfig assessmentConfig").lean();
     customConfig = school?.gradingConfig;
   }
 
@@ -319,8 +440,26 @@ const processSingleMark = async (markData, reqUser, isNew = true, cachedContext 
     pathway,
     course,
     assessment,
-    score
+    score,
+    paper,
+    outOf
   } = markData;
+
+  const paperSubmission = getPaperSubmission({ ...markData, paper, outOf });
+
+  if (isNew) {
+    let assessmentConfig = cachedContext?.assessmentConfig;
+    if (!assessmentConfig && cachedContext === null) {
+      const school = await School.findById(reqUser.schoolId).select("assessmentConfig").lean();
+      assessmentConfig = school?.assessmentConfig;
+    }
+    const enabledAssessmentIds = assessmentConfig?.length
+      ? new Set(assessmentConfig.filter(item => item.enabled !== false).map(item => Number(item.id)))
+      : DEFAULT_ASSESSMENT_IDS;
+    if (!enabledAssessmentIds.has(Number(assessment))) {
+      throw new Error("This assessment is not enabled for your school.");
+    }
+  }
 
   const effectivePathway = isSeniorSchool ? normalizePathway(pathway || getSeniorPathway(course)) : null;
 
@@ -373,7 +512,7 @@ const processSingleMark = async (markData, reqUser, isNew = true, cachedContext 
       // Efficient O(1) lookup in pre-fetched set
       const checkKey = isSeniorSchool 
         ? `${student.admission}_${pathway}_${course}`
-        : `${student.admission}_${subject}`;
+        : `${student.admission}_${subject}_${paperSubmission.paper}`;
         
       if (cachedContext.existingMarksMap.has(checkKey)) {
         throw new Error("Duplicate, marks already exist.");
@@ -395,6 +534,7 @@ const processSingleMark = async (markData, reqUser, isNew = true, cachedContext 
       } else {
         existingMarkQuery.subject = subject;
       }
+      existingMarkQuery.paper = paperSubmission.paper;
 
       const existingMark = await Mark.findOne(existingMarkQuery);
       if (existingMark) {
@@ -429,6 +569,8 @@ const processSingleMark = async (markData, reqUser, isNew = true, cachedContext 
     term,
     year,
     assessment,
+    paper: paperSubmission.paper,
+    outOf: paperSubmission.outOf,
     teacherId: markData.teacherId || reqUser.id,
     schoolId: reqUser.schoolId,
     enrollmentId: enrollment ? enrollment._id : (markData.enrollmentId || null)
@@ -454,6 +596,7 @@ export const addMark = async (req, res) => {
     const processedFields = await processSingleMark(req.body, req.user, true);
     const mark = new Mark(processedFields);
     await mark.save();
+    await rebuildPaperTotals(req.user.schoolId, [processedFields], req.user.id);
     
     cache.clearByPattern(String(req.user.schoolId));
 
@@ -505,6 +648,7 @@ export const updateMark = async (req, res) => {
       { $set: processedFields },
       { new: true, runValidators: true }
     );
+    await rebuildPaperTotals(req.user.schoolId, [processedFields], req.user.id);
     
     cache.clearByPattern(String(req.user.schoolId));
 
@@ -602,7 +746,7 @@ export const bulkAddUpdateMarks = async (req, res) => {
       existingMarksQuery.subject = sample.subject;
     }
 
-    const existingMarks = await Mark.find(existingMarksQuery).select("admissionNo subject course pathway grade").lean();
+    const existingMarks = await Mark.find(existingMarksQuery).select("admissionNo subject course pathway grade paper").lean();
 
     const existingMarksMap = new Set(existingMarks.map(m => {
       const gNum = getGradeLevel(m.grade);
@@ -610,13 +754,13 @@ export const bulkAddUpdateMarks = async (req, res) => {
         const p = normalizePathway(m.pathway) || '';
         return `${m.admissionNo}_${p}_${m.course}`;
       }
-      return `${m.admissionNo}_${m.subject}`;
+      return `${m.admissionNo}_${m.subject}_${m.paper || 'combined'}`;
     }));
 
     // 🚀 NEW: Fetch school grading config once for bulk processing
-    const school = await School.findById(schoolId).select("gradingConfig").lean();
+    const school = await School.findById(schoolId).select("gradingConfig assessmentConfig").lean();
 
-    const cachedContext = { studentMap, enrollmentMap, lockChecked: true, existingMarksMap, gradingConfig: school?.gradingConfig };
+    const cachedContext = { studentMap, enrollmentMap, lockChecked: true, existingMarksMap, gradingConfig: school?.gradingConfig, assessmentConfig: school?.assessmentConfig };
     const ops = [];
     const errors = [];
 
@@ -701,6 +845,8 @@ export const bulkAddUpdateMarks = async (req, res) => {
       // Count inserts, updates (modified), and matches (no change needed) as successes
       successCount = (bulkResult.insertedCount || 0) + (bulkResult.matchedCount || 0) + (bulkResult.upsertedCount || 0);
     }
+
+    await rebuildPaperTotals(schoolId, marksArray, req.user.id);
     
     cache.clearByPattern(String(schoolId));
 
@@ -713,7 +859,13 @@ export const bulkAddUpdateMarks = async (req, res) => {
 
   } catch (err) {
     console.error("bulkAddUpdateMarks error:", err);
-    return res.status(500).json({ message: "Server error during bulk mark operation" });
+    const isDuplicateKeyError = err?.code === 11000;
+    return res.status(isDuplicateKeyError ? 409 : 500).json({
+      message: isDuplicateKeyError
+        ? "A mark already exists for this learner, subject, assessment, and paper. Refresh submitted marks before trying again."
+        : "Server error during bulk mark operation",
+      error: process.env.NODE_ENV === "production" ? undefined : err.message
+    });
   }
 };
 
@@ -788,7 +940,9 @@ export const getMarks = async (req, res) => {
               "||",
               { $ifNull: ["$grade", ""] },
               "||",
-              { $ifNull: ["$stream", ""] }
+              { $ifNull: ["$stream", ""] },
+              "||",
+              { $ifNull: ["$paper", "combined"] }
             ]
           }
         }
@@ -854,6 +1008,7 @@ export const deleteMark = async (req, res) => {
     }
     
     await mark.deleteOne();
+    await rebuildPaperTotals(req.user.schoolId, [mark.toObject()], req.user.id);
     cache.clearByPattern(String(req.user.schoolId));
 
     return res.json({ message: "Mark deleted" });
@@ -909,6 +1064,8 @@ export const bulkDeleteMarks = async (req, res) => {
       teacherId: req.user.id, // Double-check ownership during deletion
       schoolId: req.user.schoolId
     });
+
+    await rebuildPaperTotals(req.user.schoolId, marksToDelete.map(mark => mark.toObject()), req.user.id);
     
     cache.clearByPattern(String(req.user.schoolId));
 
@@ -1077,6 +1234,9 @@ export const getMarksByGrade = async (req, res) => {
               score: "$score",
               course: "$course",
               pathway: "$pathway",
+              paper: "$paper",
+              outOf: "$outOf",
+              isPaperTotal: "$isPaperTotal",
             }
           }
         }
@@ -1233,6 +1393,9 @@ export const getClassMarks = async (req, res) => {
               score: "$score",
               course: "$course",
               pathway: "$pathway",
+              paper: "$paper",
+              outOf: "$outOf",
+              isPaperTotal: "$isPaperTotal",
             }
           }
         }
@@ -1649,7 +1812,7 @@ export const getSubmittedSubjectStats = async (req, res) => {
     }
     
     // Generate a unique cache key based on all query parameters and schoolId
-    const cacheKey = cache.generateKey(`submitted_subjects_stats:${schoolId}`, {
+    const cacheKey = cache.generateKey(`submitted_subjects_stats_v2:${schoolId}`, {
       grade, term, year, assessment, stream, scope
     });
 
@@ -1708,7 +1871,8 @@ export const getSubmittedSubjectStats = async (req, res) => {
     _id: {
       grade: "$grade",
       stream: "$stream",
-      subject: { $ifNull: ["$course", "$subject"] }
+      subject: { $ifNull: ["$course", "$subject"] },
+      paper: { $ifNull: ["$paper", "combined"] }
     }
   }
 },
@@ -1717,13 +1881,36 @@ export const getSubmittedSubjectStats = async (req, res) => {
     _id: 0,
     grade: "$_id.grade",
     stream: "$_id.stream",
-    subject: "$_id.subject"
+    subject: "$_id.subject",
+    paper: "$_id.paper"
   }
 },
-{ $sort: { grade: 1, stream: 1, subject: 1 } }
+{ $sort: { grade: 1, stream: 1, subject: 1, paper: 1 } }
     ]);
 
-    const filteredStats = stats.filter(item => !isExcludedSeniorSubject(item.subject));
+    const filteredStats = stats
+      .filter(item => !isExcludedSeniorSubject(item.subject))
+      .filter((item, index, allItems) => {
+        const paper = String(item.paper || "combined").toLowerCase();
+        if (paper !== "combined") return true;
+
+        const hasPaper1 = allItems.some(other =>
+          other !== item &&
+          other.grade === item.grade &&
+          other.stream === item.stream &&
+          other.subject === item.subject &&
+          ["paper1", "p1", "1"].includes(String(other.paper || "").trim().toLowerCase())
+        );
+        const hasPaper2 = allItems.some(other =>
+          other !== item &&
+          other.grade === item.grade &&
+          other.stream === item.stream &&
+          other.subject === item.subject &&
+          ["paper2", "p2", "2"].includes(String(other.paper || "").trim().toLowerCase())
+        );
+
+        return !(hasPaper1 && hasPaper2);
+      });
 
     // Cache the filtered result for 5 minutes (300 seconds)
     cache.set(cacheKey, filteredStats, 300);

@@ -2928,6 +2928,10 @@ header.teacher-header .profile-logout-btn:hover {
   flex-direction: column;
 }
 
+.marks-controls .form-group[hidden] {
+  display: none !important;
+}
+
 .marks-controls .form-group label {
   margin-bottom: 4px;
   color: #475569;
