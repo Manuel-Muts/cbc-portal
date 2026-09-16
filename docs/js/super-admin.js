@@ -587,7 +587,7 @@ setCache(cacheKey, metrics);
       schoolSelect.innerHTML = '<option value="">Global (All Schools)</option>';
       
       // Fetch schools list for targeting
-      const res = await authFetch(`/schools?limit=1000`);
+      const res = await authFetch(`/schools?limit=50`);
       if (res && res.ok) {
         const data = await res.json();
         const schools = data.schools || [];
@@ -1230,7 +1230,7 @@ if (nextSchoolsBtn) {
 
       // Use a high limit to ensure we get all active schools for dropdown selection
       // The backend now excludes heavy logo fields, making this fetch very lightweight.
-      const res = await authFetch(`/schools?limit=1000`);
+      const res = await authFetch(`/schools?limit=50`);
       if (!res) return;
       
       const data = await res.json();

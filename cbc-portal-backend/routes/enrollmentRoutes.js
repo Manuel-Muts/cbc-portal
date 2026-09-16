@@ -6,7 +6,8 @@ import { adminSearchStudent,
       getEnrollmentHistory, 
       getMyEnrollment, 
       cleanOrphanedEnrollments, 
-      getStudentsByClass, 
+      getStudentsByClass,
+      getClassRosterSummary,
       getUniqueStreams,
       createLearnerForMarksEntry,
       findLearnerForMarksEntry,
@@ -21,6 +22,7 @@ router.get("/admin-search", verifyToken, adminSearchStudent);
 
 // Get students by class (for teachers to load students for marks entry)
 router.get("/class/:classLabel", verifyToken, getStudentsByClass);
+router.get("/class-summary/:classLabel", verifyToken, getClassRosterSummary);
 router.get("/class/:classLabel/learner", verifyToken, findLearnerForMarksEntry);
 router.get("/class/:classLabel/learner/name-check", verifyToken, checkLearnerNameForMarksEntry);
 router.post("/class/:classLabel/learner", verifyToken, createLearnerForMarksEntry);

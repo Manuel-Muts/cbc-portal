@@ -785,6 +785,47 @@ export const getStudentsByClass = async (req, res) => {
   }
 };
 
+/**
+ * GET LIGHTWEIGHT CLASS ROSTER SUMMARY - for analytics filters and missing-data checks
+ */
+export const getClassRosterSummary = async (req, res) => {
+  try {
+    const parsedClass = parseClassLabel(req.params.classLabel);
+    if (!req.user?.schoolId || !parsedClass) {
+      return res.status(400).json({ message: "A valid class is required" });
+    }
+
+    const teacher = await getTeacherForClass(req.user.id, req.user.schoolId, parsedClass);
+    if (!teacher) return res.status(403).json({ message: "You are not assigned to this class" });
+
+    const enrollments = await StudentEnrollment.find({
+      schoolId: req.user.schoolId,
+      academicYear: new Date().getFullYear(),
+      grade: parsedClass.grade,
+      status: "active"
+    })
+      .select("studentId grade stream pathway")
+      .populate("studentId", "name admission")
+      .lean();
+
+    const students = enrollments
+      .filter(enrollment => enrollment.studentId)
+      .map(enrollment => ({
+        _id: enrollment.studentId._id,
+        name: enrollment.studentId.name,
+        admissionNo: enrollment.studentId.admission,
+        grade: enrollment.grade,
+        stream: enrollment.stream,
+        pathway: enrollment.pathway
+      }));
+
+    return res.json({ students, total: students.length });
+  } catch (err) {
+    console.error("getClassRosterSummary error:", err);
+    return res.status(500).json({ message: "Server error fetching class summary" });
+  }
+};
+
 // ---------------------------
 // GET UNIQUE STREAMS (for filters)
 // ---------------------------
@@ -809,7 +850,7 @@ export const getUniqueStreams = async (req, res) => {
 
     const filter = {
       schoolId: req.user.schoolId,
-      stream: { $ne: null, $ne: '' }
+      stream: { $nin: [null, ''] }
     };
 
     if (normalizedGrade && normalizedGrade !== 'all') { // 🆕 Apply grade filter if provided

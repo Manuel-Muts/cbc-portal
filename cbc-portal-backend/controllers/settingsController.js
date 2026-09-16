@@ -21,7 +21,7 @@ const normalizeAssessments = (assessments) => {
 
   const normalized = assessments.map((assessment, index) => ({
     id: Number(assessment?.id),
-    name: String(assessment?.name || '').trim(),
+    name: String(assessment?.name || '').trim().toUpperCase(),
     enabled: assessment?.enabled !== false,
     sortOrder: Number.isFinite(Number(assessment?.sortOrder)) ? Number(assessment.sortOrder) : index + 1,
     system: assessment?.system === true

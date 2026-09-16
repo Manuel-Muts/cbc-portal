@@ -262,7 +262,10 @@
             <button type="button" id="saveDraftBtn" class="btn warning-btn">💾 Save Draft</button>
             <button type="button" id="loadDraftBtn" class="btn primary-btn" style="display: none;">📂 Load Draft</button>
           </div>
-          <button type="button" id="submitAllMarksBtn" class="btn primary-btn submit-btn">✅ Submit All Marks</button>
+          <div class="submit-progress-group">
+            <button type="button" id="submitAllMarksBtn" class="btn primary-btn submit-btn">✅ Submit All Marks</button>
+            <span id="submitMarksProgress" class="submit-marks-progress" role="status" aria-live="polite" hidden></span>
+          </div>
         </div>
 
         <!-- Draft Status Indicator -->

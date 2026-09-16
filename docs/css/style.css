@@ -59,6 +59,9 @@ body {
   align-items: center;
   justify-content: space-between;
   gap: 20px;
+  position: sticky;
+  top: 0;
+  z-index: 1000;
   min-height: 42px;
   padding: 3px 5% !important;
   background: linear-gradient(110deg, #123c4a 0%, #0f766e 58%, #159a8a 100%) !important;

@@ -1499,6 +1499,19 @@ header.teacher-header {
   border-top-right-radius: 0;
 }
 
+.submit-progress-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.submit-marks-progress {
+  min-width: 42px;
+  color: #047857;
+  font-weight: 800;
+  text-align: right;
+}
+
 header.teacher-header + .teacher-subnav {
   margin-top: -1px;
 }

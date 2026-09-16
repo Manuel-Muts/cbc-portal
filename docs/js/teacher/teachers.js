@@ -13,6 +13,7 @@ document.addEventListener("DOMContentLoaded", () => {
   let editingMarkId = null;
   let teacher = null;
   let isSingleEditMode = false;
+  let singleEditOriginalMark = null;
   let schoolInfo = null; // Global school info cache
   let marksEditPermissionEnabled = false;
   let marksEditPermissionContextKey = null;
@@ -157,6 +158,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const marksPaperOutOfSelect = document.getElementById("marksPaperOutOfSelect");
   const marksYearInput = document.getElementById("marksYearInput");
   const loadStudentsBtn = document.getElementById("loadStudentsBtn");
+  const submitMarksProgress = document.getElementById("submitMarksProgress");
   const marksEntryTable = document.getElementById("marksEntryTable");
   const marksEntryTableBody = document.getElementById("marksEntryTableBody");
   const submitAllMarksBtn = document.getElementById("submitAllMarksBtn");
@@ -1527,12 +1529,44 @@ document.addEventListener("DOMContentLoaded", () => {
     loadedStudents = [];
     currentStudentPage = 1;
     isSingleEditMode = false;
+    singleEditOriginalMark = null;
     const paginationEl = document.getElementById("studentsPagination");
     if (paginationEl) {
       paginationEl.innerHTML = "";
     }
     // Remove subject title if present
     document.querySelector('.selected-subject-title')?.remove();
+  }
+
+  function normalizeEditableMark(mark) {
+    const paper = String(mark?.paper || "combined").toLowerCase();
+    const rawScore = mark?.score;
+    const score = rawScore === null || rawScore === undefined || rawScore === ""
+      ? null
+      : String(rawScore).toUpperCase() === "X"
+        ? "X"
+        : Number(rawScore);
+
+    return {
+      admissionNo: String(mark?.admissionNo || mark?.admission || ""),
+      grade: String(mark?.grade || ""),
+      stream: String(mark?.stream || ""),
+      term: Number(mark?.term || 0),
+      year: Number(mark?.year || 0),
+      assessment: Number(mark?.assessment || 0),
+      paper,
+      outOf: Number(mark?.outOf || (paper === "combined" ? 100 : 50)),
+      subject: String(mark?.subject || ""),
+      course: String(mark?.course || ""),
+      pathway: String(mark?.pathway || ""),
+      score
+    };
+  }
+
+  function singleEditHasChanges(currentMark) {
+    if (!singleEditOriginalMark) return true;
+    return JSON.stringify(normalizeEditableMark(currentMark)) !==
+      JSON.stringify(normalizeEditableMark(singleEditOriginalMark));
   }
 
   // ---------------------------
@@ -1930,6 +1964,14 @@ document.addEventListener("DOMContentLoaded", () => {
 
       if (hasCriticalErrors) return;
 
+      if (isSingleEditMode && allMarksEntered.size === 1) {
+        const editedMark = allMarksEntered.values().next().value;
+        if (!singleEditHasChanges(editedMark)) {
+          showToast("No changes made. You can edit the mark and try again.", "error");
+          return;
+        }
+      }
+
       let absentCount = 0;
       allMarksEntered.forEach(m => {
         const isSenior = window.cbcUtils.isSeniorGrade(m.grade);
@@ -1962,6 +2004,20 @@ document.addEventListener("DOMContentLoaded", () => {
         return;
       }
 
+    let submissionProgress = 1;
+    let submissionProgressTimer = null;
+    const updateSubmissionProgress = (value) => {
+      submissionProgress = Math.min(99, Math.max(1, value));
+      if (submitMarksProgress) {
+        submitMarksProgress.hidden = false;
+        submitMarksProgress.textContent = `${submissionProgress}%`;
+      }
+    };
+    updateSubmissionProgress(submissionProgress);
+    submissionProgressTimer = setInterval(() => {
+      if (submissionProgress < 99) updateSubmissionProgress(submissionProgress + 1);
+    }, 120);
+
     window.spinner?.show(submitAllMarksBtn, 'Submitting...');
 
     try {
@@ -1983,6 +2039,8 @@ document.addEventListener("DOMContentLoaded", () => {
       }
 
       const result = await res.json(); // Expecting { successCount, failureCount } from backend
+      clearInterval(submissionProgressTimer);
+      updateSubmissionProgress(100);
       let submissionToast = null;
 
       if (result.failureCount > 0) {
@@ -2041,7 +2099,12 @@ document.addEventListener("DOMContentLoaded", () => {
       console.error("Submit marks error:", err);
       showToast(err.message || "Error submitting marks", "error");
     } finally {
+      clearInterval(submissionProgressTimer);
       window.spinner?.hide(submitAllMarksBtn);
+      if (submitMarksProgress) {
+        submitMarksProgress.hidden = true;
+        submitMarksProgress.textContent = "";
+      }
     }
     });
   }
@@ -2240,7 +2303,7 @@ document.addEventListener("DOMContentLoaded", () => {
         const gradeWithStream = `${window.cbcUtils.normalizeGrade(headerInfo.grade)}${streamLabel}`;
     const canEditSubmittedGroup = marksEditPermissionEnabled;
     const adminLockText = !marksEditPermissionEnabled ? ' • Edits Disabled' : '';
-    const summaryText = `Grade: ${sanitize(gradeWithStream)} • ${sanitize(subjectDisplay)} • Term: ${sanitize(headerInfo.term)} • Year: ${sanitize(headerInfo.year)} • ${assessmentLabel} — ${fullGroupMarksRaw.length} record${fullGroupMarksRaw.length > 1 ? 's' : ''}${adminLockText}`;
+    const summaryText = `${sanitize(gradeWithStream)} • ${sanitize(subjectDisplay)} • Term: ${sanitize(headerInfo.term)} • ${sanitize(headerInfo.year)} • ${assessmentLabel} — ${fullGroupMarksRaw.length} record${fullGroupMarksRaw.length > 1 ? 's' : ''}${adminLockText}`;
         const summary = document.createElement('summary');
         summary.className = 'marks-accordion-summary';
         summary.innerHTML = `<strong>${summaryText}</strong>`;
@@ -2573,6 +2636,7 @@ document.addEventListener("DOMContentLoaded", () => {
       // 5. Display just this one student in the table
       // Clear allMarksEntered and add only this mark for editing
       allMarksEntered = new Map();
+      singleEditOriginalMark = JSON.parse(JSON.stringify(mark));
       const markEntryKey = getMarkEntryKey(mark.studentId || mark._id); // Use studentId or mark._id as key
       allMarksEntered.set(markEntryKey, mark);
 

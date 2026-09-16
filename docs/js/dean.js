@@ -204,6 +204,7 @@ window.deanDebugCheckStudent = function(admissionNo) {
 
 const CACHE_TTL = 15 * 60 * 1000; // 15 minutes
 const CACHE_KEY_PREFIX = "dean_analytics_cache_v2_";
+let deanPdfAssetsPromise = null;
 
 let schoolInfo = null;
 //.................................
@@ -715,7 +716,7 @@ async function generateReport() {
   
   try {
     const marksPromise = fetchWithAuth(`${API_BASE}/marks/by-grade?${new URLSearchParams({ grade, term, year, assessment: 'all' })}`);
-    const rosterPromise = fetchWithAuth(`${API_BASE}/enrollments/class/${encodeURIComponent(grade)}?limit=500`);
+    const rosterPromise = fetchWithAuth(`${API_BASE}/enrollments/class-summary/${encodeURIComponent(grade)}`);
     const electivePromise = isSenior
       ? fetchWithAuth(`${API_BASE}/electives/assignments`)
       : Promise.resolve([]);
@@ -1007,6 +1008,8 @@ async function downloadSchoolWideRankingAsPDF(rankings) {
     window.spinner.show(btn, "Generating...");
   }
 
+  await new Promise(resolve => requestAnimationFrame(resolve));
+  await ensureDeanPdfAssets();
   // Allow UI to render spinner before heavy PDF task blocks the thread
   await new Promise(resolve => setTimeout(resolve, 100));
 
@@ -2182,7 +2185,7 @@ function renderRankingTable(students, subjects, isSenior, selectedStream = "all"
     }
   }
   const fixedHeader = (label, className = '') => `<th rowspan="2"${className ? ` class="${className}"` : ''} data-pdf-header="true">${label}</th>`;
-  const rankHeaders = `${fixedHeader('Overall Rank')}${hasStreamRank ? fixedHeader('Stream Rank') : ''}`;
+  const rankHeaders = `${fixedHeader('O/Rank')}${hasStreamRank ? fixedHeader('S/Rank') : ''}`;
   let html = `<table class="marks-table" style="width:100%; border-collapse: collapse;">
     <thead><tr>${rankHeaders}${fixedHeader('Name')}${fixedHeader('Adm')}${subjectHeaderTop.join('')}${!isSenior ? fixedHeader('Total', 'total-column-header') : ''}${fixedHeader('Mean')}${fixedHeader('Progress')}${fixedHeader('Total Points')}${fixedHeader('Level')}</tr><tr>${subjectHeaderBottom.join('')}</tr></thead>
     <tbody>`;
@@ -2320,6 +2323,8 @@ async function downloadRankingAsPDF() {
     window.spinner.show(printReportBtn, "Generating PDF...");
   }
 
+  await new Promise(resolve => requestAnimationFrame(resolve));
+  await ensureDeanPdfAssets();
   // Allow UI to render spinner before heavy PDF task blocks the thread
   await new Promise(resolve => setTimeout(resolve, 50)); // Shorter delay
 
@@ -2401,7 +2406,7 @@ async function downloadRankingAsPDF() {
   const rankHeaderIndices = new Set(rawHeaders
     .map((header, idx) => /rank/i.test(header) ? idx : -1)
     .filter(idx => idx !== -1));
-  const hasStreamRankColumn = rawHeaders.includes("Stream Rank");
+  const hasStreamRankColumn = rawHeaders.includes("Stream Rank") || rawHeaders.includes("S/Rank");
   const nameLabelForProgress = nameIdx !== -1 ? rawHeaders[nameIdx] : "Name";
 
   // Determine which columns to skip for PDF clarity
@@ -2420,12 +2425,12 @@ async function downloadRankingAsPDF() {
   rawHeaders.forEach((header, idx) => {
     if (skipIndices.has(idx)) return;
     if (idx === rankHeaderIndex) {
-      headers.push("Overall Rank");
-      if (hasStreamRankColumn) headers.push("Stream Rank");
+      headers.push("O/Rank");
+      if (hasStreamRankColumn) headers.push("S/Rank");
     } else if (rankHeaderIndices.has(idx)) {
       return;
     } else {
-      headers.push(header);
+      headers.push(header === "Total Points" ? "T/Points" : header);
     }
   });
 
@@ -2468,7 +2473,7 @@ async function downloadRankingAsPDF() {
     return filteredCells;
   });
 
-  const specialHeaderNames = new Set(["Overall Rank", "Stream Rank", "Rank", "Name", "Student Name", "Adm", "Admission No", "Total", "Mean", "Progress", "Total Points", "Level"]);
+  const specialHeaderNames = new Set(["O/Rank", "S/Rank", "Overall Rank", "Stream Rank", "Rank", "Name", "Student Name", "Adm", "Admission No", "Total", "Mean", "Progress", "T/Points", "Total Points", "Level"]);
   const subjectColumns = headers.reduce((acc, header, idx) => {
     if (!specialHeaderNames.has(header)) acc.push({ idx, header });
     return acc;
@@ -2528,7 +2533,7 @@ async function downloadRankingAsPDF() {
       row.push("");
     }
 
-    const pointsColIndex = headers.indexOf("Total Points");
+    const pointsColIndex = headers.indexOf("T/Points");
     if (pointsColIndex !== -1) {
       row.push(type === "total" ? groupTotalPoints.toFixed(0) : (groupTotalPoints / groupCount).toFixed(2));
     }
@@ -2565,7 +2570,7 @@ async function downloadRankingAsPDF() {
   }
   const pdfHead = hasPaperHeaderGroup ? [pdfHeaderTop, pdfHeaderBottom] : [headers];
 
-  const streamRankColIndex = headers.indexOf("Stream Rank");
+  const streamRankColIndex = headers.indexOf("S/Rank");
   const progressColIndex = headers.indexOf("Progress");
   doc.autoTable({ 
     startY: yPos, // Use the updated yPos
@@ -3015,6 +3020,8 @@ async function downloadMissingExamsAsPDF() {
     window.spinner.show(printMissingReportBtn, "Generating PDF...");
   }
 
+  await new Promise(resolve => requestAnimationFrame(resolve));
+  await ensureDeanPdfAssets();
   // Allow UI to render spinner before heavy PDF task blocks the thread
   await new Promise(resolve => setTimeout(resolve, 100));
 
@@ -3145,6 +3152,8 @@ async function downloadSubjectPerformanceAsPDF() {
     window.spinner.show(btn, "Generating PDF...");
   }
 
+  await new Promise(resolve => requestAnimationFrame(resolve));
+  await ensureDeanPdfAssets();
   // Allow UI to render spinner before heavy PDF task blocks the thread
   await new Promise(resolve => setTimeout(resolve, 50));
 
@@ -3494,11 +3503,17 @@ function setupAssessmentManagement() {
   let assessments = [];
   let currentPage = 1;
   let totalPages = 1;
-  const pageSize = 10;
+  const pageSize = 5;
   const showMessage = (text, type = 'info') => {
     if (!message) return;
     message.textContent = text;
-    message.style.color = type === 'error' ? '#b91c1c' : '#166534';
+    message.style.color = type === 'error' ? '#b91c1c' : '#047857';
+    message.style.background = type === 'error' ? '#fef2f2' : '#ecfdf5';
+    message.style.border = `1px solid ${type === 'error' ? '#fecaca' : '#6ee7b7'}`;
+    message.style.borderRadius = '8px';
+    message.style.padding = '10px 12px';
+    message.style.fontWeight = '700';
+    message.style.display = 'block';
   };
 
   const render = () => {
@@ -3536,6 +3551,10 @@ function setupAssessmentManagement() {
   };
 
   const loadAllAssessments = async () => {
+    if (Array.isArray(window.assessmentConfig)) {
+      return window.assessmentConfig;
+    }
+
     const token = authService.getToken();
     const response = await fetch(`${API_BASE}/settings/assessments`, {
       headers: { Authorization: `Bearer ${token}` }
@@ -3555,16 +3574,29 @@ function setupAssessmentManagement() {
     titleInput.value = '';
   };
   const openModal = async () => {
-    codeInput.value = await getNextAssessmentCode();
     titleInput.value = '';
+    codeInput.value = '...';
     modal.hidden = false;
     modal.style.display = 'flex';
     requestAnimationFrame(() => titleInput.focus());
+
+    try {
+      codeInput.value = await getNextAssessmentCode();
+    } catch (error) {
+      codeInput.value = '';
+      showMessage(error.message || 'Could not generate an assessment code.', 'error');
+    }
   };
 
   addButton.addEventListener('click', openModal);
   closeModalButton?.addEventListener('click', closeModal);
   cancelModalButton?.addEventListener('click', closeModal);
+  titleInput.addEventListener('input', () => {
+    const start = titleInput.selectionStart;
+    const end = titleInput.selectionEnd;
+    titleInput.value = titleInput.value.toUpperCase();
+    titleInput.setSelectionRange(start, end);
+  });
   modal.addEventListener('click', event => {
     if (event.target === modal) closeModal();
   });
@@ -3595,6 +3627,7 @@ function setupAssessmentManagement() {
         });
         const data = await response.json();
         if (!response.ok) throw new Error(data.message || 'Could not delete assessment.');
+        if (Array.isArray(data.assessments)) window.assessmentConfig = data.assessments;
         await load(Math.min(currentPage, totalPages));
         const latestAssessments = await loadAllAssessments();
         window.assessmentConfig = latestAssessments;
@@ -3612,23 +3645,51 @@ function setupAssessmentManagement() {
   saveButton.type = 'button';
   saveButton.className = 'btn secondary-btn';
   saveButton.textContent = 'Save Changes';
-  saveButton.style.marginTop = '16px';
-  list.after(saveButton);
+  const assessmentActions = document.createElement('div');
+  assessmentActions.style.display = 'flex';
+  assessmentActions.style.flexWrap = 'wrap';
+  assessmentActions.style.alignItems = 'center';
+  assessmentActions.style.gap = '12px';
+  assessmentActions.style.marginTop = '16px';
+  assessmentActions.append(saveButton, message);
+  list.after(assessmentActions);
   saveButton.addEventListener('click', async () => {
+    if (saveButton.disabled) return;
     const rows = [...list.querySelectorAll('[data-assessment-index]')];
-    const payload = await loadAllAssessments();
-    rows.forEach((row, index) => {
+    const hasChanges = rows.some((row, index) => {
       const current = assessments[index];
-      const target = payload.find(item => Number(item.id) === Number(current.id));
-      if (!target) return;
-      target.id = Number(row.querySelector('.assessment-id').value);
-      target.name = row.querySelector('.assessment-name').value.trim();
-      target.enabled = row.querySelector('.assessment-enabled').checked;
+      if (!current) return false;
+
+      const nextId = Number(row.querySelector('.assessment-id').value);
+      const nextName = row.querySelector('.assessment-name').value.trim().toUpperCase();
+      const nextEnabled = row.querySelector('.assessment-enabled').checked;
+
+      return nextId !== Number(current.id) ||
+        nextName !== String(current.name || '').trim().toUpperCase() ||
+        nextEnabled !== (current.enabled !== false);
     });
+
+    if (!hasChanges) {
+      showMessage('No changes made.', 'error');
+      return;
+    }
+
     saveButton.disabled = true;
     saveButton.setAttribute('aria-busy', 'true');
     saveButton.innerHTML = '<span class="spinner" aria-hidden="true"></span> Saving...';
+
     try {
+      const payload = await loadAllAssessments();
+      rows.forEach((row, index) => {
+        const current = assessments[index];
+        const target = payload.find(item => Number(item.id) === Number(current.id));
+        if (!target) return;
+        target.id = Number(row.querySelector('.assessment-id').value);
+        target.name = row.querySelector('.assessment-name').value.trim().toUpperCase();
+        row.querySelector('.assessment-name').value = target.name;
+        target.enabled = row.querySelector('.assessment-enabled').checked;
+      });
+
       const token = authService.getToken();
       const response = await fetch(`${API_BASE}/settings/assessments`, {
         method: 'PUT',
@@ -3637,6 +3698,7 @@ function setupAssessmentManagement() {
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.message || 'Could not save assessments.');
+      if (Array.isArray(data.assessments)) window.assessmentConfig = data.assessments;
       await load(currentPage);
       const latestAssessments = await loadAllAssessments();
       window.assessmentConfig = latestAssessments;
@@ -3653,7 +3715,8 @@ function setupAssessmentManagement() {
   });
 
   saveNewAssessmentButton.addEventListener('click', async () => {
-    const title = titleInput.value.trim();
+    const title = titleInput.value.trim().toUpperCase();
+    titleInput.value = title;
     if (!title) {
       showMessage('Enter an assessment title before creating it.', 'error');
       titleInput.focus();
@@ -3679,6 +3742,7 @@ function setupAssessmentManagement() {
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.message || 'Could not create assessment.');
+      if (Array.isArray(data.assessments)) window.assessmentConfig = data.assessments;
       await load(currentPage);
       const latestAssessments = await loadAllAssessments();
       window.assessmentConfig = latestAssessments;
@@ -3850,7 +3914,12 @@ async function loadDeanProfile() {
       try { // Try to parse cached school info
         const { timestamp, data } = JSON.parse(cachedSchool);
         if (Date.now() - timestamp < CACHE_TTL) {
-          schoolInfo = data;
+          schoolInfo = {
+            name: data?.name,
+            status: data?.status,
+            schoolType: data?.schoolType,
+            gradingConfig: data?.gradingConfig
+          };
         }
       } catch (e) { localStorage.removeItem(SCHOOL_CACHE_KEY); }
     }
@@ -3858,12 +3927,8 @@ async function loadDeanProfile() {
     try {
       // Start fetching school info and signature conversion in parallel // 🆕 Use Promise.allSettled
       const results = await Promise.allSettled([ // Use Promise.allSettled to prevent one failure from blocking others
-        schoolInfo ? Promise.resolve(schoolInfo) : fetchWithAuth(`${API_BASE}/users/my-school?includeLogo=true&fields=name,status,logo,logoMimeType,schoolType,headteacherSignatureUrl,gradingConfig`).catch(e => { console.warn("Failed to fetch school info:", e); return null; }),
-        (deanProfileData.signatureUrl && !deanProfileData.signatureBase64) ? cbcUtils.getImageBase64(deanProfileData.signatureUrl).then(base64 => {
-          deanProfileData.signatureBase64 = base64;
-          deanProfileData.sigFormat = cbcUtils.getImageFormat(base64);
-          return base64;
-        }).catch(e => console.warn("Dean signature conversion failed:", e)) : Promise.resolve(null)
+        schoolInfo ? Promise.resolve(schoolInfo) : fetchWithAuth(`${API_BASE}/users/my-school?includeLogo=false&fields=name,status,schoolType,gradingConfig`).catch(e => { console.warn("Failed to fetch school info:", e); return null; }),
+        Promise.resolve(null)
       ]);
 
       if (results[0].status === 'fulfilled' && results[0].value) {
@@ -4046,6 +4111,47 @@ function sanitizePdfText(value) {
         .trim();
 }
 
+async function ensureDeanPdfAssets() {
+  if (deanProfileData?.schoolLogoBase64 && deanProfileData?.headSignatureBase64) return;
+  if (deanPdfAssetsPromise) return deanPdfAssetsPromise;
+
+  deanPdfAssetsPromise = (async () => {
+    try {
+      const assets = await fetchWithAuth(`${API_BASE}/users/my-school?includeLogo=true&fields=name,logo,logoMimeType,headteacherSignatureUrl`);
+      const logo = assets?.logo;
+      if (logo && !deanProfileData.schoolLogoBase64) {
+        const logoSrc = logo.startsWith('http') || logo.startsWith('/') || logo.startsWith('data:')
+          ? logo
+          : `data:${assets.logoMimeType || 'image/png'};base64,${logo}`;
+        deanProfileData.schoolLogoBase64 = await cbcUtils.getImageBase64(logoSrc);
+        deanProfileData.logoFormat = cbcUtils.getImageFormat(deanProfileData.schoolLogoBase64);
+      }
+
+      if (assets.headteacherSignatureUrl && !deanProfileData.headSignatureBase64) {
+        deanProfileData.headSignatureBase64 = await cbcUtils.getImageBase64(assets.headteacherSignatureUrl);
+        deanProfileData.headSigFormat = cbcUtils.getImageFormat(deanProfileData.headSignatureBase64);
+      }
+
+      if (deanProfileData.signatureUrl && !deanProfileData.signatureBase64) {
+        deanProfileData.signatureBase64 = await cbcUtils.getImageBase64(deanProfileData.signatureUrl);
+        deanProfileData.sigFormat = cbcUtils.getImageFormat(deanProfileData.signatureBase64);
+      }
+
+      const jsPDF = window.jspdf?.jsPDF || window.jsPDF;
+      if (jsPDF) {
+        const tempDoc = new jsPDF();
+        if (deanProfileData.schoolLogoBase64) deanProfileData.logoProps = tempDoc.getImageProperties(deanProfileData.schoolLogoBase64);
+        if (deanProfileData.signatureBase64) deanProfileData.sigProps = tempDoc.getImageProperties(deanProfileData.signatureBase64);
+        if (deanProfileData.headSignatureBase64) deanProfileData.headSigProps = tempDoc.getImageProperties(deanProfileData.headSignatureBase64);
+      }
+    } catch (error) {
+      console.warn('Could not load Dean PDF assets:', error);
+    }
+  })();
+
+  return deanPdfAssetsPromise;
+}
+
 /**
  * Generates a high-quality merged PDF for all students in the grade.
  * This logic uses data already in memory to avoid extra database costs.
@@ -4069,6 +4175,8 @@ async function generateBulkReportCards() {
       btn.disabled = true;
       btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i><span>Generating Reports...</span>';
     }
+    await new Promise(resolve => requestAnimationFrame(resolve));
+    await ensureDeanPdfAssets();
     if (progressWrap) progressWrap.style.display = "block";
     if (progressBar) progressBar.style.width = "0%";
     if (progressPercent) progressPercent.textContent = "0%";
@@ -4300,7 +4408,7 @@ async function generateBulkReportCards() {
         }
 
         // 3. Subject Grid
-        const rankingHeaders = hasGradeStreams ? ["Stream Rank", "Overall Rank"] : ["Overall Rank"];
+        const rankingHeaders = hasGradeStreams ? ["S/Rank", "O/Rank"] : ["O/Rank"];
         const headers = [
           [
             { content: "Subject", rowSpan: 2 },
@@ -4433,7 +4541,7 @@ async function generateBulkReportCards() {
         const remarkMaxWidth = pageWidth - (metaX2 + labelOffset) - 15; // Max width for column 2 comments
 
         // Data definitions for 2-column layout
-        const statLabels = ["Total Marks", "Total Points", "Overall Performance"];
+        const statLabels = ["Total Marks", "T/Points", "Overall Performance"];
         // Compute max totals assuming 100 per subject shown in this report
         const maxTotalMarks = subjectsToShow.length * 100;
         const maxTotalPoints = subjectsToShow.reduce((acc, sub) => {
@@ -4886,6 +4994,63 @@ async function startSmsBroadcast() {
     window.spinner?.hide(broadcastSmsBtn);
   }
 }
+
+let streamFilterRequestId = 0;
+const streamFilterLoading = (() => {
+  if (!filterStreamEl) return null;
+  const indicator = document.createElement('span');
+  indicator.className = 'stream-filter-loading';
+  indicator.innerHTML = '<span class="stream-filter-loading-dot" aria-label="Loading streams"></span>';
+  indicator.hidden = true;
+  filterStreamEl.closest('.filter-group')?.querySelector('label')?.appendChild(indicator);
+  return indicator;
+})();
+
+async function populateStreamsForGrade(grade) {
+  if (!filterStreamEl) return;
+
+  const requestId = ++streamFilterRequestId;
+  filterStreamEl.innerHTML = '<option value="all">All Streams</option>';
+  filterStreamEl.disabled = true;
+  filterStreamEl.style.display = 'none';
+  if (streamFilterLoading) streamFilterLoading.hidden = !grade;
+  if (!grade) {
+    filterStreamEl.disabled = false;
+    return;
+  }
+
+  try {
+    const streamsResponse = await fetchWithAuth(`${API_BASE}/enrollments/unique-streams?grade=${encodeURIComponent(grade)}`);
+    if (requestId !== streamFilterRequestId) return;
+
+    const roster = Array.isArray(streamsResponse) ? streamsResponse : [];
+    const streams = [...new Set(
+      roster
+        .map(stream => String(stream || '').trim())
+        .filter(Boolean)
+    )].sort();
+
+    streams.forEach(stream => {
+      const option = document.createElement('option');
+      option.value = stream;
+      option.textContent = `Stream ${stream}`;
+      filterStreamEl.appendChild(option);
+    });
+    filterStreamEl.style.display = streams.length > 1 ? 'inline-block' : 'none';
+    filterStreamEl.disabled = false;
+    if (streamFilterLoading) streamFilterLoading.hidden = true;
+  } catch (error) {
+    if (requestId === streamFilterRequestId) {
+      console.warn('Could not load streams for selected grade:', error);
+      filterStreamEl.disabled = false;
+      if (streamFilterLoading) streamFilterLoading.hidden = true;
+    }
+  }
+}
+
+filterGradeEl?.addEventListener('change', () => {
+  populateStreamsForGrade(filterGradeEl.value);
+});
 
 if (filterStreamEl) {
   filterStreamEl.addEventListener("change", () => {
