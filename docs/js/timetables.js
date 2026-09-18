@@ -312,7 +312,7 @@ const TimetableModule = (function() {
 
     function normalizeSchoolType(value) {
         const normalized = String(value || "").trim().toLowerCase().replace(/[^a-z]+/g, "_");
-        if (normalized === "senior" || normalized === "senior_school" || normalized === "secondary") return "senior";
+        if (normalized === "senior" || normalized === "senior_school" || normalized === "senior_school_grades_10_12" || normalized === "secondary") return "senior";
         if (
             normalized === "primary_junior" ||
             normalized === "junior_primary" ||
@@ -320,7 +320,8 @@ const TimetableModule = (function() {
             normalized === "junior_and_primary" ||
             normalized === "primary_plus_junior" ||
             normalized === "junior_primary_school" ||
-            normalized === "primary_junior_school"
+            normalized === "primary_junior_school" ||
+            normalized === "primary_junior_school_grades_pg_9"
         ) return "primary_junior";
         if (normalized === "full" || normalized === "full_school" || normalized === "full_school_grades_pg_12") return "full";
         return null;
@@ -328,24 +329,30 @@ const TimetableModule = (function() {
 
     function getSchoolTypeKey() {
         const schoolType = schoolInfo?.schoolType || schoolInfo?.school?.schoolType;
-        return normalizeSchoolType(schoolType) || 'full';
+        const normalizedType = normalizeSchoolType(schoolType);
+        if (!normalizedType) {
+            console.warn("Timetable school type is unavailable or unrecognized:", schoolType);
+        }
+        return normalizedType;
     }
 
     function applySchoolTypeSettings() {
-        if (getSchoolTypeKey() === 'primary_junior') {
+        const schoolType = getSchoolTypeKey();
+        if (schoolType === 'primary_junior') {
             settings.lessonsPerDay = 8;
             settings.schoolDayEnd = "15:30";
             if (!settings.breaks.some(b => b.name === "WRAP UP")) {
                 settings.breaks.push({ name: "WRAP UP", afterLesson: 8, duration: 5 });
             }
-        } else {
+        } else if (schoolType) {
             settings.lessonsPerDay = 9;
         }
     }
 
     function getGradeOptionsForSchool() {
         const schoolType = getSchoolTypeKey();
-        return SCHOOL_TYPES[schoolType].gradeOptions.map(g => (g.startsWith('PP') || g.toUpperCase() === 'PG') ? g : `Grade ${g}`);
+        const gradeOptions = SCHOOL_TYPES[schoolType]?.gradeOptions || [];
+        return gradeOptions.map(g => (g.startsWith('PP') || g.toUpperCase() === 'PG') ? g : `Grade ${g}`);
     }
 
     // Safe access to centralized break defaults with fallbacks in case scripts load out of order
@@ -384,6 +391,7 @@ const TimetableModule = (function() {
 
     function isGradeSupportedBySchoolType(grade) {
         const schoolType = getSchoolTypeKey();
+        if (!schoolType) return false;
         if (schoolType === 'primary_junior') {
             return !window.cbcUtils?.isSeniorGrade(grade);
         }
@@ -1186,16 +1194,14 @@ const TimetableModule = (function() {
                     
                     populateDropdowns(); // Re-populate dropdowns with fresh info (using the now updated schoolInfo)
                 } else {
-                    // Fallback if server fetch fails
-                    console.warn("Failed to fetch school info from server, falling back to default 'full' school type.");
-                    schoolInfo = { schoolType: 'full' };
+                    console.warn("Failed to fetch school type from server; timetable grade options will remain unavailable.");
+                    schoolInfo = null;
                     populateDropdowns();
                 }
             }
         } catch (err) {
             console.error("Failed to fetch school info for timetable module:", err);
-            // Fallback to default grade options if school info can't be fetched
-            schoolInfo = { schoolType: 'full' };
+            schoolInfo = null;
             populateDropdowns();
         }
     }

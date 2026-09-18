@@ -425,21 +425,23 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   // 🆕 FUNCTION TO SET DEFAULT TERM (called after loadActiveTerm completes)
+  function getMonthBasedTerm() {
+    const month = new Date().getMonth() + 1;
+    if (month >= 5 && month <= 8) return "Term 2";
+    if (month >= 9) return "Term 3";
+    return "Term 1";
+  }
+
   function setDefaultTermFromActiveTerm() {
     if (marksTermSelect) {
       // 🆕 Use active term from API, fallback to month-based calculation
-      let currentTerm = "1";
+      let currentTerm = getMonthBasedTerm().replace("Term ", "");
       if (activeTermValue && activeTermValue.includes("Term")) {
         // Extract term number from "Term 1", "Term 2", "Term 3"
         const termMatch = activeTermValue.match(/\d+/);
         if (termMatch) {
           currentTerm = termMatch[0];
         }
-      } else {
-        // Fallback to month-based calculation if active term not available
-        const month = new Date().getMonth() + 1; // 1-12
-        if (month >= 5 && month <= 8) currentTerm = "2";
-        else if (month >= 9) currentTerm = "3";
       }
       marksTermSelect.value = currentTerm;
       marksTermSelect.disabled = true; // Make term read-only (current term only)
@@ -476,21 +478,28 @@ document.addEventListener("DOMContentLoaded", () => {
   setupTeacherNotifications();
 
   // 🆕 LOAD ACTIVE TERM FROM CONFIGURATION
-  async function loadActiveTerm() {
+  async function loadActiveTerm(schoolInfoFromApi = null) {
     const cacheKey = "term-config";
+
+    if (schoolInfoFromApi?.termConfig) {
+      termConfigCache.set(cacheKey, schoolInfoFromApi.termConfig);
+      window.cbcSettingsCache?.set(cacheKey, schoolInfoFromApi.termConfig);
+      activeTermValue = schoolInfoFromApi.termConfig.activeTerm || getMonthBasedTerm();
+      return activeTermValue;
+    }
     
     // Check cache first
     const cached = termConfigCache.get(cacheKey);
     if (cached) {
-      activeTermValue = cached.activeTerm;
-      return cached.activeTerm;
+      activeTermValue = cached.activeTerm || getMonthBasedTerm();
+      return activeTermValue;
     }
 
     const persisted = window.cbcSettingsCache?.get("term-config");
     if (persisted) {
       termConfigCache.set(cacheKey, persisted);
-      activeTermValue = persisted.activeTerm;
-      return persisted.activeTerm;
+      activeTermValue = persisted.activeTerm || getMonthBasedTerm();
+      return activeTermValue;
     }
 
     // Prevent duplicate in-flight requests
@@ -500,8 +509,8 @@ document.addEventListener("DOMContentLoaded", () => {
         await new Promise(r => setTimeout(r, 100));
         if (termConfigCache.has(cacheKey)) {
           const cached = termConfigCache.get(cacheKey);
-          activeTermValue = cached.activeTerm;
-          return cached.activeTerm;
+          activeTermValue = cached.activeTerm || getMonthBasedTerm();
+          return activeTermValue;
         }
       }
       return activeTermValue; // Return last known value if cache still empty
@@ -514,16 +523,15 @@ document.addEventListener("DOMContentLoaded", () => {
       if (!res.ok) throw new Error("Failed to fetch term config");
       
       const data = await res.json();
-      const { termConfig = { activeTerm: 'Term 1' } } = data;
+      const termConfig = data?.termConfig || {};
       termConfigCache.set(cacheKey, termConfig);
       window.cbcSettingsCache?.set("term-config", termConfig);
-      activeTermValue = termConfig.activeTerm;
-      return termConfig.activeTerm;
+      activeTermValue = termConfig.activeTerm || getMonthBasedTerm();
+      return activeTermValue;
     } catch (err) {
       console.warn("Error loading active term:", err);
-      // Fallback to Term 1 if API fails
-      activeTermValue = 'Term 1';
-      return 'Term 1';
+      activeTermValue = getMonthBasedTerm();
+      return activeTermValue;
     } finally {
       termConfigInFlight.delete(cacheKey);
     }
@@ -760,11 +768,10 @@ document.addEventListener("DOMContentLoaded", () => {
 
       // Reuse the cached school name when returning from another dashboard page.
       // The header refresh action clears this cache when fresh data is needed.
-      if (getCachedSchoolName()) return;
     }
 
     try {
-      const res = await fetchWithAuth(`${API_BASE}/my-school?fields=name`);
+      const res = await fetchWithAuth(`${API_BASE}/my-school?fields=name,termConfig,assessmentConfig`);
       if (!res || typeof res.json !== "function") {
         console.warn("School info fetch skipped because auth redirect occurred or response is invalid");
         return;
@@ -772,6 +779,17 @@ document.addEventListener("DOMContentLoaded", () => {
 
       const data = await res.json().catch(() => null);
       const schoolName = resolveSchoolNameFromResponse(data);
+      if (data?.termConfig) {
+        termConfigCache.set("term-config", data.termConfig);
+        window.cbcSettingsCache?.set("term-config", data.termConfig);
+        activeTermValue = data.termConfig.activeTerm;
+      }
+      if (Array.isArray(data?.assessmentConfig)) {
+        window.assessmentConfig = data.assessmentConfig;
+        window.ASSESSMENT_MAPPING = Object.fromEntries(
+          data.assessmentConfig.map(assessment => [assessment.id, assessment.name])
+        );
+      }
 
       if (!schoolName) {
         console.warn("School info fetch warning: no school name in API response", data);
@@ -790,7 +808,11 @@ document.addEventListener("DOMContentLoaded", () => {
         return;
       }
 
-      const freshSchoolInfo = { name: schoolName };
+      const freshSchoolInfo = {
+        name: schoolName,
+        termConfig: data?.termConfig,
+        assessmentConfig: data?.assessmentConfig
+      };
       cacheSchoolName(schoolName);
       schoolInfo = freshSchoolInfo;
       window.currentSchool = schoolInfo;
@@ -952,9 +974,16 @@ document.addEventListener("DOMContentLoaded", () => {
   // ---------------------------
   // ASSESSMENT SELECT POPULATE
   // ---------------------------
-  (async function populateAssessments() {
+  async function populateAssessments() {
     const selectElements = [assessmentSelect, marksAssessmentSelect].filter(el => el);
-    const assessments = await (window.loadAssessmentConfig?.() || Promise.resolve([]));
+    const configuredAssessments = Array.isArray(schoolInfo?.assessmentConfig)
+      ? schoolInfo.assessmentConfig
+      : window.assessmentConfig;
+    const assessments = Array.isArray(configuredAssessments)
+      ? configuredAssessments.length > 0
+        ? configuredAssessments.filter(assessment => assessment.enabled !== false)
+        : (window.getEnabledAssessments?.() || [])
+      : await (window.loadAssessmentConfig?.() || Promise.resolve([]));
 
     selectElements.forEach(select => {
       select.innerHTML = '<option value="">-- Select Assessment --</option>';
@@ -965,7 +994,7 @@ document.addEventListener("DOMContentLoaded", () => {
         select.appendChild(opt);
       });
     });
-  })();
+  }
 
   // ---------------------------
   // NEW: POPULATE SUBJECT/CLASS ALLOCATIONS DROPDOWN
@@ -2771,10 +2800,11 @@ document.addEventListener("DOMContentLoaded", () => {
     // Initialize Tabs
     setupTabs();
     
-    await loadSchoolName();
+    const schoolInfoFromApi = await loadSchoolName();
 
-    // 🆕 Fetch active term configuration from API
-    await loadActiveTerm();
+    // Term configuration is included in the existing school-info request.
+    await loadActiveTerm(schoolInfoFromApi);
+    await populateAssessments();
     
     // 🆕 Set term filter to active term after API loads
     setDefaultTermFromActiveTerm();

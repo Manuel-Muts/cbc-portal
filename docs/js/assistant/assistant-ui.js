@@ -8,6 +8,8 @@ class SystemAssistant {
     this.messages = null;
     this.input = null;
     this.isOpen = false;
+    this.isDragging = false;
+    this.suppressNextToggle = false;
     this.init();
   }
 
@@ -63,7 +65,14 @@ class SystemAssistant {
     this.messages = document.getElementById('systemAssistantMessages');
     this.input = document.getElementById('systemAssistantInput');
 
-    this.openBtn.addEventListener('click', () => this.toggle());
+    this.openBtn.addEventListener('click', () => {
+      if (this.suppressNextToggle) {
+        this.suppressNextToggle = false;
+        return;
+      }
+      this.toggle();
+    });
+    this.setupDragging();
     document.getElementById('systemAssistantClose').addEventListener('click', () => this.close());
     document.getElementById('systemAssistantSend').addEventListener('click', () => this.handleSend());
     document.querySelectorAll('.system-assistant-suggestion').forEach((button) => {
@@ -81,6 +90,83 @@ class SystemAssistant {
       this.removeTypingIndicator();
       this.addMessage('Hello! I can answer general questions about the system and help you get started quickly.', 'bot');
     }, 700);
+  }
+
+  setupDragging() {
+    const savedPosition = localStorage.getItem('systemAssistantPosition');
+    if (savedPosition) {
+      try {
+        const position = JSON.parse(savedPosition);
+        this.setPosition(position.left, position.top);
+      } catch {
+        localStorage.removeItem('systemAssistantPosition');
+      }
+    }
+
+    let startX = 0;
+    let startY = 0;
+    let startLeft = 0;
+    let startTop = 0;
+    let moved = false;
+
+    this.openBtn.addEventListener('pointerdown', (event) => {
+      if (event.button !== undefined && event.button !== 0) return;
+
+      const rect = this.container.getBoundingClientRect();
+      startX = event.clientX;
+      startY = event.clientY;
+      startLeft = rect.left;
+      startTop = rect.top;
+      moved = false;
+      this.isDragging = true;
+      this.container.classList.add('dragging');
+      this.openBtn.setPointerCapture?.(event.pointerId);
+    });
+
+    this.openBtn.addEventListener('pointermove', (event) => {
+      if (!this.isDragging) return;
+
+      const deltaX = event.clientX - startX;
+      const deltaY = event.clientY - startY;
+      if (Math.abs(deltaX) > 4 || Math.abs(deltaY) > 4) moved = true;
+      if (!moved) return;
+
+      this.setPosition(startLeft + deltaX, startTop + deltaY);
+    });
+
+    const stopDragging = (event) => {
+      if (!this.isDragging) return;
+
+      this.isDragging = false;
+      this.container.classList.remove('dragging');
+      this.openBtn.releasePointerCapture?.(event.pointerId);
+
+      if (moved) {
+        this.suppressNextToggle = true;
+        const rect = this.container.getBoundingClientRect();
+        localStorage.setItem('systemAssistantPosition', JSON.stringify({
+          left: rect.left,
+          top: rect.top
+        }));
+      }
+    };
+
+    this.openBtn.addEventListener('pointerup', stopDragging);
+    this.openBtn.addEventListener('pointercancel', stopDragging);
+  }
+
+  setPosition(left, top) {
+    const width = this.container.offsetWidth || 56;
+    const height = this.container.offsetHeight || 56;
+    const maxLeft = Math.max(8, window.innerWidth - width - 8);
+    const maxTop = Math.max(8, window.innerHeight - height - 8);
+    const clampedLeft = Math.min(Math.max(8, Number(left) || 8), maxLeft);
+    const clampedTop = Math.min(Math.max(8, Number(top) || 8), maxTop);
+
+    this.container.style.left = `${clampedLeft}px`;
+    this.container.style.top = `${clampedTop}px`;
+    this.container.style.right = 'auto';
+    this.container.style.bottom = 'auto';
   }
 
   toggle() {

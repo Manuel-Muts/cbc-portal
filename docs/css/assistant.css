@@ -21,6 +21,12 @@
   font-size: 1.25rem;
   cursor: pointer;
   box-shadow: 0 10px 25px rgba(37, 99, 235, 0.25);
+  touch-action: none;
+  user-select: none;
+}
+
+.system-assistant-shell.dragging .system-assistant-toggle {
+  cursor: grabbing;
 }
 
 .system-assistant-toggle.active {
