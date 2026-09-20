@@ -10,6 +10,15 @@ import LoginAttempt from '../models/LoginAttempt.js';
 import cache from "../utils/cacheManager.js";
 import axios from 'axios';
 import crypto from 'crypto';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
+import {
+  backupMongoDatabase,
+  BACKUP_COLLECTION_OPTIONS,
+  listMongoBackupFolders
+} from '../services/backupCronService.js';
+
+const execFileAsync = promisify(execFile);
 
 const parseBoolean = (value) => {
   if (typeof value === 'boolean') return value;
@@ -688,6 +697,85 @@ export const updateSettings = async (req, res) => {
   }
 };
 
+export const restoreLatestBackup = async (req, res, restoreMode = 'collections') => {
+  try {
+    if (req.user.role !== 'super_admin') {
+      return res.status(403).json({ msg: 'Only super-admins can restore backups' });
+    }
+
+    const mongoUri = process.env.MONGO_LOCAL || process.env.MONGO_ATLAS;
+    if (!mongoUri) {
+      return res.status(500).json({ msg: 'MongoDB connection string is not configured.' });
+    }
+
+    const backupFolder = req.body?.backupFolder;
+    const scriptPath = new URL('../scripts/restoreMongoBackup.js', import.meta.url).pathname;
+    const scriptArgs = [scriptPath, restoreMode];
+    if (backupFolder) scriptArgs.push(backupFolder);
+    const { stdout, stderr } = await execFileAsync('node', scriptArgs, {
+      env: {
+        ...process.env,
+        MONGO_LOCAL: mongoUri,
+        MONGO_ATLAS: mongoUri,
+        RESTORE_MODE: restoreMode,
+        ...(backupFolder ? { BACKUP_FOLDER: backupFolder } : {})
+      }
+    });
+
+    return res.json({
+      success: true,
+      mode: restoreMode,
+      message: `${restoreMode === 'full' ? 'Full database' : 'Collection-specific'} restore started successfully.`,
+      output: stdout || stderr || 'No output returned.'
+    });
+  } catch (error) {
+    console.error('Restore latest backup error:', error);
+    return res.status(500).json({
+      msg: 'Failed to restore latest backup.',
+      details: error.message || 'Unknown error'
+    });
+  }
+};
+
+export const getBackups = async (req, res) => {
+  try {
+    return res.json({ backups: listMongoBackupFolders() });
+  } catch (error) {
+    console.error('List backups error:', error);
+    return res.status(500).json({ msg: 'Failed to list backups.' });
+  }
+};
+
+export const createManualBackup = async (req, res) => {
+  try {
+    const mode = req.body?.mode === 'full' ? 'full' : 'collections';
+    const requestedCollections = Array.isArray(req.body?.collections) ? req.body.collections : [];
+    const selectedCollections = requestedCollections.filter((collectionName) =>
+      BACKUP_COLLECTION_OPTIONS.includes(collectionName)
+    );
+
+    if (mode === 'collections' && selectedCollections.length === 0) {
+      return res.status(400).json({
+        msg: 'Select at least one collection to back up.',
+        availableCollections: BACKUP_COLLECTION_OPTIONS
+      });
+    }
+
+    const result = await backupMongoDatabase({
+      collections: mode === 'full' ? null : selectedCollections
+    });
+    return res.status(201).json({
+      success: true,
+      mode,
+      collections: result.selectedCollections,
+      backupFolder: result.backupRootDir.split(/[\\/]/).pop(),
+      message: 'Backup created successfully.'
+    });
+  } catch (error) {
+    console.error('Manual backup error:', error);
+    return res.status(500).json({ msg: 'Failed to create backup.', details: error.message });
+  }
+};
 
 // ---------------------------
 // TOGGLE SCHOOL STATUS (Super-admin)

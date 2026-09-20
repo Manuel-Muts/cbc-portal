@@ -35,6 +35,26 @@ export const buildDashboardSummaryPayload = ({
 
 const getDayStart = () => new Date(new Date().setHours(0, 0, 0, 0));
 
+export const getDashboardSummaryRetentionCutoffDate = (daysToKeep = 7) => {
+  const cutoff = new Date();
+  cutoff.setHours(0, 0, 0, 0);
+  cutoff.setDate(cutoff.getDate() - daysToKeep);
+  return cutoff;
+};
+
+export const pruneOldDashboardSummaries = async ({ daysToKeep = 7 } = {}) => {
+  const cutoffDate = getDashboardSummaryRetentionCutoffDate(daysToKeep);
+
+  const result = await DashboardSummary.deleteMany({
+    summaryDate: { $lt: cutoffDate }
+  });
+
+  return {
+    deletedCount: result.deletedCount || 0,
+    cutoffDate
+  };
+};
+
 export const computeDashboardSummaryForSchool = async (schoolId) => {
   const school = await School.findById(schoolId).select('smsCredits termConfig.activeTerm').lean();
   const currentYear = new Date().getFullYear();

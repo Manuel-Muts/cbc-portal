@@ -407,7 +407,124 @@ setCache(cacheKey, metrics);
         break;
 
       case "backups":
-        contentArea.innerHTML = `<div class="card"><h2>Backups</h2><p>Backup and restore database.</p></div>`;
+        contentArea.innerHTML = `
+          <div class="card">
+            <h2>Backups</h2>
+            <p>Back up the whole database or the selected collections, then restore a specific backup folder.</p>
+            <fieldset style="margin-top:20px; padding:15px; border:1px solid #cbd5e1; border-radius:6px;">
+              <legend style="padding:0 6px; font-weight:600;">Collections to back up</legend>
+              <div id="backupCollectionOptions" style="display:flex; gap:14px; flex-wrap:wrap;">
+                ${['marks', 'studentenrollments', 'users', 'schools', 'payments'].map((collectionName) => `
+                  <label style="display:flex; gap:6px; align-items:center;">
+                    <input type="checkbox" name="backupCollection" value="${collectionName}" checked>
+                    ${collectionName}
+                  </label>
+                `).join('')}
+              </div>
+            </fieldset>
+            <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:end; margin-top:20px;">
+              <div style="min-width:280px; flex:1;">
+                <label for="backupFolderSelect" style="display:block; margin-bottom:6px; font-weight:600;">Backup folder to restore</label>
+                <select id="backupFolderSelect" style="width:100%; padding:10px; border:1px solid #cbd5e1; border-radius:6px;">
+                  <option value="">Loading backups...</option>
+                </select>
+              </div>
+              <button id="refreshBackupsBtn" class="btn secondary-btn">Refresh</button>
+            </div>
+            <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:18px;">
+              <button id="backupCollectionsBtn" class="primary-btn">Back Up Selected Collections</button>
+              <button id="backupFullBtn" class="primary-btn">Back Up Full Database</button>
+              <button id="restoreCollectionsBtn" class="btn secondary-btn" style="background:#b91c1c; color:white;">Restore Selected Collections</button>
+              <button id="restoreFullBtn" class="btn secondary-btn" style="background:#7c2d12; color:white;">Restore Full Database</button>
+            </div>
+            <p id="backupStatus" style="margin-top:16px; color:#64748b;"></p>
+          </div>
+        `;
+
+        (async () => {
+          const folderSelect = document.getElementById('backupFolderSelect');
+          const status = document.getElementById('backupStatus');
+          const setStatus = (message, isError = false) => {
+            status.textContent = message;
+            status.style.color = isError ? '#b91c1c' : '#64748b';
+          };
+
+          const loadBackups = async () => {
+            const res = await authFetch('/backups');
+            if (!res || !res.ok) {
+              folderSelect.innerHTML = '<option value="">Unable to load backups</option>';
+              setStatus('Could not load backup folders.', true);
+              return;
+            }
+            const data = await res.json();
+            const backups = Array.isArray(data.backups) ? data.backups : [];
+            folderSelect.innerHTML = backups.length
+              ? backups.map((backup) => `<option value="${backup.name}">${backup.name} (${new Date(backup.createdAt).toLocaleString()})</option>`).join('')
+              : '<option value="">No backup folders found</option>';
+            setStatus(`${backups.length} backup folder${backups.length === 1 ? '' : 's'} available.`);
+          };
+
+          const triggerBackup = async (mode, button) => {
+            button.disabled = true;
+            const originalText = button.textContent;
+            button.textContent = 'Backing up...';
+            try {
+              const collections = Array.from(document.querySelectorAll('input[name="backupCollection"]:checked'))
+                .map((input) => input.value);
+              const res = await authFetch('/backups', {
+                method: 'POST',
+                body: JSON.stringify({ mode, collections })
+              });
+              const data = res ? await res.json().catch(() => ({})) : {};
+              if (!res || !res.ok) throw new Error(data.msg || 'Backup failed.');
+              setStatus(`${data.message} Folder: ${data.backupFolder}`);
+              await loadBackups();
+            } catch (error) {
+              setStatus(error.message || 'Backup failed.', true);
+            } finally {
+              button.disabled = false;
+              button.textContent = originalText;
+            }
+          };
+
+          const triggerRestore = async (mode, button) => {
+            const backupFolder = folderSelect.value;
+            if (!backupFolder) {
+              setStatus('Select a backup folder first.', true);
+              return;
+            }
+            const warning = mode === 'full'
+              ? `This will restore the full database from ${backupFolder}. Continue?`
+              : `This will restore selected collections from ${backupFolder}. Continue?`;
+            if (!confirm(warning)) return;
+
+            button.disabled = true;
+            const originalText = button.textContent;
+            button.textContent = 'Restoring...';
+            try {
+              const endpoint = mode === 'full' ? '/restore-backup/full' : '/restore-backup/collections';
+              const res = await authFetch(endpoint, {
+                method: 'POST',
+                body: JSON.stringify({ backupFolder })
+              });
+              const data = res ? await res.json().catch(() => ({})) : {};
+              if (!res || !res.ok) throw new Error(data.msg || 'Restore failed.');
+              setStatus(`${data.message} Folder: ${backupFolder}`);
+            } catch (error) {
+              setStatus(error.message || 'Restore failed.', true);
+            } finally {
+              button.disabled = false;
+              button.textContent = originalText;
+            }
+          };
+
+          document.getElementById('refreshBackupsBtn').onclick = loadBackups;
+          document.getElementById('backupCollectionsBtn').onclick = (event) => triggerBackup('collections', event.currentTarget);
+          document.getElementById('backupFullBtn').onclick = (event) => triggerBackup('full', event.currentTarget);
+          document.getElementById('restoreCollectionsBtn').onclick = (event) => triggerRestore('collections', event.currentTarget);
+          document.getElementById('restoreFullBtn').onclick = (event) => triggerRestore('full', event.currentTarget);
+          await loadBackups();
+        })();
         break;
 
       case "settings":
@@ -1434,6 +1551,44 @@ if (nextSchoolsBtn) {
       // Maintenance Button Logic
       const cleanOrphansBtn = document.getElementById('manualCleanOrphansBtn');
       const cleanLoginsBtn = document.getElementById('manualCleanLoginsBtn');
+      const restoreLatestBackupBtn = document.getElementById('restoreLatestBackupBtn');
+      const restoreFullBackupBtn = document.getElementById('restoreFullBackupBtn');
+
+      const triggerRestore = async (mode, button) => {
+        const confirmed = confirm(mode === 'full'
+          ? 'This will restore the latest FULL database backup. Continue?'
+          : 'This will restore the latest selected collection backup. Continue?');
+        if (!confirmed) return;
+
+        button.disabled = true;
+        button.textContent = 'Restoring...';
+
+        try {
+          const path = mode === 'full' ? '/restore-latest-backup/full' : '/restore-latest-backup';
+          const res = await authFetch(path, { method: 'POST' });
+          if (res && res.ok) {
+            const data = await res.json();
+            alert(data.message || 'Backup restore completed successfully.');
+          } else {
+            const errData = res ? await res.json().catch(() => ({ msg: 'Restore failed' })) : { msg: 'Connection error' };
+            alert(`Restore failed: ${errData.msg || errData.message || 'Unknown error'}`);
+          }
+        } catch (err) {
+          console.error('Restore backup failed:', err);
+          alert('Restore failed: ' + (err.message || err));
+        } finally {
+          button.disabled = false;
+          button.textContent = mode === 'full' ? '💥 Restore Full Database' : '🔄 Restore Selected Backup';
+        }
+      };
+
+      if (restoreLatestBackupBtn) {
+        restoreLatestBackupBtn.onclick = () => triggerRestore('collections', restoreLatestBackupBtn);
+      }
+
+      if (restoreFullBackupBtn) {
+        restoreFullBackupBtn.onclick = () => triggerRestore('full', restoreFullBackupBtn);
+      }
 
       if (cleanOrphansBtn) {
         cleanOrphansBtn.onclick = async () => {

@@ -1,7 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { buildDashboardSummaryPayload } from '../services/dashboardSummaryService.js';
+import {
+  buildDashboardSummaryPayload,
+  getDashboardSummaryRetentionCutoffDate
+} from '../services/dashboardSummaryService.js';
 
 test('buildDashboardSummaryPayload returns the expected compact dashboard summary', () => {
   const summary = buildDashboardSummaryPayload({
@@ -30,4 +33,17 @@ test('buildDashboardSummaryPayload returns the expected compact dashboard summar
   assert.equal(summary.smsCredits, 350);
   assert.equal(summary.unreadAnnouncements, 8);
   assert.ok(summary.updatedAt);
+});
+
+test('getDashboardSummaryRetentionCutoffDate returns a cutoff older than the last 7 days', () => {
+  const cutoff = getDashboardSummaryRetentionCutoffDate(7);
+  const now = new Date();
+
+  assert.ok(cutoff instanceof Date);
+  assert.ok(cutoff <= now);
+
+  const diffMs = now.getTime() - cutoff.getTime();
+  const diffDays = diffMs / (1000 * 60 * 60 * 24);
+
+  assert.ok(diffDays >= 7 && diffDays < 8);
 });

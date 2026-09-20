@@ -20,7 +20,10 @@ import {
   toggleSchoolStatus,
   cleanLoginAttempts,
   topUpSmsCredits,
-  getSMSProviderBalance
+  getSMSProviderBalance,
+  restoreLatestBackup,
+  createManualBackup,
+  getBackups,
 } from '../controllers/superAdminController.js';
 import { School } from "../models/school.js"; 
 
@@ -71,6 +74,11 @@ router.get('/analytics', superAdminOnly, getAnalytics);
 router.get('/logs', superAdminOnly, getLogs);
 router.get('/settings', superAdminOnly, getSettings);
 router.put('/settings', superAdminOnly, updateSettings);
+router.post('/restore-latest-backup', superAdminOnly, restoreLatestBackup);
+router.get('/backups', superAdminOnly, getBackups);
+router.post('/backups', superAdminOnly, createManualBackup);
+router.post('/restore-backup/full', superAdminOnly, (req, res) => restoreLatestBackup(req, res, 'full'));
+router.post('/restore-backup/collections', superAdminOnly, (req, res) => restoreLatestBackup(req, res, 'collections'));
 router.delete('/clean-login-attempts', superAdminOnly, cleanLoginAttempts);
 
 // ============================

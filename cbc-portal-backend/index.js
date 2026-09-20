@@ -23,6 +23,7 @@ import accountsRoutes from "./routes/accountsRoutes.js";
 import reportsRoutes from "./routes/reportsRoutes.js";
 import { mpesaCallback } from './controllers/mpesaController.js';
 import { startCronJobs } from './services/cronService.js';
+import { startBackupCronJobs } from './services/backupCronService.js';
 import expenseRoutes from './routes/expenseRoutes.js'; // 🆕
 import settingsRoutes from './routes/settingsRoutes.js'; // New import
 import timetableRoutes from './routes/timetableRoutes.js';
@@ -412,8 +413,9 @@ mongoose.connect(mongoURI, mongooseOptions)
       console.error("⚠️ Mark index synchronization failed:", err.message || err);
     }
     
-    // 🚀 Start scheduled background tasks (Materials cleanup & Payment backups)
+    // 🚀 Start scheduled background tasks
     startCronJobs();
+    startBackupCronJobs();
 
     const PORT = process.env.PORT || 5000;
     app.listen(PORT, () =>
