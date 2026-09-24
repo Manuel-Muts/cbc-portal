@@ -6,6 +6,9 @@
   "scripts": {
     "start": "node index.js",
     "dev": "nodemon index.js",
+    "backup-mongo": "node scripts/runMongoBackup.js",
+    "refresh-dashboard-summaries": "node scripts/runDashboardSummaryRefresh.js",
+    "prune-dashboard-summaries": "node scripts/pruneDashboardSummaries.js",
     "migrate-learner-usernames": "node scripts/migrateLearnerUsernames.js",
     "remove-legacy-firstname": "node scripts/removeLegacyFirstname.js",
     "remove-legacy-mark-fields": "node scripts/removeLegacyMarkFields.js",

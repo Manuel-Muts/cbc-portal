@@ -1039,7 +1039,7 @@ async function downloadSchoolWideRankingAsPDF(rankings) {
     doc.setFont("helvetica", "bold");
     doc.text(schoolName, pageWidth / 2, 20, { align: "center" });
     
-    doc.setFontSize(14);
+    doc.setFontSize(12);
     doc.text("SCHOOL PHASE RANKINGS", pageWidth / 2, 30, { align: "center" });
     
     doc.setFontSize(10);
@@ -2140,6 +2140,16 @@ function renderRankingTable(students, subjects, isSenior, selectedStream = "all"
     const stream = String(s.stream || "").trim();
     return stream && stream.toLowerCase() !== "unassigned";
   });
+  const namedStreams = new Set(students
+    .map(s => String(s.stream || "").trim())
+    .filter(stream => stream && stream.toLowerCase() !== "unassigned"));
+  const showStreamColumn = selectedStream === "all"
+    && namedStreams.size > 1
+    && students.length > 0
+    && students.every(s => {
+      const stream = String(s.stream || "").trim();
+      return stream && stream.toLowerCase() !== "unassigned";
+    });
 
   // Identify ties in either ranking column shown in the table
   const overallRankCounts = {};
@@ -2187,7 +2197,7 @@ function renderRankingTable(students, subjects, isSenior, selectedStream = "all"
   const fixedHeader = (label, className = '') => `<th rowspan="2"${className ? ` class="${className}"` : ''} data-pdf-header="true">${label}</th>`;
   const rankHeaders = `${fixedHeader('O/Rank')}${hasStreamRank ? fixedHeader('S/Rank') : ''}`;
   let html = `<table class="marks-table" style="width:100%; border-collapse: collapse;">
-    <thead><tr>${rankHeaders}${fixedHeader('Name')}${fixedHeader('Adm')}${subjectHeaderTop.join('')}${!isSenior ? fixedHeader('Total', 'total-column-header') : ''}${fixedHeader('Mean')}${fixedHeader('Progress')}${fixedHeader('Total Points')}${fixedHeader('Level')}</tr><tr>${subjectHeaderBottom.join('')}</tr></thead>
+    <thead><tr>${rankHeaders}${fixedHeader('Name')}${fixedHeader('Adm')}${showStreamColumn ? fixedHeader('Stream') : ''}${subjectHeaderTop.join('')}${!isSenior ? fixedHeader('Total', 'total-column-header') : ''}${fixedHeader('Mean')}${fixedHeader('Progress')}${fixedHeader('Total Points')}${fixedHeader('Level')}</tr><tr>${subjectHeaderBottom.join('')}</tr></thead>
     <tbody>`;
   
   students.forEach((s, idx) => {
@@ -2207,7 +2217,7 @@ function renderRankingTable(students, subjects, isSenior, selectedStream = "all"
     }
     // Store progress value in a data attribute for PDF generation (used in PDF export)
     html += `<tr${tiedClass} data-progress="${s.progress !== null ? s.progress : ''}">
-      <td>${overallRankValue}</td>${hasStreamRank ? `<td>${streamRankValue}</td>` : ''}<td>${s.name}</td><td>${s.adm}</td>
+      <td>${overallRankValue}</td>${hasStreamRank ? `<td>${streamRankValue}</td>` : ''}<td>${s.name}</td><td>${s.adm}</td>${showStreamColumn ? `<td>${s.stream}</td>` : ''}
       ${subjectColumns.map(column => {
         const papers = s.subjectPapers?.[column.subject];
         const score = column.paper === 'paper1' ? papers?.paper1 : column.paper === 'paper2' ? papers?.paper2 : column.paper === 'total' ? papers?.total : s.subjects[column.subject];
@@ -2232,7 +2242,7 @@ function renderRankingTable(students, subjects, isSenior, selectedStream = "all"
   const groupMeanSum = students.reduce((acc, s) => acc + (s.mean || 0), 0);
 
   html += `</tbody><tfoot style="background-color: #f8fafc; font-weight: bold; border-top: 2px solid #cbd5e0;">`;
-  const fixedColumnCount = hasStreamRank ? 4 : 3;
+  const fixedColumnCount = (hasStreamRank ? 4 : 3) + (showStreamColumn ? 1 : 0);
   
   // TOTAL Row
   html += `<tr><td colspan="${fixedColumnCount}" style="text-align: right; padding: 8px;">TOTAL:</td>`;
@@ -2473,7 +2483,7 @@ async function downloadRankingAsPDF() {
     return filteredCells;
   });
 
-  const specialHeaderNames = new Set(["O/Rank", "S/Rank", "Overall Rank", "Stream Rank", "Rank", "Name", "Student Name", "Adm", "Admission No", "Total", "Mean", "Progress", "T/Points", "Total Points", "Level"]);
+  const specialHeaderNames = new Set(["O/Rank", "S/Rank", "Overall Rank", "Stream Rank", "Rank", "Name", "Student Name", "Adm", "Admission No", "Stream", "Total", "Mean", "Progress", "T/Points", "Total Points", "Level"]);
   const subjectColumns = headers.reduce((acc, header, idx) => {
     if (!specialHeaderNames.has(header)) acc.push({ idx, header });
     return acc;
@@ -2628,52 +2638,11 @@ async function downloadRankingAsPDF() {
     },
   }); // AutoTable for ranking
 
-  // 4. Summary Section with Multi-page Safety
-  let summaryStartY = doc.lastAutoTable.finalY + 10;
-  // A4 Landscape height is ~210mm. Ensure summary area (approx 50mm) has enough remaining space.
-  if (summaryStartY > pageHeight - 65) {
-    doc.addPage();
-    summaryStartY = 20;
-  } // Add new page if summary overlaps footer
-
-  doc.setFontSize(12);
-  doc.setFont("helvetica", "bold");
-  doc.text("REPORT SUMMARY", 14, summaryStartY);
-  summaryStartY += 6;
-
-  // 1. Level Distribution (Left Side)
-  doc.setFontSize(9);
-  doc.text("Level Distribution", 14, summaryStartY); // Level distribution title
-
-  doc.autoTable({
-    startY: summaryStartY + 3,
-    head: [['Level', 'Count']],
-    body: Object.entries(levelCounts).map(([lvl, count]) => [lvl, count]),
-    theme: 'grid',
-    styles: { fontSize: 7.5, cellPadding: 1.2, lineWidth: 0.1, lineColor: [80, 80, 80] },
-    headStyles: { fillColor: [52, 152, 219], halign: 'center' },
-    columnStyles: { 0: { halign: 'center', fontStyle: 'bold' }, 1: { halign: 'center' } },
-    tableWidth: 32,
-    margin: { left: 14 }
-  });
-
-  // 2. Performance Key (Right Side - Compact)
-  const keyX = 14 + 32 + 12; // Start after margin + distribution table width + gap
-  doc.setFontSize(9);
-  doc.text("Performance Key", keyX, summaryStartY); // Performance key title
-
-  doc.autoTable({ 
-    startY: summaryStartY + 3,
-    head: [['Level', 'Range', 'Pts']], 
-    body: cbcUtils.getPerformanceKey(grade).map(item => [item.subdivision, item.range, item.points.toString()]),
-    theme: 'grid',
-    styles: { fontSize: 7.5, cellPadding: 1.2, lineWidth: 0.1, lineColor: [80, 80, 80] },
-    headStyles: { fillColor: [44, 62, 80], halign: 'center' },
-    columnStyles: { 0: { halign: 'center', fontStyle: 'bold' }, 1: { halign: 'center' }, 2: { halign: 'center' } },
-    tableWidth: 48,
-    margin: { left: keyX }
-  });
-
+  // Summary data is rendered with the internal analysis tables below so the
+  // learner-list pages stay focused on the ranking table.
+  const levelDistributionRows = Object.entries(levelCounts).map(([lvl, count]) => [lvl, count]);
+  const performanceKeyRows = cbcUtils.getPerformanceKey(grade)
+    .map(item => [item.subdivision, item.range, item.points.toString()]);
   // --- ADD PAGE NUMBERS & SYSTEM FOOTER TO ALL PAGES ---
   const totalPages = doc.internal.getNumberOfPages();
   for (let i = 1; i <= totalPages; i++) {
@@ -2729,96 +2698,118 @@ async function downloadRankingAsPDF() {
     };
   }).filter(item => item.mean !== null).sort((a, b) => b.mean - a.mean);
 
-  // Only add a new page if there's data to display
-  if (improvedStudents.length > 0 || droppedStudents.length > 0 || subjectPerformance.length > 0) {
+  // Keep the four compact analysis tables together on an internal-use page.
+  if (improvedStudents.length > 0 || droppedStudents.length > 0 || subjectPerformance.length > 0 || levelDistributionRows.length > 0 || performanceKeyRows.length > 0) {
     doc.addPage();
     let zoneAnalysisY = 20;
 
     // Page header for zone analysis
     doc.setFontSize(14);
     doc.setFont("helvetica", "bold");
+    doc.setTextColor(30, 41, 59);
     doc.text("INTERNAL USE ONLY", 14, zoneAnalysisY);
     zoneAnalysisY += 8;
 
-    // If both tables exist, render side-by-side
-    if (improvedStudents.length > 0 && droppedStudents.length > 0) {
-      doc.setFontSize(9);
+    const analysisMargin = 14;
+    const analysisGap = 10;
+    const analysisTableWidth = (pageWidth - (analysisMargin * 2) - analysisGap) / 2;
+    const leftAnalysisX = analysisMargin;
+    const rightAnalysisX = analysisMargin + analysisTableWidth + analysisGap;
+    const compactTableOptions = {
+      theme: 'grid',
+      styles: {
+        fontSize: 6,
+        cellPadding: 0.55,
+        textColor: [30, 41, 59],
+        lineColor: [0, 0, 0],
+        lineWidth: 0.2
+      },
+      margin: { bottom: 35 },
+      tableWidth: analysisTableWidth,
+      pageBreak: 'avoid'
+    };
+    const renderAnalysisTable = ({ title, x, y, head, body, fillColor, columnStyles = {} }) => {
+      doc.setFontSize(8.5);
       doc.setFont("helvetica", "bold");
-      doc.text("Top 3 Most Improved Learners", 14, zoneAnalysisY);
+      doc.setTextColor(30, 41, 59);
+      doc.text(title, x, y);
       doc.autoTable({
-        startY: zoneAnalysisY + 3,
-        head: [['Rank', 'Name', 'Progress']],
-        body: improvedStudents.map((s, i) => [`#${i + 1}`, s.name, `+${s.progress.toFixed(1)}%`]),
-        theme: 'grid',
-        styles: { fontSize: 7.5, cellPadding: 1.2 },
-        headStyles: { fillColor: [16, 185, 129], halign: 'center' },
-        tableWidth: 80,
-        margin: { left: 14 }
+        ...compactTableOptions,
+        startY: y + 3,
+        head: [head],
+        body: body.length > 0 ? body : (head.length === 2 ? [['-', 'No data']] : [['-', 'No data', '-']]),
+        margin: {
+          left: x,
+          right: pageWidth - x - analysisTableWidth,
+          bottom: 35
+        },
+        headStyles: { fillColor, textColor: [255, 255, 255], halign: 'center' },
+        columnStyles
       });
+      return doc.lastAutoTable.finalY;
+    };
 
-      const dropX = 14 + 80 + 10;
-      doc.setFont("helvetica", "bold");
-      doc.text("Top 3 Significant Drops", dropX, zoneAnalysisY);
-      doc.autoTable({
-        startY: zoneAnalysisY + 3,
-        head: [['Rank', 'Name', 'Drop']],
-        body: droppedStudents.map((s, i) => [`#${i + 1}`, s.name, `${s.progress.toFixed(1)}%`]),
-        theme: 'grid',
-        styles: { fontSize: 7.5, cellPadding: 1.2 },
-        headStyles: { fillColor: [239, 68, 68], halign: 'center' },
-        tableWidth: 80,
-        margin: { left: dropX }
-      });
-    } else if (improvedStudents.length > 0) {
-      // Only improved students
-      doc.setFontSize(9);
-      doc.setFont("helvetica", "bold");
-      doc.text("Top 3 Most Improved Learners", 14, zoneAnalysisY);
-      doc.autoTable({
-        startY: zoneAnalysisY + 3,
-        head: [['Rank', 'Name', 'Progress']],
-        body: improvedStudents.map((s, i) => [`#${i + 1}`, s.name, `+${s.progress.toFixed(1)}%`]),
-        theme: 'grid',
-        styles: { fontSize: 7.5, cellPadding: 1.2 },
-        headStyles: { fillColor: [16, 185, 129], halign: 'center' },
-        tableWidth: 80,
-        margin: { left: 14 }
-      });
-    } else if (droppedStudents.length > 0) {
-      // Only dropped students
-      doc.setFontSize(9);
-      doc.setFont("helvetica", "bold");
-      doc.text("Top 3 Significant Drops", 14, zoneAnalysisY);
-      doc.autoTable({
-        startY: zoneAnalysisY + 3,
-        head: [['Rank', 'Name', 'Drop']],
-        body: droppedStudents.map((s, i) => [`#${i + 1}`, s.name, `${s.progress.toFixed(1)}%`]),
-        theme: 'grid',
-        styles: { fontSize: 7.5, cellPadding: 1.2 },
-        headStyles: { fillColor: [239, 68, 68], halign: 'center' },
-        tableWidth: 80,
-        margin: { left: 14 }
-      });
-    }
+    const improvedFinalY = renderAnalysisTable({
+      title: "Top 3 Most Improved Learners",
+      x: leftAnalysisX,
+      y: zoneAnalysisY,
+      head: ['Rank', 'Name', 'Progress'],
+      body: improvedStudents.map((s, i) => [`#${i + 1}`, s.name, `+${s.progress.toFixed(1)}%`]),
+      fillColor: [16, 185, 129]
+    });
+    const droppedFinalY = renderAnalysisTable({
+      title: "Top 3 Significant Drops",
+      x: rightAnalysisX,
+      y: zoneAnalysisY,
+      head: ['Rank', 'Name', 'Drop'],
+      body: droppedStudents.map((s, i) => [`#${i + 1}`, s.name, `${s.progress.toFixed(1)}%`]),
+      fillColor: [239, 68, 68]
+    });
+
+    const summaryTablesY = Math.max(improvedFinalY, droppedFinalY) + 5;
+    const levelFinalY = renderAnalysisTable({
+      title: "Level Distribution",
+      x: leftAnalysisX,
+      y: summaryTablesY,
+      head: ['Level', 'Count'],
+      body: levelDistributionRows,
+      fillColor: [52, 152, 219],
+      columnStyles: { 0: { halign: 'center', fontStyle: 'bold' }, 1: { halign: 'center' } }
+    });
+    const performanceFinalY = renderAnalysisTable({
+      title: "Performance Key",
+      x: rightAnalysisX,
+      y: summaryTablesY,
+      head: ['Level', 'Range', 'Pts'],
+      body: performanceKeyRows,
+      fillColor: [44, 62, 80],
+      columnStyles: { 0: { halign: 'center', fontStyle: 'bold' }, 1: { halign: 'center' }, 2: { halign: 'center' } }
+    });
 
     if (subjectPerformance.length > 0) {
-      const subjectChartY = zoneAnalysisY + (improvedStudents.length > 0 || droppedStudents.length > 0 ? 48 : 8);
+      let subjectChartY = Math.max(levelFinalY, performanceFinalY) + 7;
       const chartX = 27;
-      const chartY = subjectChartY + 12;
+      const chartHeight = 38;
+      const chartBottomReserve = 22;
+      if (subjectChartY + 12 + chartHeight + chartBottomReserve > pageHeight - 25) {
+        doc.addPage();
+        subjectChartY = 18;
+      }
+
+      const chartY = subjectChartY + 7;
       const chartWidth = pageWidth - 42;
-      const chartHeight = 70;
       const chartBottom = chartY + chartHeight;
       const barSlotWidth = chartWidth / subjectPerformance.length;
       const barWidth = Math.max(2.5, Math.min(12, barSlotWidth * 0.58));
 
-      doc.setFontSize(11);
+      doc.setFontSize(9);
       doc.setFont("helvetica", "bold");
       doc.setTextColor(30, 41, 59);
       doc.text("SUBJECT PERFORMANCE BY MEAN SCORE", 14, subjectChartY);
 
       // Draw a percentage grid and axes behind the bars.
       doc.setFont("helvetica", "normal");
-      doc.setFontSize(7);
+      doc.setFontSize(6);
       for (let percentage = 0; percentage <= 100; percentage += 20) {
         const gridY = chartBottom - (percentage / 100) * chartHeight;
         doc.setDrawColor(226, 232, 240);
@@ -2848,18 +2839,18 @@ async function downloadRankingAsPDF() {
         doc.setFillColor(...barColor);
         doc.roundedRect(barX, barY, barWidth, barHeight, 1.2, 1.2, "F");
         doc.setFont("helvetica", "bold");
-        doc.setFontSize(6.5);
+        doc.setFontSize(5.5);
         doc.setTextColor(30, 41, 59);
         doc.text(`${mean.toFixed(1)}%`, barX + (barWidth / 2), Math.max(chartY - 1, barY - 2), { align: "center" });
 
         const shortLabel = cbcUtils.getAbbreviatedSubjectName(item.subject || "Subject");
         doc.setFont("helvetica", "bold");
-        doc.setFontSize(7.5);
+        doc.setFontSize(6);
         doc.setTextColor(30, 41, 59);
         doc.text(String(shortLabel), barX + (barWidth / 2), chartBottom + 5, { angle: 45, align: "left" });
       });
 
-      const legendY = chartBottom + 27;
+      const legendY = chartBottom + 13;
       const legend = [
         ["Weak", [220, 38, 38]],
         ["Developing", [245, 158, 11]],
@@ -2867,13 +2858,13 @@ async function downloadRankingAsPDF() {
         ["Strong", [16, 185, 129]]
       ];
       let legendX = chartX;
-      doc.setFontSize(7);
+      doc.setFontSize(6);
       legend.forEach(([label, color]) => {
         doc.setFillColor(...color);
-        doc.roundedRect(legendX, legendY - 3, 4, 4, 1, 1, "F");
+        doc.roundedRect(legendX, legendY - 2.5, 3.5, 3.5, 0.8, 0.8, "F");
         doc.setTextColor(71, 85, 99);
         doc.text(label, legendX + 6, legendY);
-        legendX += 28;
+        legendX += 25;
       });
       doc.setTextColor(0, 0, 0);
     }

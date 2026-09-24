@@ -3,7 +3,18 @@ import path from 'path';
 import { execFileSync } from 'node:child_process';
 
 const backupBaseDir = path.join(path.resolve(), 'backups', 'mongodb');
-const mongoUri = process.env.MONGO_LOCAL || process.env.MONGO_ATLAS;
+const mongoUri = (() => {
+  const explicitUri = process.env.MONGO_URI || process.env.MONGO_URL;
+  if (explicitUri) return explicitUri;
+
+  const source = String(process.env.DB_SOURCE || process.env.MONGO_SOURCE || '').trim().toLowerCase();
+  if (source === 'local') return process.env.MONGO_LOCAL;
+  if (source === 'atlas') return process.env.MONGO_ATLAS;
+  if (String(process.env.NODE_ENV).toLowerCase() === 'production') {
+    return process.env.MONGO_ATLAS || process.env.MONGO_LOCAL;
+  }
+  return process.env.MONGO_LOCAL || process.env.MONGO_ATLAS;
+})();
 const restoreMode = (process.env.RESTORE_MODE || process.argv[2] || 'collections').toLowerCase();
 const requestedBackupFolder = process.env.BACKUP_FOLDER || process.argv[3];
 const MONGORESTORE_COMMAND = process.env.MONGORESTORE_PATH || 'mongorestore';

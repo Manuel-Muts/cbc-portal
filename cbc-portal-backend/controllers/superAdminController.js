@@ -12,6 +12,7 @@ import axios from 'axios';
 import crypto from 'crypto';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
+import { fileURLToPath } from 'node:url';
 import {
   backupMongoDatabase,
   BACKUP_COLLECTION_OPTIONS,
@@ -703,13 +704,22 @@ export const restoreLatestBackup = async (req, res, restoreMode = 'collections')
       return res.status(403).json({ msg: 'Only super-admins can restore backups' });
     }
 
-    const mongoUri = process.env.MONGO_LOCAL || process.env.MONGO_ATLAS;
+    const databaseSource = String(process.env.DB_SOURCE || process.env.MONGO_SOURCE || '').trim().toLowerCase();
+    const mongoUri = process.env.MONGO_URI || process.env.MONGO_URL || (
+      databaseSource === 'atlas'
+        ? process.env.MONGO_ATLAS
+        : databaseSource === 'local'
+          ? process.env.MONGO_LOCAL
+          : String(process.env.NODE_ENV).toLowerCase() === 'production'
+            ? process.env.MONGO_ATLAS || process.env.MONGO_LOCAL
+            : process.env.MONGO_LOCAL || process.env.MONGO_ATLAS
+    );
     if (!mongoUri) {
       return res.status(500).json({ msg: 'MongoDB connection string is not configured.' });
     }
 
     const backupFolder = req.body?.backupFolder;
-    const scriptPath = new URL('../scripts/restoreMongoBackup.js', import.meta.url).pathname;
+    const scriptPath = fileURLToPath(new URL('../scripts/restoreMongoBackup.js', import.meta.url));
     const scriptArgs = [scriptPath, restoreMode];
     if (backupFolder) scriptArgs.push(backupFolder);
     const { stdout, stderr } = await execFileAsync('node', scriptArgs, {

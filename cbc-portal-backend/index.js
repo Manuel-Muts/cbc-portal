@@ -416,6 +416,7 @@ mongoose.connect(mongoURI, mongooseOptions)
     // 🚀 Start scheduled background tasks
     startCronJobs();
     startBackupCronJobs();
+    console.log('✅ Scheduled background tasks started successfully.');
 
     const PORT = process.env.PORT || 5000;
     app.listen(PORT, () =>

@@ -8,7 +8,21 @@ const BACKUPS_DIR = path.join(path.resolve(), 'backups', 'mongodb');
 const DEFAULT_DB_BACKUP_COLLECTIONS = ['marks', 'studentenrollments', 'users', 'schools', 'payments'];
 export const BACKUP_COLLECTION_OPTIONS = DEFAULT_DB_BACKUP_COLLECTIONS;
 const execFileAsync = promisify(execFile);
-const MONGODUMP_COMMAND = process.env.MONGODUMP_PATH || 'mongodump';
+
+const getMongoDumpCommand = () => process.env.MONGODUMP_PATH || 'mongodump';
+
+const getMongoConnectionUri = () => {
+  const explicitUri = process.env.MONGO_URI || process.env.MONGO_URL;
+  if (explicitUri) return explicitUri;
+
+  const source = String(process.env.DB_SOURCE || process.env.MONGO_SOURCE || '').trim().toLowerCase();
+  if (source === 'local') return process.env.MONGO_LOCAL;
+  if (source === 'atlas') return process.env.MONGO_ATLAS;
+  if (String(process.env.NODE_ENV).toLowerCase() === 'production') {
+    return process.env.MONGO_ATLAS || process.env.MONGO_LOCAL;
+  }
+  return process.env.MONGO_LOCAL || process.env.MONGO_ATLAS;
+};
 
 const hasBackupFiles = (folderPath) => {
   if (!fs.existsSync(folderPath)) return false;
@@ -48,7 +62,7 @@ export const getMongoDatabaseName = () => {
 export const runMongoDumpForCollection = async (databaseUri, collectionName, backupRootDir) => {
   const mongoDbName = getMongoDatabaseName();
 
-  await execFileAsync(MONGODUMP_COMMAND, [
+  await execFileAsync(getMongoDumpCommand(), [
     '--uri', databaseUri,
     '--db', mongoDbName,
     '--collection', collectionName,
@@ -59,7 +73,7 @@ export const runMongoDumpForCollection = async (databaseUri, collectionName, bac
 export const runMongoFullDatabaseDump = async (databaseUri, backupRootDir) => {
   const mongoDbName = getMongoDatabaseName();
 
-  await execFileAsync(MONGODUMP_COMMAND, [
+  await execFileAsync(getMongoDumpCommand(), [
     '--uri', databaseUri,
     '--db', mongoDbName,
     '--out', backupRootDir
@@ -94,7 +108,7 @@ export const backupMongoDatabase = async ({
   collections = DEFAULT_DB_BACKUP_COLLECTIONS,
   daysToKeep = 5
 } = {}) => {
-  const mongoUri = process.env.MONGO_LOCAL || process.env.MONGO_ATLAS;
+  const mongoUri = getMongoConnectionUri();
 
   if (!mongoUri) {
     throw new Error('MongoDB connection string is not configured. Set MONGO_LOCAL or MONGO_ATLAS.');
@@ -134,6 +148,8 @@ export const backupMongoDatabase = async ({
 };
 
 export const startBackupCronJobs = () => {
+  console.log(`🕒 MongoDB backup cron registered for 01:00 server time. Tool: ${getMongoDumpCommand()}`);
+
   cron.schedule('0 1 * * *', async () => {
     console.log('🕒 Starting MongoDB backup job for selected collections...');
 
