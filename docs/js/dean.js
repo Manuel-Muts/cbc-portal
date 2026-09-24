@@ -430,14 +430,14 @@ window.cbcUtils = window.cbcUtils || {};
 
 // 🆕 Reuse the shared school-type helper from cbc-utils when available.
 if (!window.cbcUtils.getSchoolTypeKey) {
-  window.cbcUtils.getSchoolTypeKey = () => window.schoolInfo?.schoolType || 'full';
+  window.cbcUtils.getSchoolTypeKey = () => window.cbcUtils.normalizeSchoolTypeKey?.(window.schoolInfo?.schoolType) || null;
 }
 
 // 🆕 Provide a fallback grade option helper if the shared utility has not loaded yet.
 if (!window.cbcUtils.getGradeOptionsForSchool) {
   window.cbcUtils.getGradeOptionsForSchool = function() {
     const schoolType = window.cbcUtils?.getSchoolTypeKey?.() || 'full';
-    const typeConfig = window.cbcUtils?.SCHOOL_TYPES?.[schoolType] || window.cbcUtils?.SCHOOL_TYPES?.full;
+    const typeConfig = window.cbcUtils?.SCHOOL_TYPES?.[schoolType];
     return (typeConfig?.gradeOptions || []).map(g =>
       (String(g).toUpperCase().startsWith("PP") || String(g).toUpperCase() === "PG") ? g : `Grade ${g}`
     );
@@ -3900,25 +3900,11 @@ async function loadDeanProfile() {
 
     // 🚀 Parallelize: Fetch school info and convert images concurrently
     const SCHOOL_CACHE_KEY = "dean_school_info_cache";
-    const cachedSchool = localStorage.getItem(SCHOOL_CACHE_KEY);
-    if (cachedSchool) {
-      try { // Try to parse cached school info
-        const { timestamp, data } = JSON.parse(cachedSchool);
-        if (Date.now() - timestamp < CACHE_TTL) {
-          schoolInfo = {
-            name: data?.name,
-            status: data?.status,
-            schoolType: data?.schoolType,
-            gradingConfig: data?.gradingConfig
-          };
-        }
-      } catch (e) { localStorage.removeItem(SCHOOL_CACHE_KEY); }
-    }
 
     try {
       // Start fetching school info and signature conversion in parallel // 🆕 Use Promise.allSettled
       const results = await Promise.allSettled([ // Use Promise.allSettled to prevent one failure from blocking others
-        schoolInfo ? Promise.resolve(schoolInfo) : fetchWithAuth(`${API_BASE}/users/my-school?includeLogo=false&fields=name,status,schoolType,gradingConfig`).catch(e => { console.warn("Failed to fetch school info:", e); return null; }),
+        fetchWithAuth(`${API_BASE}/users/my-school?includeLogo=false&fields=name,status,schoolType,gradingConfig&bypassCache=true`).catch(e => { console.warn("Failed to fetch school info:", e); return null; }),
         Promise.resolve(null)
       ]);
 
@@ -3927,13 +3913,20 @@ async function loadDeanProfile() {
         window.schoolInfo = schoolInfo; // Expose globally for cbcUtils
       }
 
+      const detectedSchoolType = window.cbcUtils.normalizeSchoolTypeKey?.(schoolInfo?.schoolType);
+      if (!detectedSchoolType) {
+        throw new Error(`Invalid schoolType from school profile: ${schoolInfo?.schoolType || 'missing'}. Expected full, primary_junior, or senior.`);
+      }
+      schoolInfo.schoolType = detectedSchoolType;
+      window.schoolInfo = schoolInfo;
+
       // 🆕 Activate custom school grading logic immediately after fetch or cache load
       if (schoolInfo && schoolInfo.gradingConfig) { // Check if schoolInfo and gradingConfig exist
         window.cbcUtils.customGradingConfig = schoolInfo.gradingConfig;
       }
 
       if (schoolInfo) {
-        if (!cachedSchool) localStorage.setItem(SCHOOL_CACHE_KEY, JSON.stringify({
+        localStorage.setItem(SCHOOL_CACHE_KEY, JSON.stringify({
           timestamp: Date.now(),
           data: schoolInfo
         }));
@@ -3992,7 +3985,7 @@ async function loadDeanProfile() {
       }
     } catch (e) {
       console.warn("Failed to pre-load school info or logo:", e);
-      deanProfileData.schoolName = "SCHOOL NAME";
+      throw new Error(`Dean school configuration could not be loaded: ${e.message}`);
     }
 
     setupTabs(); // Initialize tabs

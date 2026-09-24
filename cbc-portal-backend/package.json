@@ -14,6 +14,7 @@
     "remove-legacy-mark-fields": "node scripts/removeLegacyMarkFields.js",
     "migrate-mark-paper-support": "node scripts/migrateMarkPaperSupport.js",
     "restore-mongo-backup": "node scripts/restoreMongoBackup.js",
+    "reassign-dean-marks": "node scripts/reassignDeanOwnedMarks.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "type": "module",

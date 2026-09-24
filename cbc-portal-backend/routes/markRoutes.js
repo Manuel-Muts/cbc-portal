@@ -51,7 +51,7 @@ router.post("/bulk-delete", VerifyToken, bulkDeleteMarks);
 
 router.delete("/:id", VerifyToken, deleteMark);
 
-router.get("/by-grade-and-students", VerifyToken, getMarksByGradeAndStudents); // 🆕 New route
+router.get("/by-grade-and-students", VerifyToken, isDean, getMarksByGradeAndStudents); // 🆕 Dean learner-mark context only
 // Class teacher route
 router.get("/by-grade", VerifyToken, isClassTeacher, getMarksByGrade);
 router.get("/grade-progress-means", VerifyToken, isDean, getGradeProgressMeans);

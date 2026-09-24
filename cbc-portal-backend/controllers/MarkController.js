@@ -301,6 +301,57 @@ const isExcludedSeniorSubject = (subject) => {
 // 🆕 Helper to extract numeric grade
 const getGradeLevel = (grade) => parseInt(String(grade).replace(/\D/g, ""), 10);
 
+const normalizeMarkAllocationValue = (value) => String(value || '')
+  .trim()
+  .toLowerCase()
+  .replace(/^grade\s*/i, '')
+  .replace(/\s+/g, ' ');
+
+const matchesMarkAllocation = (allocation, markData) => {
+  const allocationGrade = normalizeMarkAllocationValue(allocation.grade);
+  const markGrade = normalizeMarkAllocationValue(markData.grade);
+  const allocationStream = String(allocation.stream || '').trim().toUpperCase();
+  const markStream = String(markData.stream || '').trim().toUpperCase();
+  const subjectName = markData.course || markData.subject;
+  const allocatedSubjects = (allocation.subjects || []).map(normalizeMarkAllocationValue);
+
+  return allocationGrade === markGrade
+    && (!allocationStream || allocationStream === markStream)
+    && allocatedSubjects.includes(normalizeMarkAllocationValue(subjectName));
+};
+
+const resolveMarkOwner = async (markData, reqUser, cachedContext = null) => {
+  const isDean = reqUser?.role === 'dean' || reqUser?.isDean === true || reqUser?.role === 'super_admin';
+  const teachers = cachedContext?.allocationTeachers || await User.find({
+    schoolId: reqUser.schoolId,
+    role: 'teacher'
+  }).select('_id allocations').lean();
+
+  if (cachedContext && !cachedContext.allocationTeachers) {
+    cachedContext.allocationTeachers = teachers;
+  }
+
+  const matchingTeachers = teachers.filter(teacher =>
+    (teacher.allocations || []).some(allocation => matchesMarkAllocation(allocation, markData))
+  );
+
+  if (isDean) {
+    if (matchingTeachers.length !== 1) {
+      throw new Error(matchingTeachers.length === 0
+        ? 'No teacher is allocated to this subject, grade, and stream.'
+        : 'More than one teacher is allocated to this subject, grade, and stream. Resolve the allocation before entering marks.');
+    }
+    return matchingTeachers[0]._id;
+  }
+
+  const ownsAllocation = matchingTeachers.some(teacher => String(teacher._id) === String(reqUser.id));
+  if (!ownsAllocation) {
+    throw new Error('You are not allocated to this subject, grade, and stream.');
+  }
+
+  return reqUser.id;
+};
+
 // 🆕 Helper to check if a grade is Primary (PP1 - Grade 6)
 const isPrimaryGrade = (grade) => {
   if (!grade) return false;
@@ -467,6 +518,10 @@ const processSingleMark = async (markData, reqUser, isNew = true, cachedContext 
     throw new Error(`${normalizeSeniorSubjectName(course)} is not a graded senior subject and should not be submitted.`);
   }
 
+  const ownerTeacherId = isNew
+    ? await resolveMarkOwner({ grade, stream, subject, course }, reqUser, cachedContext)
+    : markData.teacherId;
+
   // Term-lock checks are no longer enforced for teachers; marking remains scoped to the current term/year workflow.
 
   // Find student if new or if admissionNo is provided for update
@@ -571,7 +626,7 @@ const processSingleMark = async (markData, reqUser, isNew = true, cachedContext 
     assessment,
     paper: paperSubmission.paper,
     outOf: paperSubmission.outOf,
-    teacherId: markData.teacherId || reqUser.id,
+    teacherId: ownerTeacherId,
     schoolId: reqUser.schoolId,
     enrollmentId: enrollment ? enrollment._id : (markData.enrollmentId || null)
   };

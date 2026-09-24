@@ -110,9 +110,28 @@ window.cbcUtils = {
      */
     getGradeOptionsForSchool: function() {
         const schoolType = this.getSchoolTypeKey();
-        return this.SCHOOL_TYPES[schoolType].gradeOptions.map(g => 
+        const schoolConfig = this.SCHOOL_TYPES[schoolType];
+        if (!schoolConfig) return [];
+        return schoolConfig.gradeOptions.map(g => 
             (String(g).toUpperCase().startsWith("PP") || String(g).toUpperCase() === "PG") ? g : `Grade ${g}`
         );
+    },
+
+    normalizeSchoolTypeKey: function(value) {
+        const normalized = String(value || '').trim().toLowerCase().replace(/[^a-z]+/g, '_');
+        const aliases = {
+            full: 'full',
+            full_school: 'full',
+            full_school_grades_pg_12: 'full',
+            primary_junior: 'primary_junior',
+            primary_and_junior: 'primary_junior',
+            primary_plus_junior: 'primary_junior',
+            primary_junior_school: 'primary_junior',
+            senior: 'senior',
+            senior_school: 'senior',
+            secondary: 'senior'
+        };
+        return aliases[normalized] || null;
     },
 
     /**
@@ -120,9 +139,8 @@ window.cbcUtils = {
      * @returns {string} The school type key (e.g., 'full', 'primary_junior', 'senior').
      */
     getSchoolTypeKey: function() {
-        // Assuming window.schoolInfo is populated globally
         const schoolInfo = window.schoolInfo || {};
-        return (schoolInfo.schoolType && this.SCHOOL_TYPES[schoolInfo.schoolType]) ? schoolInfo.schoolType : 'full';
+        return this.normalizeSchoolTypeKey(schoolInfo.schoolType);
     },
 
 
