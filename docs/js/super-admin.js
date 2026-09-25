@@ -847,30 +847,32 @@ setCache(cacheKey, metrics);
   // ---------------------------
   async function initSchoolsPage(forceRefresh = false) {
     contentArea.innerHTML = `
-      <div class="card">
+      <div class="card school-management-card">
         <div class="card-header">
           <h2>Schools Management</h2>
           <button id="addSchoolBtn" class="primary-btn">+ Add School</button>
         </div>
         <input type="text" id="searchSchools" placeholder="Search schools..." class="search-input compact">
-        <table class="table">
-          <thead>
-            <tr>
-              <th>#</th>
-              <th>School Name</th>
-              <th>School Code</th>
-              <th>Admin Email</th>
-              <th>Address</th>
-              <th>Type</th>
-              <th>Status</th>
-              <th>Credits</th>
-              <th>Actions</th>
-            </tr>
-          </thead>
-          <tbody id="schoolsTable">
-            <tr><td colspan="9" style="text-align:center">Loading...</td></tr>
-          </tbody>
-        </table>
+        <div class="school-table-scroll" role="region" aria-label="Schools management table" tabindex="0">
+          <table class="table school-management-table">
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>School Name</th>
+                <th>School Code</th>
+                <th>Admin Email</th>
+                <th>Type</th>
+                <th>Package</th>
+                <th>Status</th>
+                <th>Credits</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="schoolsTable">
+              <tr><td colspan="9" style="text-align:center">Loading...</td></tr>
+            </tbody>
+          </table>
+        </div>
         <p id="noSchoolsFound" style="display:none; text-align:center; margin-top:10px; color:#888;">No results found</p>
         <div class="pagination-controls" style="margin-top:15px; display:flex; justify-content:center; gap:10px; align-items:center;">
           <button id="prevSchools" class="btn secondary-btn" disabled>Prev</button>
@@ -882,66 +884,110 @@ setCache(cacheKey, metrics);
       <div id="addSchoolModal" class="modal hidden">
         <div class="modal-content">
           <h3>Add New School</h3>
-          <label>School Name <span class="required-field">*</span></label>
-          <input type="text" id="newSchoolName">
-          <label>Admin Email <span class="required-field">*</span></label>
-          <input type="email" id="newSchoolAdmin">
-          <label>Address <span class="required-field">*</span></label>
-          <input type="text" id="newSchoolAddress">
-          <label>Logo</label>
-          <input type="file" id="newSchoolLogo" accept="image/*">
-          <label>School Type <span class="required-field">*</span></label>
-          <select id="newSchoolType">
-            <option value="">-- Select School Type --</option>
-            <option value="full">Full School (Grades 1-12)</option>
-            <option value="primary_junior">Primary + Junior (Grades 1-9)</option>
-            <option value="senior">Senior School (Grades 10-12)</option>
-          </select>
-          <div class="modal-checkbox-section">
-            <div class="modal-checkbox-row">
-              <label for="newSchoolRegistrationOpen" class="modal-checkbox-label">Allow Student Registrations</label>
-              <input type="checkbox" id="newSchoolRegistrationOpen" checked>
+          <div class="school-form-grid">
+            <div class="school-form-field full-width">
+              <label>School Name <span class="required-field">*</span></label>
+              <input type="text" id="newSchoolName">
             </div>
-            <div class="modal-checkbox-row">
-              <label for="newSchoolAllowSignatureUpload" class="modal-checkbox-label">Allow Signature Uploads</label>
-              <input type="checkbox" id="newSchoolAllowSignatureUpload" checked>
+            <div class="school-form-field">
+              <label>Admin Email <span class="required-field">*</span></label>
+              <input type="email" id="newSchoolAdmin">
+            </div>
+            <div class="school-form-field">
+              <label>Package / Plan <span class="required-field">*</span></label>
+              <select id="newSchoolPlan">
+                <option value="basic">Basic</option>
+                <option value="standard">Standard</option>
+                <option value="premium">Premium</option>
+              </select>
+            </div>
+            <div class="school-form-field full-width">
+              <label>School Motto</label>
+              <input type="text" id="newSchoolMotto" maxlength="180" placeholder="Optional school motto">
+            </div>
+            <div class="school-form-field">
+              <label>Logo</label>
+              <input type="file" id="newSchoolLogo" accept="image/*">
+            </div>
+            <div class="school-form-field">
+              <label>School Type <span class="required-field">*</span></label>
+              <select id="newSchoolType">
+                <option value="">-- Select School Type --</option>
+                <option value="full">Full School (Grades 1-12)</option>
+                <option value="primary_junior">Primary + Junior (Grades 1-9)</option>
+                <option value="senior">Senior School (Grades 10-12)</option>
+              </select>
+            </div>
+            <div class="modal-checkbox-section full-width">
+              <div class="modal-checkbox-row">
+                <label for="newSchoolRegistrationOpen" class="modal-checkbox-label">Allow Student Registrations</label>
+                <input type="checkbox" id="newSchoolRegistrationOpen" checked>
+              </div>
+              <div class="modal-checkbox-row">
+                <label for="newSchoolAllowSignatureUpload" class="modal-checkbox-label">Allow Signature Uploads</label>
+                <input type="checkbox" id="newSchoolAllowSignatureUpload" checked>
+              </div>
+            </div>
+            <div class="modal-actions full-width">
+              <button id="saveSchoolBtn" class="primary-btn">Save</button>
+              <button id="cancelAddSchoolBtn" class="close-btn">Cancel</button>
             </div>
           </div>
-          <button id="saveSchoolBtn" class="primary-btn">Save</button>
-          <button id="cancelAddSchoolBtn" class="close-btn">Cancel</button>
         </div>
       </div>
 
       <div id="editSchoolModal" class="modal hidden">
         <div class="modal-content">
           <h3>Edit School</h3>
-          <label>School Name <span class="required-field">*</span></label>
-          <input type="text" id="editSchoolName">
-          <label>Admin Email <span class="required-field">*</span></label>
-          <input type="email" id="editSchoolAdmin">
-          <label>Address <span class="required-field">*</span></label>
-          <input type="text" id="editSchoolAddress">
-          <label>Logo</label>
-          <input type="file" id="editSchoolLogo" accept="image/*">
-          <label>School Type <span class="required-field">*</span></label>
-          <select id="editSchoolType">
-            <option value="">-- Select School Type --</option>
-            <option value="full">Full School (Grades 1-12)</option>
-            <option value="primary_junior">Primary + Junior (Grades 1-9)</option>
-            <option value="senior">Senior School (Grades 10-12)</option>
-          </select>
-          <div class="modal-checkbox-section">
-            <div class="modal-checkbox-row">
-              <label for="editSchoolRegistrationOpen" class="modal-checkbox-label">Allow Student Registrations</label>
-              <input type="checkbox" id="editSchoolRegistrationOpen">
+          <div class="school-form-grid">
+            <div class="school-form-field full-width">
+              <label>School Name <span class="required-field">*</span></label>
+              <input type="text" id="editSchoolName">
             </div>
-            <div class="modal-checkbox-row">
-              <label for="editSchoolAllowSignatureUpload" class="modal-checkbox-label">Allow Signature Uploads</label>
-              <input type="checkbox" id="editSchoolAllowSignatureUpload">
+            <div class="school-form-field">
+              <label>Admin Email <span class="required-field">*</span></label>
+              <input type="email" id="editSchoolAdmin">
+            </div>
+            <div class="school-form-field">
+              <label>Package / Plan <span class="required-field">*</span></label>
+              <select id="editSchoolPlan">
+                <option value="basic">Basic</option>
+                <option value="standard">Standard</option>
+                <option value="premium">Premium</option>
+              </select>
+            </div>
+            <div class="school-form-field full-width">
+              <label>School Motto</label>
+              <input type="text" id="editSchoolMotto" maxlength="180" placeholder="Optional school motto">
+            </div>
+            <div class="school-form-field">
+              <label>Logo</label>
+              <input type="file" id="editSchoolLogo" accept="image/*">
+            </div>
+            <div class="school-form-field">
+              <label>School Type <span class="required-field">*</span></label>
+              <select id="editSchoolType">
+                <option value="">-- Select School Type --</option>
+                <option value="full">Full School (Grades 1-12)</option>
+                <option value="primary_junior">Primary + Junior (Grades 1-9)</option>
+                <option value="senior">Senior School (Grades 10-12)</option>
+              </select>
+            </div>
+            <div class="modal-checkbox-section full-width">
+              <div class="modal-checkbox-row">
+                <label for="editSchoolRegistrationOpen" class="modal-checkbox-label">Allow Student Registrations</label>
+                <input type="checkbox" id="editSchoolRegistrationOpen">
+              </div>
+              <div class="modal-checkbox-row">
+                <label for="editSchoolAllowSignatureUpload" class="modal-checkbox-label">Allow Signature Uploads</label>
+                <input type="checkbox" id="editSchoolAllowSignatureUpload">
+              </div>
+            </div>
+            <div class="modal-actions full-width">
+              <button id="updateSchoolBtn" class="primary-btn">Update</button>
+              <button id="cancelEditSchoolBtn" class="close-btn">Cancel</button>
             </div>
           </div>
-          <button id="updateSchoolBtn" class="primary-btn">Update</button>
-          <button id="cancelEditSchoolBtn" class="close-btn">Cancel</button>
         </div>
       </div>
     `;
@@ -975,18 +1021,18 @@ setCache(cacheKey, metrics);
     saveBtn.addEventListener("click", async () => {
       const name = document.getElementById("newSchoolName").value.trim();
       const adminEmail = document.getElementById("newSchoolAdmin").value.trim();
-      const address = document.getElementById("newSchoolAddress").value.trim();
       const logoFile = document.getElementById("newSchoolLogo").files[0];
 
-      if (!name || !adminEmail || !address) return alert("Fill all fields");
+      if (!name || !adminEmail) return alert("Fill all required fields");
 
       window.spinner?.show(saveBtn, "Creating...");
       try {
       const formData = new FormData();
       formData.append("name", name);
       formData.append("adminEmail", adminEmail);
-      formData.append("address", address);
+      formData.append("motto", document.getElementById("newSchoolMotto").value.trim());
       formData.append("schoolType", document.getElementById("newSchoolType").value);
+      formData.append("plan", document.getElementById("newSchoolPlan").value || "basic");
       formData.append("registrationOpen", document.getElementById("newSchoolRegistrationOpen").checked);
       formData.append("allowSignatureUpload", document.getElementById("newSchoolAllowSignatureUpload").checked);
       if (logoFile) formData.append("logo", logoFile);
@@ -1062,6 +1108,8 @@ if (nextSchoolsBtn) {
           const currentStatus = s.status || 'Active';
           const btnText = currentStatus === 'Active' ? 'Suspend' : 'Activate';
           const statusClass = currentStatus === 'Suspended' ? 'suspended-status' : 'active-status';
+          const planValue = (s.plan || 'basic').toLowerCase();
+          const planLabel = planValue === 'premium' ? 'Premium' : planValue === 'standard' ? 'Standard' : 'Basic';
 
           tableBody.innerHTML += `
             <tr>
@@ -1069,8 +1117,8 @@ if (nextSchoolsBtn) {
               <td><strong>${s.name}</strong></td>
               <td style="font-weight:800; color:#0f766e; letter-spacing:.08em;">${s.schoolCode || 'Pending'}</td>
               <td>${s.adminEmail}</td>
-              <td>${s.address || ''}</td>
               <td>${s.schoolType === 'primary_junior' ? 'Primary + Junior' : s.schoolType === 'senior' ? 'Senior' : 'Full'}</td>
+              <td><span class="plan-badge plan-${planValue}">${planLabel}</span></td>
               <td><span class="${statusClass}">${currentStatus}</span></td>
               <td style="font-weight:700; color:#1e293b;">${s.smsCredits || 0}</td>
               <td class="action-cell">
@@ -1102,8 +1150,9 @@ if (nextSchoolsBtn) {
 
             document.getElementById("editSchoolName").value = school.name;
             document.getElementById("editSchoolAdmin").value = school.adminEmail;
-            document.getElementById("editSchoolAddress").value = school.address || '';
+            document.getElementById("editSchoolMotto").value = school.motto || '';
             document.getElementById("editSchoolType").value = school.schoolType || 'full';
+            document.getElementById("editSchoolPlan").value = (school.plan || 'basic').toLowerCase();
             document.getElementById("editSchoolRegistrationOpen").checked = school.registrationOpen !== false;
             document.getElementById("editSchoolAllowSignatureUpload").checked = school.allowSignatureUpload !== false;
             document.getElementById("editSchoolModal").classList.remove("hidden");
@@ -1115,18 +1164,18 @@ if (nextSchoolsBtn) {
             updateBtn.onclick = async () => {
               const name = document.getElementById("editSchoolName").value.trim();
               const adminEmail = document.getElementById("editSchoolAdmin").value.trim();
-              const address = document.getElementById("editSchoolAddress").value.trim();
               const logoFile = document.getElementById("editSchoolLogo").files[0];
 
-              if (!name || !adminEmail || !address) return alert("Fill all fields");
+              if (!name || !adminEmail) return alert("Fill all required fields");
 
               window.spinner?.show(updateBtn, "Updating...");
 
               const formData = new FormData();
               formData.append("name", name);
               formData.append("adminEmail", adminEmail);
-              formData.append("address", address);
+              formData.append("motto", document.getElementById("editSchoolMotto").value.trim());
               formData.append("schoolType", document.getElementById("editSchoolType").value);
+              formData.append("plan", document.getElementById("editSchoolPlan").value || "basic");
               formData.append("registrationOpen", document.getElementById("editSchoolRegistrationOpen").checked);
               formData.append("allowSignatureUpload", document.getElementById("editSchoolAllowSignatureUpload").checked);
               if (logoFile) formData.append("logo", logoFile);
@@ -1193,7 +1242,7 @@ if (nextSchoolsBtn) {
           const data = await res.json();
 
           const row = btn.closest("tr");
-          const statusCell = row.querySelector("td:nth-child(6)");
+          const statusCell = row.querySelector("td:nth-child(8)");
           const isSuspended = data.school.status === "Suspended";
           statusCell.innerHTML = `<span class="${isSuspended ? "suspended-status" : "active-status"}">${data.school.status}</span>`;
           btn.textContent = data.school.status === "Active" ? "Suspend" : "Activate";

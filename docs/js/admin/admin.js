@@ -405,7 +405,7 @@ async function loadSchoolInfo(forceRefresh = false) {
     return adminSchoolInfoRequest;
   }
 
-  const fields = "name,schoolCode,allowSignatureUpload,schoolType,headteacherSignatureUrl,status,smsCredits";
+const fields = "name,schoolCode,allowSignatureUpload,schoolType,headteacherSignatureUrl,status,smsCredits,plan,planFeatures";
 
   const getFallbackProfileName = async () => {
     try {
@@ -467,7 +467,18 @@ async function loadSchoolInfo(forceRefresh = false) {
         schoolType: data?.schoolType || data?.type || data?.school_type || data?.schooltype || data?.['school-type'] || null,
         headteacherSignatureUrl: data?.headteacherSignatureUrl || null,
         status: data?.status,
-        smsCredits: data?.smsCredits
+        smsCredits: data?.smsCredits,
+        plan: data?.plan || 'basic',
+        planFeatures: data?.planFeatures || {
+          communication: false,
+          timetable: false,
+          finance: false,
+          deanAnalysis: true,
+          marks: true,
+          userManagement: true,
+          academics: true,
+          reports: true
+        }
       };
 
       if (!parsedData.name) {
@@ -524,8 +535,16 @@ function renderSchoolInfo() {
 
   const displayName = getDisplaySchoolName(schoolInfo) || "School Name";
   const headerSchoolCode = document.getElementById("adminHeaderSchoolCode");
+  const headerSchoolPlan = document.getElementById("adminHeaderSchoolPlan");
   if (headerSchoolCode) {
     headerSchoolCode.textContent = `School code: ${schoolInfo.schoolCode || "--"}`;
+  }
+  if (headerSchoolPlan) {
+    const planValue = String(schoolInfo.plan || "basic").trim().toLowerCase();
+    const planLabel = planValue === "premium" ? "Premium" : planValue === "standard" ? "Standard" : "Basic";
+    const planTier = planValue === "premium" ? "Tier 3" : planValue === "standard" ? "Tier 2" : "Tier 1";
+    headerSchoolPlan.textContent = `${planLabel} | ${planTier}`;
+    headerSchoolPlan.className = `admin-header-school-plan plan-${planValue === "premium" || planValue === "standard" ? planValue : "basic"}`;
   }
   if (displayName && displayName !== "School Name") {
     applySidebarBrandName(displayName);
@@ -572,6 +591,59 @@ function renderSchoolInfo() {
   renderAdminSignature();
   applySchoolTypeToGradeSelectors();
   applyElectivesSidebarVisibility();
+
+  const getSchoolPlanFeatures = () => {
+    const normalized = {
+      communication: false,
+      timetable: false,
+      finance: false,
+      deanAnalysis: true,
+      marks: true,
+      userManagement: true,
+      academics: true,
+      reports: true
+    };
+
+    const directFeatures = schoolInfo?.planFeatures || {};
+    const planName = String(schoolInfo?.plan || 'basic').trim().toLowerCase();
+    const basePlan = {
+      basic: { communication: false, timetable: false, finance: false },
+      standard: { communication: true, timetable: true, finance: false },
+      premium: { communication: true, timetable: true, finance: true }
+    };
+
+    const planFeatures = { ...normalized, ...(basePlan[planName] || {}) };
+    return { ...planFeatures, ...directFeatures };
+  };
+
+  const applyPlanFeatureVisibility = () => {
+    const planFeatures = getSchoolPlanFeatures();
+    const navRules = [
+      { selector: '.menu li[data-section="announcementSection"]', enabled: !!planFeatures.communication, target: 'announcementSection' },
+      { selector: '.admin-overview-electives-action', enabled: true, target: 'overviewAction' }
+    ];
+
+    navRules.forEach(({ selector, enabled, target }) => {
+      const element = document.querySelector(selector);
+      if (!element) return;
+      element.style.display = enabled ? '' : 'none';
+
+      if (!enabled && target === 'announcementSection') {
+        const section = document.getElementById('announcementSection');
+        if (section) {
+          section.style.display = 'none';
+          section.classList.add('hidden');
+        }
+      }
+    });
+
+    const announcementQuickAction = document.querySelector('[data-overview-section="announcementSection"]');
+    if (announcementQuickAction) {
+      announcementQuickAction.style.display = planFeatures.communication ? '' : 'none';
+    }
+  };
+
+  applyPlanFeatureVisibility();
 
   // 🆕 Initialize promotion search input
   if (promotionSearchInput) {

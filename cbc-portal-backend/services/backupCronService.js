@@ -5,6 +5,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 
 const BACKUPS_DIR = path.join(path.resolve(), 'backups', 'mongodb');
+const CRON_TIMEZONE = 'Africa/Nairobi';
 const DEFAULT_DB_BACKUP_COLLECTIONS = ['marks', 'studentenrollments', 'users', 'schools', 'payments'];
 export const BACKUP_COLLECTION_OPTIONS = DEFAULT_DB_BACKUP_COLLECTIONS;
 const execFileAsync = promisify(execFile);
@@ -163,5 +164,5 @@ export const startBackupCronJobs = () => {
     } catch (err) {
       console.error('❌ Error during MongoDB backup job:', err);
     }
-  });
+  }, { timezone: CRON_TIMEZONE });
 };

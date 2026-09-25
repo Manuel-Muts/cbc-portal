@@ -3,11 +3,13 @@ import express from "express";
 import { getAllStudentAccounts, upsertFeeStructure, listSchoolFeeStructures, updateFeeStructure, deleteFeeStructure, getStudentFeeStatement } from "../controllers/paymentController.js";
 import verifyToken from "../middleware/verifyToken.js";
 import { accountsOnly } from "../middleware/roleChecks.js";
+import requireFeature from "../middleware/featureAccess.js";
 
 const router = express.Router();
 
 // Protect all routes
 router.use(verifyToken);
+router.use(requireFeature('finance'));
 
 // Accounts only
 router.use(accountsOnly);

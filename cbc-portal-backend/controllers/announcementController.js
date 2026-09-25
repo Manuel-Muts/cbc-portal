@@ -205,13 +205,28 @@ export const getActiveAnnouncements = async (req, res) => {
       ]
     };
 
-    // Filter for announcements that are active AND not expired AND (targeted to this school OR system-wide global)
-    let query = {
-      isActive: true,
-      $or: [
+    const communicationEnabled = req.user.hasFeature ? req.user.hasFeature('communication') : true;
+    let announcementScope;
+
+    if (communicationEnabled || userRole === 'super_admin') {
+      announcementScope = [
         { schoolId: schoolId },
         { schoolId: null }
-      ]
+      ];
+    } else {
+      // Schools without communication access may still receive platform broadcasts
+      // authored by a super admin, including broadcasts targeted to one school.
+      const superAdminIds = await User.find({ role: 'super_admin' }).distinct('_id');
+      announcementScope = [
+        { schoolId: null },
+        { schoolId: schoolId, createdBy: { $in: superAdminIds } }
+      ];
+    }
+
+    // Filter for active, unexpired announcements within the allowed scope.
+    let query = {
+      isActive: true,
+      $or: announcementScope
     };
 
     query.$and = [expirationCondition];

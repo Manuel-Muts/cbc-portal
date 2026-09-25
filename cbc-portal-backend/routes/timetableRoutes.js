@@ -1,6 +1,7 @@
 import express from 'express';
 import { saveTimetable, getTimetable, getAllTimetables } from '../controllers/timetableController.js';
 import verifyToken from '../middleware/verifyToken.js';
+import requireFeature from '../middleware/featureAccess.js';
 
 const router = express.Router();
 
@@ -20,12 +21,12 @@ const authorizeRoles = (roles) => {
 };
 
 // 🆕 Fetch all timetables for school (for clash detection context)
-router.get('/all', verifyToken, getAllTimetables);
+router.get('/all', verifyToken, requireFeature('timetable'), getAllTimetables);
 
 // Only Deans and Admins can publish timetables
-router.post('/save', verifyToken, authorizeRoles(['admin', 'dean']), saveTimetable);
+router.post('/save', verifyToken, authorizeRoles(['admin', 'dean']), requireFeature('timetable'), saveTimetable);
 
 // All authenticated users (Students/Teachers) can view saved timetables
-router.get('/:grade', verifyToken, getTimetable);
+router.get('/:grade', verifyToken, requireFeature('timetable'), getTimetable);
 
 export default router;

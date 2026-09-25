@@ -1,5 +1,9 @@
 /* dean.css - Dedicated styling for Dean Dashboard */
 
+.menu li[hidden] {
+  display: none !important;
+}
+
 /* ==============================
    HEADER LAYOUT FIX
 ============================== */

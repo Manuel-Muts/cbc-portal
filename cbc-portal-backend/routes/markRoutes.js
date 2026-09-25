@@ -21,6 +21,7 @@ import {
 
 import VerifyToken from "../middleware/verifyToken.js";
 import { isStudent, isClassTeacher } from "../middleware/roleChecks.js";
+import requireFeature from "../middleware/featureAccess.js";
 
 const router = express.Router();
 
@@ -72,8 +73,8 @@ router.get("/class", VerifyToken, isStudent, getClassMarks);
  */
 router.get("/submission-stats-all", VerifyToken, isDean, getSubmittedSubjectStats);
 
-router.post("/broadcast-sms", VerifyToken, isDean, broadcastResultsSMS);
+router.post("/broadcast-sms", VerifyToken, isDean, requireFeature('communication'), broadcastResultsSMS);
 
-router.get("/sms-summary", VerifyToken, isDean, getSMSLogsSummary);
+router.get("/sms-summary", VerifyToken, isDean, requireFeature('communication'), getSMSLogsSummary);
 
 export default router;

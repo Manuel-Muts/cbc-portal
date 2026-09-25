@@ -298,6 +298,35 @@ body {
   text-transform: uppercase;
 }
 
+.admin-header-school-plan {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  padding: 3px 8px;
+  border-radius: 999px;
+  font-size: 0.62rem;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  line-height: 1.1;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.admin-header-school-plan.plan-basic {
+  color: #475569;
+  background: #e2e8f0;
+}
+
+.admin-header-school-plan.plan-standard {
+  color: #075985;
+  background: #bae6fd;
+}
+
+.admin-header-school-plan.plan-premium {
+  color: #92400e;
+  background: #fde68a;
+}
+
 .input-badge {
   display: inline-flex;
   align-items: center;
@@ -1182,6 +1211,22 @@ h4 {
   animation: spin 0.8s linear infinite;
   vertical-align: middle;
   margin-right: 5px;
+}
+
+.stream-loading-spinner {
+  display: inline-block;
+  width: 11px;
+  height: 11px;
+  margin-left: 5px;
+  border: 2px solid rgba(41, 128, 185, 0.22);
+  border-top-color: #2980b9;
+  border-radius: 50%;
+  vertical-align: -1px;
+  animation: spin 0.8s linear infinite;
+}
+
+.stream-loading-spinner[hidden] {
+  display: none;
 }
 
 @keyframes spin {

@@ -238,6 +238,7 @@ const pathMap = {
   '/student-accounts': 'student-accounts.html',
   '/about': 'about.html',
   '/contact': 'contact.html',
+  '/packages': 'packages.html',
   '/founder': 'founder.html', // ✅ New route for founder page
   '/timetable-downloads': 'timetable-downloads.html',
 

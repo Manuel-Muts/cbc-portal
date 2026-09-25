@@ -50,7 +50,7 @@ export const createSchool = async (req, res) => {
     if (req.user.role !== 'super_admin') 
       return res.status(403).json({ msg: 'Only super-admins can create schools' });
 
-    const { name, adminEmail, address, contactNumber } = req.body;
+    const { name, adminEmail, contactNumber, motto } = req.body;
     if (!name || !adminEmail)
       return res.status(400).json({ msg: 'Name and admin email are required' });
     const schoolCode = await generateUniqueSchoolCode();
@@ -68,14 +68,29 @@ export const createSchool = async (req, res) => {
       logoPublicId = req.file.filename || req.file.public_id || "";
     }
 
+    const resolvedPlan = (req.body.plan || 'basic').toLowerCase();
+    const allowedPlan = ['basic', 'standard', 'premium'].includes(resolvedPlan) ? resolvedPlan : 'basic';
+    const planFeatures = {
+      communication: allowedPlan !== 'basic',
+      timetable: allowedPlan === 'standard' || allowedPlan === 'premium',
+      finance: allowedPlan === 'premium',
+      deanAnalysis: true,
+      marks: true,
+      userManagement: true,
+      academics: true,
+      reports: true,
+    };
+
     const school = await School.create({ 
       name, 
       schoolCode,
       adminEmail, 
-      address, 
+      motto: motto || "",
       contactNumber,
       registrationOpen: req.body.registrationOpen === undefined ? true : parseBoolean(req.body.registrationOpen),
       allowSignatureUpload: req.body.allowSignatureUpload === undefined ? true : parseBoolean(req.body.allowSignatureUpload),
+      plan: allowedPlan,
+      planFeatures,
       schoolType: req.body.schoolType || 'full',
       logo,
       logoMimeType,
@@ -322,14 +337,14 @@ export const updateSchool = async (req, res) => {
     if (req.user.role !== 'super_admin')
       return res.status(403).json({ msg: 'Only super-admins can update schools' });
 
-    const { name, adminEmail, address, contactNumber } = req.body;
+    const { name, adminEmail, contactNumber, motto } = req.body;
 
     const school = await School.findById(req.params.id);
     if (!school) return res.status(404).json({ msg: 'School not found' });
 
     if (name) school.name = name;
     if (adminEmail) school.adminEmail = adminEmail;
-    if (address) school.address = address;
+    if (motto !== undefined) school.motto = String(motto).trim();
     if (contactNumber) school.contactNumber = contactNumber;
     if (req.body.registrationOpen !== undefined) {
       school.registrationOpen = parseBoolean(req.body.registrationOpen);
@@ -339,6 +354,21 @@ export const updateSchool = async (req, res) => {
     }
     if (req.body.schoolType !== undefined) {
       school.schoolType = req.body.schoolType || 'full';
+    }
+    if (req.body.plan !== undefined) {
+      const selectedPlan = String(req.body.plan || 'basic').toLowerCase();
+      const nextPlan = ['basic', 'standard', 'premium'].includes(selectedPlan) ? selectedPlan : 'basic';
+      school.plan = nextPlan;
+      school.planFeatures = {
+        communication: nextPlan !== 'basic',
+        timetable: nextPlan === 'standard' || nextPlan === 'premium',
+        finance: nextPlan === 'premium',
+        deanAnalysis: true,
+        marks: true,
+        userManagement: true,
+        academics: true,
+        reports: true,
+      };
     }
 
     if (req.file) {
@@ -609,7 +639,7 @@ export const getLogs = async (req, res) => {
       const filter = {};
       if (q) filter.$or = [ { name: { $regex: q, $options: 'i' } }, { adminEmail: { $regex: q, $options: 'i' } } ];
       const total = await School.countDocuments(filter);
-      const data = await School.find(filter).sort({ createdAt: -1 }).skip((page - 1) * limit).limit(limit).select('name adminEmail createdAt address');
+      const data = await School.find(filter).sort({ createdAt: -1 }).skip((page - 1) * limit).limit(limit).select('name adminEmail createdAt motto schoolCode schoolType status smsCredits plan');
       const totalPages = Math.ceil(total / limit);
       
       const response = { schools: data, meta: { total, page, limit, totalPages }, topLoginAttempt };

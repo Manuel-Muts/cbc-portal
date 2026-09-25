@@ -162,6 +162,20 @@
     return "";
   }
 
+  function applyFinanceVisibility() {
+    const financeEnabled = schoolInfo?.planFeatures?.finance === true;
+    const accountsOption = userRoleSelect?.querySelector('option[value="accounts"]');
+    const accountsTab = document.querySelector('.user-type-tabs li[data-role="accounts"]');
+
+    if (accountsOption) accountsOption.hidden = !financeEnabled;
+    if (accountsTab) accountsTab.hidden = !financeEnabled;
+
+    if (!financeEnabled && userRoleSelect?.value === 'accounts') {
+      userRoleSelect.value = '';
+      userRoleSelect.dispatchEvent(new Event('change'));
+    }
+  }
+
   // ---------------------------
   // HELPERS (Copied/Shared Logic)
   // ---------------------------
@@ -1286,10 +1300,16 @@ if (usersNextPageBtn) {
   async function populateCsvStreamFilter() {
     const csvGradeFilter = document.getElementById("csvGradeFilter");
     const csvStreamFilter = document.getElementById("csvStreamFilter");
+    const loadingIndicator = document.getElementById("csvStreamLoading");
     if (!csvStreamFilter) return;
     csvStreamFilter.innerHTML = '<option value="all">All Streams</option>';
     try {
       const selectedGrade = csvGradeFilter?.value;
+      const isSpecificGradeSelected = Boolean(selectedGrade && selectedGrade !== 'all');
+      if (loadingIndicator) loadingIndicator.hidden = !isSpecificGradeSelected;
+      if (isSpecificGradeSelected) {
+        csvStreamFilter.setAttribute("aria-busy", "true");
+      }
       let query = '';
       if (selectedGrade && selectedGrade !== 'all') {
         query = `?grade=${encodeURIComponent(selectedGrade)}`;
@@ -1304,6 +1324,10 @@ if (usersNextPageBtn) {
         });
       }
     } catch (e) { console.error("Failed to load streams for CSV filter:", e); }
+    finally {
+      if (loadingIndicator) loadingIndicator.hidden = true;
+      csvStreamFilter.removeAttribute("aria-busy");
+    }
   }
 
   function getCsvDownloadFilterValues() {
@@ -1900,10 +1924,11 @@ if (usersNextPageBtn) {
     if (!userProfile) return;
     authService.initLogout();
 
-    // Fetch school info to determine grade options for learner registration
-    // 🚀 Optimization: Request only schoolType to exclude heavy/unneeded data like logo or address.
-    schoolInfo = await secureFetch(`${API_BASE}/my-school?fields=schoolType`);
+    // Fetch school type and package metadata for registration and future feature visibility.
+    schoolInfo = await secureFetch(`${API_BASE}/my-school?fields=schoolType,plan,planFeatures`);
     if (schoolInfo) {
+      window.schoolInfo = schoolInfo;
+      applyFinanceVisibility();
       populateRegistrationGrades();
     }
 

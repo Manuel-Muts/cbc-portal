@@ -2,6 +2,7 @@
 import { School } from '../models/school.js';
 import cache from "../utils/cacheManager.js";
 import { shouldBypassSchoolProfileCache } from '../utils/smsBalance.js';
+import { getPlanFeatures } from '../utils/planAccess.js';
 import axios from 'axios';
 import crypto from 'crypto';
 
@@ -177,7 +178,7 @@ export const getMySchool = async (req, res) => {
       return res.json(cached);
     }
 
-    let projectionFields = "name schoolCode address status allowSignatureUpload schoolType smsCredits";
+    let projectionFields = "name schoolCode status allowSignatureUpload schoolType smsCredits";
 
     if (fields) {
       const selectedFields = fields
@@ -214,9 +215,13 @@ export const getMySchool = async (req, res) => {
     const response = normalizeResponse({
       name: school.name,
       schoolCode: school.schoolCode || "",
-      address: school.address,
       allowSignatureUpload: school.allowSignatureUpload !== false,
       schoolType: school.schoolType || 'full',
+      plan: school.plan || 'basic',
+      planFeatures: {
+        ...getPlanFeatures(school.plan || 'basic'),
+        ...(school.planFeatures || {})
+      },
       smsCredits: school.smsCredits || 0
     });
 

@@ -659,6 +659,18 @@ function setupTabs() {
   });
 }
 
+function applyDeanPlanVisibility() {
+  const plan = String(schoolInfo?.plan || "basic").toLowerCase();
+  const timetableButton = document.querySelector('.menu li[data-tab="timetableTab"]');
+  const smsButton = document.querySelector('.menu li[data-tab="smsResultsTab"]');
+  if (timetableButton) {
+    timetableButton.hidden = schoolInfo?.planFeatures?.timetable === false || plan === "basic";
+  }
+  if (smsButton) {
+    smsButton.hidden = schoolInfo?.planFeatures?.communication === false || plan === "basic";
+  }
+}
+
 function renderLazyMissingExamsWidget() {
   if (!lazyWidgetCache.missingExams) {
     if (missingExamsTableWrap) {
@@ -1163,6 +1175,41 @@ async function downloadSchoolWideRankingAsPDF(rankings) {
         });
 
         yPos = rowBottomY + 10;
+      });
+    }
+
+    // Add the dean signature to the final two learner-ranking pages.
+    const rankingPageCount = doc.internal.getNumberOfPages();
+    if (rankingPageCount >= 2) {
+      const signaturePageHeight = doc.internal.pageSize.getHeight();
+      const signatureY = signaturePageHeight - 27;
+      const signaturePages = [rankingPageCount - 1, rankingPageCount];
+
+      signaturePages.forEach((pageNumber) => {
+        doc.setPage(pageNumber);
+
+        if (deanProfileData?.signatureBase64) {
+          try {
+            const signatureFormat = deanProfileData.sigFormat || cbcUtils.getImageFormat(deanProfileData.signatureBase64);
+            doc.addImage(
+              deanProfileData.signatureBase64,
+              signatureFormat,
+              pageWidth - 54,
+              signatureY - 8,
+              40,
+              8,
+              undefined,
+              'FAST'
+            );
+          } catch (e) {
+            console.warn(`Could not embed Dean signature on learner-ranking page ${pageNumber}:`, e);
+          }
+        }
+
+        doc.setFontSize(9);
+        doc.setTextColor(0);
+        doc.text("__________________________", pageWidth - 14, signatureY, { align: "right" });
+        doc.text("Dean's Signature", pageWidth - 14, signatureY + 5, { align: "right" });
       });
     }
 
@@ -2211,9 +2258,9 @@ function renderRankingTable(students, subjects, isSenior, selectedStream = "all"
     let progressHtml = '<span style="color:#94a3b8; font-size:0.7rem;">N/A</span>';
     if (s.progress !== null) {
       const diff = s.progress;
-      if (diff > 0.1) progressHtml = `<span style="color:#10b981; font-weight:700;"><i class="fas fa-arrow-up"></i> +${diff.toFixed(1)}</span>`;
-      else if (diff < -0.1) progressHtml = `<span style="color:#ef4444; font-weight:700;"><i class="fas fa-arrow-down"></i> ${diff.toFixed(1)}</span>`;
-      else progressHtml = `<span style="color:#3498db; font-size:0.8rem;"><i class="fas fa-minus"></i></span>`;
+      if (diff > 0.1) progressHtml = `<span style="color:#10b981; font-weight:700;">+${diff.toFixed(1)} ↑</span>`;
+      else if (diff < -0.1) progressHtml = `<span style="color:#ef4444; font-weight:700;">${diff.toFixed(1)} ↓</span>`;
+      else progressHtml = `<span style="color:#3498db; font-size:0.8rem;">0.0 →</span>`;
     }
     // Store progress value in a data attribute for PDF generation (used in PDF export)
     html += `<tr${tiedClass} data-progress="${s.progress !== null ? s.progress : ''}">
@@ -2289,8 +2336,16 @@ function renderRankingTable(students, subjects, isSenior, selectedStream = "all"
   rankingTableWrap.innerHTML = html;
 }
 
-function drawDeanPdfHeader(doc, { schoolName, subheader, pageWidth, logoBase64, logoProps, logoFormat, logoWidth = 32, maxLogoHeight = 32, startY = 8 }) {
+function drawDeanPdfHeader(doc, { schoolName, motto = "", subheader, pageWidth, logoBase64, logoProps, logoFormat, logoWidth = 32, maxLogoHeight = 32, startY = 8 }) {
   let yPos = startY;
+
+  if (motto) {
+    doc.setFontSize(7.5);
+    doc.setFont("helvetica", "italic");
+    doc.setTextColor(71, 85, 105);
+    doc.text(sanitizePdfText(motto), pageWidth - 14, startY + 2, { align: "right", maxWidth: 62 });
+    doc.setTextColor(0, 0, 0);
+  }
 
   if (logoBase64) {
     try {
@@ -2325,6 +2380,34 @@ function drawDeanPdfHeader(doc, { schoolName, subheader, pageWidth, logoBase64, 
   return yPos;
 }
 
+function formatProgressForPdf(value) {
+  const text = String(value ?? '').trim();
+  const numericMatch = text.match(/[+-]?\d+(?:\.\d+)?/);
+  if (!numericMatch) return text || 'N/A';
+
+  const difference = Number(numericMatch[0]);
+  return `${difference > 0 ? '+' : ''}${difference.toFixed(1)}`;
+}
+
+function drawPdfProgressArrow(doc, x, y, direction, color = [71, 85, 105]) {
+  doc.setDrawColor(...color);
+  doc.setLineWidth(0.45);
+  if (direction === 'up') {
+    doc.line(x, y + 2, x, y - 2);
+    doc.line(x, y - 2, x - 1.2, y - 0.6);
+    doc.line(x, y - 2, x + 1.2, y - 0.6);
+  } else if (direction === 'down') {
+    doc.line(x, y - 2, x, y + 2);
+    doc.line(x, y + 2, x - 1.2, y + 0.6);
+    doc.line(x, y + 2, x + 1.2, y + 0.6);
+  } else {
+    doc.line(x - 2, y, x + 2, y);
+    doc.line(x + 2, y, x + 0.6, y - 1.2);
+    doc.line(x + 2, y, x + 0.6, y + 1.2);
+  }
+  doc.setDrawColor(0);
+}
+
 async function downloadRankingAsPDF() {
   const table = rankingTableWrap.querySelector("table");
   if (!table || !window.jspdf) return;
@@ -2357,6 +2440,7 @@ async function downloadRankingAsPDF() {
 
   let yPos = drawDeanPdfHeader(doc, {
     schoolName,
+    motto: sanitizePdfText(schoolInfo?.motto || ""),
     subheader: `${year} | ${termLabel} | ${assessLabel}${streamInfo}`,
     pageWidth,
     logoBase64: deanProfileData?.schoolLogoBase64,
@@ -2476,7 +2560,7 @@ async function downloadRankingAsPDF() {
       } else if (rankHeaderIndices.has(colIdx)) {
         return;
       } else {
-        filteredCells.push(td.textContent.trim());
+        filteredCells.push(colIdx === progressIdx ? formatProgressForPdf(td.textContent) : td.textContent.trim());
       }
     });
 
@@ -2635,6 +2719,18 @@ async function downloadRankingAsPDF() {
       if (data.section === 'head' && data.cell.text[0] === 'Total') {
         data.cell.styles.fillColor = [52, 73, 94]; // Match #34495e header highlight
       }
+    },
+    didDrawCell: (data) => {
+      if (data.section !== 'body' || progressColIndex === -1 || data.column.index !== progressColIndex) return;
+      const progressValue = parseFloat(String(data.cell.raw).replace(/[^0-9+.-]/g, ''));
+      if (Number.isNaN(progressValue)) return;
+      drawPdfProgressArrow(
+        doc,
+        data.cell.x + data.cell.width - 3,
+        data.cell.y + (data.cell.height / 2),
+        progressValue > 0.1 ? 'up' : progressValue < -0.1 ? 'down' : 'right',
+        progressValue > 0.1 ? [22, 163, 74] : progressValue < -0.1 ? [220, 38, 38] : [71, 85, 105]
+      );
     },
   }); // AutoTable for ranking
 
@@ -2894,23 +2990,28 @@ async function downloadRankingAsPDF() {
     doc.text(genText, (pageWidth / 2) - (genTextWidth / 2), pageHeight - 7);
   }
 
-  // 🆕 Draw Dean's signature on the actual last page (which may be zone analysis or ranking summary)
+  // Draw Dean's signature on the final two learner-ranking pages.
   const finalTotalPages = doc.internal.getNumberOfPages();
-  doc.setPage(finalTotalPages); // Set to the last page
-  let footerY = pageHeight - 25;
+  if (finalTotalPages >= 2) {
+    const signaturePages = [finalTotalPages - 1, finalTotalPages];
+    const footerY = pageHeight - 25;
 
-  // Dean's digital signature image
-  if (deanProfileData && deanProfileData.signatureBase64) {
-    try {
-      const sigFormat = deanProfileData.sigFormat || cbcUtils.getImageFormat(deanProfileData.signatureBase64);
-      doc.addImage(deanProfileData.signatureBase64, sigFormat, pageWidth - 54, footerY - 8, 40, 8, undefined, 'FAST');
-    } catch (e) { console.warn("Signature error:", e); }
+    signaturePages.forEach((pageNumber) => {
+      doc.setPage(pageNumber);
+
+      if (deanProfileData && deanProfileData.signatureBase64) {
+        try {
+          const sigFormat = deanProfileData.sigFormat || cbcUtils.getImageFormat(deanProfileData.signatureBase64);
+          doc.addImage(deanProfileData.signatureBase64, sigFormat, pageWidth - 54, footerY - 8, 40, 8, undefined, 'FAST');
+        } catch (e) { console.warn(`Signature error on page ${pageNumber}:`, e); }
+      }
+
+      doc.setFontSize(9);
+      doc.setTextColor(0);
+      doc.text("__________________________", pageWidth - 14, footerY, { align: "right" });
+      doc.text("Dean's Signature", pageWidth - 14, footerY + 5, { align: "right" });
+    });
   }
-
-  doc.setFontSize(9);
-  doc.setTextColor(0);
-  doc.text("__________________________", pageWidth - 14, footerY, { align: "right" });
-  doc.text("Dean's Signature", pageWidth - 14, footerY + 5, { align: "right" });
 
   const fileName = `${schoolName}_${grade}_T${termVal}_${year}`.replace(/\s+/g, '_');
   doc.save(`${fileName}.pdf`);
@@ -3165,6 +3266,7 @@ async function downloadSubjectPerformanceAsPDF() {
 
     let yPos = drawDeanPdfHeader(doc, {
       schoolName,
+      motto: sanitizePdfText(schoolInfo?.motto || ""),
       subheader: `${year} | ${termLabel} | ${assessLabel}${streamInfo}`,
       pageWidth,
       logoBase64: deanProfileData?.schoolLogoBase64,
@@ -3201,7 +3303,7 @@ async function downloadSubjectPerformanceAsPDF() {
     if (tr.classList.contains("tied-rank")) tiedRowIndices.push(idx);
     return Array.from(tr.querySelectorAll("td"))
       .filter((_, colIdx) => !skipIndices.has(colIdx))
-      .map(td => td.textContent.trim());
+      .map((td, colIdx) => colIdx === progressIdx ? formatProgressForPdf(td.textContent) : td.textContent.trim());
   });
 
   doc.autoTable({ 
@@ -3229,6 +3331,18 @@ async function downloadSubjectPerformanceAsPDF() {
       if (data.section === 'body' && tiedRowIndices.includes(data.row.index)) {
         data.cell.styles.fillColor = [255, 249, 219];
       }
+    },
+    didDrawCell: (data) => {
+      if (data.section !== 'body' || pdfProgressIdx === -1 || data.column.index !== pdfProgressIdx) return;
+      const progressValue = parseFloat(String(data.cell.raw).replace(/[^0-9+.-]/g, ''));
+      if (Number.isNaN(progressValue)) return;
+      drawPdfProgressArrow(
+        doc,
+        data.cell.x + data.cell.width - 3,
+        data.cell.y + (data.cell.height / 2),
+        progressValue > 0.1 ? 'up' : progressValue < -0.1 ? 'down' : 'right',
+        progressValue > 0.1 ? [22, 163, 74] : progressValue < -0.1 ? [220, 38, 38] : [71, 85, 105]
+      );
     }
   });
 
@@ -3904,13 +4018,14 @@ async function loadDeanProfile() {
     try {
       // Start fetching school info and signature conversion in parallel // 🆕 Use Promise.allSettled
       const results = await Promise.allSettled([ // Use Promise.allSettled to prevent one failure from blocking others
-        fetchWithAuth(`${API_BASE}/users/my-school?includeLogo=false&fields=name,status,schoolType,gradingConfig&bypassCache=true`).catch(e => { console.warn("Failed to fetch school info:", e); return null; }),
+        fetchWithAuth(`${API_BASE}/users/my-school?includeLogo=false&fields=name,motto,status,schoolType,gradingConfig,plan,planFeatures&bypassCache=true`).catch(e => { console.warn("Failed to fetch school info:", e); return null; }),
         Promise.resolve(null)
       ]);
 
       if (results[0].status === 'fulfilled' && results[0].value) {
         schoolInfo = results[0].value;
         window.schoolInfo = schoolInfo; // Expose globally for cbcUtils
+        applyDeanPlanVisibility();
       }
 
       const detectedSchoolType = window.cbcUtils.normalizeSchoolTypeKey?.(schoolInfo?.schoolType);
@@ -4175,6 +4290,7 @@ async function generateBulkReportCards() {
     // const teacherSigCache = new Map(); // Store {base64, format} by streamKey // Not used
     
     const schoolName = sanitizePdfText(deanProfileData?.schoolName || "SCHOOL NAME");
+  const schoolMotto = sanitizePdfText(schoolInfo?.motto || "");
     const termVal = sanitizePdfText(filterTermEl.value);
     const year = sanitizePdfText(filterYearEl.value);
     const assessLabel = sanitizePdfText(filterAssessmentEl.options[filterAssessmentEl.selectedIndex]?.text || "Report");
@@ -4302,6 +4418,12 @@ async function generateBulkReportCards() {
         const schoolNameFontSize = 15;
         doc.setFont("helvetica", "bold").setFontSize(schoolNameFontSize);
 
+        if (schoolMotto) {
+          doc.setFont("helvetica", "italic").setFontSize(7.5).setTextColor(71, 85, 105);
+          doc.text(schoolMotto, pageWidth - 15, 10, { align: "right", maxWidth: 62 });
+          doc.setTextColor(0, 0, 0).setFont("helvetica", "bold").setFontSize(schoolNameFontSize);
+        }
+
         if (deanProfileData?.schoolLogoBase64) {
             try { // Embed school logo
                 const imgProps = deanProfileData.logoProps || { width: 22, height: 22 };
@@ -4309,14 +4431,25 @@ async function generateBulkReportCards() {
                 const imgWidth = 18; // Optimized sizing
                 const imgHeight = (imgProps.height * imgWidth) / imgProps.width;
 
-                const words = schoolNameText.split(' ');
-                if (words.length >= 3) {
-                    const mid = Math.ceil(words.length / 2);
-                    const part1 = words.slice(0, mid).join(' ');
-                    const part2 = words.slice(mid).join(' ');
-                    
-                    const w1 = doc.getTextWidth(part1);
-                    const w2 = doc.getTextWidth(part2);
+                const words = schoolNameText.trim().split(/\s+/).filter(Boolean);
+                if (words.length >= 2) {
+                  let bestSplit = 1;
+                  let bestDifference = Number.POSITIVE_INFINITY;
+
+                  for (let splitIndex = 1; splitIndex < words.length; splitIndex += 1) {
+                    const leftCandidate = words.slice(0, splitIndex).join(' ');
+                    const rightCandidate = words.slice(splitIndex).join(' ');
+                    const widthDifference = Math.abs(doc.getTextWidth(leftCandidate) - doc.getTextWidth(rightCandidate));
+                    if (widthDifference < bestDifference) {
+                      bestDifference = widthDifference;
+                      bestSplit = splitIndex;
+                    }
+                  }
+
+                  const part1 = words.slice(0, bestSplit).join(' ');
+                  const part2 = words.slice(bestSplit).join(' ');
+                  const w1 = doc.getTextWidth(part1);
+                  const w2 = doc.getTextWidth(part2);
                     const gap = 4; // Spacing around logo
                     const totalW = w1 + imgWidth + (gap * 2) + w2;
                     const startX = (pageWidth - totalW) / 2;
@@ -4356,7 +4489,12 @@ async function generateBulkReportCards() {
         const leftColX = 18;
         const centerColX = pageWidth / 2 - 10;
         const rightColX = pageWidth - 74;
-        doc.setFillColor(240, 245, 250).setDrawColor(200).setLineWidth(0.3).rect(15, infoBoxY, pageWidth - 30, 34, 'FD');
+        const learnerProgress = Number(s.progress);
+        const hasLearnerProgress = s.progress !== null
+          && s.progress !== undefined
+          && Number.isFinite(learnerProgress);
+        const profileBoxHeight = hasLearnerProgress ? 31 : 25;
+        doc.setFillColor(240, 245, 250).setDrawColor(200).setLineWidth(0.3).rect(15, infoBoxY, pageWidth - 30, profileBoxHeight, 'FD');
 
         doc.setFont("helvetica", "bold").setFontSize(8.5);
         doc.text(`Name: ${sanitizePdfText(s.name)}`, leftColX, infoBoxY + 7);
@@ -4405,7 +4543,32 @@ async function generateBulkReportCards() {
           ],
           rankingHeaders
         ];
-        const tableStartY = infoBoxY + 26; // Y position for table
+        const progressY = infoBoxY + profileBoxHeight - 4;
+        const tableStartY = infoBoxY + profileBoxHeight; // Table starts directly after the profile section
+
+        const progressLabel = !hasLearnerProgress
+          ? "Progress: N/A"
+          : `Progress: ${learnerProgress > 0 ? "+" : ""}${learnerProgress.toFixed(1)}`;
+        const progressColor = !hasLearnerProgress
+          ? [100, 116, 139]
+          : learnerProgress > 0.1
+            ? [22, 163, 74]
+            : learnerProgress < -0.1
+              ? [220, 38, 38]
+              : [37, 99, 235];
+
+        if (hasLearnerProgress) {
+          doc.setFont("helvetica", "bold").setFontSize(8.5).setTextColor(...progressColor);
+          doc.text(progressLabel, 15, progressY);
+          drawPdfProgressArrow(
+            doc,
+            15 + doc.getTextWidth(progressLabel) + 4,
+            progressY - 1,
+            learnerProgress > 0.1 ? 'up' : learnerProgress < -0.1 ? 'down' : 'right',
+            progressColor
+          );
+        }
+        doc.setTextColor(0, 0, 0);
 
         // Determine senior status and eligibility map (use cached roster/elective assignments)
         const currentIsSenior = window.cbcUtils?.isSeniorGrade ? window.cbcUtils.isSeniorGrade(gradeLabel) : false;
@@ -4434,7 +4597,10 @@ async function generateBulkReportCards() {
           const previousNumber = Number(previousScore);
           const subjectProgress = isNumericScore(score) && isNumericScore(previousScore)
             && Number.isFinite(currentNumber) && Number.isFinite(previousNumber)
-            ? `${currentNumber - previousNumber >= 0 ? "+" : ""}${(currentNumber - previousNumber).toFixed(1)}`
+            ? (() => {
+                const difference = currentNumber - previousNumber;
+                return `${difference > 0 ? "+" : ""}${difference.toFixed(1)}`;
+              })()
             : "N/A";
           const remark = cbcUtils.getSubjectRemark(score, sub);
           const streamRank = subjectRankMaps.stream.get(`${s.adm}::${sub}`);
@@ -4495,7 +4661,22 @@ async function generateBulkReportCards() {
               data.cell.styles.fontStyle = 'bold';
             },
             didDrawCell: (data) => {
-              if (data.section !== 'body' || !data.cell.customRankText) return;
+              if (data.section !== 'body') return;
+
+              if (data.column.index === progressColumnIndex) {
+                const progressValue = parseFloat(String(data.cell.raw));
+                if (!Number.isNaN(progressValue)) {
+                  drawPdfProgressArrow(
+                    doc,
+                    data.cell.x + data.cell.width - 3,
+                    data.cell.y + (data.cell.height / 2),
+                    progressValue > 0.1 ? 'up' : progressValue < -0.1 ? 'down' : 'right',
+                    progressValue > 0.1 ? [22, 163, 74] : progressValue < -0.1 ? [220, 38, 38] : [71, 85, 105]
+                  );
+                }
+              }
+
+              if (!data.cell.customRankText) return;
 
               const [position, total] = data.cell.customRankText.split('/');
               const centerX = data.cell.x + (data.cell.width / 2);

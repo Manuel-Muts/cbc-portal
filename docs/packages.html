@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Packages | CompetenceHub</title>
+  <meta name="description" content="Compare CompetenceHub school management packages and choose the features your school needs.">
+  <link rel="stylesheet" href="css/style.css">
+  <link rel="icon" type="image/png" href="/images/favicon.png">
+  <style>
+    :root {
+      --ink: #123c4a;
+      --muted: #52636b;
+      --line: #d8e5e7;
+      --teal: #0f766e;
+      --gold: #fbbf24;
+      --surface: #ffffff;
+      --wash: #f3f8f7;
+    }
+
+    body { background: var(--wash); color: var(--ink); }
+    .packages-page { min-height: 100vh; }
+    .packages-content { max-width: 1160px; margin: 0 auto; }
+    .packages-top-nav { padding: 22px 24px 0; }
+    .packages-back { display: inline-flex; align-items: center; gap: 8px; color: var(--teal); font-weight: 700; text-decoration: none; }
+    .packages-back:hover { color: var(--ink); text-decoration: underline; }
+    .packages-hero { max-width: 920px; margin: 0 auto; padding: 68px 24px 34px; text-align: center; }
+    .packages-hero h1 { margin: 0 0 12px; color: var(--ink); font-size: clamp(2rem, 5vw, 3.4rem); }
+    .packages-hero p { max-width: 680px; margin: 0 auto; color: var(--muted); font-size: 1.08rem; line-height: 1.7; }
+    .plans-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px; max-width: 1120px; margin: 0 auto; padding: 20px 24px 72px; align-items: stretch; }
+    .plan-card { position: relative; display: flex; flex-direction: column; padding: 28px 24px 24px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); box-shadow: 0 12px 28px rgba(18, 60, 74, .08); }
+    .plan-card.featured { border: 2px solid var(--teal); transform: translateY(-8px); box-shadow: 0 18px 34px rgba(15, 118, 110, .16); }
+    .plan-card.featured::before { content: "Most flexible"; position: absolute; top: -13px; left: 50%; transform: translateX(-50%); padding: 5px 12px; border-radius: 999px; color: #123c4a; background: var(--gold); font-size: .72rem; font-weight: 800; white-space: nowrap; }
+    .plan-card h2 { margin: 0 0 7px; font-size: 1.45rem; }
+    .plan-tier { margin: 0 0 20px; color: var(--teal); font-size: .78rem; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; }
+    .plan-card ul { display: grid; gap: 12px; margin: 0 0 26px; padding: 0; list-style: none; color: var(--muted); line-height: 1.35; }
+    .plan-card li::before { content: "✓"; display: inline-block; width: 22px; color: var(--teal); font-weight: 900; }
+    .plan-card .unavailable { color: #8b989c; }
+    .plan-card .unavailable::before { content: "—"; color: #a9b5b8; }
+    .plan-card a { margin-top: auto; padding: 11px 14px; border-radius: 8px; color: #fff; background: var(--teal); text-align: center; text-decoration: none; font-weight: 700; }
+    .packages-note { max-width: 760px; margin: -28px auto 56px; padding: 0 24px; color: var(--muted); text-align: center; line-height: 1.6; }
+    @media (max-width: 800px) {
+      .plans-grid { grid-template-columns: 1fr; max-width: 480px; }
+      .plan-card.featured { transform: none; }
+    }
+    @media (max-width: 520px) {
+      .packages-hero { padding-top: 48px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="packages-page">
+    <main>
+      <div class="packages-content">
+        <nav class="packages-top-nav" aria-label="Page navigation">
+          <a class="packages-back" href="/home"><span aria-hidden="true">←</span> Back to home</a>
+        </nav>
+      </div>
+      <section class="packages-hero">
+        <h1>Packages for every school</h1>
+        <p>Start with the essentials, add communication and timetables as your school grows, or unlock the complete finance and operations toolkit.</p>
+      </section>
+
+      <section class="plans-grid" aria-label="CompetenceHub packages">
+        <article class="plan-card">
+          <h2>Basic</h2>
+          <p class="plan-tier">Tier 1</p>
+          <ul>
+            <li>Marks and learner progress</li>
+            <li>Dean analysis and rankings</li>
+            <li>Academic management</li>
+            <li>Reports and learner records</li>
+            <li>User management</li>
+            <li class="unavailable">Communication and SMS</li>
+            <li class="unavailable">Timetable module</li>
+            <li class="unavailable">Finance and accounts</li>
+          </ul>
+          <a href="https://wa.me/254717748795?text=Hello%20CompetenceHub%2C%20I%20would%20like%20to%20know%20more%20about%20the%20Basic%20package%20(Tier%201)." target="_blank" rel="noopener">Talk to us</a>
+        </article>
+
+        <article class="plan-card featured">
+          <h2>Standard</h2>
+          <p class="plan-tier">Tier 2</p>
+          <ul>
+            <li>Everything in Basic</li>
+            <li>Communication and SMS</li>
+            <li>Timetable module</li>
+            <li>Dean analysis and rankings</li>
+            <li>Academic management</li>
+            <li>Reports and learner records</li>
+            <li class="unavailable">Finance and accounts</li>
+          </ul>
+          <a href="https://wa.me/254717748795?text=Hello%20CompetenceHub%2C%20I%20would%20like%20to%20know%20more%20about%20the%20Standard%20package%20(Tier%202)." target="_blank" rel="noopener">Talk to us</a>
+        </article>
+
+        <article class="plan-card">
+          <h2>Premium</h2>
+          <p class="plan-tier">Tier 3</p>
+          <ul>
+            <li>Everything in Standard</li>
+            <li>Finance and accounts</li>
+            <li>Payment and ledger workflows</li>
+            <li>Communication and SMS</li>
+            <li>Timetable module</li>
+            <li>Full reporting and analytics</li>
+            <li>Complete user management</li>
+          </ul>
+          <a href="https://wa.me/254717748795?text=Hello%20CompetenceHub%2C%20I%20would%20like%20to%20know%20more%20about%20the%20Premium%20package%20(Tier%203)." target="_blank" rel="noopener">Talk to us</a>
+        </article>
+      </section>
+
+      <p class="packages-note">All packages include secure role-based access, learner records, academic workflows, and platform support. Package availability can be tailored to your school’s needs.</p>
+    </main>
+  </div>
+</body>
+</html>

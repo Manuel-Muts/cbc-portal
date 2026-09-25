@@ -32,6 +32,7 @@ import verifyToken from "../middleware/verifyToken.js";
 import { getMySchool } from '../controllers/schoolController.js';
 import { recordPayment, getStudentLedger, reversePayment, getMyFeeStructure, getMyBalance, getMyPayments } from "../controllers/paymentController.js";
 import { accountsOnly } from "../middleware/roleChecks.js";
+import requireFeature from "../middleware/featureAccess.js";
 
 const router = express.Router();
 
@@ -43,6 +44,11 @@ const requireAdmin = (req, res, next) => {
     return res.status(403).json({ msg: "Only admins can perform this action" });
   }
   next();
+};
+
+const requireFinanceForAccountsRegistration = (req, res, next) => {
+  if (String(req.body?.role || '').toLowerCase() !== 'accounts') return next();
+  return requireFeature('finance')(req, res, next);
 };
 
 /**
@@ -84,7 +90,7 @@ router.get('/last-admission', getLastAdmission);
 // ---------------------------
 // USER MANAGEMENT
 // ---------------------------
-router.post("/register", requireAdmin, registerUser);
+router.post("/register", requireAdmin, requireFinanceForAccountsRegistration, registerUser);
 router.post("/bulk-register", requireAdmin, bulkRegisterUsers); // 🆕 New route for bulk registration
 router.post("/resend-credentials", requireAdmin, resendCredentials);
 router.get("/", getAllUsers); // Removed requireAdmin middleware
@@ -105,12 +111,12 @@ router.post('/class-teachers/batch', getClassTeachersByGradesAndStreams);
 // ---------------------------
 // ACCOUNTS ROUTES
 // ---------------------------
-router.post("/record", accountsOnly, recordPayment);
-router.get("/ledger/:admission", accountsOnly, getStudentLedger);
-router.get('/my-fees', getMyFeeStructure);
-router.get('/my-balance', getMyBalance);
-router.get('/my-payments', getMyPayments);
-router.post("/reverse", accountsOnly, reversePayment);
+router.post("/record", requireFeature('finance'), accountsOnly, recordPayment);
+router.get("/ledger/:admission", requireFeature('finance'), accountsOnly, getStudentLedger);
+router.get('/my-fees', requireFeature('finance'), getMyFeeStructure);
+router.get('/my-balance', requireFeature('finance'), getMyBalance);
+router.get('/my-payments', requireFeature('finance'), getMyPayments);
+router.post("/reverse", requireFeature('finance'), accountsOnly, reversePayment);
 
 // ---------------------------
 // SUBJECT MANAGEMENT

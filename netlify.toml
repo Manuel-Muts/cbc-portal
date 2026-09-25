@@ -96,6 +96,11 @@
   status = 200
 
 [[redirects]]
+from = "/packages"
+to = "/packages.html"
+status = 200
+
+[[redirects]]
   from = "/accounts"
   to = "/accounts.html"
   status = 200

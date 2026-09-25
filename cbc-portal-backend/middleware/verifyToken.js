@@ -2,6 +2,7 @@
 import jwt from "jsonwebtoken";
 import { User } from "../models/User.js";
 import { School } from "../models/school.js";
+import { getPlanFeatures, normalizePlan } from "../utils/planAccess.js";
 
 const verifyToken = async (req, res, next) => {
   try {
@@ -22,11 +23,17 @@ const verifyToken = async (req, res, next) => {
     }
 
     let school = null;
+    let schoolPlanFeatures = getPlanFeatures('basic');
     if (user.schoolId) {
-      school = await School.findById(user.schoolId).select("status version");
+      school = await School.findById(user.schoolId).select("status version plan planFeatures");
       if (!school) {
         return res.status(403).json({ message: "Your school does not exist. Contact admin." });
       }
+
+      schoolPlanFeatures = {
+        ...getPlanFeatures(school.plan || 'basic'),
+        ...(school.planFeatures || {})
+      };
 
      // Only enforce version check if token contains schoolVersion
           if (
@@ -59,13 +66,20 @@ const verifyToken = async (req, res, next) => {
       isSuperAdmin: user.role === "super_admin",
       isSchoolAdmin: user.role === "admin",
       admission: user.admission || null,
+      schoolPlan: school?.plan ? normalizePlan(school.plan) : 'basic',
+      schoolPlanFeatures,
       canCreate: (targetRole) => {
       if (user.role === "super_admin") return true;
       if (user.role === "admin") {
         return ["teacher", "student", "learner", "classteacher", "accounts"].includes(targetRole);
       }
       return false;
-    }
+    },
+      hasFeature: (feature) => {
+        if (user.role === 'super_admin') return true;
+        const flag = schoolPlanFeatures[feature];
+        return flag === true;
+      }
     };
 
     next();

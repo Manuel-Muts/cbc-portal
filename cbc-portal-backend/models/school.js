@@ -17,7 +17,7 @@ const schoolSchema = new mongoose.Schema({
   logo: { type: String, default: "" }, // Cloudinary URL or base64 image string
   logoMimeType: { type: String, default: "image/png" }, // MIME type of logo
   logoPublicId: { type: String, default: "" }, // Cloudinary public_id for logo deletion/management
-  address: { type: String, default: "" },
+  motto: { type: String, default: "", trim: true, maxlength: 180 },
   smsCredits: { type: Number, default: 0 },
   // Add this field:
   headteacherSignatureUrl: {
@@ -26,6 +26,21 @@ const schoolSchema = new mongoose.Schema({
   },
   registrationOpen: { type: Boolean, default: true },
   allowSignatureUpload: { type: Boolean, default: true },
+  plan: {
+    type: String,
+    enum: ["basic", "standard", "premium"],
+    default: "basic"
+  },
+  planFeatures: {
+    communication: { type: Boolean, default: false },
+    timetable: { type: Boolean, default: false },
+    finance: { type: Boolean, default: false },
+    deanAnalysis: { type: Boolean, default: true },
+    marks: { type: Boolean, default: true },
+    userManagement: { type: Boolean, default: true },
+    academics: { type: Boolean, default: true },
+    reports: { type: Boolean, default: true }
+  },
   schoolType: {
     type: String,
     enum: ["full", "primary_junior", "senior"],

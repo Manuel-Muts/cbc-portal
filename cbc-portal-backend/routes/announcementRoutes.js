@@ -9,6 +9,7 @@ import {
    retryFailedSMS
 } from '../controllers/announcementController.js';
 import verifyToken from '../middleware/verifyToken.js';
+import requireFeature from '../middleware/featureAccess.js';
 
 const router = express.Router();
 
@@ -41,14 +42,14 @@ const isSuperAdmin = (req, res, next) => {
 router.get('/active', verifyToken, getActiveAnnouncements);
 
 // Management routes for Super Admins to see the full list
-router.get('/all', verifyToken, isSuperAdmin, getAllAnnouncements);
+router.get('/all', verifyToken, isSuperAdmin, requireFeature('communication'), getAllAnnouncements);
 
 // Creation and deletion restricted to Admin and Super Admin
-router.post('/', verifyToken, isAdmin, createAnnouncement);
-router.put('/:id', verifyToken, isAdmin, updateAnnouncement);
-router.delete('/:id', verifyToken, isAdmin, deleteAnnouncement);
+router.post('/', verifyToken, isAdmin, requireFeature('communication'), createAnnouncement);
+router.put('/:id', verifyToken, isAdmin, requireFeature('communication'), updateAnnouncement);
+router.delete('/:id', verifyToken, isAdmin, requireFeature('communication'), deleteAnnouncement);
 
-router.get('/sms-summary', verifyToken, isAdminOrDean, getSMSLogsSummary);
-router.post('/retry-failed', verifyToken, isAdminOrDean, retryFailedSMS);
+router.get('/sms-summary', verifyToken, isAdminOrDean, requireFeature('communication'), getSMSLogsSummary);
+router.post('/retry-failed', verifyToken, isAdminOrDean, requireFeature('communication'), retryFailedSMS);
 
 export default router;

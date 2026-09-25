@@ -93,6 +93,8 @@ body {
 .main {
   flex: 1;
   padding: 20px;
+  min-width: 0;
+  overflow-x: hidden;
 }
 
 .topbar {
@@ -104,6 +106,12 @@ body {
   padding: 15px;
   border-radius: 10px;
   box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+}
+
+.school-management-card {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
 }
 /* Table styling */
 .table {
@@ -125,17 +133,18 @@ body {
 }
 
 .table th, .table td {
-  padding: 6px 10px;
+  padding: 5px 8px;
   border-bottom: 1px solid #f0f2f5;
   text-align: left;
   vertical-align: middle;
+  line-height: 1.25;
 }
 
 .table th {
   background: linear-gradient(180deg,#f7fafc,#eef3f7);
   color: #2c3e50;
   font-weight: 600;
-  font-size: 0.82rem;
+  font-size: 0.72rem;
   position: sticky;
   top: 0;
   z-index: 2;
@@ -143,7 +152,77 @@ body {
 }
 
 .table td {
-  font-size: 0.78rem;
+  font-size: 0.72rem;
+  white-space: normal;
+}
+
+.table tbody td:first-child,
+.table thead th:first-child {
+  width: 36px;
+}
+
+.table td:nth-child(2),
+.table td:nth-child(3),
+.table td:nth-child(4),
+.table td:nth-child(5),
+.table td:nth-child(6),
+.table td:nth-child(7),
+.table td:nth-child(8),
+.table td:nth-child(9) {
+  min-width: 110px;
+}
+
+.table td:nth-child(7) {
+  min-width: 82px;
+  white-space: nowrap;
+}
+
+.plan-badge {
+  display: inline-block;
+  padding: 3px 6px;
+  border-radius: 5px;
+  font-size: 0.64rem;
+  font-weight: 700;
+  line-height: 1.1;
+  white-space: nowrap;
+}
+
+.plan-basic {
+  color: #475569;
+  background: #e2e8f0;
+}
+
+.plan-standard {
+  color: #075985;
+  background: #bae6fd;
+}
+
+.plan-premium {
+  color: #92400e;
+  background: #fde68a;
+}
+
+.table .action-cell {
+  min-width: 190px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  justify-content: flex-start;
+  align-items: center;
+}
+
+.table .action-cell button,
+.table button,
+.table .btn {
+  padding: 4px 7px;
+  font-size: 0.66rem;
+  line-height: 1.2;
+  border-radius: 5px;
+  min-height: 28px;
+}
+
+.table .action-cell button {
+  white-space: nowrap;
 }
 
 /* Zebra rows */
@@ -186,6 +265,29 @@ body {
 
 /* Responsive: allow table wrapper to scroll */
 .table-responsive { overflow-x: auto; }
+
+.school-table-scroll {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  margin-top: 12px;
+  border-radius: 8px;
+  scrollbar-width: thin;
+  -webkit-overflow-scrolling: touch;
+}
+
+.school-management-table {
+  min-width: 980px;
+  width: max-content;
+  margin-top: 0;
+}
+
+.school-table-scroll:focus-visible {
+  outline: 2px solid #2980b9;
+  outline-offset: 2px;
+}
 
 /* Buttons */
 .primary-btn {
@@ -275,78 +377,176 @@ body {
   display: none;
 }
 
-.modal-content {
+#addSchoolModal .modal-content,
+#editSchoolModal .modal-content {
   background: white;
-  padding: 30px;
-  width: 550px;
-  max-width: 90vw;
-  border-radius: 12px;
-  box-shadow: 0 10px 30px rgba(0,0,0,0.3);
-  max-height: 90vh;
+  padding: 24px 30px 20px;
+  width: min(1040px, 94vw);
+  max-width: 1040px;
+  border-radius: 18px;
+  box-shadow: 0 18px 42px rgba(15, 23, 42, 0.22);
+  max-height: 92vh;
   overflow-y: auto;
 }
 
-.modal-content h3 {
-  margin-bottom: 20px;
-  color: #2c3e50;
-  font-size: 1.5rem;
+#addSchoolModal .modal-content h3,
+#editSchoolModal .modal-content h3 {
+  margin-bottom: 16px;
+  color: #1f2937;
+  font-size: 1.35rem;
   text-align: center;
+  letter-spacing: -0.02em;
 }
 
+.school-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px 22px;
+  align-items: start;
+}
+
+.school-form-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.school-form-field.full-width,
+.modal-checkbox-section.full-width,
+.modal-actions.full-width {
+  grid-column: 1 / -1;
+}
+
+.school-form-field label,
 .modal-content label {
   display: block;
-  margin-bottom: 8px;
+  margin: 0;
   font-weight: 600;
   color: #34495e;
 }
 
+.school-form-field input,
+.school-form-field select,
 .modal-content input,
 .modal-content select {
   width: 100%;
-  padding: 12px;
-  margin-bottom: 20px;
-  border: 1px solid #ddd;
-  border-radius: 8px;
-  font-size: 1rem;
-  transition: border-color 0.3s;
+  padding: 9px 11px;
+  border: 1px solid #dbe4ef;
+  border-radius: 10px;
+  font-size: 0.92rem;
+  transition: border-color 0.3s, box-shadow 0.3s;
+  background: #fff;
 }
 
+.school-form-field input:focus,
+.school-form-field select:focus,
 .modal-content input:focus,
 .modal-content select:focus {
   outline: none;
   border-color: #2980b9;
-  box-shadow: 0 0 5px rgba(41, 128, 185, 0.3);
+  box-shadow: 0 0 0 3px rgba(41, 128, 185, 0.12);
 }
 
-.modal-content button {
-  margin-top: 10px;
-  padding: 12px 20px;
-  border: none;
-  border-radius: 8px;
+#addSchoolModal .modal-checkbox-section,
+#editSchoolModal .modal-checkbox-section {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin: 4px 0 0;
+}
+
+#addSchoolModal .modal-checkbox-row,
+#editSchoolModal .modal-checkbox-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid #e5edf7;
+  border-radius: 12px;
+  background: #f8fbff;
+}
+
+#addSchoolModal .modal-checkbox-label,
+#editSchoolModal .modal-checkbox-label {
+  flex: 1;
+  margin: 0;
+  font-weight: 600;
+  color: #334155;
+}
+
+#addSchoolModal .modal-checkbox-row input[type="checkbox"],
+#editSchoolModal .modal-checkbox-row input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  accent-color: #2563eb;
   cursor: pointer;
-  font-size: 1rem;
-  transition: background-color 0.3s;
 }
 
-.modal-content .primary-btn {
+.modal-actions {
+  display: flex;
+  gap: 12px;
+  margin-top: 8px;
+}
+
+#addSchoolModal .modal-content button,
+#editSchoolModal .modal-content button {
+  margin-top: 0;
+  padding: 12px 18px;
+  border: none;
+  border-radius: 10px;
+  cursor: pointer;
+  font-size: 0.97rem;
+  font-weight: 600;
+  transition: background-color 0.25s ease, transform 0.2s ease;
+}
+
+#addSchoolModal .modal-content .primary-btn,
+#editSchoolModal .modal-content .primary-btn {
   background: #2980b9;
   color: white;
-  width: 100%;
+  flex: 1;
+  min-width: 0;
 }
 
-.modal-content .primary-btn:hover {
+#addSchoolModal .modal-content .primary-btn:hover,
+#editSchoolModal .modal-content .primary-btn:hover {
   background: #1f6691;
 }
 
-.modal-content .close-btn {
+#addSchoolModal .modal-content .close-btn,
+#editSchoolModal .modal-content .close-btn {
   background: #95a5a6;
   color: white;
-  width: 100%;
-  margin-top: 10px;
+  flex: 1;
+  min-width: 0;
 }
 
-.modal-content .close-btn:hover {
+#addSchoolModal .modal-content .close-btn:hover,
+#editSchoolModal .modal-content .close-btn:hover {
   background: #7f8c8d;
+}
+
+@media (max-width: 700px) {
+  .school-form-grid {
+    grid-template-columns: 1fr;
+  }
+
+  #addSchoolModal .modal-checkbox-section,
+  #editSchoolModal .modal-checkbox-section {
+    grid-template-columns: 1fr;
+  }
+
+  #addSchoolModal .modal-content,
+  #editSchoolModal .modal-content {
+    width: min(92vw, 520px);
+    padding: 22px 18px 18px;
+  }
+
+  .modal-actions {
+    flex-direction: column;
+  }
 }
 .card-header {
   display: flex;

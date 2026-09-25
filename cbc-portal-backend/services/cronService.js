@@ -12,6 +12,7 @@ import { applyMonthlySmsAllocation } from '../utils/smsBalance.js';
 import { refreshAllDashboardSummaries, pruneOldDashboardSummaries } from './dashboardSummaryService.js';
 
 const UPLOADS_DIR = path.join(path.resolve(), 'uploads');
+const CRON_TIMEZONE = 'Africa/Nairobi';
 
 export const startCronJobs = () => {
   // 🆕 Cron Job: Refresh dashboard summary cache every 15 minutes.
@@ -24,7 +25,7 @@ export const startCronJobs = () => {
     } catch (err) {
       console.error('❌ Error during dashboard summary refresh job:', err);
     }
-  });
+  }, { timezone: CRON_TIMEZONE });
 
   // Keep only a short rolling history of dashboard snapshots.
   // Runs every Sunday at midnight.
@@ -36,7 +37,7 @@ export const startCronJobs = () => {
     } catch (err) {
       console.error('❌ Error during dashboard summary pruning job:', err);
     }
-  });
+  }, { timezone: CRON_TIMEZONE });
 
   // 🆕 Cron Job: Clean up orphaned StudentEnrollment records weekly
   // Runs every Sunday at 3:00 AM (0 3 * * 0)
@@ -66,7 +67,7 @@ export const startCronJobs = () => {
     } catch (err) {
       console.error('❌ Error during orphaned enrollment cleanup job:', err);
     }
-  });
+  }, { timezone: CRON_TIMEZONE });
 
   // Run every day at midnight (00:00)
   // Format: Minute Hour DayOfMonth Month DayOfWeek
@@ -117,7 +118,7 @@ export const startCronJobs = () => {
     } catch (err) {
       console.error('❌ Error during cleanup job:', err);
     }
-  });
+  }, { timezone: CRON_TIMEZONE });
 
   // 🆕 Cron Job: Explicit cleanup of login attempts
   // This acts as a safety net for M0 clusters where TTL indexes can be unreliable.
@@ -138,7 +139,7 @@ export const startCronJobs = () => {
     } catch (err) {
       console.error('❌ Error during login attempts cleanup job:', err);
     }
-  });
+  }, { timezone: CRON_TIMEZONE });
 
   // 🆕 Cron Job: Clear saved timetables once a term is over
   // Runs at 4:00 AM on the 1st of January, May, and September.
@@ -164,7 +165,7 @@ export const startCronJobs = () => {
         console.error('❌ Error during timetables cleanup job:', err);
       }
     }
-  });
+  }, { timezone: CRON_TIMEZONE });
 
   // 🆕 Cron Job: Monthly automatic SMS allocation
   // Runs at 00:00 on the 1st of every month (server timezone)
@@ -213,5 +214,5 @@ export const startCronJobs = () => {
     } catch (err) {
       console.error('❌ Error during monthly SMS allocation job:', err);
     }
-  });
+  }, { timezone: CRON_TIMEZONE });
 };
