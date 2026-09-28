@@ -26,8 +26,11 @@ document.addEventListener("DOMContentLoaded", () => {
   const stepSuccess = document.getElementById("stepSuccess");
 
   const roleInput = document.getElementById("role");
-  const emailInput = document.getElementById("email");
+  const identityInput = document.getElementById("identityInput");
+  const phonePrefix = document.getElementById("phonePrefix");
   const identityGroup = document.getElementById("identityGroup");
+  const deliveryMethodGroup = document.getElementById("deliveryMethodGroup");
+  const deliveryMethodInput = document.getElementById("deliveryMethod");
   const identityLabel = document.getElementById("identityLabel");
   const codeDeliveryText = document.getElementById("codeDeliveryText");
   const codeInput = document.getElementById("code"); // fallback single field
@@ -59,21 +62,59 @@ document.addEventListener("DOMContentLoaded", () => {
     return roleInput.value.trim().toLowerCase() === "student";
   }
 
+  function normalizeKenyanPhone(value) {
+    let digits = String(value || "").replace(/\D/g, "");
+    if (digits.startsWith("254")) digits = digits.slice(3);
+    if (digits.startsWith("0")) digits = digits.slice(1);
+    return digits ? `+254${digits}` : "";
+  }
+
+  function getResetIdentityValue() {
+    const value = identityInput.value.trim();
+    return !isLearnerReset() && deliveryMethodInput?.value === "phone"
+      ? normalizeKenyanPhone(value)
+      : value;
+  }
+
   function updateResetIdentityField() {
     const hasRole = Boolean(roleInput.value.trim());
     const learner = isLearnerReset();
-    identityGroup?.classList.toggle("hidden", !hasRole);
-    if (identityLabel) identityLabel.textContent = learner ? "Learner username" : "Registered email";
-    if (emailInput) {
-      emailInput.type = learner ? "text" : "email";
-      emailInput.placeholder = learner ? "Example: 567k7p2" : "emmanuel@example.com";
+    deliveryMethodGroup?.classList.toggle("hidden", !hasRole || learner);
+    const deliveryMethod = deliveryMethodInput?.value || "";
+    const showIdentity = hasRole && (learner || Boolean(deliveryMethod));
+    identityGroup?.classList.toggle("hidden", !showIdentity);
+    phonePrefix?.classList.toggle("hidden", learner || deliveryMethod !== "phone");
+    if (identityLabel) {
+      identityLabel.textContent = learner
+        ? "Learner username"
+        : deliveryMethod === "phone" ? "Registered phone number" : "Registered email";
+    }
+    if (identityInput) {
+      identityInput.type = learner ? "text" : deliveryMethod === "phone" ? "tel" : "email";
+      identityInput.inputMode = learner ? "text" : deliveryMethod === "phone" ? "tel" : "email";
+      identityInput.autocomplete = deliveryMethod === "phone" ? "tel" : "username";
+      identityInput.placeholder = learner
+        ? "Example: 567K7P2"
+        : deliveryMethod === "phone" ? "7XX XXX XXX" : "emmanuel@example.com";
     }
     if (codeDeliveryText) {
-      codeDeliveryText.textContent = learner
-        ? "A verification code has been sent to the parent or guardian phone number registered for this learner."
-        : "Enter the 6-digit code sent to your email. (Check spam if you don't see it.)";
+      if (learner) {
+        codeDeliveryText.textContent = "A verification code has been sent to the parent or guardian phone number registered for this learner.";
+      } else if (deliveryMethodInput?.value === "phone") {
+        codeDeliveryText.textContent = "Enter the 6-digit code sent by SMS to the phone number registered for this staff account.";
+      } else {
+        codeDeliveryText.textContent = "Enter the 6-digit code sent to your email. (Check spam if you don't see it.)";
+      }
     }
   }
+
+  identityInput.addEventListener("input", () => {
+    if (isLearnerReset() || deliveryMethodInput?.value !== "phone") return;
+    let digits = identityInput.value.replace(/\D/g, "");
+    if (digits.startsWith("254")) digits = digits.slice(3);
+    if (digits.startsWith("0")) digits = digits.slice(1);
+    identityInput.value = digits.slice(0, 9);
+  });
 
   // -------------------------
   // Frontend rate-limit / resend protection
@@ -95,10 +136,41 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // Load previous state
   const saved = loadState();
-  if ((saved.email || saved.username) && emailInput) emailInput.value = saved.email || saved.username; //
+  const resumeActiveReset = ["code", "password"].includes(saved.lastStep);
   if (saved.role && roleInput) roleInput.value = saved.role; //
+  if (resumeActiveReset && saved.deliveryMethod && deliveryMethodInput) deliveryMethodInput.value = saved.deliveryMethod;
+  let savedIdentity = resumeActiveReset ? saved.identity : "";
+  if (resumeActiveReset && !savedIdentity && isLearnerReset()) savedIdentity = saved.username;
+  if (resumeActiveReset && !savedIdentity && !isLearnerReset() && saved.email) {
+    deliveryMethodInput.value = saved.deliveryMethod || "email";
+    savedIdentity = saved.email;
+  }
+  if (identityInput) {
+    identityInput.value = !isLearnerReset() && deliveryMethodInput?.value === "phone"
+      ? String(savedIdentity || "").replace(/\D/g, "").replace(/^254/, "").replace(/^0/, "")
+      : savedIdentity || "";
+  }
   updateResetIdentityField();
-  roleInput.addEventListener("change", updateResetIdentityField);
+  roleInput.addEventListener("change", () => {
+    if (identityInput) identityInput.value = "";
+    updateResetIdentityField();
+    const state = loadState();
+    state.role = roleInput.value;
+    state.identity = "";
+    state.email = "";
+    state.username = "";
+    saveState(state);
+  });
+  deliveryMethodInput?.addEventListener("change", () => {
+    if (identityInput) identityInput.value = "";
+    updateResetIdentityField();
+    const state = loadState();
+    state.deliveryMethod = deliveryMethodInput.value;
+    state.identity = "";
+    state.email = "";
+    state.username = "";
+    saveState(state);
+  });
 
   // -------------------------
   // Step helpers
@@ -119,7 +191,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // Reset visual errors on inputs
   function clearInputErrors() {
-    [roleInput, emailInput, newPasswordInput].forEach(i => i && i.classList.remove("input-error")); //
+    [roleInput, identityInput, newPasswordInput].forEach(i => i && i.classList.remove("input-error")); //
     otpBoxes.forEach(b => b.classList.remove("input-error"));
     codeInput && codeInput.classList.remove("input-error");
   }
@@ -321,7 +393,8 @@ document.addEventListener("DOMContentLoaded", () => {
   // -------------------------
   // Enter key handling for steps
   // -------------------------
-  [roleInput, emailInput].forEach(el => { //
+  [roleInput, identityInput, deliveryMethodInput].forEach(el => { //
+    if (!el) return;
     el.addEventListener("keydown", (e) => {
       if (e.key === "Enter") { e.preventDefault(); sendCodeBtn.click(); }
     });
@@ -339,8 +412,9 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // -------------------------
   const role = roleInput.value.trim();
-  const identity = emailInput.value.trim();
+  const identity = getResetIdentityValue();
   const learner = isLearnerReset();
+  const deliveryMethod = learner ? "username" : deliveryMethodInput.value;
 
   // -------------------------
   // Basic validations
@@ -350,9 +424,18 @@ document.addEventListener("DOMContentLoaded", () => {
     setFeedback(feedbackEmail, "Please select a role.", "error"); 
     return; 
   }
-  if (!identity || (!learner && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(identity))) {
-    emailInput.classList.add("input-error"); 
-    setFeedback(feedbackEmail, "Please enter a valid email.", "error"); 
+  const validIdentity = learner
+    ? Boolean(identity)
+    : deliveryMethod === "email"
+      ? /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(identity)
+      : deliveryMethod === "phone" && /^\+254[71]\d{8}$/.test(identity);
+  if (!learner && !deliveryMethod) {
+    setFeedback(feedbackEmail, "Choose whether to receive the code by email or phone.", "error");
+    return;
+  }
+  if (!validIdentity) {
+    identityInput.classList.add("input-error");
+    setFeedback(feedbackEmail, learner ? "Please enter the learner username." : deliveryMethod === "phone" ? "Please enter a valid phone number." : "Please enter a valid email.", "error");
     return; 
   }
 
@@ -367,7 +450,12 @@ document.addEventListener("DOMContentLoaded", () => {
   // -------------------------
   // Save to session for resume
   // -------------------------
-  saveState({ role, email: learner ? "" : identity, username: learner ? identity : "" });
+  saveState({
+    role,
+    identity,
+    username: learner ? identity : "",
+    deliveryMethod
+  });
 
   setFeedback(feedbackEmail, "Verifying user...");
 
@@ -378,13 +466,13 @@ document.addEventListener("DOMContentLoaded", () => {
     const verifyRes = await fetchWithTimeout(`${API_BASE}/verify-user`, {
       method: "POST", //
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(learner ? { role, username: identity } : { role, email: identity })
+      body: JSON.stringify(learner ? { role, username: identity } : { role, identityType: deliveryMethod, [deliveryMethod]: identity })
     });
 
     const verifyData = await verifyRes.json().catch(() => ({}));
     if (!verifyRes.ok) {
       setFeedback(feedbackEmail, verifyData.msg || "User not found", "error");
-      if (verifyRes.status === 404) emailInput.classList.add("input-error");
+      if (verifyRes.status === 404) identityInput.classList.add("input-error");
       return;
     }
 
@@ -395,7 +483,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const reqRes = await fetchWithTimeout(`${API_BASE}/request`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(learner ? { role, username: identity } : { role, email: identity })
+      body: JSON.stringify(learner ? { role, username: identity } : { role, identityType: deliveryMethod, [deliveryMethod]: identity })
     });
 
     const reqData = await reqRes.json().catch(() => ({}));
@@ -407,7 +495,10 @@ document.addEventListener("DOMContentLoaded", () => {
     pushReqHistory();
     startResendCooldown(RESEND_COOLDOWN);
 
-    setFeedback(feedbackEmail, learner ? "Code sent to the parent or guardian phone." : "Reset code sent! Check your email.", "success");
+    const sentByPhone = !learner && deliveryMethod === "phone";
+    setFeedback(feedbackEmail, learner
+      ? "Code sent to the parent or guardian phone."
+      : sentByPhone ? "Reset code sent by SMS to the registered phone." : "Reset code sent! Check your email.", "success");
     showStep(stepCode);
     setTimeout(() => { otpBoxes[0].focus(); }, 250);
 
@@ -424,7 +515,8 @@ document.addEventListener("DOMContentLoaded", () => {
   // -------------------------
   clearBtn.addEventListener("click", () => {
     roleInput.value = ""; //
-    emailInput.value = ""; //
+    identityInput.value = ""; //
+    if (deliveryMethodInput) deliveryMethodInput.value = "";
     updateResetIdentityField();
     clearInputErrors();
     setFeedback(feedbackEmail, "");
@@ -435,8 +527,9 @@ document.addEventListener("DOMContentLoaded", () => {
 // Resend button
 // -------------------------
 resendBtn.addEventListener("click", withLoading(resendBtn, async () => {
-  const identity = emailInput.value.trim();
+  const identity = getResetIdentityValue();
   const learner = isLearnerReset();
+  const deliveryMethod = learner ? "username" : deliveryMethodInput.value;
   if (!identity) {
     setFeedback(feedbackCode, "No username or email to resend to.", "error");
     return;
@@ -451,7 +544,7 @@ resendBtn.addEventListener("click", withLoading(resendBtn, async () => {
     const res = await fetchWithTimeout(`${API_BASE}/request`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(learner ? { role: "student", username: identity } : { role: roleInput.value, email: identity })
+      body: JSON.stringify(learner ? { role: "student", username: identity } : { role: roleInput.value, identityType: deliveryMethod, [deliveryMethod]: identity })
     });
 
     const data = await res.json().catch(() => ({}));
@@ -464,7 +557,10 @@ resendBtn.addEventListener("click", withLoading(resendBtn, async () => {
     pushReqHistory();
     startResendCooldown(RESEND_COOLDOWN);
 
-    setFeedback(feedbackCode, learner ? "Code resent to the parent or guardian phone." : "Code resent. Check your email.", "success");
+    const resentByPhone = !learner && deliveryMethod === "phone";
+    setFeedback(feedbackCode, learner
+      ? "Code resent to the parent or guardian phone."
+      : resentByPhone ? "Code resent by SMS to the registered phone." : "Code resent. Check your email.", "success");
     setTimeout(() => otpBoxes[0].focus(), 200);
 
   } catch (err) {
@@ -478,8 +574,9 @@ resendBtn.addEventListener("click", withLoading(resendBtn, async () => {
   // -------------------------
   async function doVerifyCode() {
     clearInputErrors();
-    const identity = emailInput.value.trim();
+    const identity = getResetIdentityValue();
     const learner = isLearnerReset();
+    const deliveryMethod = learner ? "username" : deliveryMethodInput.value;
     const code = getOtpValue();
     if (!code || code.length !== 6) {
       otpBoxes.forEach(b => b.classList.add("input-error"));
@@ -493,7 +590,7 @@ resendBtn.addEventListener("click", withLoading(resendBtn, async () => {
       const res = await fetchWithTimeout(`${API_BASE}/verify`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(learner ? { role: "student", username: identity, code } : { role: roleInput.value, email: identity, code })
+        body: JSON.stringify(learner ? { role: "student", username: identity, code } : { role: roleInput.value, identityType: deliveryMethod, [deliveryMethod]: identity, code })
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
@@ -517,8 +614,9 @@ resendBtn.addEventListener("click", withLoading(resendBtn, async () => {
   // -------------------------
   async function doResetPassword() {
     clearInputErrors();
-    const identity = emailInput.value.trim();
+    const identity = getResetIdentityValue();
     const learner = isLearnerReset();
+    const deliveryMethod = learner ? "username" : deliveryMethodInput.value;
     const code = getOtpValue();
     const password = newPasswordInput.value.trim();
 
@@ -527,9 +625,14 @@ resendBtn.addEventListener("click", withLoading(resendBtn, async () => {
       setFeedback(feedbackPassword, "Password must be at least 8 characters.", "error");
       return;
     }
-    if (!learner && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(identity)) {
-      emailInput.classList.add("input-error");
-      setFeedback(feedbackPassword, "Invalid email.", "error");
+    const validIdentity = learner
+      ? Boolean(identity)
+      : deliveryMethod === "email"
+        ? /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(identity)
+        : deliveryMethod === "phone" && /^\+254[71]\d{8}$/.test(identity);
+    if (!validIdentity) {
+      identityInput.classList.add("input-error");
+      setFeedback(feedbackPassword, learner ? "Invalid learner username." : deliveryMethod === "phone" ? "Invalid phone number." : "Invalid email.", "error");
       return;
     }
     if (!code || code.length !== 6) {
@@ -544,7 +647,7 @@ resendBtn.addEventListener("click", withLoading(resendBtn, async () => {
       const res = await fetchWithTimeout(`${API_BASE}/new-password`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(learner ? { role: "student", username: identity, code, password } : { role: roleInput.value, email: identity, code, password })
+        body: JSON.stringify(learner ? { role: "student", username: identity, code, password } : { role: roleInput.value, identityType: deliveryMethod, [deliveryMethod]: identity, code, password })
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
@@ -598,11 +701,12 @@ resendBtn.addEventListener("click", withLoading(resendBtn, async () => {
   }
   document.querySelectorAll(".step").forEach(s => s.addEventListener("transitionend", persistLastStep));
 
-  [roleInput, emailInput].forEach(i => {
+  [roleInput, identityInput, deliveryMethodInput].forEach(i => {
     if (i) i.addEventListener("input", () => {
       const st = loadState();
       if (roleInput) st.role = roleInput.value;
-      if (emailInput) st.email = emailInput.value;
+      if (identityInput) st.identity = identityInput.value;
+      if (deliveryMethodInput) st.deliveryMethod = deliveryMethodInput.value;
       saveState(st);
     });
   });

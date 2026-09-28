@@ -35,7 +35,7 @@ export const recordPayment = async (req, res) => {
 
     // 🔎 Find student (scoped to school)
     const student = await Student.findOne({
-      admission,
+      admission: { $eq: admission, $type: "string" },
       schoolId: req.user.schoolId
     });
 
@@ -190,7 +190,7 @@ export const getStudentLedger = async (req, res) => {
     const skip = (page - 1) * limit;
 
     const student = await Student.findOne({
-      admission,
+      admission: { $eq: admission, $type: "string" },
       schoolId: req.user.schoolId
     }).select("name admission _id"); // Select only necessary fields
 
@@ -238,7 +238,7 @@ export const getStudentFeeStatement = async (req, res) => {
     }
 
     const student = await Student.findOne({
-      admission,
+      admission: { $eq: admission, $type: "string" },
       schoolId: req.user.schoolId
     }).select("name admission _id");
 

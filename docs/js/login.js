@@ -11,10 +11,13 @@ document.addEventListener("DOMContentLoaded", function () {
 
   const firstnameField = document.getElementById("firstname");
   const firstnameLabel = document.getElementById("firstnameLabel");
+  const learnerUsernameHint = document.getElementById("learnerUsernameHint");
   const admissionField = document.getElementById("admission");
   const admissionLabel = document.getElementById("admissionLabel");
   const emailField = document.getElementById("email");
   const emailLabel = document.getElementById("emailLabel");
+  const gmailSuggestion = document.getElementById("gmailEmailSuggestion");
+  const gmailSuggestionButton = gmailSuggestion?.querySelector("button");
   const passwordField = admissionField;
   const keepLoggedInCheckbox = document.getElementById("keepLoggedIn");
   const nextButton = document.getElementById("nextButton");
@@ -26,6 +29,74 @@ document.addEventListener("DOMContentLoaded", function () {
 
   let selectedRole = "";
   let credentialStage = 0;
+
+  function updateGmailSuggestion() {
+    if (!gmailSuggestion || !gmailSuggestionButton || selectedRole === "student" || selectedRole === "learner" || credentialStage !== 0) {
+      gmailSuggestion?.classList.add("hidden");
+      return;
+    }
+
+    const value = emailField.value.trim();
+    const atIndex = value.indexOf("@");
+    let suggestion = "";
+
+    if (atIndex < 0 && value && !/\s/.test(value)) {
+      suggestion = `${value}@gmail.com`;
+    } else if (atIndex > 0) {
+      const localPart = value.slice(0, atIndex);
+      const typedDomain = value.slice(atIndex + 1).toLowerCase();
+      if (localPart && "gmail.com".startsWith(typedDomain) && typedDomain !== "gmail.com") {
+        suggestion = `${localPart}@gmail.com`;
+      }
+    }
+
+    if (!suggestion || suggestion.toLowerCase() === value.toLowerCase()) {
+      gmailSuggestion.classList.add("hidden");
+      return;
+    }
+
+    gmailSuggestionButton.textContent = `Use ${suggestion}`;
+    gmailSuggestionButton.setAttribute("aria-label", `Use ${suggestion}`);
+    gmailSuggestionButton.dataset.email = suggestion;
+    gmailSuggestion.classList.remove("hidden");
+  }
+
+  function acceptGmailSuggestion() {
+    const suggestion = gmailSuggestionButton?.dataset.email;
+    if (!suggestion) return;
+    emailField.value = suggestion;
+    gmailSuggestion.classList.add("hidden");
+    emailField.focus();
+    emailField.setSelectionRange(suggestion.length, suggestion.length);
+  }
+
+  emailField?.addEventListener("input", updateGmailSuggestion);
+  gmailSuggestionButton?.addEventListener("click", acceptGmailSuggestion);
+  gmailSuggestionButton?.addEventListener("keydown", (event) => {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      acceptGmailSuggestion();
+    } else if (event.key === "Escape") {
+      event.preventDefault();
+      gmailSuggestion.classList.add("hidden");
+      emailField.focus();
+    }
+  });
+  emailField?.addEventListener("keydown", (event) => {
+    if (event.key === "ArrowDown" && !gmailSuggestion?.classList.contains("hidden")) {
+      event.preventDefault();
+      gmailSuggestionButton.focus();
+    } else if (event.key === "Escape" && !gmailSuggestion?.classList.contains("hidden")) {
+      gmailSuggestion.classList.add("hidden");
+    }
+  });
+  emailField?.addEventListener("blur", () => {
+    window.setTimeout(() => {
+      if (!gmailSuggestion?.contains(document.activeElement)) {
+        gmailSuggestion?.classList.add("hidden");
+      }
+    }, 0);
+  });
 
   function showLoginError(message) {
     if (!loginFeedback) return;
@@ -71,23 +142,29 @@ document.addEventListener("DOMContentLoaded", function () {
   function updateCredentialStage() {
     const isLearner = selectedRole === "student" || selectedRole === "learner";
     const showFirstCredential = credentialStage === 0;
+    emailField.autocomplete = "username";
+    firstnameField.autocomplete = "username";
 
     if (isLearner) {
       firstnameLabel.textContent = "Username";
-      firstnameField.placeholder = "Example: 567D45A";
+      firstnameField.placeholder = "e.g. 28L7CM";
+      learnerUsernameHint?.classList.remove("hidden");
       emailLabel.textContent = "Email";
       emailField.placeholder = "Enter your email";
       admissionLabel.textContent = showFirstCredential ? "Username" : "Password";
       admissionField.placeholder = showFirstCredential ? "Enter your username" : "Enter your password";
       admissionField.type = showFirstCredential ? "text" : "password";
+      admissionField.autocomplete = showFirstCredential ? "username" : "current-password";
     } else {
       firstnameLabel.textContent = "Full Name";
       firstnameField.placeholder = "Enter your full name";
+      learnerUsernameHint?.classList.add("hidden");
       emailLabel.textContent = "Email";
       emailField.placeholder = "Enter your email";
       admissionLabel.textContent = "Password";
       admissionField.placeholder = "Enter your password";
       admissionField.type = "password";
+      admissionField.autocomplete = "current-password";
     }
 
     if (showFirstCredential) {
@@ -125,6 +202,8 @@ document.addEventListener("DOMContentLoaded", function () {
       showElement(submitButton);
       hideElement(stepNextButton);
     }
+
+    updateGmailSuggestion();
   }
 
   function startCredentialFlow() {

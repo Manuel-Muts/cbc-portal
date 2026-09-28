@@ -10,7 +10,8 @@ try {
     daysToKeep: 5
   });
 
-  console.log(`MongoDB backup completed: ${result.backupRootDir}`);
+  const sizeMB = (result.sizeBytes / (1024 * 1024)).toFixed(2);
+  console.log(`MongoDB backup completed: ${result.backupRootDir} (${sizeMB} MB)`);
 } catch (error) {
   console.error('MongoDB backup failed:', error);
   process.exitCode = 1;

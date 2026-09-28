@@ -477,7 +477,7 @@ setCache(cacheKey, metrics);
               });
               const data = res ? await res.json().catch(() => ({})) : {};
               if (!res || !res.ok) throw new Error(data.msg || 'Backup failed.');
-              setStatus(`${data.message} Folder: ${data.backupFolder}`);
+              setStatus(`${data.message} Size: ${data.sizeMB} MB. Folder: ${data.backupFolder}`);
               await loadBackups();
             } catch (error) {
               setStatus(error.message || 'Backup failed.', true);

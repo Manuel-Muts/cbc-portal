@@ -100,6 +100,7 @@ body {
 
 .reset-form input[type="text"],
 .reset-form input[type="email"],
+.reset-form input[type="tel"],
 .reset-form input[type="password"],
 .reset-form input[type="number"],
 .reset-form select,
@@ -114,6 +115,59 @@ body {
   transition: all 0.3s ease;
   box-sizing: border-box;
   margin-bottom: 8px;
+}
+
+.identity-input-wrap {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  margin-bottom: 8px;
+  font-family: "Segoe UI", Arial, sans-serif;
+  font-size: 0.88rem;
+  border: 1px solid #d1d5db;
+  border-radius: 10px;
+  background-color: #f8fafc;
+  box-sizing: border-box;
+  transition: all 0.3s ease;
+}
+
+.identity-input-wrap:focus-within {
+  border-color: #2563eb;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+  background-color: #fff;
+}
+
+.identity-input-wrap > span {
+  align-self: stretch;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 10px;
+  border-right: 1px solid #cbd5e1;
+  border-radius: 9px 0 0 9px;
+  background: #e6f4f1;
+  color: #0f766e;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.reset-form .identity-input-wrap input[type="text"],
+.reset-form .identity-input-wrap input[type="email"],
+.reset-form .identity-input-wrap input[type="tel"] {
+  flex: 1;
+  min-width: 0;
+  font: inherit;
+  color: #1f2937;
+  border: 0 !important;
+  border-radius: 10px;
+  margin: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.reset-form .identity-input-wrap input:focus {
+  outline: none;
+  background: transparent !important;
+  box-shadow: none !important;
 }
 
 .reset-form input:focus,

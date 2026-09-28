@@ -71,7 +71,7 @@ export const findLearnerForMarksEntry = async (req, res) => {
     const student = await User.findOne({
       schoolId: req.user.schoolId,
       role: "student",
-      admission
+      admission: { $eq: admission, $type: "string" }
     }).select("name admission").lean();
     if (!student) return res.status(404).json({ message: "Learner not found in this class" });
 
@@ -141,7 +141,11 @@ export const createLearnerForMarksEntry = async (req, res) => {
       return res.status(400).json({ message: "Learner name and admission number are required" });
     }
 
-    const existingStudent = await User.findOne({ schoolId: req.user.schoolId, role: "student", admission: normalizedAdmission }).select("_id").lean();
+    const existingStudent = await User.findOne({
+      schoolId: req.user.schoolId,
+      role: "student",
+      admission: { $eq: normalizedAdmission, $type: "string" }
+    }).select("_id").lean();
     if (existingStudent) {
       return res.status(409).json({ message: "A learner with this admission number already exists" });
     }

@@ -1349,14 +1349,56 @@ export const getBalanceSheet = async (req, res) => {
     const schoolType = school.schoolType || 'full';
     const gradeMatch = buildGradeMatch(schoolType, null);
 
-    const enrollments = await StudentEnrollment.find({
-      schoolId: schoolId,
+    const enrollmentMatch = {
+      schoolId,
       academicYear,
       status: 'active',
       grade: gradeMatch
-    }).select('studentId').lean();
+    };
 
-    const activeStudentIds = enrollments.map(e => e.studentId);
+    const expectedFeeField = term === 'Term 1'
+      ? '$feeStructure.term1Fee'
+      : term === 'Term 2'
+        ? '$feeStructure.term2Fee'
+        : term === 'Term 3'
+          ? '$feeStructure.term3Fee'
+          : '$feeStructure.totalFee';
+
+    const enrollmentSummary = await StudentEnrollment.aggregate([
+      { $match: enrollmentMatch },
+      {
+        $lookup: {
+          from: 'feestructures',
+          let: { enrollmentGrade: '$grade' },
+          pipeline: [
+            {
+              $match: {
+                $expr: {
+                  $and: [
+                    { $eq: ['$schoolId', schoolId] },
+                    { $eq: ['$academicYear', academicYear] },
+                    { $eq: ['$grade', '$$enrollmentGrade'] }
+                  ]
+                }
+              }
+            },
+            { $project: { totalFee: 1, term1Fee: 1, term2Fee: 1, term3Fee: 1 } }
+          ],
+          as: 'feeStructure'
+        }
+      },
+      { $unwind: { path: '$feeStructure', preserveNullAndEmptyArrays: true } },
+      {
+        $group: {
+          _id: null,
+          studentIds: { $push: '$studentId' },
+          activeLearners: { $sum: 1 },
+          totalExpectedFees: { $sum: { $ifNull: [expectedFeeField, 0] } }
+        }
+      }
+    ]);
+
+    const activeStudentIds = enrollmentSummary[0]?.studentIds || [];
 
     const incomeMatch = {
       schoolId,
@@ -1372,6 +1414,18 @@ export const getBalanceSheet = async (req, res) => {
     ]);
 
     const totalIncome = totalIncomeResult.length > 0 ? totalIncomeResult[0].totalIncome : 0;
+
+    const incomeBreakdown = await Payment.aggregate([
+      { $match: incomeMatch },
+      {
+        $group: {
+          _id: { term: '$term', method: '$method' },
+          total: { $sum: '$amount' },
+          count: { $sum: 1 }
+        }
+      },
+      { $sort: { '_id.term': 1, total: -1 } }
+    ]);
 
     const expenseMatch = {
       schoolId,
@@ -1401,6 +1455,9 @@ export const getBalanceSheet = async (req, res) => {
       { $sort: { total: -1 } }
     ]);
 
+    const totalExpectedFees = enrollmentSummary[0]?.totalExpectedFees || 0;
+    const totalFeeReceivable = totalExpectedFees - totalIncome;
+
     res.json({
       academicYear,
       term: term || 'All Terms',
@@ -1415,11 +1472,15 @@ export const getBalanceSheet = async (req, res) => {
       },
       totals: {
         totalIncome,
+        totalExpectedFees,
+        totalFeeReceivable,
         totalExpenses,
         netCash
       },
+      activeLearners: enrollmentSummary[0]?.activeLearners || 0,
       breakdown: {
-        categories: categoryBreakdown
+        categories: categoryBreakdown,
+        income: incomeBreakdown
       },
       expenses
     });
@@ -1448,21 +1509,12 @@ export const getSchoolOverviewStats = async (req, res) => {
     const schoolType = school.schoolType || 'full';
     const gradeMatch = buildGradeMatch(schoolType, grade);
 
-    // ---------------------------
-    // 1. Get Enrolled Students
-    // ---------------------------
     const enrollmentMatch = {
       schoolId: schoolId,
       academicYear,
       status: "active",
       grade: gradeMatch
     };
-
-    const enrollments = await StudentEnrollment.find(enrollmentMatch)
-      .select("studentId grade")
-      .lean();
-
-    const studentIds = enrollments.map(e => e.studentId);
 
     // ---------------------------
     // 2. Totals in one aggregation pass

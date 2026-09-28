@@ -534,7 +534,7 @@ const processSingleMark = async (markData, reqUser, isNew = true, cachedContext 
       student = cachedContext.studentMap.get(admissionNo);
     } else {
       student = await Student.findOne({
-        admission: admissionNo,
+        admission: { $eq: admissionNo, $type: "string" },
         schoolId: reqUser.schoolId
       }).select("name admission _id");
     }

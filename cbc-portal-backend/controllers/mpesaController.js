@@ -36,7 +36,7 @@ export const mpesaCallback = async (req, res) => {
 
     // 🔎 Find student by admission number within this school
     const student = await User.findOne({
-      admission,
+      admission: { $eq: admission, $type: "string" },
       role: "student",
       schoolId: school._id
     });

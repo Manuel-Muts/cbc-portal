@@ -275,7 +275,10 @@ export const registerUser = async (req, res) => {
     // 🆕 Support for "Upsert" (Update or Insert) for student imports.
     // If student exists by admission in this school, we update details instead of failing.
     if (role === "student") {
-      const existingStudent = await Student.findOne({ admission, schoolId: schoolIdToAssign });
+      const existingStudent = await Student.findOne({
+        admission: { $eq: admission, $type: "string" },
+        schoolId: schoolIdToAssign
+      });
       if (existingStudent) {
         const existingSchool = await School.findById(schoolIdToAssign).select("schoolCode").lean();
         if (!existingSchool?.schoolCode) {
@@ -540,7 +543,7 @@ export const loginUser = async (req, res) => {
       }[normalizedRole] || [normalizedRole];
 
       user = await User.findOne({
-        email: { $regex: `^${escapeRegExp(normalizedEmail)}$`, $options: 'i' },
+        email: normalizedEmail,
         role: { $in: allowedRoles }
       });
 
@@ -1458,7 +1461,7 @@ export const getStudentByAdmission = async (req, res) => {
     const { admission } = req.params;
     if (!admission) return res.status(400).json({ message: "Admission required" });
 
-    const query = { admission };
+    const query = { admission: { $eq: admission, $type: "string" } };
 
     // ---------------------------
     // School scoping
@@ -2070,13 +2073,22 @@ export const bulkRegisterUsers = async (req, res) => {
     const results = { successCount: 0, failureCount: 0, errors: [] };
     const currentYear = new Date().getFullYear();
     const schoolTermConfig = await School.findById(schoolIdToAssign)
-      .select("termConfig.activeTerm")
+      .select("termConfig.activeTerm schoolCode")
       .lean();
+    if (!schoolTermConfig) {
+      return res.status(404).json({ msg: "School not found" });
+    }
+    if (!schoolTermConfig.schoolCode) {
+      return res.status(400).json({ msg: "This school needs a school code before learners can be registered" });
+    }
     const activeEnrollmentTerm = schoolTermConfig?.termConfig?.activeTerm || "Term 1";
 
     // Pre-fetch all existing students by admission number in one go
     const admissions = studentsToProcess.map(s => s.admission).filter(Boolean);
-    const existingStudents = await Student.find({ admission: { $in: admissions }, schoolId: schoolIdToAssign }).lean();
+    const existingStudents = await Student.find({
+      admission: { $in: admissions, $type: "string" },
+      schoolId: schoolIdToAssign
+    }).lean();
     const existingStudentMap = new Map(existingStudents.map(s => [s.admission, s]));
 
     // Pre-fetch all existing enrollments for these students for the current year
@@ -2125,6 +2137,7 @@ export const bulkRegisterUsers = async (req, res) => {
           // 🚀 FIX: Sync User record and ensure it links to the enrollment ID for table display
           await User.findByIdAndUpdate(student._id, {
             name,
+            username: student.username || generateLearnerUsername(admission, schoolTermConfig.schoolCode),
             contact: formattedContact,
             grade: normalizedGrade,
             pathway: normalizePathway(pathway) || null,
@@ -2143,6 +2156,7 @@ export const bulkRegisterUsers = async (req, res) => {
             name,
             role: "student",
             admission,
+            username: generateLearnerUsername(admission, schoolTermConfig.schoolCode),
             grade: normalizedGrade,
             pathway: normalizePathway(pathway) || null,
             contact: formattedContact,

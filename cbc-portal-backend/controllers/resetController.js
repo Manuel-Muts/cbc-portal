@@ -10,29 +10,67 @@ import sendSMS from "../utils/sendSMS.js";
 const generateCode = () =>
   Math.floor(100000 + Math.random() * 900000).toString();
 
+const normalizeKenyanPhone = (value) => {
+  let digits = String(value || "").replace(/\D/g, "");
+  if (digits.startsWith("254")) digits = digits.slice(3);
+  if (digits.startsWith("0")) digits = digits.slice(1);
+  if (!/^[71]\d{8}$/.test(digits)) return null;
+  return `+254${digits}`;
+};
+
+const getResetIdentity = ({ role, email, phone, username, identityType }) => {
+  if (!role) return null;
+
+  const normalizedRole = String(role).trim().toLowerCase();
+  const isLearner = ["student", "learner"].includes(normalizedRole);
+  if (isLearner) {
+    if (!username) return null;
+    return {
+      isLearner: true,
+      type: "username",
+      query: { role: "student", username: String(username).trim().toLowerCase() }
+    };
+  }
+
+  const type = String(identityType || (email ? "email" : phone ? "phone" : "")).toLowerCase();
+  if (type === "email" && email) {
+    return {
+      isLearner: false,
+      type,
+      query: { email: String(email).trim().toLowerCase() }
+    };
+  }
+  if (type === "phone" && phone) {
+    const normalizedPhone = normalizeKenyanPhone(phone);
+    if (!normalizedPhone) return null;
+    return {
+      isLearner: false,
+      type,
+      query: { role: normalizedRole, contact: normalizedPhone }
+    };
+  }
+  return null;
+};
+
 // ============================================================
 // 0️⃣ VERIFY USER (role + email)
 // ============================================================
 export const verifyUser = async (req, res) => {
-  const { role, email, username } = req.body;
-
-  if (!role || ((!email) && (!username))) {
+  const identity = getResetIdentity(req.body);
+  if (!identity) {
     return res.status(400).json({ msg: "Missing required fields" }); //
   }
 
   try {
-    const isLearner = ["student", "learner"].includes(String(role).toLowerCase());
-    const user = isLearner
-      ? await User.findOne({ role: "student", username: String(username).trim().toLowerCase() })
-      : await User.findOne({ email: String(email).trim().toLowerCase() });
+    const user = await User.findOne(identity.query);
     if (!user) {
       return res.status(404).json({ msg: "User not found" });
     }
 
     // Check role - Allow matches for primary role OR class teacher designation
     const roleMatches =
-      user.role === String(role).toLowerCase() ||
-      (role === "classteacher" && user.isClassTeacher === true);
+      user.role === String(req.body.role).toLowerCase() ||
+      (String(req.body.role).toLowerCase() === "classteacher" && user.isClassTeacher === true);
 
     if (!roleMatches) {
       return res.status(400).json({ msg: "Role mismatch" });
@@ -52,15 +90,16 @@ export const verifyUser = async (req, res) => {
 import fetch from "node-fetch"; // or native fetch if Node >=18
 
 export const requestReset = async (req, res) => {
-  const { email, username, role } = req.body;
-  const isLearner = ["student", "learner"].includes(String(role || "").toLowerCase());
-  if ((!isLearner && !email) || (isLearner && !username)) return res.status(400).json({ msg: isLearner ? "Username is required" : "Email is required" });
+  const identity = getResetIdentity(req.body);
+  if (!identity) return res.status(400).json({ msg: "Choose email or phone and enter the registered account identity" });
+  const deliveryMethod = identity.isLearner ? "phone" : identity.type;
 
   try {
-    const user = isLearner
-      ? await User.findOne({ role: "student", username: String(username).trim().toLowerCase() })
-      : await User.findOne({ email: String(email).trim().toLowerCase() });
-    if (!user) return res.status(404).json({ msg: isLearner ? "No learner account with that username" : "No account with that email" });
+    const user = await User.findOne(identity.query);
+    if (!user) return res.status(404).json({ msg: identity.isLearner ? "No learner account with that username" : "No matching staff account" });
+
+    if (identity.isLearner && !user.contact) return res.status(400).json({ msg: "No parent or guardian phone number is registered" });
+    if (!identity.isLearner && deliveryMethod === "phone" && !user.contact) return res.status(400).json({ msg: "No phone number is registered for this staff account" });
 
     // Generate 6-digit OTP
     const code = generateCode();
@@ -72,11 +111,16 @@ export const requestReset = async (req, res) => {
     user.resetCodeExpires = Date.now() + 10 * 60 * 1000; // 10 mins
     await user.save();
 
-    if (isLearner) {
-      if (!user.contact) return res.status(400).json({ msg: "No parent or guardian phone number is registered" });
+    if (identity.isLearner) {
       const smsResult = await sendSMS(user.contact, `CompetenceHub password reset code: ${code}. It expires in 10 minutes. Do not share this code.`);
       if (!smsResult) return res.status(503).json({ msg: "Unable to send code to the parent or guardian phone" });
       return res.json({ msg: "Reset code sent to the parent or guardian phone" });
+    }
+
+    if (deliveryMethod === "phone") {
+      const smsResult = await sendSMS(user.contact, `CompetenceHub password reset code: ${code}. It expires in 10 minutes. Do not share this code.`);
+      if (!smsResult) return res.status(503).json({ msg: "Unable to send code to the registered phone" });
+      return res.json({ msg: "Reset code sent to the registered phone" });
     }
 
     // -------------------------
@@ -136,16 +180,13 @@ export const requestReset = async (req, res) => {
 // 2️⃣ VERIFY RESET CODE
 // ============================================================
    export const verifyResetCode = async (req, res) => {
-    const { email, username, code, role } = req.body;
-
-    const isLearner = ["student", "learner"].includes(String(role || "").toLowerCase());
-    if ((!isLearner && !email) || (isLearner && !username) || !code)
-      return res.status(400).json({ msg: isLearner ? "Username and code are required" : "Email and code are required" });
+      const identity = getResetIdentity(req.body);
+      const { code } = req.body;
+      if (!identity || !code)
+        return res.status(400).json({ msg: "Account identity and code are required" });
 
   try {
-      const user = isLearner
-        ? await User.findOne({ role: "student", username: String(username).trim().toLowerCase() })
-        : await User.findOne({ email: String(email).trim().toLowerCase() });
+        const user = await User.findOne(identity.query);
     if (!user)
       return res.status(404).json({ msg: "User not found" });
 
@@ -182,16 +223,14 @@ export const requestReset = async (req, res) => {
 // 3️⃣ SET NEW PASSWORD
 // ============================================================
 export const setNewPassword = async (req, res) => {
-  const { email, username, role, code, password } = req.body;
-  const isLearner = ["student", "learner"].includes(String(role || "").toLowerCase());
+  const identity = getResetIdentity(req.body);
+  const { code, password } = req.body;
 
-  if (((!isLearner && !email) || (isLearner && !username)) || !code || !password)
+  if (!identity || !code || !password)
     return res.status(400).json({ msg: "Missing fields" });
 
   try {
-    const user = isLearner
-      ? await User.findOne({ role: "student", username: String(username).trim().toLowerCase() })
-      : await User.findOne({ email: String(email).trim().toLowerCase() });
+    const user = await User.findOne(identity.query);
     if (!user)
       return res.status(404).json({ msg: "User not found" });
 

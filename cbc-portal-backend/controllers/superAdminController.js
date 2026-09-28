@@ -809,6 +809,8 @@ export const createManualBackup = async (req, res) => {
       mode,
       collections: result.selectedCollections,
       backupFolder: result.backupRootDir.split(/[\\/]/).pop(),
+      sizeBytes: result.sizeBytes,
+      sizeMB: (result.sizeBytes / (1024 * 1024)).toFixed(2),
       message: 'Backup created successfully.'
     });
   } catch (error) {

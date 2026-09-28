@@ -180,16 +180,33 @@ import { formatDate } from './Utility/date-utils.js';
     try {
       if (typeof jsPDFClass !== 'function' || !contentElement) return null;
 
-      const pdf = new jsPDFClass('p', 'mm', 'a4');
+      const isBalanceSheet = Boolean(contentElement.querySelector('#balance-sheet-for-pdf'));
+      const pdf = new jsPDFClass(isBalanceSheet ? 'l' : 'p', 'mm', 'a4');
       const hasAutoTable = typeof pdf.autoTable === 'function';
       const pageWidth = pdf.internal.pageSize.getWidth();
+      const pageHeight = pdf.internal.pageSize.getHeight();
       const margin = 14;
-      let yPos = 18;
+      let yPos = isBalanceSheet ? 16 : 18;
+
+      if (isBalanceSheet) {
+        const logo = accountsProfileData.schoolLogoBase64 || accountsProfileData.logoSrc || window.schoolInfo?.logo;
+        if (logo) {
+          try {
+            const imageProps = accountsProfileData.logoProps || pdf.getImageProperties(logo);
+            const scale = Math.min(28 / imageProps.width, 22 / imageProps.height);
+            const logoWidth = imageProps.width * scale;
+            const logoHeight = imageProps.height * scale;
+            pdf.addImage(logo, accountsProfileData.logoFormat || 'PNG', margin, 7, logoWidth, logoHeight, undefined, 'FAST');
+          } catch (error) {
+            console.warn('Balance sheet logo rendering failed', error);
+          }
+        }
+      }
 
       pdf.setFontSize(18);
       pdf.setFont('helvetica', 'bold');
       pdf.setTextColor(15, 23, 42);
-      pdf.text(schoolName, pageWidth / 2, yPos, { align: 'center' });
+      pdf.text(schoolName, pageWidth / 2, yPos, { align: 'center', maxWidth: pageWidth - margin * 2 });
       yPos += 8;
 
       const headerTitleText = contentElement.querySelector('.report-header h2')?.textContent?.trim();
@@ -226,14 +243,46 @@ import { formatDate } from './Utility/date-utils.js';
 
       const summaryCardCount = contentElement.querySelectorAll('.pdf-summary-card').length;
       if (summaryCardCount) {
-        yPos = drawPdfSummaryCards(pdf, contentElement, pageWidth, margin, yPos);
+        if (isBalanceSheet) {
+          const cardGap = 4;
+          const cardColumns = 3;
+          const cardWidth = (pageWidth - margin * 2 - cardGap * (cardColumns - 1)) / cardColumns;
+          const cardHeight = 25;
+          const cardColors = [
+            { fill: [239, 246, 255], border: [191, 219, 254], text: [29, 78, 216] },
+            { fill: [255, 241, 242], border: [254, 205, 211], text: [190, 24, 93] },
+            { fill: [236, 253, 245], border: [167, 243, 208], text: [4, 120, 87] }
+          ];
+          const summaryCards = Array.from(contentElement.querySelectorAll('.pdf-summary-card')).map((card) => ({
+            title: card.querySelector('.pdf-card-title')?.textContent?.trim(),
+            value: card.querySelector('.pdf-card-value')?.textContent?.trim()
+          })).filter((card) => card.title && card.value);
+
+          summaryCards.forEach((card, index) => {
+            const color = cardColors[index % cardColors.length];
+            const x = margin + (index % cardColumns) * (cardWidth + cardGap);
+            const y = yPos + Math.floor(index / cardColumns) * (cardHeight + cardGap);
+            pdf.setFillColor(...color.fill);
+            pdf.setDrawColor(...color.border);
+            pdf.roundedRect(x, y, cardWidth, cardHeight, 2, 2, 'FD');
+            pdf.setFontSize(9);
+            pdf.setFont('helvetica', 'bold');
+            pdf.setTextColor(...color.text);
+            pdf.text(card.title, x + 4, y + 7, { maxWidth: cardWidth - 8 });
+            pdf.setFontSize(14);
+            pdf.text(card.value, x + 4, y + 18, { maxWidth: cardWidth - 8 });
+          });
+          yPos += Math.ceil(summaryCards.length / cardColumns) * (cardHeight + cardGap) + 1;
+        } else {
+          yPos = drawPdfSummaryCards(pdf, contentElement, pageWidth, margin, yPos);
+        }
       } else {
         const summaryLines = getPdfSummaryLines(contentElement);
         if (summaryLines.length) {
           pdf.setFontSize(10);
           pdf.setTextColor(30, 41, 59);
           summaryLines.forEach((line) => {
-            if (yPos > 280) {
+            if (yPos > pageHeight - 18) {
               pdf.addPage();
               yPos = 20;
             }
@@ -253,9 +302,9 @@ import { formatDate } from './Utility/date-utils.js';
         if (!headers.length || !rows.length) return;
 
         if (sectionTitle) {
-          if (yPos > 250) {
+          if (yPos > pageHeight - (isBalanceSheet ? 38 : 40)) {
             pdf.addPage();
-            yPos = 18;
+            yPos = isBalanceSheet ? 16 : 18;
           }
           pdf.setFontSize(12);
           pdf.setFont('helvetica', 'bold');
@@ -270,8 +319,8 @@ import { formatDate } from './Utility/date-utils.js';
             head: [headers],
             body: rows,
             theme: 'grid',
-            headStyles: { fillColor: [37, 99, 235], textColor: 255, fontStyle: 'bold', fontSize: 9 },
-            styles: { fontSize: 9, cellPadding: 3, halign: 'right', textColor: [15, 23, 42], lineColor: [226, 232, 240], lineWidth: 0.2 },
+            headStyles: { fillColor: [37, 99, 235], textColor: 255, fontStyle: 'bold', fontSize: isBalanceSheet ? 8 : 9 },
+            styles: { fontSize: isBalanceSheet ? 8 : 9, cellPadding: isBalanceSheet ? 2 : 3, halign: 'right', textColor: [15, 23, 42], lineColor: [226, 232, 240], lineWidth: 0.2 },
             columnStyles: { 0: { halign: 'left' } },
             margin: { left: margin, right: margin },
             didDrawPage: () => {
@@ -290,7 +339,7 @@ import { formatDate } from './Utility/date-utils.js';
           pdf.text(headers.join(' | '), margin, yPos);
           yPos += 5;
           rows.forEach((row) => {
-            if (yPos > 285) {
+            if (yPos > pageHeight - 10) {
               pdf.addPage();
               yPos = 20;
             }
@@ -299,9 +348,9 @@ import { formatDate } from './Utility/date-utils.js';
           });
           yPos += 6;
         }
-        if (index < tables.length - 1 && yPos > 240) {
+        if (index < tables.length - 1 && yPos > pageHeight - (isBalanceSheet ? 34 : 50)) {
           pdf.addPage();
-          yPos = 18;
+          yPos = isBalanceSheet ? 16 : 18;
         }
       });
 
@@ -780,23 +829,17 @@ import { formatDate } from './Utility/date-utils.js';
       if (term) queryParams += `&term=${encodeURIComponent(term)}`;
       if (category) queryParams += `&category=${encodeURIComponent(category)}`;
       
-      const [expenseData, incomeData] = await Promise.all([
-        secureFetch(`${API_BASE}/expenses?${queryParams}`),
-        secureFetch(`${API_BASE}/reports/school-totals?academicYear=${year}${term ? `&term=${encodeURIComponent(term)}` : ''}`)
-      ]);
-      
-      const expenses = expenseData.data || [];
-      const pagination = expenseData.pagination || {};
-      const totalIncome = incomeData.totalPaid || 0;
+      const reportData = await secureFetch(`${API_BASE}/reports/balance-sheet?${queryParams}`);
+      const expenses = reportData.expenses || [];
+      const pagination = reportData.pagination || {};
+      const totalIncome = reportData.totals?.totalIncome || 0;
+      const totalExp = reportData.totals?.totalExpenses || 0;
       
       // Update pagination state
       expensesTotalPages = pagination.totalPages || 1;
       expensesTotalCount = pagination.totalCount || 0;
       
-      let totalExp = 0;
-      
       expenseTableBody.innerHTML = expenses.map(e => {
-        totalExp += e.amount;
         return `
           <tr>
             <td>${new Date(e.date).toLocaleDateString()}</td>
@@ -836,6 +879,14 @@ import { formatDate } from './Utility/date-utils.js';
         totalIncome,
         totalExpenses: totalExp,
         netCash: balance,
+        totalExpectedFees: reportData.totals?.totalExpectedFees || 0,
+        totalFeeReceivable: reportData.totals?.totalFeeReceivable || 0,
+        activeLearners: reportData.activeLearners || 0,
+        incomeBreakdown: reportData.breakdown?.income || [],
+        categoryBreakdown: reportData.breakdown?.categories || [],
+        expenseCount: expensesTotalCount,
+        expensePage: expensesPage,
+        expensePageSize: pagination.pageSize || EXPENSES_LIMIT,
         expenses
       };
     } catch (err) {
@@ -978,6 +1029,21 @@ import { formatDate } from './Utility/date-utils.js';
         <td style="padding:8px; text-align:right; border-bottom:1px solid #e2e8f0;">${formatCurrency(e.amount)}</td>
       </tr>
     `).join('');
+    const incomeRows = data.incomeBreakdown.map((item) => `
+      <tr>
+        <td style="padding:8px; border-bottom:1px solid #e2e8f0;">${item._id.term}</td>
+        <td style="padding:8px; border-bottom:1px solid #e2e8f0;">${item._id.method}</td>
+        <td style="padding:8px; text-align:right; border-bottom:1px solid #e2e8f0;">${item.count}</td>
+        <td style="padding:8px; text-align:right; border-bottom:1px solid #e2e8f0;">${formatCurrency(item.total)}</td>
+      </tr>
+    `).join('');
+    const categoryRows = data.categoryBreakdown.map((item) => `
+      <tr>
+        <td style="padding:8px; border-bottom:1px solid #e2e8f0;">${item._id}</td>
+        <td style="padding:8px; text-align:right; border-bottom:1px solid #e2e8f0;">${item.count}</td>
+        <td style="padding:8px; text-align:right; border-bottom:1px solid #e2e8f0;">${formatCurrency(item.total)}</td>
+      </tr>
+    `).join('');
 
     const content = `
       <div id="balance-sheet-for-pdf" class="pdf-report-shell" style="font-family:Arial, sans-serif; color:#1f2937;">
@@ -986,6 +1052,7 @@ import { formatDate } from './Utility/date-utils.js';
             SCHOOL BALANCE SHEET&nbsp;<small style="font-size:14px; font-weight:600; color:#4b5563;">AS AT ${currentDateLabel}</small>
           </h2>
           <p style="margin:6px 0 0; font-size:13px;">${data.academicYear} | ${termLabel} | ${categoryLabel}</p>
+          <p style="margin:5px 0 0; font-size:10px; color:#64748b;">Operational summary from recorded school finance data; assets, liabilities, and bank balances are not included.</p>
         </div>
 
         <div class="pdf-summary-grid" style="margin-bottom:24px;">
@@ -1016,7 +1083,48 @@ import { formatDate } from './Utility/date-utils.js';
         </div>
 
         <div style="margin-bottom:16px;">
-          <h4 style="margin:0 0 12px; font-size:16px; color:#111827;">Expense Breakdown</h4>
+          <h4 style="margin:0 0 8px; font-size:16px; color:#111827;">Fee Position</h4>
+          <table class="pdf-export-table" style="width:100%; border-collapse:collapse; font-size:13px;">
+            <thead><tr style="background:#f3f4f6; color:#374151; text-align:left;">
+              <th style="padding:10px; border:1px solid #e5e7eb;">Measure</th>
+              <th style="padding:10px; border:1px solid #e5e7eb; text-align:right;">Amount / Count</th>
+            </tr></thead>
+            <tbody>
+              <tr><td style="padding:8px; border-bottom:1px solid #e2e8f0;">Expected fees</td><td style="padding:8px; text-align:right; border-bottom:1px solid #e2e8f0;">${formatCurrency(data.totalExpectedFees)}</td></tr>
+              <tr><td style="padding:8px; border-bottom:1px solid #e2e8f0;">Net fee receivable (negative means surplus)</td><td style="padding:8px; text-align:right; border-bottom:1px solid #e2e8f0;">${formatCurrency(data.totalFeeReceivable)}</td></tr>
+              <tr><td style="padding:8px; border-bottom:1px solid #e2e8f0;">Active learners in scope</td><td style="padding:8px; text-align:right; border-bottom:1px solid #e2e8f0;">${Number(data.activeLearners || 0).toLocaleString()}</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div style="margin-bottom:16px;">
+          <h4 style="margin:0 0 8px; font-size:16px; color:#111827;">Income Breakdown</h4>
+          <table class="pdf-export-table" style="width:100%; border-collapse:collapse; font-size:13px;">
+            <thead><tr style="background:#f3f4f6; color:#374151; text-align:left;">
+              <th style="padding:10px; border:1px solid #e5e7eb;">Term</th>
+              <th style="padding:10px; border:1px solid #e5e7eb;">Payment Method</th>
+              <th style="padding:10px; border:1px solid #e5e7eb; text-align:right;">Transactions</th>
+              <th style="padding:10px; border:1px solid #e5e7eb; text-align:right;">Amount</th>
+            </tr></thead>
+            <tbody>${incomeRows || '<tr><td colspan="4" style="padding:12px; text-align:center; color:#6b7280;">No fee income recorded for this selection.</td></tr>'}</tbody>
+          </table>
+        </div>
+
+        <div style="margin-bottom:16px;">
+          <h4 style="margin:0 0 8px; font-size:16px; color:#111827;">Expenses by Category</h4>
+          <table class="pdf-export-table" style="width:100%; border-collapse:collapse; font-size:13px;">
+            <thead><tr style="background:#f3f4f6; color:#374151; text-align:left;">
+              <th style="padding:10px; border:1px solid #e5e7eb;">Category</th>
+              <th style="padding:10px; border:1px solid #e5e7eb; text-align:right;">Entries</th>
+              <th style="padding:10px; border:1px solid #e5e7eb; text-align:right;">Amount</th>
+            </tr></thead>
+            <tbody>${categoryRows || '<tr><td colspan="3" style="padding:12px; text-align:center; color:#6b7280;">No expenses recorded for this selection.</td></tr>'}</tbody>
+          </table>
+        </div>
+
+        <div style="margin-bottom:16px;">
+          <h4 style="margin:0 0 6px; font-size:16px; color:#111827;">Expense Entries</h4>
+          <p style="margin:0 0 12px; font-size:11px; color:#64748b;">Showing page ${data.expensePage || 1} of ${expensesTotalPages} (${Number(data.expenseCount || 0).toLocaleString()} matching entries).</p>
           <table class="pdf-export-table" style="width:100%; border-collapse:collapse; font-size:13px;">
             <thead>
               <tr style="background:#f3f4f6; color:#374151; text-align:left;">

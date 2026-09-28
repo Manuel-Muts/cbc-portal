@@ -37,9 +37,21 @@
           <option value="accounts">Accounts</option>
         </select>
 
+        <div id="deliveryMethodGroup" class="reset-identity-group hidden">
+          <label for="deliveryMethod">Send code by</label>
+          <select id="deliveryMethod" name="deliveryMethod">
+            <option value="">-- Choose email or phone --</option>
+            <option value="email">Email</option>
+            <option value="phone">Phone (SMS)</option>
+          </select>
+        </div>
+
         <div id="identityGroup" class="reset-identity-group hidden">
-          <label for="email" id="identityLabel">Registered email</label>
-          <input id="email" name="email" type="email" placeholder="emmanuel@example.com" required />
+          <label for="identityInput" id="identityLabel">Registered email</label>
+          <div id="identityInputWrap" class="identity-input-wrap">
+            <span id="phonePrefix" class="hidden" aria-hidden="true">+254</span>
+            <input id="identityInput" name="identity" type="email" placeholder="emmanuel@example.com" autocomplete="username" required />
+          </div>
         </div>
 
         <div class="button-group">

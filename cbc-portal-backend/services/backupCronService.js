@@ -34,6 +34,13 @@ const hasBackupFiles = (folderPath) => {
   });
 };
 
+const getDirectorySizeBytes = (directoryPath) => fs.readdirSync(directoryPath, { withFileTypes: true })
+  .reduce((total, entry) => {
+    const entryPath = path.join(directoryPath, entry.name);
+    if (entry.isDirectory()) return total + getDirectorySizeBytes(entryPath);
+    return entry.isFile() ? total + fs.statSync(entryPath).size : total;
+  }, 0);
+
 export const listMongoBackupFolders = () => {
   if (!fs.existsSync(BACKUPS_DIR)) return [];
 
@@ -140,12 +147,13 @@ export const backupMongoDatabase = async ({
     throw error;
   }
 
+  const sizeBytes = getDirectorySizeBytes(backupRootDir);
   const pruneResult = await pruneOldMongoBackups({ daysToKeep });
   if (pruneResult.deletedCount > 0) {
     console.log(`🗑️ Cleaned up ${pruneResult.deletedCount} old MongoDB backup folders older than ${pruneResult.cutoffDate.toISOString()}`);
   }
 
-  return { backupRootDir, selectedCollections };
+  return { backupRootDir, selectedCollections, sizeBytes };
 };
 
 export const startBackupCronJobs = () => {
@@ -160,7 +168,8 @@ export const startBackupCronJobs = () => {
         daysToKeep: 5
       });
 
-      console.log(`✅ MongoDB backup completed: ${result.backupRootDir}`);
+      const sizeMB = (result.sizeBytes / (1024 * 1024)).toFixed(2);
+      console.log(`✅ MongoDB backup completed: ${result.backupRootDir} (${sizeMB} MB)`);
     } catch (err) {
       console.error('❌ Error during MongoDB backup job:', err);
     }
