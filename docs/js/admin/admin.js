@@ -619,8 +619,7 @@ function renderSchoolInfo() {
   const applyPlanFeatureVisibility = () => {
     const planFeatures = getSchoolPlanFeatures();
     const navRules = [
-      { selector: '.menu li[data-section="announcementSection"]', enabled: !!planFeatures.communication, target: 'announcementSection' },
-      { selector: '.admin-overview-electives-action', enabled: true, target: 'overviewAction' }
+      { selector: '.menu li[data-section="announcementSection"]', enabled: !!planFeatures.communication, target: 'announcementSection' }
     ];
 
     navRules.forEach(({ selector, enabled, target }) => {
