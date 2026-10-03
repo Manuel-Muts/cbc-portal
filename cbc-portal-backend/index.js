@@ -9,6 +9,7 @@ import { fileURLToPath } from 'url';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
 import cookieParser from 'cookie-parser';
+import { createCorsOriginAllowlist, isAllowedCorsOrigin } from './utils/corsOrigins.js';
 
 import userRoutes from './routes/userRoutes.js';
 import markRoutes from './routes/markRoutes.js';
@@ -35,6 +36,7 @@ import dashboardSummaryRoutes from './routes/dashboardSummaryRoutes.js';
 import notificationRoutes from './routes/notificationRoutes.js';
 import { User } from './models/User.js';
 import Mark from './models/mark.js';
+import { DEFAULT_ASSESSMENTS, School } from './models/school.js';
 import { loadEnvironmentFiles } from './utils/envConfig.js';
 
 loadEnvironmentFiles({ env: process.env.NODE_ENV || 'development' });
@@ -78,65 +80,15 @@ app.use(helmet({
 // -------------------------
 // CORS
 // -------------------------
-const parseAllowedOrigins = () => {
-  const configuredOrigins = (process.env.CORS_ALLOWED_ORIGINS || process.env.FRONTEND_URL || '')
-    .split(',')
-    .map((value) => value.trim())
-    .filter(Boolean);
-
-  const defaults = [
-    "http://localhost:5000",
-    "http://localhost:3000",
-    "http://localhost:8000",
-    "http://localhost:8080",
-    "http://localhost:5500",
-    "http://localhost:5501",
-    "http://127.0.0.1:5000",
-    "http://127.0.0.1:3000",
-    "http://127.0.0.1:8000",
-    "http://127.0.0.1:8080",
-    "http://127.0.0.1:5500",
-    "http://127.0.0.1:5501",
-    "https://competence-hub.onrender.com",
-    "https://www.competence-hub.onrender.com",
-  ];
-
-  return [...new Set([...defaults, ...configuredOrigins])];
-};
-
-const FRONTEND_ORIGINS = parseAllowedOrigins();
-
-const isAllowedOrigin = (origin) => {
-  if (!origin) return true;
-
-  try {
-    const { hostname } = new URL(origin);
-    const normalizedHostname = hostname.toLowerCase();
-
-    if (normalizedHostname === 'localhost' || normalizedHostname === '127.0.0.1' || normalizedHostname === '0.0.0.0' || normalizedHostname.startsWith('192.168.')) {
-      return true;
-    }
-
-    if (
-      normalizedHostname.endsWith('.netlify.app') ||
-      normalizedHostname.endsWith('.vercel.app') ||
-      normalizedHostname.endsWith('.github.dev') ||
-      normalizedHostname.endsWith('.pages.dev') ||
-      normalizedHostname.endsWith('.ngrok-free.app') ||
-      normalizedHostname.endsWith('.ngrok.app')
-    ) {
-      return true;
-    }
-
-    return FRONTEND_ORIGINS.includes(origin);
-  } catch (error) {
-    return false;
-  }
-};
+const FRONTEND_ORIGINS = createCorsOriginAllowlist({
+  frontendUrl: process.env.FRONTEND_URL,
+  corsAllowedOrigins: process.env.CORS_ALLOWED_ORIGINS,
+  nodeEnv: process.env.NODE_ENV,
+});
 
 app.use(cors({
   origin: function(origin, callback) {
-    if (isAllowedOrigin(origin)) {
+    if (isAllowedCorsOrigin(origin, FRONTEND_ORIGINS)) {
       return callback(null, true);
     }
 
@@ -152,11 +104,32 @@ app.use(cors({
 // -------------------------
 // RATE LIMIT
 // -------------------------
-const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 100
+const parsePositiveInteger = (value, fallback) => {
+  const parsed = Number.parseInt(value, 10);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
+};
+const rateLimitWindowMs = parsePositiveInteger(process.env.RATE_LIMIT_WINDOW_MS, 15 * 60 * 1000);
+const apiLimiter = rateLimit({
+  windowMs: rateLimitWindowMs,
+  max: parsePositiveInteger(process.env.RATE_LIMIT_MAX_REQUESTS, 1000),
+  standardHeaders: 'draft-8',
+  legacyHeaders: false
 });
-app.use('/api', limiter);
+const loginLimiter = rateLimit({
+  windowMs: rateLimitWindowMs,
+  max: parsePositiveInteger(process.env.LOGIN_RATE_LIMIT_MAX_REQUESTS, 500),
+  standardHeaders: 'draft-8',
+  legacyHeaders: false
+});
+const passwordResetLimiter = rateLimit({
+  windowMs: rateLimitWindowMs,
+  max: parsePositiveInteger(process.env.RESET_RATE_LIMIT_MAX_REQUESTS, 20),
+  standardHeaders: 'draft-8',
+  legacyHeaders: false
+});
+app.use('/api', apiLimiter);
+app.use('/api/users/login', loginLimiter);
+app.use('/api/reset', passwordResetLimiter);
 
 // -------------------------
 // STATIC FILES
@@ -394,6 +367,24 @@ const mongooseOptions = {
 mongoose.connect(mongoURI, mongooseOptions)
   .then(async () => {
     console.log("✅ MongoDB connected successfully!");
+
+    try {
+      const assessmentDefaults = await School.updateMany(
+        {
+          $or: [
+            { assessmentConfig: { $exists: false } },
+            { assessmentConfig: null },
+            { assessmentConfig: { $size: 0 } }
+          ]
+        },
+        { $set: { assessmentConfig: DEFAULT_ASSESSMENTS } }
+      );
+      if (assessmentDefaults.modifiedCount > 0) {
+        console.log(`✅ Added built-in assessments to ${assessmentDefaults.modifiedCount} school(s).`);
+      }
+    } catch (err) {
+      console.error("⚠️ Assessment defaults initialization failed:", err.message || err);
+    }
 
     try {
       await User.collection.dropIndex('schoolId_1_admission_1').catch(() => {});

@@ -6,6 +6,7 @@
   "scripts": {
     "start": "node index.js",
     "dev": "nodemon index.js",
+    "migrate:finance": "node scripts/migrateFinance.js",
     "backup-mongo": "node scripts/runMongoBackup.js",
     "refresh-dashboard-summaries": "node scripts/runDashboardSummaryRefresh.js",
     "prune-dashboard-summaries": "node scripts/pruneDashboardSummaries.js",
@@ -43,6 +44,7 @@
     "node-fetch": "^3.3.2",
     "nodemailer": "^8.0.10",
     "pdfkit": "^0.17.2",
+    "pg": "^8.23.0",
     "sib-api-v3-sdk": "^8.5.0"
   },
   "devDependencies": {

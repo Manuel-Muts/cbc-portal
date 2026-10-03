@@ -1,6 +1,12 @@
 // models/school.js
 import mongoose from 'mongoose';
 
+export const DEFAULT_ASSESSMENTS = [
+  { id: 1, name: 'Opener', enabled: true, sortOrder: 1, system: true },
+  { id: 5, name: 'Midterm', enabled: true, sortOrder: 2, system: true },
+  { id: 8, name: 'Endterm', enabled: true, sortOrder: 3, system: true }
+];
+
 const schoolSchema = new mongoose.Schema({
   name: { type: String, required: true },
   schoolCode: {
@@ -66,13 +72,16 @@ const schoolSchema = new mongoose.Schema({
     term3: { type: Boolean, default: true },
     activeTerm: { type: String, enum: ['Term 1', 'Term 2', 'Term 3'], default: 'Term 1' }
   },
-  assessmentConfig: [{
-    id: { type: Number, required: true, min: 1 },
-    name: { type: String, required: true, trim: true, maxlength: 80 },
-    enabled: { type: Boolean, default: true },
-    sortOrder: { type: Number, default: 0 },
-    system: { type: Boolean, default: false }
-  }],
+  assessmentConfig: {
+    type: [{
+      id: { type: Number, required: true, min: 1 },
+      name: { type: String, required: true, trim: true, maxlength: 80 },
+      enabled: { type: Boolean, default: true },
+      sortOrder: { type: Number, default: 0 },
+      system: { type: Boolean, default: false }
+    }],
+    default: () => DEFAULT_ASSESSMENTS.map(assessment => ({ ...assessment }))
+  },
   version: { type: Number, default: 1 },       // <-- version increments on suspension
   paybill: { type: String, default: "" },      // M-Pesa paybill number (for C2B manual payments)
   createdAt: { type: Date, default: Date.now }

@@ -3095,15 +3095,26 @@ saveTermConfigBtn?.addEventListener("click", saveTermConfig);
       window.spinner?.show(submitBtn, "Saving...");
 
       const gradeRange = gradeRangeSelect?.value || "";
-      
-      const res = await secureFetch(`${API_BASE}/users/subjects/assign`, {
-        method: 'POST',
-        body: JSON.stringify({ teacherId, gradeRange, grade, stream, subjects })
-      });
+      try {
+        const res = await secureFetch(`${API_BASE}/users/subjects/assign`, {
+          method: 'POST',
+          body: JSON.stringify({ teacherId, gradeRange, grade, stream, subjects })
+        });
 
-      if (res) { await loadSubjectAllocations(1, SUBJECT_ALLOC_LIMIT, true); showToast("Subject allocation saved successfully!", "success"); }
+        if (!res) return;
 
-      window.spinner?.hide(submitBtn);
+        Array.from(subjectsSelect?.options || []).forEach((option) => {
+          option.selected = false;
+        });
+
+        await loadSubjectAllocations(1, SUBJECT_ALLOC_LIMIT, true);
+        showToast("Subject allocation saved successfully. Subject selections cleared.", "success");
+      } catch (err) {
+        console.error("Subject allocation save failed:", err);
+        showToast(err.message || "Failed to save subject allocation.", "error");
+      } finally {
+        window.spinner?.hide(submitBtn);
+      }
     });
   }
 

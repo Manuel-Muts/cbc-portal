@@ -10,6 +10,7 @@ import { Student } from "../models/RoleModels.js";
 import { generateRawPassword } from "../utils/authHelpers.js";
 import { normalizePathway } from "../utils/pathwayUtils.js";
 import { createNotificationsForUsers } from "./notificationController.js";
+import { buildUserDirectoryEnrollmentFilter, resolveActiveEnrollmentYear } from "../utils/accountsQueryHelpers.js";
 
 const SENIOR_PATHWAYS = ["STEM", "Social Sciences", "Arts & Sports Science"];
 
@@ -838,7 +839,11 @@ export const getUniqueStreams = async (req, res) => {
     if (!req.user.schoolId) {
       return res.status(400).json({ message: "School ID missing" });
     }
-    const { grade } = req.query; // 🆕 Get grade from query
+    const { grade } = req.query;
+    const requestedYear = req.query.academicYear ? Number(req.query.academicYear) : undefined;
+    if (requestedYear !== undefined && (!Number.isInteger(requestedYear) || requestedYear < 2000)) {
+      return res.status(400).json({ message: "A valid academic year is required" });
+    }
     const normalizeQueryGrade = (g) => {
       if (!g) return null;
       let value = String(g).trim();
@@ -851,14 +856,25 @@ export const getUniqueStreams = async (req, res) => {
       return value;
     };
     const normalizedGrade = normalizeQueryGrade(grade);
+    let enrollmentYear = requestedYear;
+    if (req.user.role !== 'accounts' && enrollmentYear === undefined) {
+      const latestActiveEnrollment = await StudentEnrollment.findOne({
+        schoolId: req.user.schoolId,
+        status: 'active'
+      }).sort({ academicYear: -1 }).select('academicYear').lean();
+      enrollmentYear = resolveActiveEnrollmentYear({ latestActiveYear: latestActiveEnrollment?.academicYear });
+    }
 
-    const filter = {
+    const filter = buildUserDirectoryEnrollmentFilter({
+      role: req.user.role,
       schoolId: req.user.schoolId,
-      stream: { $nin: [null, ''] }
-    };
+      academicYear: enrollmentYear,
+      grade: normalizedGrade || undefined
+    });
+    filter.stream = { $nin: [null, ''] };
 
-    if (normalizedGrade && normalizedGrade !== 'all') { // 🆕 Apply grade filter if provided
-      filter.grade = normalizedGrade;
+    if (normalizedGrade === 'all') {
+      delete filter.grade;
     }
     const streams = await StudentEnrollment.distinct('stream', filter); // 🆕 Use the filter object
     const cleanedStreams = (Array.isArray(streams) ? streams : [])

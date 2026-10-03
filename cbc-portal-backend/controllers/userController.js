@@ -16,10 +16,11 @@ import cache from "../utils/cacheManager.js";
 import { Student, Teacher } from '../models/RoleModels.js';
 import StudentEnrollment  from '../models/StudentEnrollment.js'; // ✅ ADD THIS
 import Mark from '../models/mark.js'; // 🆕 Import Mark model
-import Payment from '../models/Payment.js'; // 🆕 Import Payment model
 import {Material} from '../models/Material.js'; // 🆕 Import Material model
+import { deleteFinancePaymentsForStudents } from '../services/financeRepository.js';
 import { normalizePathway } from '../utils/pathwayUtils.js';
 import { createNotificationsForUsers } from './notificationController.js';
+import { buildUserDirectoryEnrollmentFilter, resolveActiveEnrollmentYear } from '../utils/accountsQueryHelpers.js';
 
 // 🆕 Helper to auto-format phone numbers (extracted from registerUser)
 const formatContact = (contact) => {
@@ -870,10 +871,23 @@ export const getAllUsers = async (req, res) => {
     const normalizedStream = normalizeQueryStream(stream);
 
     if (query.role === 'student' && (normalizedGrade || normalizedStream)) {
-      const enrollmentFilter = {
+      const requestedAcademicYear = req.query.academicYear ? Number(req.query.academicYear) : undefined;
+      if (requestedAcademicYear !== undefined && (!Number.isInteger(requestedAcademicYear) || requestedAcademicYear < 2000)) {
+        return res.status(400).json({ message: 'A valid academic year is required' });
+      }
+      let academicYear = requestedAcademicYear;
+      if (user.role !== 'accounts' && academicYear === undefined) {
+        const latestActiveEnrollment = await StudentEnrollment.findOne({
+          schoolId: user.schoolId,
+          status: 'active'
+        }).sort({ academicYear: -1 }).select('academicYear').lean();
+        academicYear = resolveActiveEnrollmentYear({ latestActiveYear: latestActiveEnrollment?.academicYear });
+      }
+      const enrollmentFilter = buildUserDirectoryEnrollmentFilter({
+        role: user.role,
         schoolId: user.schoolId,
-        status: 'active'
-      };
+        academicYear
+      });
       if (normalizedGrade && normalizedGrade !== 'all') {
         enrollmentFilter.grade = normalizedGrade;
       }
@@ -1967,7 +1981,8 @@ export const bulkDeleteStudentsByClass = async (req, res) => {
     }
 
     // 2. Perform bulk deletion across all related collections
-    const deleteResults = await Promise.all([
+    const [deleteResults, deletedPaymentsCount] = await Promise.all([
+      Promise.all([
       User.deleteMany({ _id: { $in: studentIdsToDelete }, role: 'student', schoolId: schoolId }),
       StudentEnrollment.deleteMany({ studentId: { $in: studentIdsToDelete }, schoolId: schoolId }),
 
@@ -1979,7 +1994,6 @@ export const bulkDeleteStudentsByClass = async (req, res) => {
         ], 
         schoolId: schoolId 
       }), 
-      Payment.deleteMany({ studentId: { $in: studentIdsToDelete }, schoolId: schoolId }), 
       LoginAttempt.deleteMany({ userId: { $in: studentIdsToDelete } }), // Login attempts are linked by userId
       
       // 3. Update Materials: Remove deleted student IDs from 'readBy' array
@@ -1987,13 +2001,14 @@ export const bulkDeleteStudentsByClass = async (req, res) => {
         { readBy: { $in: studentIdsToDelete } },
         { $pull: { readBy: { $in: studentIdsToDelete } } }
       )
+      ]),
+      deleteFinancePaymentsForStudents({ studentIds: studentIdsToDelete, schoolId })
     ]);
 
     const deletedUsersCount = deleteResults[0].deletedCount;
     const deletedEnrollmentsCount = deleteResults[1].deletedCount;
     const deletedMarksCount = deleteResults[2].deletedCount;
-    const deletedPaymentsCount = deleteResults[3].deletedCount;
-    const deletedLoginAttemptsCount = deleteResults[4].deletedCount;
+    const deletedLoginAttemptsCount = deleteResults[3].deletedCount;
 
     // 4. Clear relevant caches for the school
     cache.clearByPattern(String(schoolId));

@@ -57,7 +57,7 @@ const dbName = (() => {
   }
 })();
 
-const defaultCollections = ['marks', 'studentenrollments', 'users', 'schools', 'payments'];
+const defaultCollections = ['marks', 'studentenrollments', 'users', 'schools'];
 
 console.log(`🔄 Restoring latest backup from: ${latestBackupDir}`);
 console.log(`📦 Database: ${dbName}`);
@@ -67,6 +67,7 @@ if (restoreMode === 'full') {
   execFileSync(MONGORESTORE_COMMAND, [
     '--uri', mongoUri,
     '--db', dbName,
+    '--nsExclude', `${dbName}.payments`,
     latestBackupDir
   ], { stdio: 'inherit' });
 

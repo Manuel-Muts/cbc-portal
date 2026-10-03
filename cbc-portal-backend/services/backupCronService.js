@@ -6,11 +6,12 @@ import { promisify } from 'node:util';
 
 const BACKUPS_DIR = path.join(path.resolve(), 'backups', 'mongodb');
 const CRON_TIMEZONE = 'Africa/Nairobi';
-const DEFAULT_DB_BACKUP_COLLECTIONS = ['marks', 'studentenrollments', 'users', 'schools', 'payments'];
+const DEFAULT_DB_BACKUP_COLLECTIONS = ['marks', 'studentenrollments', 'users', 'schools'];
 export const BACKUP_COLLECTION_OPTIONS = DEFAULT_DB_BACKUP_COLLECTIONS;
 const execFileAsync = promisify(execFile);
 
 const getMongoDumpCommand = () => process.env.MONGODUMP_PATH || 'mongodump';
+
 
 const getMongoConnectionUri = () => {
   const explicitUri = process.env.MONGO_URI || process.env.MONGO_URL;
@@ -84,6 +85,7 @@ export const runMongoFullDatabaseDump = async (databaseUri, backupRootDir) => {
   await execFileAsync(getMongoDumpCommand(), [
     '--uri', databaseUri,
     '--db', mongoDbName,
+    '--excludeCollection', 'payments',
     '--out', backupRootDir
   ]);
 };

@@ -1,8 +1,7 @@
 import DashboardSummary from '../models/DashboardSummary.js';
 import { School } from '../models/school.js';
 import { User } from '../models/User.js';
-import Payment from '../models/Payment.js';
-import { Expense } from '../models/Expense.js';
+import { getFinanceExpenseTotal, getFinancePaymentTotals } from './financeRepository.js';
 import Announcement from '../models/Announcement.js';
 
 export const buildDashboardSummaryPayload = ({
@@ -70,46 +69,10 @@ export const computeDashboardSummaryForSchool = async (schoolId) => {
     unreadAnnouncements
   ] = await Promise.all([
     User.countDocuments({ schoolId, role: 'student' }),
-    Payment.aggregate([
-      {
-        $match: {
-          schoolId,
-          academicYear: currentYear,
-          isReversed: { $ne: true }
-        }
-      },
-      { $group: { _id: null, total: { $sum: '$amount' } } }
-    ]),
-    Payment.aggregate([
-      {
-        $match: {
-          schoolId,
-          academicYear: currentYear,
-          term: activeTerm,
-          isReversed: { $ne: true }
-        }
-      },
-      { $group: { _id: null, total: { $sum: '$amount' } } }
-    ]),
-    Expense.aggregate([
-      {
-        $match: {
-          schoolId,
-          academicYear: currentYear
-        }
-      },
-      { $group: { _id: null, total: { $sum: '$amount' } } }
-    ]),
-    Expense.aggregate([
-      {
-        $match: {
-          schoolId,
-          academicYear: currentYear,
-          term: activeTerm
-        }
-      },
-      { $group: { _id: null, total: { $sum: '$amount' } } }
-    ]),
+    getFinancePaymentTotals({ schoolId, academicYear: currentYear }),
+    getFinancePaymentTotals({ schoolId, academicYear: currentYear, term: activeTerm }),
+    getFinanceExpenseTotal({ schoolId, academicYear: currentYear }),
+    getFinanceExpenseTotal({ schoolId, academicYear: currentYear, term: activeTerm }),
     Announcement.countDocuments({
       schoolId,
       isActive: true,
@@ -120,10 +83,10 @@ export const computeDashboardSummaryForSchool = async (schoolId) => {
     })
   ]);
 
-  const feesCollected = Number(feesCollectedResult[0]?.total || 0);
-  const termFeesCollected = Number(termFeesCollectedResult[0]?.total || 0);
-  const monthlyExpenses = Number(monthlyExpensesResult[0]?.total || 0);
-  const termExpenses = Number(termExpensesResult[0]?.total || 0);
+  const feesCollected = Number(feesCollectedResult || 0);
+  const termFeesCollected = Number(termFeesCollectedResult || 0);
+  const monthlyExpenses = Number(monthlyExpensesResult || 0);
+  const termExpenses = Number(termExpensesResult || 0);
   const summary = buildDashboardSummaryPayload({
     schoolId: String(schoolId),
     totalStudents,

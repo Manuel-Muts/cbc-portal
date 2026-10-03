@@ -1,12 +1,11 @@
 // services/balanceService.js
-import Payment from "../models/Payment.js";
-import FeeStructure from "../models/FeeStructure.js";
+import { getFinanceFeeStructure, getFinancePaymentsByTerm } from './financeRepository.js';
 
 export const calculateBalance = async (student, grade = null, academicYear = new Date().getFullYear()) => {
   const studentGrade = grade || student.grade;
 
   // Try exact match first
-  let fee = await FeeStructure.findOne({
+  let fee = await getFinanceFeeStructure({
     schoolId: student.schoolId,
     grade: studentGrade,
     academicYear
@@ -14,33 +13,16 @@ export const calculateBalance = async (student, grade = null, academicYear = new
 
   // Fallback: if not found for the academicYear, return the latest fee for the grade
   if (!fee) {
-    fee = await FeeStructure.findOne({
+    fee = await getFinanceFeeStructure({
       schoolId: student.schoolId,
       grade: studentGrade
-    }).sort({ academicYear: -1 });
+    });
   }
 
-  // Sum payments for this student scoped to the same academic year and school, grouped by term
-  const paymentsByTerm = await Payment.aggregate([
-    {
-      $match: {
-        studentId: student._id,
-        academicYear: Number(academicYear),
-        isReversed: { $ne: true }
-      }
-    },
-    {
-      $group: {
-        _id: "$term",
-        total: { $sum: "$amount" }
-      }
-    }
-  ]);
-
-  // Convert to a map for easy access
-  const termPayments = {};
-  paymentsByTerm.forEach(termData => {
-    termPayments[termData._id] = termData.total;
+  const termPayments = await getFinancePaymentsByTerm({
+    studentId: student._id,
+    schoolId: student.schoolId,
+    academicYear
   });
 
   const totalPaid = Object.values(termPayments).reduce((sum, amount) => sum + amount, 0);

@@ -1,6 +1,10 @@
-import { Expense } from '../models/Expense.js';
-import mongoose from 'mongoose';
 import cacheManager from '../utils/cacheManager.js';
+import {
+  createFinanceExpense,
+  deleteFinanceExpense,
+  getFinanceExpense,
+  listFinanceExpenses
+} from '../services/financeRepository.js';
 
 // Add a new expense
 export const addExpense = async (req, res) => {
@@ -15,19 +19,17 @@ export const addExpense = async (req, res) => {
       return res.status(400).json({ message: 'Amount must be positive' });
     }
 
-    const newExpense = new Expense({
+    const newExpense = await createFinanceExpense({
       schoolId: req.user.schoolId,
       category,
       description,
-      amount,
+      amount: Number(amount),
       date: new Date(date),
-      academicYear,
+      academicYear: Number(academicYear),
       term,
       recordedBy: req.user.id,
       recordedByRole: req.user.role,
     });
-
-    await newExpense.save();
     
     // Invalidate cache for this school's expenses
     cacheManager.clearPattern(`expenses:${req.user.schoolId}`);
@@ -61,33 +63,15 @@ export const getExpenses = async (req, res) => {
       return res.json(cachedData);
     }
 
-    // Build query
-    const query = { schoolId: req.user.schoolId };
-
-    if (academicYear) {
-      query.academicYear = Number(academicYear);
-    }
-
-    // Only filter by term if a specific term is provided (not empty string)
-    if (term && term.trim() !== '') {
-      query.term = term;
-    }
-
-    // Only filter by category if a specific category is provided (not empty string)
-    if (category && category.trim() !== '') {
-      query.category = category;
-    }
-
-    // Get total count
-    const totalCount = await Expense.countDocuments(query);
+    const { totalCount, expenses } = await listFinanceExpenses({
+      schoolId: req.user.schoolId,
+      academicYear,
+      term: term?.trim() ? term : undefined,
+      category: category?.trim() ? category : undefined,
+      page: pageNum,
+      limit: pageSize
+    });
     const totalPages = Math.ceil(totalCount / pageSize);
-
-    // Get paginated data
-    const expenses = await Expense.find(query)
-      .sort({ date: -1, createdAt: -1 })
-      .skip((pageNum - 1) * pageSize)
-      .limit(pageSize)
-      .lean(); // Use lean() for better performance on read-only operations
 
     const response = {
       data: expenses,
@@ -116,7 +100,7 @@ export const deleteExpense = async (req, res) => {
   try {
     const { id } = req.params;
 
-    const expense = await Expense.findById(id);
+    const expense = await getFinanceExpense(id);
     if (!expense) {
       return res.status(404).json({ message: 'Expense not found' });
     }
@@ -125,7 +109,7 @@ export const deleteExpense = async (req, res) => {
       return res.status(403).json({ message: 'Unauthorized to delete this expense' });
     }
 
-    await expense.deleteOne();
+    await deleteFinanceExpense(id, req.user.schoolId);
 
     // Invalidate cache for this school's expenses
     cacheManager.clearPattern(`expenses:${req.user.schoolId}`);

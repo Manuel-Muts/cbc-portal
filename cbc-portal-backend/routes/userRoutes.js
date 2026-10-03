@@ -30,7 +30,7 @@ import {
 
 import verifyToken from "../middleware/verifyToken.js";
 import { getMySchool } from '../controllers/schoolController.js';
-import { recordPayment, getStudentLedger, reversePayment, getMyFeeStructure, getMyBalance, getMyPayments } from "../controllers/paymentController.js";
+import { recordPayment, getStudentLedger, getCarryForwardSummary, reversePayment, getMyFeeStructure, getMyBalance, getMyPayments } from "../controllers/paymentController.js";
 import { accountsOnly } from "../middleware/roleChecks.js";
 import requireFeature from "../middleware/featureAccess.js";
 
@@ -113,6 +113,7 @@ router.post('/class-teachers/batch', getClassTeachersByGradesAndStreams);
 // ---------------------------
 router.post("/record", requireFeature('finance'), accountsOnly, recordPayment);
 router.get("/ledger/:admission", requireFeature('finance'), accountsOnly, getStudentLedger);
+router.get('/carry-forward-summary', requireFeature('finance'), accountsOnly, getCarryForwardSummary);
 router.get('/my-fees', requireFeature('finance'), getMyFeeStructure);
 router.get('/my-balance', requireFeature('finance'), getMyBalance);
 router.get('/my-payments', requireFeature('finance'), getMyPayments);

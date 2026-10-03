@@ -305,8 +305,16 @@
             <section class="stats-grid">
               <div class="stat-card students"><h4>Total Learners</h4><p id="totalLearners">0</p></div>
               <div class="stat-card expected"><h4>Total Expected</h4><p id="totalExpected">KES 0</p></div>
-              <div class="stat-card paid"><h4>Total Paid</h4><p id="totalPaid">KES 0</p></div>
+              <div class="stat-card paid">
+                <h4>Total Paid</h4>
+                <p id="totalPaid">KES 0</p>
+                <small id="totalPaidOverpayment" class="paid-overpayment-note" aria-live="polite"></small>
+              </div>
               <div class="stat-card balance"><h4>Outstanding Balance</h4><p id="totalBalance">KES 0</p></div>
+            </section>
+            <section class="stats-grid balance-breakdown-grid">
+              <div class="stat-card deficit"><h4>Arrears Brought Forward</h4><p id="totalDeficit">KES 0</p></div>
+              <div class="stat-card surplus"><h4>Surplus Carried In</h4><p id="totalSurplus">KES 0</p></div>
             </section>
 
         </div>

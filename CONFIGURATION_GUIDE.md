@@ -134,7 +134,19 @@ MAX_FILE_SIZE=50
 
 # Rate Limiting
 RATE_LIMIT_WINDOW_MS=900000
-RATE_LIMIT_MAX_REQUESTS=100
+RATE_LIMIT_MAX_REQUESTS=1000
+LOGIN_RATE_LIMIT_MAX_REQUESTS=500
+RESET_RATE_LIMIT_MAX_REQUESTS=20
+
+# PostgreSQL finance database (NovaHost): use either connection format
+POSTGRES_URL=postgresql://USER:PASSWORD@HOST:PORT/DATABASE
+
+# Or supply separate credentials instead of POSTGRES_URL
+DB_HOST=localhost
+DB_PORT=5432
+DB_NAME=your_database
+DB_USER=your_database_user
+DB_PASSWORD=your_database_password
 
 # Africa's Talking SMS
 AT_USERNAME=your_africas_talking_username
@@ -337,10 +349,16 @@ features: {
 
 **In Backend `.env` file:**
 ```env
-# Allow 200 requests per 10 minutes
-RATE_LIMIT_WINDOW_MS=600000
-RATE_LIMIT_MAX_REQUESTS=200
+# Default API: 1,000 requests per IP per 15 minutes
+RATE_LIMIT_WINDOW_MS=900000
+RATE_LIMIT_MAX_REQUESTS=1000
+
+# Sensitive endpoints use lower per-IP limits over the same window
+LOGIN_RATE_LIMIT_MAX_REQUESTS=500
+RESET_RATE_LIMIT_MAX_REQUESTS=20
 ```
+
+Finance tables are created explicitly with `npm run migrate:finance` from the `cbc-portal-backend` directory, after configuring one of the PostgreSQL connection formats in NovaHost. Then deploy/restart the backend. Store production database credentials in NovaHost environment settings, not in source control. Existing finance records in MongoDB are not copied automatically; verify that they are only disposable test data before switching a live deployment.
 
 ### Change Database
 

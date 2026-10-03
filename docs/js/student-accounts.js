@@ -60,6 +60,7 @@
   // Ledger Modal
   const ledgerModal = document.getElementById("ledgerModal");
   const closeLedgerBtn = document.getElementById("closeLedgerBtn");
+  const downloadLedgerPdfBtn = document.getElementById("downloadLedgerPdfBtn");
   const ledgerTableContainer = document.getElementById("ledgerTableContainer");
   const ledgerStudentName = document.getElementById("ledgerStudentName");
 
@@ -76,6 +77,13 @@
   const cancelBFBtn = document.getElementById("cancelBFBtn");
   const saveBFBtn = document.getElementById("saveBFBtn");
   const bfYearInput = document.getElementById("bfYear");
+  const carryForwardSummaryBtn = document.getElementById("carryForwardSummaryBtn");
+  const carryForwardSummaryModal = document.getElementById("carryForwardSummaryModal");
+  const closeCarryForwardSummaryBtn = document.getElementById("closeCarryForwardSummaryBtn");
+  const carryForwardSummaryYear = document.getElementById("carryForwardSummaryYear");
+  const carryForwardSummaryStatus = document.getElementById("carryForwardSummaryStatus");
+  const downloadCarryForwardSummaryBtn = document.getElementById("downloadCarryForwardSummaryBtn");
+  let currentCarryForwardSummary = null;
 
   // Initialize Year Filter
   if (yearFilter) {
@@ -126,7 +134,7 @@
     }
   }
 
-  function showToast(message, type = "info") {
+  function showToast(message, type = "info", duration = 3000) {
     const toast = document.createElement("div");
     toast.style.cssText = `
       position: fixed; top: 20px; left: 50%; transform: translateX(-50%);
@@ -142,7 +150,7 @@
     setTimeout(() => {
       toast.style.opacity = "0";
       setTimeout(() => toast.remove(), 300);
-    }, 3000);
+    }, duration);
   }
 
   const SCHOOL_TYPES = {
@@ -469,7 +477,8 @@ const displayValue = (String(g).toUpperCase().startsWith("PP") || String(g).toUp
     let tableHTML = `<table style="width:100%; border-collapse:collapse;">
         <thead>
             <tr style="border-bottom:1px solid #ddd;">
-                <th style="text-align:left; padding:8px;">Date</th>
+              <th style="text-align:left; padding:8px;">Recorded At</th>
+              <th style="text-align:left; padding:8px;">Academic Year</th>
                 <th style="text-align:left; padding:8px;">Term</th>
                 <th style="text-align:left; padding:8px;">Method</th>
                 <th style="text-align:left; padding:8px;">Reference</th>
@@ -482,7 +491,8 @@ const displayValue = (String(g).toUpperCase().startsWith("PP") || String(g).toUp
     payments.forEach(p => {
         tableHTML += `
             <tr>
-                <td style="padding:8px;">${new Date(p.createdAt).toLocaleDateString()}</td>
+              <td style="padding:8px; white-space:nowrap;">${new Date(p.createdAt).toLocaleString()}</td>
+              <td style="padding:8px;">${p.academicYear || ''}</td>
                 <td style="padding:8px;">${p.term}</td>
                 <td style="padding:8px;">${p.method}</td>
                 <td style="padding:8px;">${p.reference}</td>
@@ -513,6 +523,109 @@ const displayValue = (String(g).toUpperCase().startsWith("PP") || String(g).toUp
         document.getElementById("ledgerNextBtn")?.addEventListener("click", () => openLedger(currentLedgerAdmission, currentLedgerName, page + 1));
     }
   }
+
+  async function downloadLedgerPdf() {
+    if (!currentLedgerAdmission) return;
+    const JsPDF = window.jspdf?.jsPDF || window.jsPDF;
+    if (!JsPDF) return showToast('PDF library not loaded.', 'error');
+
+    const button = downloadLedgerPdfBtn;
+    window.spinner?.show(button, 'Generating PDF...');
+
+    try {
+      const limit = 200;
+      const firstPage = await secureFetch(
+        `${API_BASE}/users/ledger/${encodeURIComponent(currentLedgerAdmission)}?page=1&limit=${limit}`
+      );
+      const payments = [...(firstPage.payments || [])];
+      const totalPages = Math.max(1, Number(firstPage.totalPages) || 1);
+
+      for (let page = 2; page <= totalPages; page += 1) {
+        const pageData = await secureFetch(
+          `${API_BASE}/users/ledger/${encodeURIComponent(currentLedgerAdmission)}?page=${page}&limit=${limit}`
+        );
+        payments.push(...(pageData.payments || []));
+      }
+
+      const school = await getSchoolInfo();
+      const pdf = new JsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+      const pageWidth = pdf.internal.pageSize.getWidth();
+      const margin = 14;
+      const totalCashReceived = payments.reduce((sum, payment) => {
+        if (String(payment.method || '').toLowerCase() === 'fund_transfer') return sum;
+        return sum + Number(payment.amount || 0);
+      }, 0);
+
+      pdf.setFillColor(17, 55, 47);
+      pdf.rect(0, 0, pageWidth, 39, 'F');
+      pdf.setTextColor(255, 255, 255);
+      pdf.setFont('helvetica', 'bold').setFontSize(16);
+      pdf.text(String(school?.name || 'School Accounts'), margin, 16);
+      pdf.setFontSize(12);
+      pdf.text('LEARNER PAYMENT LEDGER', margin, 26);
+      pdf.setFont('helvetica', 'normal').setFontSize(9);
+      pdf.text(`Learner: ${currentLedgerName || 'Learner'}  |  Admission: ${currentLedgerAdmission}`, margin, 34);
+
+      pdf.setTextColor(51, 65, 85).setFont('helvetica', 'normal').setFontSize(10);
+      pdf.text(`Transactions: ${payments.length}`, margin, 49);
+      pdf.text(`Net cash received: ${formatMoney(totalCashReceived)}`, pageWidth - margin, 49, { align: 'right' });
+
+      if (typeof pdf.autoTable === 'function') {
+        pdf.autoTable({
+          startY: 56,
+          head: [['Recorded At', 'Academic Year', 'Term', 'Method', 'Reference', 'Amount (KES)']],
+          body: payments.map(payment => [
+            new Date(payment.createdAt).toLocaleString(),
+            String(payment.academicYear || ''),
+            String(payment.term || ''),
+            String(payment.method || '').replaceAll('_', ' ').toUpperCase(),
+            String(payment.reference || ''),
+            formatMoney(Number(payment.amount || 0))
+          ]),
+          theme: 'grid',
+          headStyles: { fillColor: [17, 55, 47], textColor: [255, 255, 255], fontStyle: 'bold' },
+          alternateRowStyles: { fillColor: [245, 248, 246] },
+          styles: { font: 'helvetica', fontSize: 8.5, cellPadding: 3, textColor: [31, 41, 55], overflow: 'linebreak' },
+          columnStyles: {
+            0: { cellWidth: 34 },
+            1: { cellWidth: 18 },
+            2: { cellWidth: 18 },
+            3: { cellWidth: 23 },
+            4: { cellWidth: 48 },
+            5: { halign: 'right', cellWidth: 30 }
+          },
+          margin: { left: margin, right: margin },
+          didDrawPage: () => {
+            const footerY = pdf.internal.pageSize.getHeight() - 8;
+            pdf.setFontSize(8).setTextColor(100, 116, 139);
+            pdf.text(`Generated ${new Date().toLocaleString()}`, margin, footerY);
+            pdf.text(`Page ${pdf.internal.getCurrentPageInfo().pageNumber}`, pageWidth - margin, footerY, { align: 'right' });
+          }
+        });
+      } else {
+        let y = 62;
+        pdf.setFontSize(9);
+        payments.forEach(payment => {
+          if (y > pdf.internal.pageSize.getHeight() - 18) {
+            pdf.addPage();
+            y = 18;
+          }
+          const line = `${new Date(payment.createdAt).toLocaleDateString()} | ${payment.academicYear} | ${payment.term} | ${payment.method} | ${payment.reference} | ${formatMoney(payment.amount)}`;
+          pdf.text(line, margin, y, { maxWidth: pageWidth - margin * 2 });
+          y += 7;
+        });
+      }
+
+      pdf.save(`Payment_Ledger_${currentLedgerAdmission}.pdf`);
+    } catch (error) {
+      console.error('Ledger PDF generation failed:', error);
+      showToast(error.message || 'Could not generate learner ledger PDF.', 'error');
+    } finally {
+      window.spinner?.hide(button);
+    }
+  }
+
+  downloadLedgerPdfBtn?.addEventListener('click', downloadLedgerPdf);
 
   closeLedgerBtn.addEventListener('click', () => {
     ledgerModal.classList.remove('visible');
@@ -627,7 +740,7 @@ const displayValue = (String(g).toUpperCase().startsWith("PP") || String(g).toUp
              <p style="margin:0;"><strong>Grade:</strong> ${grade} | <strong>Year:</strong> ${year}</p>
           </div>
 
-
+           <div id="fee-details-export">
           <div id="fee-structure-for-pdf" style="margin-bottom: 25px;">
             <h4 style="border-bottom: 1px solid #ccc; padding-bottom: 5px; margin-bottom: 10px;">Fee Structure & Status</h4>
             <table style="width:100%; border-collapse:collapse; font-size: 13px; margin-bottom: 15px;">
@@ -637,6 +750,7 @@ const displayValue = (String(g).toUpperCase().startsWith("PP") || String(g).toUp
                   <th style="padding:8px; text-align:right; border:1px solid #ddd;">Fee</th>
                   <th style="padding:8px; text-align:right; border:1px solid #ddd;">Paid</th>
                   <th style="padding:8px; text-align:right; border:1px solid #ddd;">Balance</th>
+                  <th style="padding:8px; text-align:center; border:1px solid #ddd;">Status</th>
                 </tr>
               </thead>
               <tbody>
@@ -645,24 +759,28 @@ const displayValue = (String(g).toUpperCase().startsWith("PP") || String(g).toUp
                   <td style="padding:8px; text-align:right; border:1px solid #ddd;">${formatCurrency(fees.term1Fee || 0)}</td>
                   <td style="padding:8px; text-align:right; border:1px solid #ddd;">${formatCurrency(termPaid["Term 1"])}</td>
                   <td style="padding:8px; text-align:right; border:1px solid #ddd; font-weight:bold;">${formatCurrency((fees.term1Fee || 0) - termPaid["Term 1"])}</td>
+                  <td style="padding:8px; text-align:center; border:1px solid #ddd;">${Number(fees.term1Fee) > 0 && termPaid["Term 1"] >= Number(fees.term1Fee) ? '<span style="display:inline-block; padding:3px 7px; border-radius:10px; background:#dcfce7; color:#166534; font-size:10px; font-weight:700;">CLEARED</span>' : '—'}</td>
                 </tr>
                 <tr>
                   <td style="padding:8px; border:1px solid #ddd;">Term 2</td>
                   <td style="padding:8px; text-align:right; border:1px solid #ddd;">${formatCurrency(fees.term2Fee || 0)}</td>
                   <td style="padding:8px; text-align:right; border:1px solid #ddd;">${formatCurrency(termPaid["Term 2"])}</td>
                   <td style="padding:8px; text-align:right; border:1px solid #ddd; font-weight:bold;">${formatCurrency((fees.term2Fee || 0) - termPaid["Term 2"])}</td>
+                  <td style="padding:8px; text-align:center; border:1px solid #ddd;">${Number(fees.term2Fee) > 0 && termPaid["Term 2"] >= Number(fees.term2Fee) ? '<span style="display:inline-block; padding:3px 7px; border-radius:10px; background:#dcfce7; color:#166534; font-size:10px; font-weight:700;">CLEARED</span>' : '—'}</td>
                 </tr>
                 <tr>
                   <td style="padding:8px; border:1px solid #ddd;">Term 3</td>
                   <td style="padding:8px; text-align:right; border:1px solid #ddd;">${formatCurrency(fees.term3Fee || 0)}</td>
                   <td style="padding:8px; text-align:right; border:1px solid #ddd;">${formatCurrency(termPaid["Term 3"])}</td>
                   <td style="padding:8px; text-align:right; border:1px solid #ddd; font-weight:bold;">${formatCurrency((fees.term3Fee || 0) - termPaid["Term 3"])}</td>
+                  <td style="padding:8px; text-align:center; border:1px solid #ddd;">${Number(fees.term3Fee) > 0 && termPaid["Term 3"] >= Number(fees.term3Fee) ? '<span style="display:inline-block; padding:3px 7px; border-radius:10px; background:#dcfce7; color:#166534; font-size:10px; font-weight:700;">CLEARED</span>' : '—'}</td>
                 </tr>
                 <tr style="background:#f8f9fa; font-weight:bold;">
                   <td style="padding:8px; border:1px solid #ddd;">TOTAL</td>
                   <td style="padding:8px; text-align:right; border:1px solid #ddd;">${formatCurrency(fees.totalFee || 0)}</td>
                   <td style="padding:8px; text-align:right; border:1px solid #ddd;">${formatCurrency(totalPaid)}</td>
                   <td style="padding:8px; text-align:right; border:1px solid #ddd; color:${totalBalance > 0 ? '#dc3545' : '#28a745'};">${formatCurrency(totalBalance)}</td>
+                  <td style="padding:8px; text-align:center; border:1px solid #ddd;">${Number(fees.totalFee) > 0 && totalPaid >= Number(fees.totalFee) ? '<span style="display:inline-block; padding:3px 7px; border-radius:10px; background:#dcfce7; color:#166534; font-size:10px; font-weight:700;">CLEARED</span>' : '—'}</td>
                 </tr>
               </tbody>
             </table>
@@ -704,6 +822,7 @@ const displayValue = (String(g).toUpperCase().startsWith("PP") || String(g).toUp
       content += `
               </tbody>
             </table>
+          </div>
           </div>
         </div>
       `;
@@ -830,15 +949,20 @@ const displayValue = (String(g).toUpperCase().startsWith("PP") || String(g).toUp
       return;
     }
 
+    if (button.disabled) return;
+    button.disabled = true;
+    button.setAttribute('aria-busy', 'true');
     window.spinner?.show(button, 'Generating...');
     try {
       await generateModalPDF(elementId, titleSuffix, customTitle);
     } finally {
       window.spinner?.hide(button);
+      button.disabled = false;
+      button.removeAttribute('aria-busy');
     }
   };
 
-  if (dlStructureBtn) dlStructureBtn.addEventListener('click', () => runDownloadWithSpinner(dlStructureBtn, 'fee-structure-for-pdf', 'Fee_Structure', 'FEE STRUCTURE AND BALANCE'));
+  if (dlStructureBtn) dlStructureBtn.addEventListener('click', () => runDownloadWithSpinner(dlStructureBtn, 'fee-details-export', 'Fee_Structure', 'FEE STRUCTURE AND PAYMENT HISTORY'));
   if (dlStatementBtn) dlStatementBtn.addEventListener('click', () => runDownloadWithSpinner(dlStatementBtn, 'payment-statement-for-pdf', 'Fee_Statement', 'FEE STATEMENT'));
 
   if (ledgerTableContainer) {
@@ -880,6 +1004,12 @@ const displayValue = (String(g).toUpperCase().startsWith("PP") || String(g).toUp
       document.getElementById("bfAmount").value = "";
       document.getElementById("bfType").value = "surplus";
       if (bfYearInput) bfYearInput.value = new Date().getFullYear();
+      const bfTerm = document.getElementById("bfTerm");
+      if (bfTerm) {
+        const month = new Date().getMonth() + 1;
+        const calendarTerm = month <= 4 ? "Term 1" : month <= 8 ? "Term 2" : "Term 3";
+        bfTerm.value = termFilter?.value || calendarTerm;
+      }
       
       bfModal.style.display = "flex";
       requestAnimationFrame(() => bfModal.classList.add("visible"));
@@ -895,12 +1025,15 @@ const displayValue = (String(g).toUpperCase().startsWith("PP") || String(g).toUp
 
   if (saveBFBtn) {
     saveBFBtn.addEventListener("click", async () => {
+      if (saveBFBtn.disabled) return;
+
       const admission = document.getElementById("bfAdmission").value.trim();
       const amountVal = document.getElementById("bfAmount").value;
       const type = document.getElementById("bfType").value;
       const year = document.getElementById("bfYear").value;
+      const term = document.getElementById("bfTerm").value;
 
-      if (!admission || !amountVal || !year) {
+      if (!admission || !amountVal || !year || !term) {
         showToast("Please fill all fields", "error");
         return;
       }
@@ -908,6 +1041,10 @@ const displayValue = (String(g).toUpperCase().startsWith("PP") || String(g).toUp
       const amount = Number(amountVal);
       if (isNaN(amount) || amount <= 0) {
         showToast("Amount must be greater than 0", "error");
+        return;
+      }
+      if (!["surplus", "arrears"].includes(type)) {
+        showToast("Select whether this balance is surplus or arrears.", "error");
         return;
       }
 
@@ -918,19 +1055,24 @@ const displayValue = (String(g).toUpperCase().startsWith("PP") || String(g).toUp
       saveBFBtn.disabled = true;
       saveBFBtn.textContent = "Saving...";
 
-      const res = await secureFetch(`${API_BASE}/users/record`, {
-        method: "POST",
-        body: JSON.stringify({
-          admission,
-          amount: finalAmount,
-          method: "fund_transfer",
-          reference,
-          term: "Term 1", // Standard opening balance term
-          academicYear: Number(year)
-        })
-      });
+      try {
+        const res = await secureFetch(`${API_BASE}/users/record`, {
+          method: "POST",
+          body: JSON.stringify({
+            admission,
+            amount: finalAmount,
+            method: "fund_transfer",
+            reference,
+            term,
+            academicYear: Number(year)
+          })
+        });
 
-      if (res) {
+        if (!res) {
+          showToast("Brought forward balance was not saved. Please try again.", "error");
+          return;
+        }
+
         showToast("Brought forward balance saved", "success");
         
         // Show Success State in Modal with Download Button
@@ -942,6 +1084,7 @@ const displayValue = (String(g).toUpperCase().startsWith("PP") || String(g).toUp
             <div style="font-size:40px; margin-bottom:10px;">✅</div>
             <h4>Balance Recorded Successfully</h4>
             <p>Reference: <strong>${reference}</strong></p>
+            <p>Recorded period: <strong>${year} ${term}</strong></p>
             <p>Amount: <strong>${formatMoney(finalAmount)}</strong></p>
             <div style="margin-top:20px; display:flex; gap:10px; justify-content:center;">
               <button id="closeBFSuccessBtn" class="btn secondary-btn">Close</button>
@@ -961,17 +1104,181 @@ const displayValue = (String(g).toUpperCase().startsWith("PP") || String(g).toUp
           }, 200);
         });
 
-        document.getElementById('downloadBFReceiptBtn').addEventListener('click', () => generateReceiptPDF({ reference, amount: finalAmount, admission, academicYear: year, term: "Term 1", method: "fund_transfer", createdAt: new Date() }));
+        document.getElementById('downloadBFReceiptBtn').addEventListener('click', () => generateReceiptPDF({
+          reference,
+          amount: finalAmount,
+          admission,
+          academicYear: year,
+          term,
+          method: "fund_transfer",
+          createdAt: res.payment?.createdAt || new Date()
+        }));
         
         accountsCache.clear(); // Invalidate cache
         ledgerCache.clear();
         loadAccounts(currentPage, true);
+        if (carryForwardSummaryModal?.classList.contains("visible")
+          && Number(carryForwardSummaryYear?.value) === Number(year)) {
+          loadCarryForwardSummary();
+        }
+      } catch (error) {
+        console.error("Manual brought-forward save failed:", error);
+        if (error.message?.toLowerCase().includes("brought forward balance already exists")) {
+          showToast(`A brought-forward balance already exists for ${admission} in ${year}. Check the learner's ledger; only one balance is allowed per academic year.`, "error", 8000);
+          document.getElementById("bfAdmission")?.focus();
+        } else {
+          showToast(error.message || "Could not save brought forward balance. Please try again.", "error");
+        }
+      } finally {
+        if (saveBFBtn.isConnected) {
+          saveBFBtn.disabled = false;
+          saveBFBtn.textContent = "Save Balance";
+        }
       }
-
-      saveBFBtn.disabled = false;
-      saveBFBtn.textContent = "Save Balance";
     });
   }
+
+  function openCarryForwardSummary() {
+    if (!carryForwardSummaryModal || !carryForwardSummaryYear) return;
+    const selectedYear = yearFilter?.value || String(new Date().getFullYear());
+    carryForwardSummaryYear.innerHTML = '';
+    for (let year = 2024; year <= 2126; year += 1) {
+      const option = document.createElement('option');
+      option.value = String(year);
+      option.textContent = String(year);
+      if (String(year) === String(selectedYear)) option.selected = true;
+      carryForwardSummaryYear.appendChild(option);
+    }
+    carryForwardSummaryModal.style.display = 'flex';
+    requestAnimationFrame(() => carryForwardSummaryModal.classList.add('visible'));
+    loadCarryForwardSummary();
+  }
+
+  async function loadCarryForwardSummary() {
+    if (!carryForwardSummaryYear || !carryForwardSummaryStatus) return;
+    const academicYear = Number(carryForwardSummaryYear.value);
+    currentCarryForwardSummary = null;
+    if (downloadCarryForwardSummaryBtn) downloadCarryForwardSummaryBtn.disabled = true;
+    carryForwardSummaryStatus.textContent = 'Loading posted carry-forwards…';
+    ['carryForwardSurplusTotal', 'carryForwardArrearsTotal', 'carryForwardNetTotal'].forEach(id => {
+      const element = document.getElementById(id);
+      if (element) element.textContent = '…';
+    });
+    ['carryForwardSurplusCount', 'carryForwardArrearsCount', 'carryForwardLearnerCount'].forEach(id => {
+      const element = document.getElementById(id);
+      if (element) element.textContent = 'Loading…';
+    });
+
+    try {
+      const summary = await secureFetch(`${API_BASE}/users/carry-forward-summary?academicYear=${academicYear}`);
+      currentCarryForwardSummary = summary;
+      if (downloadCarryForwardSummaryBtn) downloadCarryForwardSummaryBtn.disabled = false;
+      document.getElementById('carryForwardSurplusTotal').textContent = formatMoney(summary.surplusTotal);
+      document.getElementById('carryForwardArrearsTotal').textContent = formatMoney(summary.arrearsTotal);
+      document.getElementById('carryForwardNetTotal').textContent = formatMoney(summary.netTotal);
+      document.getElementById('carryForwardSurplusCount').textContent = `${summary.surplusLearners} learner${summary.surplusLearners === 1 ? '' : 's'}`;
+      document.getElementById('carryForwardArrearsCount').textContent = `${summary.arrearsLearners} learner${summary.arrearsLearners === 1 ? '' : 's'}`;
+      document.getElementById('carryForwardLearnerCount').textContent = `${summary.learnersWithCarryForward} learner${summary.learnersWithCarryForward === 1 ? '' : 's'} with a carry-forward`;
+      carryForwardSummaryStatus.textContent = `Carry-forwards recorded for academic year ${academicYear}.`;
+    } catch (error) {
+      currentCarryForwardSummary = null;
+      carryForwardSummaryStatus.textContent = error.message || 'Could not load carry-forward summary.';
+      ['carryForwardSurplusTotal', 'carryForwardArrearsTotal', 'carryForwardNetTotal'].forEach(id => {
+        const element = document.getElementById(id);
+        if (element) element.textContent = 'Unavailable';
+      });
+    }
+  }
+
+  async function downloadCarryForwardSummaryPdf() {
+    if (!currentCarryForwardSummary) return;
+    const JsPDF = window.jspdf?.jsPDF || window.jsPDF;
+    if (!JsPDF) {
+      showToast('PDF library is unavailable. Please refresh and try again.', 'error');
+      return;
+    }
+
+    const button = downloadCarryForwardSummaryBtn;
+    window.spinner?.show(button, 'Generating PDF...');
+    try {
+      const summary = currentCarryForwardSummary;
+      const school = await getSchoolInfo();
+      const pdf = new JsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+      const pageWidth = pdf.internal.pageSize.getWidth();
+      const margin = 18;
+
+      pdf.setFillColor(17, 55, 47);
+      pdf.rect(0, 0, pageWidth, 42, 'F');
+      pdf.setTextColor(255, 255, 255);
+      pdf.setFont('helvetica', 'bold');
+      pdf.setFontSize(17);
+      pdf.text('YEAR-END CARRY-FORWARD SUMMARY', margin, 19);
+      pdf.setFont('helvetica', 'normal');
+      pdf.setFontSize(10);
+      pdf.text(String(school?.name || 'School Accounts'), margin, 29);
+      pdf.text(`Academic year ${summary.academicYear}`, pageWidth - margin, 29, { align: 'right' });
+
+      pdf.setTextColor(51, 65, 85);
+      pdf.setFontSize(10);
+      pdf.text('Posted brought-forward balances, grouped by learner.', margin, 54);
+
+      const rows = [
+        ['Surplus carried in', formatMoney(summary.surplusTotal), `${summary.surplusLearners} learners`],
+        ['Arrears carried in', formatMoney(summary.arrearsTotal), `${summary.arrearsLearners} learners`],
+        ['Net carried forward', formatMoney(summary.netTotal), `${summary.learnersWithCarryForward} learners with a carry-forward`]
+      ];
+
+      if (typeof pdf.autoTable === 'function') {
+        pdf.autoTable({
+          startY: 65,
+          head: [['Carry-forward type', 'Amount (KES)', 'Learners']],
+          body: rows,
+          theme: 'grid',
+          headStyles: { fillColor: [17, 55, 47], textColor: [255, 255, 255], fontStyle: 'bold' },
+          alternateRowStyles: { fillColor: [245, 248, 246] },
+          styles: { font: 'helvetica', fontSize: 10, cellPadding: 5, textColor: [31, 41, 55] },
+          columnStyles: { 1: { halign: 'right', fontStyle: 'bold' }, 2: { halign: 'right' } },
+          margin: { left: margin, right: margin }
+        });
+      } else {
+        pdf.setFont('helvetica', 'bold').setFontSize(10);
+        pdf.text('Surplus carried in', margin, 74);
+        pdf.text(formatMoney(summary.surplusTotal), pageWidth - margin, 74, { align: 'right' });
+        pdf.text('Arrears carried in', margin, 91);
+        pdf.text(formatMoney(summary.arrearsTotal), pageWidth - margin, 91, { align: 'right' });
+        pdf.text('Net carried forward', margin, 108);
+        pdf.text(formatMoney(summary.netTotal), pageWidth - margin, 108, { align: 'right' });
+      }
+
+      const footerY = pdf.internal.pageSize.getHeight() - 15;
+      pdf.setDrawColor(203, 213, 225).line(margin, footerY - 7, pageWidth - margin, footerY - 7);
+      pdf.setFont('helvetica', 'normal').setFontSize(8).setTextColor(100, 116, 139);
+      pdf.text(`Generated ${new Date().toLocaleString()}`, margin, footerY);
+      pdf.text('CompetenceHub Accounts', pageWidth - margin, footerY, { align: 'right' });
+      pdf.save(`Carry_Forward_Summary_${summary.academicYear}.pdf`);
+    } catch (error) {
+      console.error('Carry-forward PDF generation failed:', error);
+      showToast('Could not generate the carry-forward PDF.', 'error');
+    } finally {
+      window.spinner?.hide(button);
+      if (button) button.disabled = !currentCarryForwardSummary;
+    }
+  }
+
+  const closeCarryForwardSummary = () => {
+    carryForwardSummaryModal?.classList.remove('visible');
+    setTimeout(() => {
+      if (carryForwardSummaryModal) carryForwardSummaryModal.style.display = 'none';
+    }, 200);
+  };
+
+  carryForwardSummaryBtn?.addEventListener('click', openCarryForwardSummary);
+  downloadCarryForwardSummaryBtn?.addEventListener('click', downloadCarryForwardSummaryPdf);
+  closeCarryForwardSummaryBtn?.addEventListener('click', closeCarryForwardSummary);
+  carryForwardSummaryYear?.addEventListener('change', loadCarryForwardSummary);
+  carryForwardSummaryModal?.addEventListener('click', event => {
+    if (event.target === carryForwardSummaryModal) closeCarryForwardSummary();
+  });
 
   // ---------------------------
   // LISTENERS

@@ -35,6 +35,18 @@
     }
     .bf-badge.bf-credit { background-color: #d1fae5; color: #065f46; } /* Green for Surplus */
     .bf-badge.bf-debt { background-color: #fee2e2; color: #991b1b; }   /* Red for Arrears */
+    .carry-summary-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; margin:18px 0; }
+    .carry-summary-item { border:1px solid #e2e8f0; border-left:4px solid #94a3b8; border-radius:8px; padding:14px; background:#f8fafc; }
+    .carry-summary-item.surplus { border-left-color:#059669; background:#f0fdf4; }
+    .carry-summary-item.arrears { border-left-color:#dc2626; background:#fef2f2; }
+    .carry-summary-item.net { border-left-color:#d97706; background:#fffbeb; }
+    .carry-summary-label { font-size:12px; font-weight:700; color:#475569; text-transform:uppercase; }
+    .carry-summary-value { display:block; margin-top:7px; font-size:21px; font-weight:800; color:#0f172a; }
+    .carry-summary-count { margin-top:5px; color:#64748b; font-size:12px; }
+    @media (max-width:520px) { .carry-summary-grid { grid-template-columns:1fr; } }
+    .bf-form-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:0 16px; }
+    .bf-form-grid .form-group { min-width:0; }
+    @media (max-width:560px) { .bf-form-grid { grid-template-columns:1fr; } }
 
     /* Override admin.css for no sidebar */
     .container { display: block; padding: 20px; }
@@ -79,16 +91,19 @@
 <div class="container">
   <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px; margin-top: 20px;">
     <h2>LEARNER ACCOUNTS MANAGEMENT</h2>
-    <a href="/accounts" class="btn secondary-btn">&larr; Back to Dashboard</a>
+    <div style="display:flex; align-items:center; gap:10px;">
+      <button id="refreshAccountsBtn" class="btn secondary-btn" type="button">🔄 Refresh</button>
+      <a href="/accounts" class="btn secondary-btn">&larr; Back to Dashboard</a>
+    </div>
   </div>
 
   <!-- ACCOUNTS LIST CARD -->
   <div class="card">
     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
       <h3>LEARNER FEE STATUS</h3>
-      <div style="display:flex; gap: 10px;">
+      <div style="display:flex; flex-wrap:wrap; justify-content:flex-end; gap: 10px;">
+        <button id="carryForwardSummaryBtn" class="btn secondary-btn" type="button">Year-end B/F Summary</button>
         <button id="addBFBtn" class="btn primary-btn">➕ Add B/F</button>
-        <button id="refreshAccountsBtn" class="btn secondary-btn">🔄 Refresh</button>
         <button id="downloadReportPdfBtn" class="btn secondary-btn">📄 Export PDF</button>
       </div>
     </div>
@@ -153,7 +168,10 @@
 <!-- LEDGER MODAL -->
 <div id="ledgerModal" class="confirm-overlay" style="display:none;">
   <div class="confirm-box" style="max-width: 800px;">
-    <h4>Payment Ledger</h4>
+    <div style="display:flex; justify-content:space-between; align-items:center; gap:10px; margin-bottom:10px;">
+      <h4 style="margin:0;">Payment Ledger</h4>
+      <button id="downloadLedgerPdfBtn" type="button" class="btn primary-btn">Download PDF</button>
+    </div>
     <p id="ledgerStudentName" style="font-weight:bold; color:#0078D4; margin-bottom:15px;"></p>
     <div id="ledgerTableContainer" style="max-height: 400px; overflow-y: auto;">
       <!-- Ledger table will be injected here -->
@@ -166,37 +184,84 @@
 
 <!-- B/F BALANCE MODAL -->
 <div id="bfModal" class="confirm-overlay" style="display:none;">
-  <div class="confirm-box" style="max-width: 450px;">
+  <div class="confirm-box" style="max-width: 620px;">
     <h4>Manual Brought Forward Balance</h4>
     <p style="font-size:13px; color:#666; margin-bottom:15px;">Manually record an opening balance (Surplus or Arrears) for a learner.</p>
 
-    <div class="form-group">
-      <label>Admission Number <span style="color:red">*</span></label>
-      <input type="text" id="bfAdmission" placeholder="e.g. 1234" required>
-    </div>
+    <div class="bf-form-grid">
+      <div class="form-group">
+        <label>Admission Number <span style="color:red">*</span></label>
+        <input type="text" id="bfAdmission" placeholder="e.g. 1234" required>
+      </div>
 
-    <div class="form-group">
-      <label>Academic Year <span style="color:red">*</span></label>
-      <input type="number" id="bfYear" placeholder="YYYY" required>
-    </div>
+      <div class="form-group">
+        <label>Academic Year <span style="color:red">*</span></label>
+        <input type="number" id="bfYear" placeholder="YYYY" required>
+      </div>
 
-    <div class="form-group">
-      <label>Balance Type <span style="color:red">*</span></label>
-      <select id="bfType" required>
-        <option value="">Select Type</option>
-        <option value="surplus">Surplus / Credit (Positive)</option>
-        <option value="arrears">Arrears / Debt (Negative)</option>
-      </select>
-    </div>
+      <div class="form-group">
+        <label>Term recorded <span style="color:red">*</span></label>
+        <select id="bfTerm" required>
+          <option value="Term 1">Term 1</option>
+          <option value="Term 2">Term 2</option>
+          <option value="Term 3">Term 3</option>
+        </select>
+      </div>
 
-    <div class="form-group">
-      <label>Amount (KES) <span style="color:red">*</span></label>
-      <input type="number" id="bfAmount" placeholder="e.g. 5000" required>
+      <div class="form-group">
+        <label>Balance Type <span style="color:red">*</span></label>
+        <select id="bfType" required>
+          <option value="">Select Type</option>
+          <option value="surplus">Surplus / Credit (Positive)</option>
+          <option value="arrears">Arrears / Debt (Negative)</option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label>Amount (KES) <span style="color:red">*</span></label>
+        <input type="number" id="bfAmount" placeholder="e.g. 5000" required>
+      </div>
     </div>
 
     <div class="confirm-buttons" style="margin-top: 20px;">
       <button type="button" id="cancelBFBtn" class="btn secondary-btn">Cancel</button>
       <button type="button" id="saveBFBtn" class="btn primary-btn">Save Balance</button>
+    </div>
+  </div>
+</div>
+
+<!-- YEAR-END CARRY-FORWARD SUMMARY MODAL -->
+<div id="carryForwardSummaryModal" class="confirm-overlay" style="display:none;">
+  <div class="confirm-box" style="max-width:560px; width:94%;">
+    <div style="display:flex; justify-content:space-between; align-items:center; gap:12px;">
+      <h3 style="margin:0;">Year-end Carry-forward</h3>
+      <button id="closeCarryForwardSummaryBtn" type="button" class="btn secondary-btn">Close</button>
+    </div>
+    <p style="margin:10px 0 14px; color:#64748b;">Posted opening balances for the selected academic year, grouped by learner.</p>
+    <div style="display:flex; align-items:flex-end; justify-content:space-between; gap:12px; flex-wrap:wrap; margin:16px 0 8px;">
+      <div class="form-group" style="max-width:190px; margin:0;">
+        <label for="carryForwardSummaryYear">Academic year</label>
+        <select id="carryForwardSummaryYear" class="form-control"></select>
+      </div>
+      <button id="downloadCarryForwardSummaryBtn" type="button" class="btn primary-btn">Download PDF</button>
+    </div>
+    <p id="carryForwardSummaryStatus" role="status" style="min-height:20px; color:#64748b;"></p>
+    <div class="carry-summary-grid">
+      <div class="carry-summary-item surplus">
+        <span class="carry-summary-label">Surplus carried in</span>
+        <strong id="carryForwardSurplusTotal" class="carry-summary-value">—</strong>
+        <div id="carryForwardSurplusCount" class="carry-summary-count">— learners</div>
+      </div>
+      <div class="carry-summary-item arrears">
+        <span class="carry-summary-label">Arrears carried in</span>
+        <strong id="carryForwardArrearsTotal" class="carry-summary-value">—</strong>
+        <div id="carryForwardArrearsCount" class="carry-summary-count">— learners</div>
+      </div>
+      <div class="carry-summary-item net" style="grid-column:1 / -1;">
+        <span class="carry-summary-label">Net carried forward</span>
+        <strong id="carryForwardNetTotal" class="carry-summary-value">—</strong>
+        <div id="carryForwardLearnerCount" class="carry-summary-count">— learners with a carry-forward</div>
+      </div>
     </div>
   </div>
 </div>
@@ -270,6 +335,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.28/jspdf.plugin.autotable.min.js"></script>
 <script src="js/auth-service.js"></script>
 <script src="js/ui.js"></script>
+<script src="js/Utility/spinner.js"></script>
 <script src="js/student-accounts.js"></script>
 
 </body>

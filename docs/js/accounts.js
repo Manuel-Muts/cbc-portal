@@ -255,8 +255,13 @@ import { formatDate } from './Utility/date-utils.js';
           ];
           const summaryCards = Array.from(contentElement.querySelectorAll('.pdf-summary-card')).map((card) => ({
             title: card.querySelector('.pdf-card-title')?.textContent?.trim(),
-            value: card.querySelector('.pdf-card-value')?.textContent?.trim()
+            value: card.querySelector('.pdf-card-value')?.textContent?.trim(),
+            surplusLabel: card.querySelector('.pdf-card-surplus-label')?.textContent?.trim(),
+            surplusValue: card.querySelector('.pdf-card-surplus-value')?.textContent?.trim()
           })).filter((card) => card.title && card.value);
+          const renderedCardHeight = summaryCards.some((card) => card.surplusLabel && card.surplusValue)
+            ? 33
+            : cardHeight;
 
           summaryCards.forEach((card, index) => {
             const color = cardColors[index % cardColors.length];
@@ -264,15 +269,25 @@ import { formatDate } from './Utility/date-utils.js';
             const y = yPos + Math.floor(index / cardColumns) * (cardHeight + cardGap);
             pdf.setFillColor(...color.fill);
             pdf.setDrawColor(...color.border);
-            pdf.roundedRect(x, y, cardWidth, cardHeight, 2, 2, 'FD');
+            pdf.roundedRect(x, y, cardWidth, renderedCardHeight, 2, 2, 'FD');
             pdf.setFontSize(9);
             pdf.setFont('helvetica', 'bold');
             pdf.setTextColor(...color.text);
             pdf.text(card.title, x + 4, y + 7, { maxWidth: cardWidth - 8 });
             pdf.setFontSize(14);
             pdf.text(card.value, x + 4, y + 18, { maxWidth: cardWidth - 8 });
+            if (card.surplusLabel && card.surplusValue) {
+              pdf.setDrawColor(191, 219, 254);
+              pdf.setLineWidth(0.2);
+              pdf.line(x + 4, y + 22, x + cardWidth - 4, y + 22);
+              pdf.setFontSize(8);
+              pdf.setFont('helvetica', 'bold');
+              pdf.setTextColor(15, 118, 110);
+              pdf.text(card.surplusLabel, x + 4, y + 29, { maxWidth: cardWidth - 32 });
+              pdf.text(card.surplusValue, x + cardWidth - 4, y + 29, { align: 'right', maxWidth: 26 });
+            }
           });
-          yPos += Math.ceil(summaryCards.length / cardColumns) * (cardHeight + cardGap) + 1;
+          yPos += Math.ceil(summaryCards.length / cardColumns) * (renderedCardHeight + cardGap) + 1;
         } else {
           yPos = drawPdfSummaryCards(pdf, contentElement, pageWidth, margin, yPos);
         }
@@ -300,6 +315,10 @@ import { formatDate } from './Utility/date-utils.js';
         const sectionTitle = getSectionTitleForTable(table);
         const { headers, rows } = collectTableData(table);
         if (!headers.length || !rows.length) return;
+        const isFeeStructureTable = Boolean(table.closest('#fee-structure-for-pdf'));
+        const statusColumnIndex = isFeeStructureTable
+          ? headers.findIndex((header) => header.toLowerCase() === 'status')
+          : -1;
 
         if (sectionTitle) {
           if (yPos > pageHeight - (isBalanceSheet ? 38 : 40)) {
@@ -321,8 +340,43 @@ import { formatDate } from './Utility/date-utils.js';
             theme: 'grid',
             headStyles: { fillColor: [37, 99, 235], textColor: 255, fontStyle: 'bold', fontSize: isBalanceSheet ? 8 : 9 },
             styles: { fontSize: isBalanceSheet ? 8 : 9, cellPadding: isBalanceSheet ? 2 : 3, halign: 'right', textColor: [15, 23, 42], lineColor: [226, 232, 240], lineWidth: 0.2 },
-            columnStyles: { 0: { halign: 'left' } },
+            columnStyles: {
+              0: { halign: 'left' },
+              ...(statusColumnIndex >= 0 ? { [statusColumnIndex]: { halign: 'center', cellWidth: 34 } } : {})
+            },
             margin: { left: margin, right: margin },
+            didParseCell: (cellData) => {
+              if (statusColumnIndex < 0 || cellData.section !== 'body' || cellData.column.index !== statusColumnIndex) return;
+              cellData.cell.text = [''];
+              cellData.cell.styles.halign = 'center';
+            },
+            didDrawCell: (cellData) => {
+              if (statusColumnIndex < 0 || cellData.section !== 'body' || cellData.column.index !== statusColumnIndex) return;
+
+              const status = String(cellData.cell.raw || '').trim();
+              const normalizedStatus = status.toLowerCase();
+              const badgeStyles = normalizedStatus === 'cleared'
+                ? { fill: [220, 252, 231], text: [22, 101, 52] }
+                : normalizedStatus === 'partially paid'
+                  ? { fill: [254, 243, 199], text: [146, 64, 14] }
+                  : normalizedStatus === 'unpaid'
+                    ? { fill: [254, 226, 226], text: [153, 27, 27] }
+                    : normalizedStatus === 'no fee posted'
+                      ? { fill: [226, 232, 240], text: [71, 85, 105] }
+                      : null;
+              if (!badgeStyles) return;
+
+              pdf.setFont('helvetica', 'bold');
+              pdf.setFontSize(7);
+              const badgeWidth = Math.min(cellData.cell.width - 3, pdf.getTextWidth(status) + 6);
+              const badgeHeight = 5;
+              const badgeX = cellData.cell.x + (cellData.cell.width - badgeWidth) / 2;
+              const badgeY = cellData.cell.y + (cellData.cell.height - badgeHeight) / 2;
+              pdf.setFillColor(...badgeStyles.fill);
+              pdf.roundedRect(badgeX, badgeY, badgeWidth, badgeHeight, 1.5, 1.5, 'F');
+              pdf.setTextColor(...badgeStyles.text);
+              pdf.text(status, cellData.cell.x + cellData.cell.width / 2, badgeY + 3.4, { align: 'center' });
+            },
             didDrawPage: () => {
               drawAccountsWatermark(pdf);
             }
@@ -390,6 +444,8 @@ import { formatDate } from './Utility/date-utils.js';
     logoProps: null
   };
   let statsCache = new Map();
+  let arrearsCardScope = null;
+  let surplusCardScope = null;
   let statsLastFetch = 0;
   let feeStructuresCache = new Map();
   let globalNoteCache = new Map();
@@ -420,6 +476,7 @@ import { formatDate } from './Utility/date-utils.js';
     totalIncome: 0,
     totalExpenses: 0,
     netCash: 0,
+    totalSurplus: 0,
     expenses: []
   };
 
@@ -881,6 +938,7 @@ import { formatDate } from './Utility/date-utils.js';
         netCash: balance,
         totalExpectedFees: reportData.totals?.totalExpectedFees || 0,
         totalFeeReceivable: reportData.totals?.totalFeeReceivable || 0,
+        totalSurplus: reportData.totals?.totalSurplus || 0,
         activeLearners: reportData.activeLearners || 0,
         incomeBreakdown: reportData.breakdown?.income || [],
         categoryBreakdown: reportData.breakdown?.categories || [],
@@ -1062,6 +1120,12 @@ import { formatDate } from './Utility/date-utils.js';
               <div class="pdf-card-value" style="font-size:20px; font-weight:700; margin:0;">${formatCurrency(data.totalIncome)}</div>
             </div>
             <p class="pdf-card-caption" style="margin:8px 0 0; font-size:14px; color:#6b7280;">Total fees received for this selection.</p>
+            ${data.totalSurplus > 0 ? `
+              <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; border-top:1px solid #dbeafe; margin-top:10px; padding-top:8px; font-size:12px;">
+                <span class="pdf-card-surplus-label" style="color:#0f766e; font-weight:700;">Surplus carried in</span>
+                <strong class="pdf-card-surplus-value" style="color:#0f766e; white-space:nowrap;">${formatCurrency(data.totalSurplus)}</strong>
+              </div>
+            ` : ''}
           </div>
           <div class="pdf-summary-card expense-card" style="padding:16px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:10px;">
             <div class="pdf-summary-card-row">
@@ -1073,7 +1137,7 @@ import { formatDate } from './Utility/date-utils.js';
         </div>
 
         <div class="pdf-summary-card net-cash" style="padding:16px; background:#ffffff; border:1px solid #e2e8f0; border-radius:10px; margin-bottom:24px;">
-          <div class="pdf-summary-card-row" style="justify-content:space-between; align-items:center; gap:12px;">
+          <div class="net-position-row">
             <div>
               <h4 class="pdf-card-title" style="margin:0; font-size:16px; color:#111827;">Net Cash Position</h4>
               <p class="pdf-card-caption" style="margin:8px 0 0; font-size:14px; color:#6b7280;">Income minus expenses.</p>
@@ -1152,10 +1216,13 @@ import { formatDate } from './Utility/date-utils.js';
     const grade = overviewClassFilter?.value || "";
     const year = overviewYearFilter?.value || new Date().getFullYear();
     const term = overviewTermFilter?.value || "";
+    const selectedArrearsScope = `${year}:${grade || "All Grades"}`;
+    const shouldUpdateArrears = arrearsCardScope !== selectedArrearsScope;
+    const shouldUpdateSurplus = surplusCardScope !== selectedArrearsScope;
     
     // Show loading state on cards
-    const cardIds = ["totalLearners", "totalExpected", "totalPaid", "totalBalance"];
-    cardIds.forEach(id => {
+    const cardIds = ["totalLearners", "totalExpected", "totalPaid", "totalDeficit", "totalSurplus", "totalBalance"];
+    cardIds.filter(id => (id !== "totalDeficit" || shouldUpdateArrears) && (id !== "totalSurplus" || shouldUpdateSurplus)).forEach(id => {
       const el = document.getElementById(id);
       if (el) el.innerHTML = '<span style="font-size: 0.8rem; color: #94a3b8;">Updating...</span>';
     });
@@ -1191,7 +1258,7 @@ import { formatDate } from './Utility/date-utils.js';
       drawOverviewChart(data);
     } catch (err) {
       console.error('Load stats error', err);
-      cardIds.forEach(id => {
+      cardIds.filter(id => (id !== "totalDeficit" || shouldUpdateArrears) && (id !== "totalSurplus" || shouldUpdateSurplus)).forEach(id => {
         const el = document.getElementById(id);
         if (el) el.textContent = "Error";
       });
@@ -1202,18 +1269,47 @@ import { formatDate } from './Utility/date-utils.js';
     const totalLearners = stats.totalLearners || 0;
     const totalExpected = stats.totalExpectedFees || 0;
     const totalPaid = stats.totalPaid || 0;
+    const totalTermOverpayment = stats.totalTermOverpayment || 0;
+    const totalDeficit = stats.totalDeficit || 0;
+    const totalSurplus = stats.totalSurplus || 0;
     const totalBalance = (stats.totalOutstandingBalance !== undefined) ? stats.totalOutstandingBalance : (totalExpected - totalPaid);
     
     if (document.getElementById("totalLearners")) document.getElementById("totalLearners").textContent = totalLearners.toLocaleString();
     if (document.getElementById("totalExpected")) document.getElementById("totalExpected").textContent = `KES ${(totalExpected || 0).toLocaleString()}`;
     if (document.getElementById("totalPaid")) document.getElementById("totalPaid").textContent = `KES ${totalPaid.toLocaleString()}`;
+    const overpaymentNote = document.getElementById("totalPaidOverpayment");
+    if (overpaymentNote) {
+      const isTermSelected = ["Term 1", "Term 2", "Term 3"].includes(context.term);
+      overpaymentNote.textContent = isTermSelected
+        ? `Extra this term: KES ${totalTermOverpayment.toLocaleString()}`
+        : "";
+      overpaymentNote.title = isTermSelected
+        ? `Receipts exceed posted fees for ${context.term} by KES ${totalTermOverpayment.toLocaleString()}`
+        : "";
+    }
+    const selectedArrearsScope = `${context.year}:${context.grade || "All Grades"}`;
+    const shouldUpdateArrears = arrearsCardScope !== selectedArrearsScope;
+    const shouldUpdateSurplus = surplusCardScope !== selectedArrearsScope;
+    if (shouldUpdateArrears && document.getElementById("totalDeficit")) {
+      document.getElementById("totalDeficit").textContent = `KES ${totalDeficit.toLocaleString()}`;
+      arrearsCardScope = selectedArrearsScope;
+    }
+    if (surplusCardScope !== selectedArrearsScope && document.getElementById("totalSurplus")) {
+      document.getElementById("totalSurplus").textContent = `KES ${totalSurplus.toLocaleString()}`;
+      surplusCardScope = selectedArrearsScope;
+    }
     if (document.getElementById("totalBalance")) document.getElementById("totalBalance").textContent = `KES ${totalBalance.toLocaleString()}`;
 
     // Update Card Headers to reflect current filters
-    const headers = document.querySelectorAll(".stat-card h4");
+    const headers = document.querySelectorAll("#feesPaymentOverviewSection .stat-card h4");
     headers.forEach(h => {
       if (!h.dataset.original) h.dataset.original = h.textContent;
-      h.textContent = `${h.dataset.original} (${context.term})`;
+      const valueElement = h.closest(".stat-card")?.querySelector("p");
+      const isArrearsCard = valueElement?.id === "totalDeficit";
+      const isSurplusCard = valueElement?.id === "totalSurplus";
+      if ((isArrearsCard && !shouldUpdateArrears) || (isSurplusCard && !shouldUpdateSurplus)) return;
+      const period = isArrearsCard || isSurplusCard ? context.year : context.term;
+      h.textContent = `${h.dataset.original} (${period})`;
     });
   }
 
@@ -1422,7 +1518,7 @@ import { formatDate } from './Utility/date-utils.js';
 
   function renderOutstandingTable(accounts) {
     if (accounts.length === 0) {
-      outstandingTableBody.innerHTML = '<tr><td colspan="6" style="text-align: center;">No students with outstanding balances found.</td></tr>';
+      outstandingTableBody.innerHTML = '<tr><td colspan="6" style="text-align: center;">No learners found for these filters.</td></tr>';
       return;
     }
     const selectedTerm = outstandingTermFilter?.value || '';
@@ -1437,7 +1533,6 @@ import { formatDate } from './Utility/date-utils.js';
       const termFee = selectedTermKey ? getNumeric(s.termBalances?.[selectedTermKey]?.fee ?? 0) : totalFee;
       const termPaid = selectedTermKey ? getNumeric(s.termBalances?.[selectedTermKey]?.paid ?? 0) : paidAmount;
       const termBalance = selectedTermKey ? getNumeric(s.termBalances?.[selectedTermKey]?.balance ?? 0) : balance;
-      if (termBalance <= 0) return '';
 
       const safeName = (s.studentName || s.name || 'Unknown').replace(/'/g, "&apos;");
       let studentId = s.studentId;
@@ -1447,10 +1542,12 @@ import { formatDate } from './Utility/date-utils.js';
       const admission = s.admission || s.admissionNo || '';
       let statusBadge = '';
 
-      if (termBalance <= 0) {
-        statusBadge = `<span class="status-badge status-paid" style="background:#d1fae5; color:#065f46;">Paid</span>`;
-      } else if (termPaid > 0 && termBalance > 0) {
-        statusBadge = `<span class="status-badge status-partial" style="background:#fef3c7; color:#92400e;">Partial</span>`;
+      if (termFee <= 0) {
+        statusBadge = `<span class="status-badge" style="background:#e2e8f0; color:#475569;">No Fee Posted</span>`;
+      } else if (termPaid >= termFee) {
+        statusBadge = `<span class="status-badge status-paid" style="background:#d1fae5; color:#065f46;">Cleared</span>`;
+      } else if (termPaid > 0) {
+        statusBadge = `<span class="status-badge status-partial" style="background:#fef3c7; color:#92400e;">Partially Paid</span>`;
       } else {
         statusBadge = `<span class="status-badge status-unpaid" style="background:#fee2e2; color:#991b1b;">Unpaid</span>`;
       }
@@ -1649,6 +1746,14 @@ import { formatDate } from './Utility/date-utils.js';
       const calculatedTotalFee = normalizedFees.term1Fee + normalizedFees.term2Fee + normalizedFees.term3Fee;
       const totalBalance = calculatedTotalFee - totalPaidFromTerms;
       const unpaidAmount = Math.max(totalBalance, 0);
+      const getFeeStatusBadge = (feeAmount, paidAmount) => {
+        const feeValue = Number(feeAmount) || 0;
+        const paidValue = Number(paidAmount) || 0;
+        if (feeValue <= 0) return '<span class="status-badge" style="background:#e2e8f0; color:#475569;">No Fee Posted</span>';
+        if (paidValue >= feeValue) return '<span class="status-badge status-paid" style="background:#d1fae5; color:#065f46;">Cleared</span>';
+        if (paidValue > 0) return '<span class="status-badge status-partial" style="background:#fef3c7; color:#92400e;">Partially Paid</span>';
+        return '<span class="status-badge status-unpaid" style="background:#fee2e2; color:#991b1b;">Unpaid</span>';
+      };
       
       let content = `
         <div id="fee-details-content" class="pdf-report-shell">
@@ -1669,6 +1774,7 @@ import { formatDate } from './Utility/date-utils.js';
                   <th style="padding:10px; text-align:right; border:1px solid #d1d5db; font-size:14px;">Fee</th>
                   <th style="padding:10px; text-align:right; border:1px solid #d1d5db; font-size:14px;">Paid</th>
                   <th style="padding:10px; text-align:right; border:1px solid #d1d5db; font-size:14px;">Balance</th>
+                  <th style="padding:10px; text-align:center; border:1px solid #d1d5db; font-size:14px;">Status</th>
                 </tr>
               </thead>
               <tbody>
@@ -1677,24 +1783,28 @@ import { formatDate } from './Utility/date-utils.js';
                   <td style="padding:12px; text-align:right; border:1px solid #d1d5db; font-size:14px;">${formatCurrency(normalizedFees.term1Fee || 0)}</td>
                   <td style="padding:12px; text-align:right; border:1px solid #d1d5db; font-size:14px;">${formatCurrency(termPaid["Term 1"])}</td>
                   <td style="padding:12px; text-align:right; border:1px solid #d1d5db; font-weight:700; font-size:14px;">${formatCurrency((normalizedFees.term1Fee || 0) - termPaid["Term 1"])}</td>
+                  <td style="padding:12px; text-align:center; border:1px solid #d1d5db;">${getFeeStatusBadge(normalizedFees.term1Fee, termPaid["Term 1"])}</td>
                 </tr>
                 <tr>
                   <td style="padding:12px; border:1px solid #d1d5db; font-size:14px;">Term 2</td>
                   <td style="padding:12px; text-align:right; border:1px solid #d1d5db; font-size:14px;">${formatCurrency(normalizedFees.term2Fee || 0)}</td>
                   <td style="padding:12px; text-align:right; border:1px solid #d1d5db; font-size:14px;">${formatCurrency(termPaid["Term 2"])}</td>
                   <td style="padding:12px; text-align:right; border:1px solid #d1d5db; font-weight:700; font-size:14px;">${formatCurrency((normalizedFees.term2Fee || 0) - termPaid["Term 2"])}</td>
+                  <td style="padding:12px; text-align:center; border:1px solid #d1d5db;">${getFeeStatusBadge(normalizedFees.term2Fee, termPaid["Term 2"])}</td>
                 </tr>
                 <tr>
                   <td style="padding:12px; border:1px solid #d1d5db; font-size:14px;">Term 3</td>
                   <td style="padding:12px; text-align:right; border:1px solid #d1d5db; font-size:14px;">${formatCurrency(normalizedFees.term3Fee || 0)}</td>
                   <td style="padding:12px; text-align:right; border:1px solid #d1d5db; font-size:14px;">${formatCurrency(termPaid["Term 3"])}</td>
                   <td style="padding:12px; text-align:right; border:1px solid #d1d5db; font-weight:700; font-size:14px;">${formatCurrency((normalizedFees.term3Fee || 0) - termPaid["Term 3"])}</td>
+                  <td style="padding:12px; text-align:center; border:1px solid #d1d5db;">${getFeeStatusBadge(normalizedFees.term3Fee, termPaid["Term 3"])}</td>
                 </tr>
                 <tr style="background:#f3f4f6; font-weight:700;">
                   <td style="padding:12px; border:1px solid #d1d5db; font-size:14px;">TOTAL</td>
                   <td style="padding:12px; text-align:right; border:1px solid #d1d5db; font-size:14px;">${formatCurrency(calculatedTotalFee)}</td>
                   <td style="padding:12px; text-align:right; border:1px solid #d1d5db; font-size:14px;">${formatCurrency(totalPaidFromTerms)}</td>
                   <td style="padding:12px; text-align:right; border:1px solid #d1d5db; color:${totalBalance > 0 ? '#dc3545' : '#16a34a'}; font-size:14px;">${formatCurrency(totalBalance)}</td>
+                  <td style="padding:12px; text-align:center; border:1px solid #d1d5db;">${getFeeStatusBadge(calculatedTotalFee, totalPaidFromTerms)}</td>
                 </tr>
               </tbody>
             </table>

@@ -3,8 +3,14 @@ import mongoose from "mongoose";
 import StudentEnrollment from "../models/StudentEnrollment.js";
 import {User} from "../models/User.js";
 import { Student } from "../models/RoleModels.js";
-import Payment from "../models/Payment.js";
-import FeeStructure from "../models/FeeStructure.js";
+import cache from '../utils/cacheManager.js';
+import {
+  createFinancePayment,
+  hasActiveFinanceBroughtForward,
+  getFinanceFeeStructuresForSchool,
+  listFinancePayments
+} from '../services/financeRepository.js';
+import { calculateCarryForwardAmount } from '../utils/carryForwardAmount.js';
 
 const escapeRegex = (text) => {
   return text.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, "\\$&");
@@ -87,9 +93,12 @@ export const promoteStudents = async (req, res) => {
     }
 
     const session = await mongoose.startSession();
+    let promotionResponse;
+    let carryForwardEntries = [];
 
     try {
       await session.withTransaction(async () => {
+        carryForwardEntries = [];
         const results = [];
         const warnings = [];
         const errorsDuringProcessing = []; // To collect errors for individual students
@@ -104,15 +113,12 @@ export const promoteStudents = async (req, res) => {
             academicYear: fromAcademicYear,
             status: "active"
           }).session(session).lean(),
-          Payment.find({
-            studentId: { $in: studentIds },
-            academicYear: fromAcademicYear,
-            isReversed: { $ne: true }
-          }).session(session).lean(),
-          FeeStructure.find({
+          listFinancePayments({
+            studentId: studentIds,
             schoolId: req.user.schoolId,
-            academicYear: fromAcademicYear
-          }).session(session).lean()
+            academicYear: fromAcademicYear,
+          }),
+          getFinanceFeeStructuresForSchool({ schoolId: req.user.schoolId, academicYear: fromAcademicYear })
         ]);
 
         const enrollmentMap = new Map(currentEnrollments.map(e => [String(e.studentId), e]));
@@ -174,45 +180,45 @@ export const promoteStudents = async (req, res) => {
                 warnings.push({ studentId: d.studentId, message: "Student user record not found, cannot carry forward balance." });
                 // Continue processing promotion, but log this warning
               } else {
-                  // Optimized In-Memory Balance Calculation
                   const fee = allFeeStructures.find(f => f.grade === enrollment.grade);
-                  const sPayments = allPayments.filter(p => String(p.studentId) === String(studentUser._id));
-                  const paid = sPayments.reduce((sum, p) => sum + p.amount, 0);
-                  const totalFee = fee ? fee.totalFee : 0;
-                  const bal = totalFee - paid;
+                  if (!fee) {
+                    warnings.push({
+                      studentId: d.studentId,
+                      message: `No fee structure for ${enrollment.grade} in ${fromAcademicYear}; no balance was carried forward.`
+                    });
+                  } else {
+                    const sPayments = allPayments.filter(p => String(p.studentId) === String(studentUser._id));
+                    const bal = calculateCarryForwardAmount({ fee, payments: sPayments });
 
-                  if (bal !== 0) {
-                      // Unique reference to avoid duplicates: BF-YYYY-STUDENTID
+                    if (bal !== 0) {
                       const baseRef = `BF-${fromAcademicYear}-${enrollment.studentId}`;
 
-                      // CASE 1: Credit/Surplus (Balance < 0)
                       if (bal < 0) {
-                          await Payment.create([{
-                              studentId: enrollment.studentId,
-                              schoolId: enrollment.schoolId,
-                              amount: Math.abs(bal),
-                              method: "fund_transfer",
-                              reference: `${baseRef}-CR`, // CR for Credit
-                              term: "Term 1",
-                              academicYear: toAcademicYear,
-                              recordedBy: req.user.id,
-                              recordedByRole: "system"
-                          }], { session });
+                        carryForwardEntries.push({
+                          studentId: enrollment.studentId,
+                          schoolId: enrollment.schoolId,
+                          amount: Math.abs(bal),
+                          method: "fund_transfer",
+                          reference: `${baseRef}-CR`,
+                          term: "Term 1",
+                          academicYear: toAcademicYear,
+                          recordedBy: req.user.id,
+                          recordedByRole: "system"
+                        });
+                      } else {
+                        carryForwardEntries.push({
+                          studentId: enrollment.studentId,
+                          schoolId: enrollment.schoolId,
+                          amount: -bal,
+                          method: "fund_transfer",
+                          reference: `${baseRef}-DR`,
+                          term: "Term 1",
+                          academicYear: toAcademicYear,
+                          recordedBy: req.user.id,
+                          recordedByRole: "system"
+                        });
                       }
-                      // CASE 2: Debt/Arrears (Balance > 0)
-                      else if (bal > 0) {
-                          await Payment.create([{
-                              studentId: enrollment.studentId,
-                              schoolId: enrollment.schoolId,
-                              amount: -Math.abs(bal), // Negative amount implies debt brought forward
-                              method: "fund_transfer",
-                              reference: `${baseRef}-DR`, // DR for Debit
-                              term: "Term 1",
-                              academicYear: toAcademicYear,
-                              recordedBy: req.user.id,
-                              recordedByRole: "system"
-                          }], { session });
-                      }
+                    }
                   }
               }
             } catch (err) {
@@ -272,14 +278,42 @@ export const promoteStudents = async (req, res) => {
           throw batchError;
         }
 
-        // The session will automatically commit if no error is thrown
-        res.json({
+        promotionResponse = {
           message: "Promotion processed successfully",
           affected: results.length,
           warnings,
           errors: errorsDuringProcessing 
-        });
+        };
       });
+
+      let carryForwardCreated = false;
+      for (const entry of carryForwardEntries) {
+        try {
+          const existingCarryForward = await hasActiveFinanceBroughtForward({
+            studentId: entry.studentId,
+            schoolId: entry.schoolId,
+            academicYear: entry.academicYear
+          });
+          if (existingCarryForward) {
+            promotionResponse.warnings.push({
+              studentId: entry.studentId,
+              message: `A brought-forward balance already exists for academic year ${entry.academicYear}; the automatic transfer was skipped.`
+            });
+            continue;
+          }
+          await createFinancePayment(entry);
+          carryForwardCreated = true;
+        } catch (error) {
+          promotionResponse.warnings.push({
+            studentId: entry.studentId,
+            message: `Promotion committed, but balance carry-forward needs attention: ${error.message}`
+          });
+        }
+      }
+      if (carryForwardCreated) {
+        cache.delete(`carry_forward_summary_${req.user.schoolId}_${toAcademicYear}`);
+      }
+      return res.json(promotionResponse);
     } catch (err) {
       if (err.individualErrors) {
         return res.status(400).json({ 

@@ -4,7 +4,6 @@ import { School } from '../models/school.js';
 import { Student, Teacher } from '../models/RoleModels.js'; // 🆕 Import discriminator models
 import bcrypt from 'bcryptjs';
 import { sendCredentialsEmail } from '../utils/authHelpers.js';
-import Payment from '../models/Payment.js';
 import Setting from '../models/Setting.js';
 import LoginAttempt from '../models/LoginAttempt.js';
 import cache from "../utils/cacheManager.js";
@@ -603,37 +602,6 @@ export const getLogs = async (req, res) => {
     ]);
 
     const topLoginAttempt = topLoginAgg && topLoginAgg.length ? topLoginAgg[0] : null;
-
-    // If a specific type is requested, return paginated results for that type
-    if (type === 'payments') {
-      // Aggregation to join student info and support search
-      const pipeline = [
-        { $lookup: { from: 'users', localField: 'studentId', foreignField: '_id', as: 'student' } },
-        { $unwind: { path: '$student', preserveNullAndEmptyArrays: true } }
-      ];
-
-      if (q) {
-        const regex = { $regex: q, $options: 'i' };
-        pipeline.push({ $match: { $or: [ { reference: regex }, { 'student.name': regex }, { 'student.admission': regex } ] } });
-      }
-
-      pipeline.push({ $sort: { createdAt: -1 } });
-      pipeline.push({ $facet: {
-        metadata: [ { $count: 'total' } ],
-        data: [ { $skip: (page - 1) * limit }, { $limit: limit }, { $project: { studentId: 1, amount: 1, reference: 1, term:1, academicYear:1, createdAt:1, 'student.name': 1, 'student.admission': 1 } } ]
-      } });
-
-      const agg = await Payment.aggregate(pipeline);
-      const metadata = agg[0].metadata[0] || { total: 0 };
-      const data = agg[0].data || [];
-      const total = metadata.total || 0;
-      const totalPages = Math.ceil(total / limit);
-
-      const response = { payments: data, meta: { total, page, limit, totalPages }, topLoginAttempt };
-      
-      cache.set(cacheKey, response, 60); // Cache logs for 1 minute
-      return res.json(response);
-    }
 
     if (type === 'schools') {
       const filter = {};

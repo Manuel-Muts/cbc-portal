@@ -1,6 +1,5 @@
 // controllers/reportsController.js
 import mongoose from "mongoose"; 
-import FeeStructure from "../models/FeeStructure.js";
 import { User } from "../models/User.js";
 import { Student, Teacher } from "../models/RoleModels.js";
 import { School } from "../models/school.js";
@@ -8,11 +7,20 @@ import StudentEnrollment from "../models/StudentEnrollment.js";
 import { calculateBalance } from "../services/balanceService.js";
 import PDFDocument from 'pdfkit';
 import axios from "axios"; // Import axios
-import Payment from "../models/Payment.js";
-import { Expense } from '../models/Expense.js';
 import { PassThrough } from 'stream';
 import cache from "../utils/cacheManager.js";
-import { buildGradeMatch, getAllowedGradesForSchoolType } from "../utils/accountsQueryHelpers.js";
+import {
+  getFinanceExpenseReport,
+  getFinanceFeeStructuresForSchool,
+  getFinancePaymentsForStudents,
+  getFinancePaymentBreakdown,
+  getFinancePaymentTotals,
+  getFinanceTotalsByStudent,
+  getFinanceCarryForwardSummary,
+  listFinanceFeeStructures
+} from '../services/financeRepository.js';
+import { buildGradeMatch, getAllowedGradesForSchoolType, getFinanceEnrollmentStatusFilter } from "../utils/accountsQueryHelpers.js";
+import { calculateTermOverpayment } from "../utils/feePosition.js";
 
 const getCurrentTerm = () => {
   const month = new Date().getMonth() + 1;
@@ -82,9 +90,11 @@ export const generateFeeStructuresPDF = async (req, res) => {
     }
 
     // Get all fee structures for the school
-    const feeStructures = await FeeStructure.find({
-      schoolId: req.user.schoolId
-    }).sort({ academicYear: -1, grade: 1 });
+    const { fees: feeStructures } = await listFinanceFeeStructures({
+      schoolId: req.user.schoolId,
+      page: 1,
+      limit: 1000
+    });
 
     // Create PDF document
     const doc = new PDFDocument({
@@ -242,15 +252,15 @@ export const generateStudentFeesPDF = async (req, res) => {
     // 2. Batch Fetch all data needed for balance calculations to avoid N+1
     const studentIds = students.map(s => s._id);
     const [allPayments, allFeeStructures] = await Promise.all([
-      Payment.find({
-        studentId: { $in: studentIds },
-        academicYear: currentAcademicYear,
-        isReversed: { $ne: true }
-      }).lean(),
-      FeeStructure.find({
+      getFinancePaymentsForStudents({
+        studentIds,
         schoolId: req.user.schoolId,
         academicYear: currentAcademicYear
-      }).lean()
+      }),
+      getFinanceFeeStructuresForSchool({
+        schoolId: req.user.schoolId,
+        academicYear: currentAcademicYear
+      })
     ]);
 
     // 3. Process balance data in-memory
@@ -487,229 +497,6 @@ export const generateStudentFeesPDF = async (req, res) => {
   }
 };
 
-export const getOutstandingFees = async (req, res) => {
-  try {
-    if (!req.user || !req.user.schoolId) {
-      return res.status(400).json({ message: 'No school assigned' });
-    }
-
-    const school = await School.findById(req.user.schoolId).select('schoolType').lean();
-    if (!school) return res.status(404).json({ message: 'School not found' });
-
-    const { name, class: classFilter, academicYear, term: rawTerm, page: pageQuery, limit: limitQuery, sort } = req.query;
-    const term = (rawTerm || getCurrentTerm()).trim();
-    const schoolType = school.schoolType || 'full';
-    const gradeMatch = buildGradeMatch(schoolType, classFilter);
-
-    // Construct cache key (ignore '_t' for standard UI browsing)
-    const queryForCache = { ...req.query };
-    const limitQueryInt = parseInt(limitQuery, 10);
-    if (limitQueryInt <= 50 || isNaN(limitQueryInt)) delete queryForCache._t;
-
-    const cacheKey = `outstanding_${req.user.schoolId}_${schoolType}_${JSON.stringify(queryForCache)}`;
-    const cachedData = cache.get(cacheKey);
-    if (cachedData) {
-      return res.json(cachedData);
-    }
-
-    const page = parseInt(pageQuery) || 1;
-    const limit = parseInt(limitQuery) || 10;
-    const skip = (page - 1) * limit;
-    const yearToUse = parseInt(academicYear) || new Date().getFullYear();
-    const schoolIdObj = new mongoose.Types.ObjectId(req.user.schoolId);
-    const CACHE_TTL_SECONDS = 300; // 🚀 Increased from 120s to 5 minutes - fees don't change frequently
-
-    const matchStage = {
-      schoolId: schoolIdObj,
-      academicYear: yearToUse,
-      status: "active",
-      grade: gradeMatch
-    };
-
-    const isNumericSearch = name && /^\d+$/.test(name);
-    const searchStage = name
-      ? (isNumericSearch
-        ? [{ $match: { "student.admission": name } }]
-        : [{ $match: { $or: [{ "student.name": { $regex: name, $options: "i" } }, { "student.admission": { $regex: name, $options: "i" } }] } }])
-      : [];
-
-    const termFilterStage = (() => {
-      if (!term) return null;
-      const termKey = term.toLowerCase().replace(/\s+/g, '');
-      const balancePath = `termBalances.${termKey}.balance`;
-      return { $match: { [balancePath]: { $gt: 0 } } };
-    })();
-
-    const sortStage = (() => {
-      if (!sort) return { $sort: { balance: -1 } };
-      const [field, order] = sort.split('_');
-      const direction = order === 'asc' ? 1 : -1;
-      if (field === 'balance') return { $sort: { balance: direction } };
-      if (field === 'name') return { $sort: { studentName: direction } };
-      if (field === 'admission') return { $sort: { admission: direction } };
-      return { $sort: { balance: -1 } };
-    })();
-
-    const pipeline = [
-      { $match: matchStage },
-      {
-        $lookup: {
-          from: 'users',
-          localField: 'studentId',
-          foreignField: '_id',
-          as: 'student',
-          pipeline: [
-            { $project: { _id: 1, name: 1, admission: 1 } } // 🚀 Select only needed fields
-          ]
-        }
-      },
-      { $unwind: '$student' },
-      ...searchStage,
-      {
-        $lookup: {
-          from: 'feestructures',
-          let: { eGrade: '$grade' },
-          pipeline: [
-            {
-              $match: {
-                $expr: {
-                  $and: [
-                    { $eq: ['$schoolId', schoolIdObj] },
-                    { $eq: ['$academicYear', yearToUse] },
-                    { $eq: ['$grade', '$$eGrade'] }
-                  ]
-                }
-              }
-            },
-            { $project: { totalFee: 1, term1Fee: 1, term2Fee: 1, term3Fee: 1 } } // 🚀 Select only needed fields
-          ],
-          as: 'feeStructure'
-        }
-      },
-      { $unwind: { path: '$feeStructure', preserveNullAndEmptyArrays: true } },
-      {
-        $lookup: {
-          from: 'payments',
-          let: { studentId: '$studentId' },
-          pipeline: [
-            {
-              $match: {
-                $expr: {
-                  $and: [
-                    { $eq: ['$studentId', '$$studentId'] },
-                    { $eq: ['$schoolId', schoolIdObj] },
-                    { $eq: ['$academicYear', yearToUse] },
-                    { $ne: ['$isReversed', true] }
-                  ]
-                }
-              }
-            },
-            { $project: { term: 1, amount: 1 } }, // 🚀 Select only needed fields
-            { $group: { _id: '$term', totalAmount: { $sum: '$amount' } } }
-          ],
-          as: 'paymentSummaries'
-        }
-      },
-      {
-        $project: {
-          _id: '$student._id',
-          studentId: '$student._id',
-          studentName: '$student.name',
-          admission: '$student.admission',
-          className: {
-            $cond: [
-              { $ifNull: ['$stream', false] },
-              { $concat: ['$grade', '$stream'] },
-              '$grade'
-            ]
-          },
-          expected: { $ifNull: ['$feeStructure.totalFee', 0] },
-          term1Fee: { $ifNull: ['$feeStructure.term1Fee', 0] },
-          term2Fee: { $ifNull: ['$feeStructure.term2Fee', 0] },
-          term3Fee: { $ifNull: ['$feeStructure.term3Fee', 0] },
-          term1Paid: {
-            $reduce: {
-              input: '$paymentSummaries',
-              initialValue: 0,
-              in: {
-                $cond: [{ $eq: ['$$this._id', 'Term 1'] }, { $add: ['$$value', '$$this.totalAmount'] }, '$$value']
-              }
-            }
-          },
-          term2Paid: {
-            $reduce: {
-              input: '$paymentSummaries',
-              initialValue: 0,
-              in: {
-                $cond: [{ $eq: ['$$this._id', 'Term 2'] }, { $add: ['$$value', '$$this.totalAmount'] }, '$$value']
-              }
-            }
-          },
-          term3Paid: {
-            $reduce: {
-              input: '$paymentSummaries',
-              initialValue: 0,
-              in: {
-                $cond: [{ $eq: ['$$this._id', 'Term 3'] }, { $add: ['$$value', '$$this.totalAmount'] }, '$$value']
-              }
-            }
-          }
-        }
-      },
-      {
-        $addFields: {
-          totalPaid: { $add: ['$term1Paid', '$term2Paid', '$term3Paid'] },
-          balance: { $subtract: ['$expected', { $add: ['$term1Paid', '$term2Paid', '$term3Paid'] }] },
-          termBalances: {
-            term1: {
-              fee: '$term1Fee',
-              paid: '$term1Paid',
-              balance: { $subtract: ['$term1Fee', '$term1Paid'] }
-            },
-            term2: {
-              fee: '$term2Fee',
-              paid: '$term2Paid',
-              balance: { $subtract: ['$term2Fee', '$term2Paid'] }
-            },
-            term3: {
-              fee: '$term3Fee',
-              paid: '$term3Paid',
-              balance: { $subtract: ['$term3Fee', '$term3Paid'] }
-            }
-          }
-        }
-      }
-    ];
-
-    if (termFilterStage) pipeline.push(termFilterStage);
-    pipeline.push({
-      $facet: {
-        metadata: [{ $count: 'total' }],
-        data: [sortStage, { $skip: skip }, { $limit: limit }]
-      }
-    });
-
-    const aggregationResult = await StudentEnrollment.aggregate(pipeline).allowDiskUse(true);
-    const metadata = aggregationResult[0]?.metadata?.[0] || { total: 0 };
-    const students = aggregationResult[0]?.data || [];
-    const total = metadata.total || 0;
-
-    const response = {
-      students,
-      total,
-      totalPages: Math.ceil(total / limit),
-      currentPage: page,
-      totalFilteredStudents: total
-    };
-
-    cache.set(cacheKey, response, CACHE_TTL_SECONDS); // 🚀 Use extended cache TTL
-    res.json(response);
-  } catch (err) {
-    console.error('Get Outstanding Fees Error:', err);
-    res.status(500).json({ message: err.message });
-  }
-};
-
 export const generateOutstandingFeesPDF = async (req, res) => {
   try {
     if (!req.user || !req.user.schoolId) {
@@ -772,17 +559,17 @@ export const generateOutstandingFeesPDF = async (req, res) => {
     }
 
     // 2. Batch Fetch Payments
-    const payments = await Payment.find({
-      studentId: { $in: students.map(s => s._id) },
-      academicYear: currentAcademicYear,
-      isReversed: { $ne: true }
-    }).select("studentId amount term").lean();
-
-    // 3. Batch Fetch Fee Structures
-    const feeStructures = await FeeStructure.find({
+    const payments = await getFinancePaymentsForStudents({
+      studentIds: students.map(student => student._id),
       schoolId: req.user.schoolId,
       academicYear: currentAcademicYear
-    }).lean();
+    });
+
+    // 3. Batch Fetch Fee Structures
+    const feeStructures = await getFinanceFeeStructuresForSchool({
+      schoolId: req.user.schoolId,
+      academicYear: currentAcademicYear
+    });
 
     // 4. Process in Memory
     let studentData = students.map(student => {
@@ -1247,7 +1034,7 @@ export const generateOutstandingFeesPDFFromData = async (req, res) => {
       doc.fontSize(10).text(`Class Teacher: ${classTeacherName || ''}`, doc.page.width / 2 - 75, signatureY, { align: 'center' });
     }
 
-    // Summary page
+    // Summary
     doc.addPage();
     doc.fontSize(14).font('Helvetica-Bold').text('SUMMARY', { align: 'center' });
     doc.moveDown(1);
@@ -1293,32 +1080,19 @@ export const getSchoolTotals = async (req, res) => {
     const enrollments = await StudentEnrollment.find({
       schoolId: schoolId,
       academicYear,
-      status: "active",
+      status: getFinanceEnrollmentStatusFilter(academicYear),
       grade: gradeMatch
     }).select("studentId").lean();
     const activeStudentIds = enrollments.map(e => e.studentId);
 
     // This aggregation sums all successful payments for the specific school and year.
     // Restricted to active students only as per requirement.
-    const totalPaidResult = await Payment.aggregate([
-      { 
-        $match: { 
-          schoolId: schoolId, 
-          academicYear: academicYear, 
-          isReversed: { $ne: true },
-          studentId: { $in: activeStudentIds },
-          ...(term ? { term } : {})
-        } 
-      },
-      { 
-        $group: { 
-          _id: null, 
-          totalPaid: { $sum: '$amount' } 
-        } 
-      }
-    ]);
-
-    const totalPaid = totalPaidResult.length > 0 ? totalPaidResult[0].totalPaid : 0;
+    const totalPaid = await getFinancePaymentTotals({
+      schoolId: req.user.schoolId,
+      academicYear,
+      term,
+      studentIds: activeStudentIds
+    });
 
     res.json({ totalPaid });
   } catch (err) {
@@ -1352,110 +1126,50 @@ export const getBalanceSheet = async (req, res) => {
     const enrollmentMatch = {
       schoolId,
       academicYear,
-      status: 'active',
+      status: getFinanceEnrollmentStatusFilter(academicYear),
       grade: gradeMatch
     };
 
-    const expectedFeeField = term === 'Term 1'
-      ? '$feeStructure.term1Fee'
-      : term === 'Term 2'
-        ? '$feeStructure.term2Fee'
-        : term === 'Term 3'
-          ? '$feeStructure.term3Fee'
-          : '$feeStructure.totalFee';
-
-    const enrollmentSummary = await StudentEnrollment.aggregate([
-      { $match: enrollmentMatch },
-      {
-        $lookup: {
-          from: 'feestructures',
-          let: { enrollmentGrade: '$grade' },
-          pipeline: [
-            {
-              $match: {
-                $expr: {
-                  $and: [
-                    { $eq: ['$schoolId', schoolId] },
-                    { $eq: ['$academicYear', academicYear] },
-                    { $eq: ['$grade', '$$enrollmentGrade'] }
-                  ]
-                }
-              }
-            },
-            { $project: { totalFee: 1, term1Fee: 1, term2Fee: 1, term3Fee: 1 } }
-          ],
-          as: 'feeStructure'
-        }
-      },
-      { $unwind: { path: '$feeStructure', preserveNullAndEmptyArrays: true } },
-      {
-        $group: {
-          _id: null,
-          studentIds: { $push: '$studentId' },
-          activeLearners: { $sum: 1 },
-          totalExpectedFees: { $sum: { $ifNull: [expectedFeeField, 0] } }
-        }
-      }
-    ]);
-
-    const activeStudentIds = enrollmentSummary[0]?.studentIds || [];
-
-    const incomeMatch = {
-      schoolId,
-      academicYear,
-      isReversed: { $ne: true },
-      studentId: { $in: activeStudentIds }
-    };
-    if (term) incomeMatch.term = term;
-
-    const totalIncomeResult = await Payment.aggregate([
-      { $match: incomeMatch },
-      { $group: { _id: null, totalIncome: { $sum: '$amount' } } }
-    ]);
-
-    const totalIncome = totalIncomeResult.length > 0 ? totalIncomeResult[0].totalIncome : 0;
-
-    const incomeBreakdown = await Payment.aggregate([
-      { $match: incomeMatch },
-      {
-        $group: {
-          _id: { term: '$term', method: '$method' },
-          total: { $sum: '$amount' },
-          count: { $sum: 1 }
-        }
-      },
-      { $sort: { '_id.term': 1, total: -1 } }
-    ]);
-
-    const expenseMatch = {
-      schoolId,
-      academicYear
-    };
-    if (term) expenseMatch.term = term;
-    if (category) expenseMatch.category = category;
-
-    const totalExpensesResult = await Expense.aggregate([
-      { $match: expenseMatch },
-      { $group: { _id: null, totalExpenses: { $sum: '$amount' } } }
-    ]);
-
-    const totalExpenses = totalExpensesResult.length > 0 ? totalExpensesResult[0].totalExpenses : 0;
-    const netCash = totalIncome - totalExpenses;
-
-    const expenseCount = await Expense.countDocuments(expenseMatch);
-    const expenses = await Expense.find(expenseMatch)
-      .sort({ date: -1, createdAt: -1 })
-      .skip((page - 1) * limit)
-      .limit(limit)
+    const activeEnrollments = await StudentEnrollment.find(enrollmentMatch)
+      .select('studentId grade')
       .lean();
-
-    const categoryBreakdown = await Expense.aggregate([
-      { $match: expenseMatch },
-      { $group: { _id: '$category', total: { $sum: '$amount' }, count: { $sum: 1 } } },
-      { $sort: { total: -1 } }
+    const activeStudentIds = activeEnrollments.map(enrollment => String(enrollment.studentId));
+    const [feeStructures, totalIncome, incomeBreakdown, carryForwardSummary] = await Promise.all([
+      getFinanceFeeStructuresForSchool({ schoolId: req.user.schoolId, academicYear }),
+      getFinancePaymentTotals({ schoolId: req.user.schoolId, academicYear, term, studentIds: activeStudentIds }),
+      getFinancePaymentBreakdown({ schoolId: req.user.schoolId, academicYear, term, studentIds: activeStudentIds }),
+      getFinanceCarryForwardSummary({
+        schoolId: req.user.schoolId,
+        academicYear,
+        studentIds: activeStudentIds
+      })
     ]);
+    const feesByGrade = new Map(feeStructures.map(fee => [fee.grade, fee]));
+    const totalExpectedFees = activeEnrollments.reduce((total, enrollment) => {
+      const fee = feesByGrade.get(enrollment.grade);
+      if (!fee) return total;
+      const expected = Number(term === 'Term 1' ? fee.term1Fee
+        : term === 'Term 2' ? fee.term2Fee
+          : term === 'Term 3' ? fee.term3Fee
+            : fee.totalFee);
+      return total + expected;
+    }, 0);
+    const totalSurplus = carryForwardSummary.surplusTotal;
 
-    const totalExpectedFees = enrollmentSummary[0]?.totalExpectedFees || 0;
+    const expenseReport = await getFinanceExpenseReport({
+      schoolId: req.user.schoolId,
+      academicYear,
+      term,
+      category,
+      page,
+      limit
+    });
+    const totalExpenses = expenseReport.total;
+    const netCash = totalIncome - totalExpenses;
+    const expenseCount = expenseReport.totalCount;
+    const expenses = expenseReport.expenses;
+    const categoryBreakdown = expenseReport.categories;
+
     const totalFeeReceivable = totalExpectedFees - totalIncome;
 
     res.json({
@@ -1474,10 +1188,11 @@ export const getBalanceSheet = async (req, res) => {
         totalIncome,
         totalExpectedFees,
         totalFeeReceivable,
+        totalSurplus,
         totalExpenses,
         netCash
       },
-      activeLearners: enrollmentSummary[0]?.activeLearners || 0,
+      activeLearners: activeEnrollments.length,
       breakdown: {
         categories: categoryBreakdown,
         income: incomeBreakdown
@@ -1512,115 +1227,51 @@ export const getSchoolOverviewStats = async (req, res) => {
     const enrollmentMatch = {
       schoolId: schoolId,
       academicYear,
-      status: "active",
+      status: getFinanceEnrollmentStatusFilter(academicYear),
       grade: gradeMatch
     };
 
-    // ---------------------------
-    // 2. Totals in one aggregation pass
-    // ---------------------------
-    let feeField = "$feeStructure.totalFee";
-
-    if (term === "Term 1") feeField = "$feeStructure.term1Fee";
-    else if (term === "Term 2") feeField = "$feeStructure.term2Fee";
-    else if (term === "Term 3") feeField = "$feeStructure.term3Fee";
-
-    const overviewStatsResult = await StudentEnrollment.aggregate([
-      { $match: enrollmentMatch },
-      {
-        $lookup: {
-          from: "feestructures",
-          let: { eGrade: "$grade" },
-          pipeline: [
-            {
-              $match: {
-                $expr: {
-                  $and: [
-                    { $eq: ["$schoolId", schoolId] },
-                    { $eq: ["$grade", "$$eGrade"] },
-                    { $eq: ["$academicYear", academicYear] }
-                  ]
-                }
-              }
-            }
-          ],
-          as: "feeStructure"
-        }
-      },
-      {
-        $unwind: {
-          path: "$feeStructure",
-          preserveNullAndEmptyArrays: true
-        }
-      },
-      {
-        $lookup: {
-          from: "payments",
-          let: { studentId: "$studentId" },
-          pipeline: [
-            {
-              $match: {
-                $expr: {
-                  $and: [
-                    { $eq: ["$studentId", "$$studentId"] },
-                    { $eq: ["$schoolId", schoolId] },
-                    { $eq: ["$academicYear", academicYear] },
-                    { $ne: ["$isReversed", true] },
-                    ...(term ? [{ $eq: ["$term", term] }] : [])
-                  ]
-                }
-              }
-            }
-          ],
-          as: "payments"
-        }
-      },
-      {
-        $addFields: {
-          paidAmount: {
-            $reduce: {
-              input: "$payments",
-              initialValue: 0,
-              in: { $add: ["$$value", { $ifNull: ["$$this.amount", 0] }] }
-            }
-          }
-        }
-      },
-      {
-        $group: {
-          _id: null,
-          totalPaid: { $sum: "$paidAmount" },
-          totalExpectedFees: { $sum: { $ifNull: [feeField, 0] } },
-          totalLearners: { $sum: 1 }
-        }
-      }
+    const enrollments = await StudentEnrollment.find(enrollmentMatch).select('studentId grade').lean();
+    const studentIds = enrollments.map(enrollment => String(enrollment.studentId));
+    const [feeStructures, carryForwardSummary, totalReceived, paymentsByStudent] = await Promise.all([
+      getFinanceFeeStructuresForSchool({ schoolId: req.user.schoolId, academicYear }),
+      getFinanceCarryForwardSummary({
+        schoolId: req.user.schoolId,
+        academicYear,
+        studentIds
+      }),
+      getFinancePaymentTotals({ schoolId: req.user.schoolId, academicYear, term, studentIds }),
+      getFinanceTotalsByStudent({ studentIds, schoolId: req.user.schoolId, academicYear })
     ]);
-
-    const stats = overviewStatsResult[0] || {
-      totalPaid: 0,
-      totalExpectedFees: 0,
-      totalLearners: 0
-    };
-
-    const totalPaid = stats.totalPaid || 0;
-    const totalExpectedFees = stats.totalExpectedFees || 0;
-    const totalLearners = stats.totalLearners || 0;
-
-    // ---------------------------
-    // 3. Outstanding Balance
-    // ---------------------------
-    const totalOutstandingBalance = totalExpectedFees - totalPaid;
+    const feesByGrade = new Map(feeStructures.map(fee => [fee.grade, fee]));
+    const totalExpectedFees = enrollments.reduce((total, enrollment) => {
+      const fee = feesByGrade.get(enrollment.grade);
+      if (!fee) return total;
+      return total + Number(term === 'Term 1' ? fee.term1Fee
+        : term === 'Term 2' ? fee.term2Fee
+          : term === 'Term 3' ? fee.term3Fee
+            : fee.totalFee);
+    }, 0);
+    const totalLearners = enrollments.length;
+    const totalPaid = Math.min(Math.max(0, totalReceived), totalExpectedFees);
+    const totalOutstandingBalance = Math.max(0, totalExpectedFees - totalReceived);
 
     res.json({
       totalPaid,
       totalExpectedFees,
       totalOutstandingBalance,
+      totalDeficit: carryForwardSummary.arrearsTotal,
+      totalSurplus: carryForwardSummary.surplusTotal,
+      totalTermOverpayment: calculateTermOverpayment({ term, enrollments, feesByGrade, paymentsByStudent }),
       totalLearners
     });
 
   } catch (err) {
-    console.error("Get School Overview Stats Error:", err);
-    res.status(500).json({ message: err.message });
+    console.error("Get School Overview Stats Error:", err.code, err);
+    res.status(500).json({
+      message: err.message || `Finance database unavailable (${err.code || 'database error'}). Check PostgreSQL reachability and schema migration.`,
+      code: err.code || 'DATABASE_ERROR'
+    });
   }
 };
 
@@ -1874,5 +1525,104 @@ export const getLearnerDemographics = async (req, res) => {
   } catch (err) {
     console.error("Get Learner Demographics Error:", err);
     res.status(500).json({ message: err.message });
+  }
+};
+
+export const getOutstandingFees = async (req, res) => {
+  try {
+    if (!req.user?.schoolId) return res.status(400).json({ message: 'No school assigned' });
+    const school = await School.findById(req.user.schoolId).select('schoolType').lean();
+    if (!school) return res.status(404).json({ message: 'School not found' });
+
+    const { name, class: classFilter, academicYear, term: rawTerm, sort } = req.query;
+    const term = (rawTerm || getCurrentTerm()).trim();
+    const year = parseInt(academicYear, 10) || new Date().getFullYear();
+    const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+    const limit = Math.max(1, Math.min(100, parseInt(req.query.limit, 10) || 10));
+    const queryForCache = { ...req.query };
+    if (limit <= 50) delete queryForCache._t;
+    const cacheKey = `outstanding_${req.user.schoolId}_${school.schoolType || 'full'}_${JSON.stringify(queryForCache)}`;
+    const cachedData = cache.get(cacheKey);
+    if (cachedData) return res.json(cachedData);
+
+    const gradeMatch = buildGradeMatch(school.schoolType || 'full', classFilter);
+    const enrollments = await StudentEnrollment.find({
+      schoolId: new mongoose.Types.ObjectId(req.user.schoolId),
+      academicYear: year,
+      status: getFinanceEnrollmentStatusFilter(year),
+      grade: gradeMatch
+    }).select('studentId grade stream').lean();
+    const studentIds = [...new Set(enrollments.map(enrollment => String(enrollment.studentId)))];
+    const students = studentIds.length
+      ? await Student.find({ _id: { $in: studentIds }, schoolId: req.user.schoolId })
+        .select('name admission').lean()
+      : [];
+    const enrollmentsByStudent = new Map(enrollments.map(enrollment => [String(enrollment.studentId), enrollment]));
+    const filteredStudents = students.filter(student => {
+      if (!name) return true;
+      const admission = String(student.admission || '');
+      if (/^\d+$/.test(name)) return admission === name;
+      return String(student.name || '').toLowerCase().includes(name.toLowerCase())
+        || admission.toLowerCase().includes(name.toLowerCase());
+    });
+    const filteredIds = filteredStudents.map(student => String(student._id));
+    const [fees, paymentTotals] = await Promise.all([
+      getFinanceFeeStructuresForSchool({ schoolId: req.user.schoolId, academicYear: year }),
+      getFinanceTotalsByStudent({ studentIds: filteredIds, schoolId: req.user.schoolId, academicYear: year })
+    ]);
+    const feesByGrade = new Map(fees.map(fee => [fee.grade, fee]));
+    const termKey = term.toLowerCase().replace(/\s+/g, '');
+    let reportRows = filteredStudents.map(student => {
+      const studentId = String(student._id);
+      const enrollment = enrollmentsByStudent.get(studentId);
+      const fee = feesByGrade.get(enrollment?.grade) || {};
+      const totals = paymentTotals.get(studentId) || { 'Term 1': 0, 'Term 2': 0, 'Term 3': 0 };
+      const term1Fee = Number(fee.term1Fee || 0);
+      const term2Fee = Number(fee.term2Fee || 0);
+      const term3Fee = Number(fee.term3Fee || 0);
+      const term1Paid = Number(totals['Term 1'] || 0);
+      const term2Paid = Number(totals['Term 2'] || 0);
+      const term3Paid = Number(totals['Term 3'] || 0);
+      const expected = Number(fee.totalFee || term1Fee + term2Fee + term3Fee);
+      const totalPaid = term1Paid + term2Paid + term3Paid;
+      const termBalances = {
+        term1: { fee: term1Fee, paid: term1Paid, balance: term1Fee - term1Paid },
+        term2: { fee: term2Fee, paid: term2Paid, balance: term2Fee - term2Paid },
+        term3: { fee: term3Fee, paid: term3Paid, balance: term3Fee - term3Paid }
+      };
+      return {
+        _id: student._id,
+        studentId: student._id,
+        studentName: student.name,
+        admission: student.admission,
+        className: enrollment?.stream ? `${enrollment.grade}${enrollment.stream}` : enrollment?.grade,
+        expected,
+        totalPaid,
+        balance: expected - totalPaid,
+        termBalances
+      };
+    });
+
+    const [sortField, sortOrder] = String(sort || 'balance_desc').split('_');
+    const direction = sortOrder === 'asc' ? 1 : -1;
+    reportRows.sort((left, right) => {
+      if (sortField === 'name') return direction * String(left.studentName || '').localeCompare(String(right.studentName || ''));
+      if (sortField === 'admission') return direction * String(left.admission || '').localeCompare(String(right.admission || ''), undefined, { numeric: true });
+      return direction * (Number(left.balance) - Number(right.balance));
+    });
+
+    const total = reportRows.length;
+    const response = {
+      students: reportRows.slice((page - 1) * limit, page * limit),
+      total,
+      totalPages: Math.ceil(total / limit),
+      currentPage: page,
+      totalFilteredStudents: total
+    };
+    cache.set(cacheKey, response, 300);
+    return res.json(response);
+  } catch (err) {
+    console.error('Get Outstanding Fees Error:', err);
+    return res.status(500).json({ message: err.message });
   }
 };

@@ -49,6 +49,10 @@ body {
   margin-bottom: 30px;
 }
 
+.balance-breakdown-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
 .stat-card {
   background: var(--card-bg);
   border-radius: var(--radius);
@@ -142,6 +146,15 @@ body {
   background: var(--success-gradient);
 }
 
+.stat-card.paid .paid-overpayment-note {
+  display: block;
+  margin-top: 2px;
+  color: #0f766e;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
 .stat-card.balance {
   border-left: 5px solid #ff6b6b;
 }
@@ -152,6 +165,42 @@ body {
 
 .stat-card.balance::before {
   background: var(--danger-gradient);
+}
+
+.stat-card.deficit {
+  border-left: 5px solid #be123c;
+  background: #fff1f2;
+}
+
+.stat-card.deficit h4::before {
+  content: "−";
+  color: #be123c;
+  font-size: 20px;
+}
+
+.stat-card.deficit::before {
+  background: linear-gradient(90deg, #be123c, #fb7185);
+}
+
+.stat-card.surplus {
+  border-left: 5px solid #0f766e;
+  background: #ecfdf5;
+}
+
+.stat-card.surplus h4::before {
+  content: "+";
+  color: #0f766e;
+  font-size: 20px;
+}
+
+.stat-card.surplus::before {
+  background: linear-gradient(90deg, #0f766e, #34d399);
+}
+
+@media (max-width: 640px) {
+  .balance-breakdown-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 /* ===============================
@@ -321,6 +370,13 @@ table {
   align-items: center;
   gap: 12px;
   flex-wrap: wrap;
+}
+
+.net-position-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
 }
 
 .pdf-card-title {

@@ -23,6 +23,39 @@ export const buildGradeMatch = (schoolType, gradeFilter) => {
   return gradeFilter ? gradeFilter : { $in: allowedGrades };
 };
 
+export const buildActiveEnrollmentFilter = ({ schoolId, academicYear, grade, stream } = {}) => {
+  const filter = {
+    schoolId,
+    academicYear: Number(academicYear) || new Date().getFullYear(),
+    status: 'active'
+  };
+  if (grade) filter.grade = grade;
+  if (stream) filter.stream = stream;
+  return filter;
+};
+
+export const resolveActiveEnrollmentYear = ({ requestedYear, latestActiveYear, fallbackYear = new Date().getFullYear() } = {}) => {
+  return Number(requestedYear) || Number(latestActiveYear) || Number(fallbackYear);
+};
+
+export const buildUserDirectoryEnrollmentFilter = ({ role, schoolId, academicYear, grade, stream } = {}) => {
+  if (role !== 'accounts') {
+    return buildActiveEnrollmentFilter({ schoolId, academicYear, grade, stream });
+  }
+
+  const filter = { schoolId };
+  if (academicYear !== undefined && academicYear !== null && academicYear !== '') {
+    filter.academicYear = Number(academicYear);
+  }
+  if (grade) filter.grade = grade;
+  if (stream) filter.stream = stream;
+  return filter;
+};
+
+export const getFinanceEnrollmentStatusFilter = (academicYear) => {
+  return { $in: ['active', 'completed', 'transferred'] };
+};
+
 export const getOutstandingFeeStatus = (studentSummary = {}) => {
   const expected = Number(studentSummary.expected ?? studentSummary.totalFee ?? 0);
   const paid = Number(studentSummary.totalPaid ?? studentSummary.paid ?? 0);

@@ -1,15 +1,9 @@
 // controllers/settingsController.js
 import Setting from "../models/Setting.js";
-import { School } from "../models/school.js";
+import { DEFAULT_ASSESSMENTS, School } from "../models/school.js";
 import Mark from "../models/mark.js";
 import { User } from "../models/User.js";
 import { createNotificationsForUsers } from './notificationController.js';
-
-const DEFAULT_ASSESSMENTS = [
-  { id: 1, name: 'Opener', enabled: true, sortOrder: 1, system: true },
-  { id: 5, name: 'Midterm', enabled: true, sortOrder: 2, system: true },
-  { id: 8, name: 'Endterm', enabled: true, sortOrder: 3, system: true }
-];
 
 const canManageAssessments = (user) =>
   ['admin', 'super_admin', 'dean'].includes(user?.role) || user?.isDean === true;

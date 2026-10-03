@@ -1,24 +1,33 @@
 // controllers/paymentController.js
 import mongoose from "mongoose";
-import Payment from "../models/Payment.js";
 import { User } from "../models/User.js";
 import { Student } from "../models/RoleModels.js";
-import PaymentReversal from "../models/PaymentReversal.js";
 import StudentEnrollment from "../models/StudentEnrollment.js";
 import { calculateBalance } from "../services/balanceService.js";
-import FeeStructure from "../models/FeeStructure.js";
-import Setting from "../models/Setting.js";
 import cache from "../utils/cacheManager.js";
-import { buildGradeMatch } from "../utils/accountsQueryHelpers.js";
+import { buildGradeMatch, getFinanceEnrollmentStatusFilter } from "../utils/accountsQueryHelpers.js";
 import {
   getOrCreateBalanceSummary,
   refreshBalanceSummaryForStudent,
   resolveStudentGradeForBalance
 } from "../services/balanceSummaryService.js";
-
-const escapeRegex = (text) => {
-  return text.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, "\\$&");
-};
+import {
+  countFinancePayments,
+  createFinancePayment,
+  deleteFinanceFeeStructure,
+  getFinanceFeeStructuresForSchool,
+  getFinanceTotalsByStudent,
+  getFinanceFeeNote,
+  getFinanceFeeStructure,
+  getFinanceCarryForwardSummary,
+  hasActiveFinanceBroughtForward,
+  listFinanceFeeStructures,
+  listFinancePayments,
+  reverseFinancePayment,
+  updateFinanceFeeStructure,
+  upsertFinanceFeeNote,
+  upsertFinanceFeeStructure
+} from '../services/financeRepository.js';
 
 const invalidateSchoolFinanceCaches = (schoolId) => {
   cache.clearByPattern(String(schoolId));
@@ -31,6 +40,20 @@ export const recordPayment = async (req, res) => {
 
     if (!admission || !amount || !method || !reference || !term) {
       return res.status(400).json({ message: "Missing required fields" });
+    }
+
+    if (method === "fund_transfer") {
+      const normalizedYear = Number(academicYear);
+      const normalizedAmount = Number(amount);
+      if (!Number.isInteger(normalizedYear) || normalizedYear < 2000) {
+        return res.status(400).json({ message: "A valid academic year is required for a brought-forward balance." });
+      }
+      if (!Number.isFinite(normalizedAmount) || normalizedAmount === 0) {
+        return res.status(400).json({ message: "A brought-forward balance must be a non-zero amount." });
+      }
+      if (!["Term 1", "Term 2", "Term 3"].includes(term)) {
+        return res.status(400).json({ message: "Select a valid term for the brought-forward balance." });
+      }
     }
 
     // 🔎 Find student (scoped to school)
@@ -49,13 +72,12 @@ export const recordPayment = async (req, res) => {
     // DUPLICATE CHECK FOR B/F
     // ---------------------------
     if (method === "fund_transfer") {
-      const existingBFs = await Payment.find({
+      const existingBFs = await hasActiveFinanceBroughtForward({
         studentId: student._id,
+        schoolId: req.user.schoolId,
         academicYear: currentYear,
-        method: "fund_transfer",
-        isReversed: { $ne: true }
       });
-      if (existingBFs.length > 0) {
+      if (existingBFs) {
         return res.status(400).json({ message: "A brought forward balance already exists for this student in this academic year." });
       }
     }
@@ -97,7 +119,7 @@ export const recordPayment = async (req, res) => {
         if (termName === "Term 3" && remainingAmount > 0) payAmount = remainingAmount;
 
         if (payAmount > 0) {
-          const p = await Payment.create({
+          const p = await createFinancePayment({
             studentId: student._id,
             schoolId: req.user.schoolId,
             amount: payAmount,
@@ -141,7 +163,7 @@ export const recordPayment = async (req, res) => {
       academicYear: currentYear
     });
 
-    const payment = await Payment.create({
+    const payment = await createFinancePayment({
       studentId: student._id,
       schoolId: req.user.schoolId,
       amount,
@@ -174,7 +196,10 @@ export const recordPayment = async (req, res) => {
       return res.status(400).json({ message: `Payment validation failed: ${messages}` });
     }
     // Duplicate key (unique reference)
-    if (err.code === 11000) {
+    if (err.code === '23505') {
+      if (err.constraint === 'payments_one_active_carry_forward_idx') {
+        return res.status(400).json({ message: 'A brought-forward balance already exists for this student in this academic year.' });
+      }
       return res.status(400).json({ message: 'Payment reference already exists' });
     }
 
@@ -198,13 +223,10 @@ export const getStudentLedger = async (req, res) => {
       return res.status(404).json({ message: "Student not found" });
     }
 
-    const total = await Payment.countDocuments({ studentId: student._id, isReversed: { $ne: true } });
+    const total = await countFinancePayments({ studentId: student._id });
     const totalPages = Math.ceil(total / limit);
 
-    const payments = await Payment.find({
-      studentId: student._id,
-      isReversed: { $ne: true }
-    }).sort({ createdAt: -1, _id: -1 }).skip(skip).limit(limit).lean();
+    const payments = await listFinancePayments({ studentId: student._id, limit, offset: skip });
 
     res.json({
       student: {
@@ -218,6 +240,32 @@ export const getStudentLedger = async (req, res) => {
     });
   } catch (err) {
     res.status(500).json({ message: err.message });
+  }
+};
+
+export const getCarryForwardSummary = async (req, res) => {
+  try {
+    if (!req.user?.schoolId) {
+      return res.status(400).json({ message: 'No school assigned' });
+    }
+    const academicYear = Number(req.query.academicYear);
+    if (!Number.isInteger(academicYear) || academicYear < 2000) {
+      return res.status(400).json({ message: 'A valid academicYear is required.' });
+    }
+
+    const cacheKey = `carry_forward_summary_${req.user.schoolId}_${academicYear}`;
+    const cachedSummary = cache.get(cacheKey);
+    if (cachedSummary) return res.json(cachedSummary);
+
+    const summary = await getFinanceCarryForwardSummary({
+      schoolId: req.user.schoolId,
+      academicYear
+    });
+    cache.set(cacheKey, summary, 300);
+    return res.json(summary);
+  } catch (error) {
+    console.error('Get carry-forward summary error:', error.code, error);
+    return res.status(500).json({ message: error.message || 'Could not load carry-forward summary.' });
   }
 };
 
@@ -252,22 +300,10 @@ export const getStudentFeeStatement = async (req, res) => {
         studentId: student._id,
         schoolId: req.user.schoolId,
         academicYear,
-        status: "active"
+        status: getFinanceEnrollmentStatusFilter(academicYear)
       }).select("grade").lean();
       grade = enrollment?.grade || null;
     }
-
-    const feeStructure = grade
-      ? await FeeStructure.findOne({
-          schoolId: req.user.schoolId,
-          academicYear,
-          $or: [
-            { grade },
-            { grade: grade.replace(/^Grade\s+/i, "") },
-            { grade: `Grade ${grade}` }
-          ]
-        }).select("grade academicYear term1Fee term2Fee term3Fee totalFee").lean()
-      : null;
 
     const balanceSummary = await getOrCreateBalanceSummary({
       studentId: student._id,
@@ -303,11 +339,11 @@ export const getStudentFeeStatement = async (req, res) => {
     };
 
     // keep the original payment history list for the fee statement
-    const payments = await Payment.find({
+    const payments = await listFinancePayments({
       studentId: student._id,
+      schoolId: req.user.schoolId,
       academicYear,
-      isReversed: { $ne: true }
-    }).sort({ createdAt: -1, _id: -1 }).select("amount term reference method academicYear createdAt").lean();
+    });
 
     response.payments = payments;
 
@@ -328,37 +364,28 @@ export const getMyFeeStructure = async (req, res) => {
 
     const year = Number(req.query.academicYear) || new Date().getFullYear();
 
-    // Resolve student's current grade via StudentEnrollment if available
-    let grade = req.user.classGrade || null;
-    if (!grade) {
-      let enrollment = await StudentEnrollment.findOne({
-        studentId: req.user.id,
-        academicYear: year,
-        status: 'active'
-      }).select('grade');
-      if (!enrollment) {
-        // Fallback: use the latest enrollment
-        enrollment = await StudentEnrollment.findOne({
-          studentId: req.user.id
-        }).sort({ academicYear: -1 }).select('grade');
-      }
-      grade = enrollment?.grade || null;
-    }
+    // Historical requests use that year's retained enrollment rather than the token's current grade.
+    const enrollment = await StudentEnrollment.findOne({
+      studentId: req.user.id,
+      schoolId: req.user.schoolId,
+      academicYear: year,
+      status: getFinanceEnrollmentStatusFilter(year)
+    }).select('grade').lean();
+    const grade = enrollment?.grade || (year === new Date().getFullYear() ? req.user.classGrade : null);
 
     if (!grade) return res.status(400).json({ message: 'Student grade not available' });
 
     // Find fee structure for the exact academic year
-    const fee = await FeeStructure.findOne({
+    const fee = await getFinanceFeeStructure({
       schoolId: req.user.schoolId,
       grade,
       academicYear: year
-    }).select('grade academicYear term1Fee term2Fee term3Fee totalFee');
+    });
 
     if (!fee) return res.status(404).json({ message: 'Fee structure not found for the selected academic year' });
 
     // Fetch Global Fee Note for the year
-    const noteKey = `fee_note_${req.user.schoolId}_${year}`;
-    const noteSetting = await Setting.findOne({ key: noteKey }).select('value');
+    const note = await getFinanceFeeNote({ schoolId: req.user.schoolId, academicYear: year });
 
     res.json({ 
       grade: fee.grade, 
@@ -367,7 +394,7 @@ export const getMyFeeStructure = async (req, res) => {
       term2Fee: fee.term2Fee,
       term3Fee: fee.term3Fee,
       totalFee: fee.totalFee,
-      additionalInfo: noteSetting ? noteSetting.value : ""
+      additionalInfo: note
     });
   } catch (err) {
     console.error('Get My Fee Structure Error:', err);
@@ -383,9 +410,8 @@ export const getGlobalFeeNote = async (req, res) => {
     const { academicYear } = req.query;
     if (!academicYear) return res.status(400).json({ message: "Year required" });
 
-    const key = `fee_note_${req.user.schoolId}_${academicYear}`;
-    const setting = await Setting.findOne({ key });
-    res.json({ note: setting ? setting.value : "" });
+    const note = await getFinanceFeeNote({ schoolId: req.user.schoolId, academicYear });
+    res.json({ note });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
@@ -396,12 +422,7 @@ export const saveGlobalFeeNote = async (req, res) => {
     const { academicYear, note } = req.body;
     if (!academicYear) return res.status(400).json({ message: "Year required" });
 
-    const key = `fee_note_${req.user.schoolId}_${academicYear}`;
-    await Setting.findOneAndUpdate(
-      { key },
-      { value: note, schoolId: req.user.schoolId },
-      { upsert: true, new: true }
-    );
+    await upsertFinanceFeeNote({ schoolId: req.user.schoolId, academicYear, note });
 
     invalidateSchoolFinanceCaches(req.user.schoolId);
     res.json({ message: "Global fee instructions updated" });
@@ -419,22 +440,13 @@ export const getMyBalance = async (req, res) => {
 
     const year = Number(req.query.academicYear) || new Date().getFullYear();
 
-    // Resolve student's current grade via StudentEnrollment if available
-    let grade = req.user.classGrade || null;
-    if (!grade) {
-      let enrollment = await StudentEnrollment.findOne({
-        studentId: req.user.id,
-        academicYear: year,
-        status: 'active'
-      }).select('grade');
-      if (!enrollment) {
-        // Fallback: use the latest enrollment
-        enrollment = await StudentEnrollment.findOne({
-          studentId: req.user.id
-        }).sort({ academicYear: -1 }).select('grade');
-      }
-      grade = enrollment?.grade || null;
-    }
+    const enrollment = await StudentEnrollment.findOne({
+      studentId: req.user.id,
+      schoolId: req.user.schoolId,
+      academicYear: year,
+      status: getFinanceEnrollmentStatusFilter(year)
+    }).select('grade').lean();
+    const grade = enrollment?.grade || (year === new Date().getFullYear() ? req.user.classGrade : null);
 
     const balanceSummary = await getOrCreateBalanceSummary({
       studentId: req.user.id,
@@ -480,12 +492,11 @@ export const getMyPayments = async (req, res) => {
   try {
     const year = Number(req.query.academicYear) || new Date().getFullYear();
 
-    const payments = await Payment.find({
+    const payments = await listFinancePayments({
       studentId: req.user.id,
-      academicYear: year,
       schoolId: req.user.schoolId,
-      isReversed: { $ne: true }
-    }).sort({ createdAt: -1 });
+      academicYear: year,
+    });
 
     res.json({
       payments
@@ -506,18 +517,13 @@ export const listSchoolFeeStructures = async (req, res) => {
     const limit = Math.max(1, Math.min(100, parseInt(req.query.limit, 10) || 10));
     const skip = (page - 1) * limit;
 
-    const query = { schoolId: req.user.schoolId };
-   
-    if (req.query.academicYear) query.academicYear = Number(req.query.academicYear);
-    if (req.query.grade) query.grade = req.query.grade;
-
-    const total = await FeeStructure.countDocuments(query);
-    const fees = await FeeStructure.find(query)
-      .sort({ academicYear: -1, grade: 1 })
-      .select('grade academicYear term1Fee term2Fee term3Fee totalFee')
-      .skip(skip)
-      .limit(limit)
-      .lean();
+    const { total, fees } = await listFinanceFeeStructures({
+      schoolId: req.user.schoolId,
+      academicYear: req.query.academicYear,
+      grade: req.query.grade,
+      page,
+      limit
+    });
 
     res.json({
       data: fees,
@@ -545,19 +551,17 @@ export const updateFeeStructure = async (req, res) => {
     if (!id) return res.status(400).json({ message: 'Missing fee id' });
     if (!req.user || !req.user.schoolId) return res.status(400).json({ message: 'No school assigned' });
 
-    const fs = await FeeStructure.findById(id);
+    const fs = await getFinanceFeeStructure({ id });
     if (!fs) return res.status(404).json({ message: 'Fee structure not found' });
     if (String(fs.schoolId) !== String(req.user.schoolId)) return res.status(403).json({ message: 'Not allowed' });
 
-    fs.grade = grade || fs.grade;
-    fs.academicYear = academicYear ? Number(academicYear) : fs.academicYear;
-    fs.term1Fee = term1Fee !== undefined ? Number(term1Fee) : fs.term1Fee;
-    fs.term2Fee = term2Fee !== undefined ? Number(term2Fee) : fs.term2Fee;
-    fs.term3Fee = term3Fee !== undefined ? Number(term3Fee) : fs.term3Fee;
-
-    await fs.save();
+    const updatedFeeStructure = await updateFinanceFeeStructure({
+      id,
+      schoolId: req.user.schoolId,
+      changes: { grade, academicYear, term1Fee, term2Fee, term3Fee }
+    });
     invalidateSchoolFinanceCaches(req.user.schoolId);
-    res.json({ message: 'Fee structure updated', feeStructure: fs });
+    res.json({ message: 'Fee structure updated', feeStructure: updatedFeeStructure });
   } catch (err) {
     console.error('Update Fee Structure Error:', err);
     res.status(500).json({ message: err.message });
@@ -573,11 +577,11 @@ export const deleteFeeStructure = async (req, res) => {
     if (!id) return res.status(400).json({ message: 'Missing fee id' });
     if (!req.user || !req.user.schoolId) return res.status(400).json({ message: 'No school assigned' });
 
-    const fs = await FeeStructure.findById(id);
+    const fs = await getFinanceFeeStructure({ id });
     if (!fs) return res.status(404).json({ message: 'Fee structure not found' });
     if (String(fs.schoolId) !== String(req.user.schoolId)) return res.status(403).json({ message: 'Not allowed' });
 
-    await FeeStructure.deleteOne({ _id: id });
+    await deleteFinanceFeeStructure({ id, schoolId: req.user.schoolId });
     invalidateSchoolFinanceCaches(req.user.schoolId);
     res.json({ message: 'Fee structure deleted' });
   } catch (err) {
@@ -593,23 +597,12 @@ export const reversePayment = async (req, res) => {
   try {
     const { paymentId, reason } = req.body;
 
-    const payment = await Payment.findById(paymentId);
-    if (!payment) return res.status(404).json({ message: "Payment not found" });
-
-    if (payment.isReversed) {
+    const result = await reverseFinancePayment({ paymentId, schoolId: req.user.schoolId, reason, reversedBy: req.user.id });
+    if (result.status === 'not_found') return res.status(404).json({ message: 'Payment not found' });
+    if (result.status === 'already_reversed') {
       return res.status(400).json({ message: "Payment has already been reversed" });
     }
-
-    await PaymentReversal.create({
-      paymentId,
-      reason,
-      reversedBy: req.user.id,
-      amount: payment.amount
-    });
-
-    // Mark original as reversed so it is ignored by balance and ledger queries
-    payment.isReversed = true;
-    await payment.save();
+    const payment = result.payment;
 
     invalidateSchoolFinanceCaches(req.user.schoolId);
     await refreshBalanceSummaryForStudent({
@@ -629,208 +622,102 @@ export const reversePayment = async (req, res) => {
 // ---------------------------
 export const getAllStudentAccounts = async (req, res) => {
   try {
-    const requestedLimit = parseInt(req.query.limit, 10);
-
-    // Construct cache key (ignore '_t' for standard UI browsing)
     const queryForCache = { ...req.query };
-    if (requestedLimit <= 50 || isNaN(requestedLimit)) delete queryForCache._t;
-
+    const requestedLimit = parseInt(req.query.limit, 10);
+    if (requestedLimit <= 50 || Number.isNaN(requestedLimit)) delete queryForCache._t;
     const cacheKey = `accounts_${req.user.schoolId}_${JSON.stringify(queryForCache)}`;
     const cachedResult = cache.get(cacheKey);
-    
-    if (cachedResult) {
-      return res.json(cachedResult);
+    if (cachedResult) return res.json(cachedResult);
+
+    const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+    const limit = Math.max(1, Math.min(100, parseInt(req.query.limit, 10) || 10));
+    const search = String(req.query.search || '').trim();
+    const gradeFilter = req.query.class || '';
+    const academicYear = parseInt(req.query.academicYear, 10) || new Date().getFullYear();
+    const schoolId = new mongoose.Types.ObjectId(req.user.schoolId);
+    const schoolUser = await User.findById(req.user.id).select('schoolId').populate('schoolId', 'schoolType');
+    const schoolType = schoolUser?.schoolId?.schoolType || 'full';
+    const gradeMatch = buildGradeMatch(schoolType, gradeFilter);
+    const enrollmentQuery = {
+      schoolId,
+      academicYear,
+      status: getFinanceEnrollmentStatusFilter(academicYear),
+      ...(typeof gradeMatch === 'string' ? { grade: gradeMatch } : { grade: gradeMatch })
+    };
+    const enrollments = await StudentEnrollment.find(enrollmentQuery)
+      .select('studentId grade')
+      .lean();
+    const studentIds = [...new Set(enrollments.map(enrollment => String(enrollment.studentId)))];
+    if (!studentIds.length) {
+      const emptyResponse = { accounts: [], total: 0, totalPages: 0, currentPage: page };
+      cache.set(cacheKey, emptyResponse, 300);
+      return res.json(emptyResponse);
     }
 
-    const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 10;
-    const search = req.query.search || "";
-    const gradeFilter = req.query.class || "";
-    const academicYear = parseInt(req.query.academicYear) || new Date().getFullYear();
-    const skip = (page - 1) * limit;
-    const schoolId = new mongoose.Types.ObjectId(req.user.schoolId);
-    const CACHE_TTL_SECONDS = 300; // 🚀 Increased from 60s to 5 minutes - student accounts don't change frequently
+    const students = await Student.find({
+      _id: { $in: studentIds },
+      schoolId,
+      role: 'student'
+    }).select('name admission schoolId').lean();
+    const enrollmentByStudent = new Map(enrollments.map(enrollment => [String(enrollment.studentId), enrollment]));
+    const filteredStudents = students.filter(student => {
+      if (!search) return true;
+      const admission = String(student.admission || '');
+      const name = String(student.name || '');
+      return /^\d+$/.test(search)
+        ? admission === search
+        : name.toLowerCase().includes(search.toLowerCase()) || admission.toLowerCase().includes(search.toLowerCase());
+    }).sort((left, right) => String(left.admission || '').localeCompare(String(right.admission || ''), undefined, { numeric: true }));
 
-    // 🔎 Get school type to restrict grades if no specific class filter is provided
-    const school = await User.findById(req.user.id).select('schoolId').populate('schoolId', 'schoolType');
-    const schoolType = school?.schoolId?.schoolType || 'full';
-    const gradeMatch = buildGradeMatch(schoolType, gradeFilter);
-
-    // 🆕 Smart filtering: exact match for numeric admission, regex for names
-    const isNumericSearch = /^\d+$/.test(search);
-
-    // Aggregation Pipeline for efficient Filtering, Searching & Pagination
-    const pipeline = [
-      { 
-        $match: {
-          schoolId,
-          academicYear,
-          status: "active",
-          grade: gradeMatch
-        }
-      },
-      {
-        $lookup: {
-          from: "users",
-          localField: "studentId",
-          foreignField: "_id",
-          as: "student",
-          pipeline: [
-            { $project: { _id: 1, name: 1, admission: 1, role: 1, schoolId: 1 } } // 🚀 Select only needed fields
-          ]
-        }
-      },
-      { $unwind: "$student" },
-      {
-        $match: {
-          "student.role": "student",
-          ...(search ? {
-            ...(isNumericSearch ? 
-              { "student.admission": search }
-              : {
-                $or: [
-                  { "student.name": { $regex: escapeRegex(search), $options: "i" } },
-                  { "student.admission": { $regex: escapeRegex(search), $options: "i" } }
-                ]
-              }
-            )
-          } : {})
-        }
-      },
-      {
-        $lookup: {
-          from: "feestructures",
-          let: { eGrade: "$grade" },
-          pipeline: [
-            {
-              $match: {
-                $expr: {
-                  $and: [
-                    { $eq: ["$schoolId", schoolId] },
-                    { $eq: ["$academicYear", academicYear] },
-                    { $eq: ["$grade", "$$eGrade"] }
-                  ]
-                }
-              }
-            },
-            { $project: { totalFee: 1, term1Fee: 1, term2Fee: 1, term3Fee: 1 } } // 🚀 Select only needed fields
-          ],
-          as: "feeStructure"
-        }
-      },
-      { $unwind: { path: "$feeStructure", preserveNullAndEmptyArrays: true } },
-      {
-        $lookup: {
-          from: "balancesummaries",
-          let: { studentId: "$studentId", schoolId: "$schoolId", academicYear: academicYear },
-          pipeline: [
-            {
-              $match: {
-                $expr: {
-                  $and: [
-                    { $eq: ["$studentId", "$$studentId"] },
-                    { $eq: ["$schoolId", "$$schoolId"] },
-                    { $eq: ["$academicYear", "$$academicYear"] }
-                  ]
-                }
-              }
-            },
-            { $project: { term1Paid: 1, term2Paid: 1, term3Paid: 1, totalPaid: 1, totalFee: 1, term1Fee: 1, term2Fee: 1, term3Fee: 1, balance: 1, broughtForwardAmount: 1 } } // 🚀 Select only needed fields
-          ],
-          as: "balanceSummary"
-        }
-      },
-      { $unwind: { path: "$balanceSummary", preserveNullAndEmptyArrays: true } },
-      {
-        $addFields: {
-          term1Paid: { $ifNull: ["$balanceSummary.term1Paid", 0] },
-          term2Paid: { $ifNull: ["$balanceSummary.term2Paid", 0] },
-          term3Paid: { $ifNull: ["$balanceSummary.term3Paid", 0] },
-          totalPaid: { $ifNull: ["$balanceSummary.totalPaid", 0] },
-          totalFee: { $ifNull: ["$balanceSummary.totalFee", { $ifNull: ["$feeStructure.totalFee", 0] }] },
-          term1Fee: { $ifNull: ["$balanceSummary.term1Fee", { $ifNull: ["$feeStructure.term1Fee", 0] }] },
-          term2Fee: { $ifNull: ["$balanceSummary.term2Fee", { $ifNull: ["$feeStructure.term2Fee", 0] }] },
-          term3Fee: { $ifNull: ["$balanceSummary.term3Fee", { $ifNull: ["$feeStructure.term3Fee", 0] }] },
-          balance: { $ifNull: ["$balanceSummary.balance", { $subtract: [{ $ifNull: ["$feeStructure.totalFee", 0] }, { $ifNull: ["$balanceSummary.totalPaid", 0] }] }] },
-          hasBroughtForward: { $gt: [{ $ifNull: ["$balanceSummary.broughtForwardAmount", 0] }, 0] }
-        }
-      },
-      {
-        $addFields: {
-          termBalances: {
-            term1: {
-              fee: "$term1Fee",
-              paid: "$term1Paid",
-              balance: { $subtract: ["$term1Fee", "$term1Paid"] }
-            },
-            term2: {
-              fee: "$term2Fee",
-              paid: "$term2Paid",
-              balance: { $subtract: ["$term2Fee", "$term2Paid"] }
-            },
-            term3: {
-              fee: "$term3Fee",
-              paid: "$term3Paid",
-              balance: { $subtract: ["$term3Fee", "$term3Paid"] }
-            }
-          }
-        }
-      },
-      {
-        $facet: {
-          metadata: [{ $count: "total" }],
-          data: [
-            { $sort: { "student.admission": 1 } },
-            { $skip: skip },
-            { $limit: limit },
-            {
-              $project: {
-                _id: "$student._id",
-                name: "$student.name",
-                admission: "$student.admission",
-                schoolId: "$student.schoolId",
-                grade: "$grade",
-                expected: "$totalFee",
-                paid: "$totalPaid",
-                balance: "$balance",
-                termBalances: {
-                  term1: {
-                    fee: "$term1Fee",
-                    paid: "$term1Paid",
-                    balance: { $subtract: ["$term1Fee", "$term1Paid"] }
-                  },
-                  term2: {
-                    fee: "$term2Fee",
-                    paid: "$term2Paid",
-                    balance: { $subtract: ["$term2Fee", "$term2Paid"] }
-                  },
-                  term3: {
-                    fee: "$term3Fee",
-                    paid: "$term3Paid",
-                    balance: { $subtract: ["$term3Fee", "$term3Paid"] }
-                  }
-                },
-                hasBroughtForward: 1,
-                broughtForwardAmount: 1
-              }
-            }
-          ]
-        }
-      }
-    ];
-
-    const aggResult = await StudentEnrollment.aggregate(pipeline);
-    const metadata = aggResult[0].metadata[0];
-    const total = metadata ? metadata.total : 0;
-    const accounts = aggResult[0].data;
-    const totalPages = Math.ceil(total / limit);
-
-    const responseData = { accounts, total, totalPages, currentPage: page };
-    cache.set(cacheKey, responseData, CACHE_TTL_SECONDS); // 🚀 Cache for 5 minutes - data doesn't change frequently
-    res.json(responseData);
+    const filteredIds = filteredStudents.map(student => String(student._id));
+    const [feeStructures, paymentTotals] = await Promise.all([
+      getFinanceFeeStructuresForSchool({ schoolId: req.user.schoolId, academicYear }),
+      getFinanceTotalsByStudent({ studentIds: filteredIds, schoolId: req.user.schoolId, academicYear })
+    ]);
+    const feesByGrade = new Map(feeStructures.map(fee => [fee.grade, fee]));
+    const accounts = filteredStudents.map(student => {
+      const studentId = String(student._id);
+      const enrollment = enrollmentByStudent.get(studentId);
+      const fee = feesByGrade.get(enrollment?.grade) || {};
+      const totals = paymentTotals.get(studentId) || { 'Term 1': 0, 'Term 2': 0, 'Term 3': 0, broughtForwardAmount: 0 };
+      const term1Fee = Number(fee.term1Fee || 0);
+      const term2Fee = Number(fee.term2Fee || 0);
+      const term3Fee = Number(fee.term3Fee || 0);
+      const term1Paid = Number(totals['Term 1'] || 0);
+      const term2Paid = Number(totals['Term 2'] || 0);
+      const term3Paid = Number(totals['Term 3'] || 0);
+      const expected = Number(fee.totalFee || term1Fee + term2Fee + term3Fee);
+      const paid = term1Paid + term2Paid + term3Paid;
+      return {
+        _id: student._id,
+        name: student.name,
+        admission: student.admission,
+        schoolId: student.schoolId,
+        grade: enrollment?.grade,
+        expected,
+        paid,
+        balance: expected - paid,
+        termBalances: {
+          term1: { fee: term1Fee, paid: term1Paid, balance: term1Fee - term1Paid },
+          term2: { fee: term2Fee, paid: term2Paid, balance: term2Fee - term2Paid },
+          term3: { fee: term3Fee, paid: term3Paid, balance: term3Fee - term3Paid }
+        },
+        hasBroughtForward: Number(totals.broughtForwardAmount || 0) > 0,
+        broughtForwardAmount: Number(totals.broughtForwardAmount || 0)
+      };
+    });
+    const total = accounts.length;
+    const responseData = {
+      accounts: accounts.slice((page - 1) * limit, page * limit),
+      total,
+      totalPages: Math.ceil(total / limit),
+      currentPage: page
+    };
+    cache.set(cacheKey, responseData, 300);
+    return res.json(responseData);
   } catch (err) {
-    console.error("Get All Student Accounts Error:", err);
-    res.status(500).json({ message: err.message });
+    console.error('Get All Student Accounts Error:', err);
+    return res.status(500).json({ message: err.message });
   }
 };
 
@@ -847,30 +734,20 @@ export const upsertFeeStructure = async (req, res) => {
 
     if (!req.user || !req.user.schoolId) return res.status(400).json({ message: 'No school assigned' });
 
-    const query = {
+    const feeStructure = await upsertFinanceFeeStructure({
       schoolId: req.user.schoolId,
       grade,
-      academicYear: Number(academicYear)
-    };
-
-    const totalFee = Number(term1Fee) + Number(term2Fee) + Number(term3Fee);
-
-    const update = {
-      term1Fee: Number(term1Fee),
-      term2Fee: Number(term2Fee),
-      term3Fee: Number(term3Fee),
-      totalFee
-    };
-
-    const opts = { upsert: true, new: true, setDefaultsOnInsert: true };
-
-    const fs = await FeeStructure.findOneAndUpdate(query, update, opts);
+      academicYear,
+      term1Fee,
+      term2Fee,
+      term3Fee
+    });
 
     invalidateSchoolFinanceCaches(req.user.schoolId);
-    res.json({ message: 'Fee structure saved', feeStructure: fs });
+    res.json({ message: 'Fee structure saved', feeStructure });
   } catch (err) {
     console.error('Upsert Fee Structure Error:', err);
-    if (err.code === 11000) return res.status(400).json({ message: 'Fee structure already exists' });
+    if (err.code === '23505') return res.status(400).json({ message: 'Fee structure already exists' });
     res.status(500).json({ message: err.message });
   }
 };

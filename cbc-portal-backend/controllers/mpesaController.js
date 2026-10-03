@@ -1,8 +1,12 @@
 // controllers/mpesaController.js
-import Payment from "../models/Payment.js";
 import { User } from "../models/User.js";
 import { School } from "../models/school.js";
 import bcrypt from "bcryptjs";
+import {
+  createFinancePayment,
+  createFinanceUnmatchedPayment,
+  hasFinancePaymentReference
+} from '../services/financeRepository.js';
 
 export const mpesaCallback = async (req, res) => {
   try {
@@ -34,6 +38,11 @@ export const mpesaCallback = async (req, res) => {
       return res.json({ ResultCode: 0 });
     }
 
+    if (await hasFinancePaymentReference(receipt)) {
+      console.log(`Payment ${receipt} already recorded`);
+      return res.json({ ResultCode: 0 });
+    }
+
     // 🔎 Find student by admission number within this school
     const student = await User.findOne({
       admission: { $eq: admission, $type: "string" },
@@ -42,27 +51,14 @@ export const mpesaCallback = async (req, res) => {
     });
 
     if (!student) {
-  await Payment.create({
-    schoolId: school._id,
-    amount,
-    method: "mpesa",
-    reference: receipt,
-    admission,
-    phone,
-    status: "unmatched",
-    term: getCurrentTerm(),
-    academicYear: new Date().getFullYear()
-  });
-
-  console.log(`Unmatched payment: ${admission}`);
-
-  return res.json({ ResultCode: 0 });
-}
-
-    // 🔐 Prevent duplicate recording
-    const exists = await Payment.findOne({ reference: receipt });
-    if (exists) {
-      console.log(`Payment ${receipt} already recorded`);
+      await createFinanceUnmatchedPayment({
+        schoolId: school._id,
+        amount,
+        reference: receipt,
+        admission,
+        phone
+      });
+      console.log(`Unmatched payment: ${admission}`);
       return res.json({ ResultCode: 0 });
     }
 
@@ -92,7 +88,9 @@ export const mpesaCallback = async (req, res) => {
 
     const recordedById = recorder ? recorder._id : null;
 
-    await Payment.create({
+    if (!recordedById) throw new Error('Could not assign a system accounts user to the M-Pesa payment.');
+
+    await createFinancePayment({
       studentId: student._id,
       schoolId: school._id,
       amount,

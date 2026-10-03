@@ -1,33 +1,35 @@
-import BalanceSummary from "../models/BalanceSummary.js";
-import Payment from "../models/Payment.js";
-import FeeStructure from "../models/FeeStructure.js";
 import StudentEnrollment from "../models/StudentEnrollment.js";
+import {
+  getFinanceBalanceSummary,
+  getFinanceFeeStructure,
+  listFinancePayments,
+  upsertFinanceBalanceSummary
+} from './financeRepository.js';
 
 export const buildBalanceSummaryForStudent = async ({ studentId, schoolId, academicYear, grade = null }) => {
   const studentGrade = grade || null;
 
   let fee = null;
   if (studentGrade) {
-    fee = await FeeStructure.findOne({
+    fee = await getFinanceFeeStructure({
       schoolId,
       grade: studentGrade,
       academicYear
-    }).lean();
+    });
   }
 
   if (!fee && studentGrade) {
-    fee = await FeeStructure.findOne({
+    fee = await getFinanceFeeStructure({
       schoolId,
       grade: studentGrade
-    }).sort({ academicYear: -1 }).lean();
+    });
   }
 
-  const payments = await Payment.find({
+  const payments = await listFinancePayments({
     studentId,
     schoolId,
-    academicYear: Number(academicYear),
-    isReversed: { $ne: true }
-  }).lean();
+    academicYear: Number(academicYear)
+  });
 
   const termPayments = {
     "Term 1": 0,
@@ -78,18 +80,12 @@ export const buildBalanceSummaryForStudent = async ({ studentId, schoolId, acade
     lastRecomputedAt: new Date()
   };
 
-  await BalanceSummary.findOneAndUpdate(
-    { studentId, schoolId, academicYear: Number(academicYear) },
-    { $set: summary },
-    { upsert: true, new: true, setDefaultsOnInsert: true }
-  );
-
-  return summary;
+  return upsertFinanceBalanceSummary(summary);
 };
 
 export const getOrCreateBalanceSummary = async ({ studentId, schoolId, academicYear, grade = null }) => {
   const year = Number(academicYear);
-  const existing = await BalanceSummary.findOne({ studentId, schoolId, academicYear: year }).lean();
+  const existing = await getFinanceBalanceSummary({ studentId, schoolId, academicYear: year });
   if (existing) return existing;
 
   return buildBalanceSummaryForStudent({ studentId, schoolId, academicYear: year, grade });
