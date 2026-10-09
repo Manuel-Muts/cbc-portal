@@ -22,16 +22,23 @@ document.addEventListener("DOMContentLoaded", async () => {
   if (!sidebarBackdrop) {
     sidebarBackdrop = document.createElement("div");
     sidebarBackdrop.className = "sidebar-backdrop";
+    sidebarBackdrop.setAttribute("aria-hidden", "true");
     document.body.appendChild(sidebarBackdrop);
   }
   const closeSidebar = () => {
     sidebarEl?.classList.remove("show");
     sidebarBackdrop.classList.remove("active");
+    menuToggleBtn?.setAttribute("aria-expanded", "false");
+    menuToggleBtn?.setAttribute("aria-label", "Open dashboard navigation");
+    sidebarBackdrop.setAttribute("aria-hidden", "true");
   };
 
   menuToggleBtn?.addEventListener("click", () => {
-    const isOpen = sidebarEl?.classList.toggle("show");
+    const isOpen = sidebarEl?.classList.toggle("show") === true;
     sidebarBackdrop.classList.toggle("active", Boolean(isOpen));
+    menuToggleBtn.setAttribute("aria-expanded", String(Boolean(isOpen)));
+    menuToggleBtn.setAttribute("aria-label", isOpen ? "Close dashboard navigation" : "Open dashboard navigation");
+    sidebarBackdrop.setAttribute("aria-hidden", String(!isOpen));
   });
 
   sidebarBackdrop.addEventListener("click", closeSidebar);
@@ -388,6 +395,13 @@ try {
     if (feesRes.ok) {
       f = await feesRes.json();
       setCached("feeInfo", f);
+    } else if (feesRes.status === 404) {
+      feeInfoEl.textContent = 'No fee structure posted yet.';
+      feeInfoEl.style.display = 'block';
+    } else {
+      console.warn(`Fee information request failed with status ${feesRes.status}`);
+      feeInfoEl.textContent = 'Fee information is temporarily unavailable.';
+      feeInfoEl.style.display = 'block';
     }
   }
 
@@ -398,7 +412,8 @@ try {
   }
 } catch (err) {
   console.error('Error fetching fees:', err);
-  feeInfoEl.textContent = '';
+  feeInfoEl.textContent = 'Unable to connect to fee information. Please try again.';
+  feeInfoEl.style.display = 'block';
 }
 
 // View fee button handler (opens modal with more details)
@@ -408,6 +423,35 @@ const viewFeeBtn = document.getElementById('viewFeeBtn');
 const loadFeeData = async (selectedYear) => {
   const body = document.getElementById('feeModalBody');
   body.textContent = 'Loading...';
+  currentFeePdfData = null;
+  document.getElementById('downloadFeeStructurePDF').disabled = true;
+  document.getElementById('downloadFeeStatementPDF').disabled = true;
+
+  const showFeeLoadMessage = (message, retry = false) => {
+    body.replaceChildren();
+    const messageEl = document.createElement('p');
+    messageEl.className = 'fee-load-message';
+    messageEl.textContent = message;
+    body.appendChild(messageEl);
+
+    if (retry) {
+      const retryBtn = document.createElement('button');
+      retryBtn.type = 'button';
+      retryBtn.className = 'btn small primary';
+      retryBtn.textContent = 'Try again';
+      retryBtn.addEventListener('click', () => loadFeeData(selectedYear));
+      body.appendChild(retryBtn);
+    }
+  };
+
+  const getApiMessage = async (response) => {
+    try {
+      const data = await response.json();
+      return typeof data?.message === 'string' ? data.message : '';
+    } catch {
+      return '';
+    }
+  };
 
   try {
     const [feesRes, balanceRes, paymentsRes] = await Promise.all([
@@ -423,33 +467,45 @@ const loadFeeData = async (selectedYear) => {
     ]);
 
     if (!feesRes.ok) {
-      if (feesRes.status === 404) { body.textContent = 'Fee structure not available'; return; }
-      body.textContent = 'Failed to load fee structure';
+      if (feesRes.status === 404) {
+        showFeeLoadMessage(`No fee structure posted yet for academic year ${selectedYear}. Please contact your school office if you expected one.`);
+        return;
+      }
+      if (feesRes.status === 400) {
+        const apiMessage = await getApiMessage(feesRes);
+        showFeeLoadMessage(apiMessage || `Your grade could not be confirmed for academic year ${selectedYear}. Please contact your school office.`);
+        return;
+      }
+      if (feesRes.status === 401) {
+        showFeeLoadMessage('Your session may have expired. Please sign in again.');
+        return;
+      }
+      if (feesRes.status === 403) {
+        showFeeLoadMessage('You do not currently have access to fee information. Please contact your school office.');
+        return;
+      }
+      console.error(`Fee structure request failed with status ${feesRes.status}`);
+      showFeeLoadMessage('Fee information could not be loaded due to a server error. Please try again.', true);
       return;
     }
 
     const feesData = await feesRes.json();
-    let balanceData, paymentsData;
+    let paymentsData;
 
     if (!balanceRes.ok) {
-      console.warn('Failed to load balance information, using defaults');
-      balanceData = {
-        termBalances: {
-          term1: { paid: 0, balance: feesData.term1Fee || 0 },
-          term2: { paid: 0, balance: feesData.term2Fee || 0 },
-          term3: { paid: 0, balance: feesData.term3Fee || 0 }
-        },
-        totalPaid: 0,
-        balance: feesData.totalFee || 0
-      };
-    } else {
-      balanceData = await balanceRes.json();
+      console.error(`Balance request failed with status ${balanceRes.status}`);
+      showFeeLoadMessage('Fee information is available, but your balance could not be verified. Totals are hidden to avoid showing incorrect information.', true);
+      return;
     }
     if (!paymentsRes.ok) {
-      console.warn('Failed to load payment history, using empty list');
-      paymentsData = { payments: [] };
-    } else {
-      paymentsData = await paymentsRes.json();
+      console.error(`Payment history request failed with status ${paymentsRes.status}`);
+      showFeeLoadMessage('The fee structure is available, but payment history could not be loaded. Totals are hidden to avoid showing incorrect information.', true);
+      return;
+    }
+    await balanceRes.json();
+    paymentsData = await paymentsRes.json();
+    if (!Array.isArray(paymentsData?.payments)) {
+      throw new Error('The payment history response did not contain a valid payments list.');
     }
 
     // Calculate paid per term from payments
@@ -587,9 +643,14 @@ const loadFeeData = async (selectedYear) => {
                       ${paymentsTable}
                       ${globalFeeNoteHtml} <!-- Moved to bottom, hidden in UI -->
                       </div>`;
+    document.getElementById('downloadFeeStructurePDF').disabled = false;
+    document.getElementById('downloadFeeStatementPDF').disabled = false;
   } catch (err) {
-    console.error(err);
-    body.textContent = 'Error loading fee structure';
+    console.error('Error loading student fee information:', err);
+    const message = err instanceof TypeError
+      ? 'Unable to connect to fee services. Please check your connection and try again.'
+      : 'Fee information could not be displayed correctly. Please try again.';
+    showFeeLoadMessage(message, true);
   }
 };
 
@@ -972,12 +1033,18 @@ const displayStudentTables = async () => {
       // SYNC REPORT BUTTON
       const syncBtn = document.createElement("button");
       syncBtn.className = "btn primary-btn sync-report-btn";
-      syncBtn.innerHTML = "🔄 Sync & Generate Report";
-      syncBtn.style.marginBottom = "15px";
+      syncBtn.innerHTML = '<i class="fas fa-file-pdf" aria-hidden="true"></i><span>Sync &amp; Generate Report</span><i class="fas fa-arrow-right" aria-hidden="true"></i>';
       syncBtn.onclick = () => {
-        localStorage.setItem("studentReportMarks", JSON.stringify(list));
-        showToast("✅ Data synced. Opening report form...");
-        setTimeout(() => { window.location.href = "report.html"; }, 1200);
+        window.spinner?.show(syncBtn, "Preparing your report...");
+        try {
+          localStorage.setItem("studentReportMarks", JSON.stringify(list));
+          window.showToast?.("Data synced. Opening your report...", "success");
+          setTimeout(() => { window.location.href = "report.html"; }, 900);
+        } catch (error) {
+          console.error("Could not prepare student report:", error);
+          window.spinner?.hide(syncBtn);
+          window.showToast?.("Could not prepare your report. Please try again.", "error");
+        }
       };
       marksWrapper.appendChild(syncBtn);
 
@@ -1084,7 +1151,15 @@ const displayStudentTables = async () => {
   // ---------------------------
   // FILTER & REFRESH BUTTONS
   // ---------------------------
-  document.getElementById("applyFiltersBtn")?.addEventListener("click", displayStudentTables);
+  const applyFiltersBtn = document.getElementById("applyFiltersBtn");
+  applyFiltersBtn?.addEventListener("click", async () => {
+    window.spinner?.show(applyFiltersBtn, "Loading your results...");
+    try {
+      await displayStudentTables();
+    } finally {
+      window.spinner?.hide(applyFiltersBtn);
+    }
+  });
   
   const refreshBtnEl = document.getElementById("refreshBtn");
   if (refreshBtnEl) {

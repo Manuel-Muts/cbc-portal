@@ -632,6 +632,23 @@ window.getEnabledAssessments = () => {
   }));
 };
 
+window.getDeanAssessments = () => {
+  const builtInAssessmentIds = new Set([1, 5, 8]);
+  const configured = Array.isArray(window.assessmentConfig) ? window.assessmentConfig : [];
+  const assessments = configured.length > 0
+    ? configured
+    : Object.entries(window.ASSESSMENT_MAPPING || {}).map(([id, name]) => ({
+      id: Number(id),
+      name,
+      enabled: true,
+      system: true
+    }));
+
+  return assessments.filter(assessment =>
+    builtInAssessmentIds.has(Number(assessment.id)) || assessment.enabled !== false
+  );
+};
+
 // 🆕 SERVICE WORKER REGISTRATION
 // Pre-caches external libraries to ensure they are available offline and speed up PDF generation.
 if ('serviceWorker' in navigator) {

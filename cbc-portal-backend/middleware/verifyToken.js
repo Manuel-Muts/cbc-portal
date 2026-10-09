@@ -25,15 +25,19 @@ const verifyToken = async (req, res, next) => {
     let school = null;
     let schoolPlanFeatures = getPlanFeatures('basic');
     if (user.schoolId) {
-      school = await School.findById(user.schoolId).select("status version plan planFeatures");
+      school = await School.findById(user.schoolId).select("status version plan planFeatures subscriptionExpiresAt");
       if (!school) {
         return res.status(403).json({ message: "Your school does not exist. Contact admin." });
       }
 
-      schoolPlanFeatures = {
-        ...getPlanFeatures(school.plan || 'basic'),
-        ...(school.planFeatures || {})
-      };
+      const subscriptionExpired = school.subscriptionExpiresAt && school.subscriptionExpiresAt <= new Date();
+      const effectivePlan = subscriptionExpired ? 'basic' : normalizePlan(school.plan || 'basic');
+      schoolPlanFeatures = subscriptionExpired
+        ? getPlanFeatures('basic')
+        : {
+            ...getPlanFeatures(effectivePlan),
+            ...(school.planFeatures || {})
+          };
 
      // Only enforce version check if token contains schoolVersion
           if (
@@ -66,7 +70,9 @@ const verifyToken = async (req, res, next) => {
       isSuperAdmin: user.role === "super_admin",
       isSchoolAdmin: user.role === "admin",
       admission: user.admission || null,
-      schoolPlan: school?.plan ? normalizePlan(school.plan) : 'basic',
+      schoolPlan: school?.subscriptionExpiresAt && school.subscriptionExpiresAt <= new Date()
+        ? 'basic'
+        : school?.plan ? normalizePlan(school.plan) : 'basic',
       schoolPlanFeatures,
       canCreate: (targetRole) => {
       if (user.role === "super_admin") return true;

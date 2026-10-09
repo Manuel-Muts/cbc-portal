@@ -87,10 +87,13 @@ const config = {
   externalServices: {
     // M-Pesa or other payment gateways configuration
     mpesa: {
-      consumerKey: process.env.MPESA_CONSUMER_KEY,
-      consumerSecret: process.env.MPESA_CONSUMER_SECRET,
+      consumerKey: process.env.MPESA_CONSUMER_KEY || process.env.DARAJA_CONSUMER_KEY,
+      consumerSecret: process.env.MPESA_CONSUMER_SECRET || process.env.DARAJA_CONSUMER_SECRET,
       shortCode: process.env.MPESA_SHORT_CODE,
       passkey: process.env.MPESA_PASSKEY,
+      environment: process.env.MPESA_ENV || 'sandbox',
+      stkCallbackUrl: process.env.MPESA_STK_CALLBACK_URL,
+      stkCallbackToken: process.env.MPESA_STK_CALLBACK_TOKEN,
     },
   },
 

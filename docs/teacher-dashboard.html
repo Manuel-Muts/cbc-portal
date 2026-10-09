@@ -94,7 +94,10 @@
       <button class="subnav-btn" data-tab="submittedMarks">📋 Submitted Marks</button>
       <button class="subnav-btn" data-tab="myClass" id="myClassTabBtn" style="display:none;">🏫 My Class</button>
       <button class="subnav-btn" data-tab="studyMaterials">📚  Materials</button>
+      <button class="subnav-btn" data-tab="schemesOfWork">📘 Schemes of Work</button>
+      <button class="subnav-btn" data-tab="lessonPlans">📝 Lesson Plans</button>
       <button class="subnav-btn" data-tab="digitalSignature">🖊️ Signature</button>
+      <button class="subnav-btn" data-tab="teacherSettings">⚙️ Settings</button>
       <a href="/dean" id="deanDashboardBtn" class="subnav-btn dean-btn" style="display:none;">🎓 DEAN</a>
     </div>
     <div class="teacher-nav-overlay" id="teacherNavOverlay" aria-hidden="true"></div>
@@ -386,10 +389,31 @@
     </section>
     </div>
 
+    <div id="schemesOfWork" class="tab-pane">
+      <section class="materials-section">
+        <div id="schemesOfWorkModule"></div>
+      </section>
+    </div>
+
+    <div id="lessonPlans" class="tab-pane">
+      <section class="materials-section">
+        <div id="lessonPlansModule"></div>
+      </section>
+    </div>
+
     <div id="digitalSignature" class="tab-pane">
       <section class="signature-section">
         <div id="digitalSignatureContent" class="signature-card-placeholder">
           <!-- Digital signature interface will be rendered here -->
+        </div>
+      </section>
+    </div>
+
+    <div id="teacherSettings" class="tab-pane">
+      <section class="materials-section">
+        <div class="material-card">
+          <h3>⚙️ Teacher Settings</h3>
+          <p>Settings will be available here soon.</p>
         </div>
       </section>
     </div>
@@ -409,5 +433,7 @@
   <script src="js/teacher/learner-enrollment.js"></script>
   <script src="js/teacher/teachers.js"></script>
   <script src="js/classteacher/analysis.js"></script>
+  <script type="module" src="js/teacher/schemes-of-work.js"></script>
+  <script type="module" src="js/teacher/lesson-plans.js"></script>
 </body>
 </html>

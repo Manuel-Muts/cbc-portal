@@ -343,7 +343,7 @@ const LearnerMarksModule = (function() {
 
     if (lmAssessmentSelect) {
       lmAssessmentSelect.innerHTML = `<option value="">-- Select Assessment --</option>` +
-        (window.getEnabledAssessments?.() || Object.entries(getAssessmentMapping()).map(([id, name]) => ({ id, name })))
+        (window.getDeanAssessments?.() || Object.entries(getAssessmentMapping()).map(([id, name]) => ({ id, name })))
           .map(assessment => `<option value="${assessment.id}">${assessment.name}</option>`)
           .join('');
     }

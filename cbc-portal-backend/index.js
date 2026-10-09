@@ -22,9 +22,8 @@ import enrollmentRoutes from "./routes/enrollmentRoutes.js";
 import paymentRoutes from "./routes/paymentRoutes.js"; // Import paymentRoutes
 import accountsRoutes from "./routes/accountsRoutes.js";
 import reportsRoutes from "./routes/reportsRoutes.js";
-import { mpesaCallback } from './controllers/mpesaController.js';
+import { mpesaCallback, mpesaValidation } from './controllers/mpesaController.js';
 import { startCronJobs } from './services/cronService.js';
-import { startBackupCronJobs } from './services/backupCronService.js';
 import expenseRoutes from './routes/expenseRoutes.js'; // 🆕
 import settingsRoutes from './routes/settingsRoutes.js'; // New import
 import timetableRoutes from './routes/timetableRoutes.js';
@@ -34,6 +33,8 @@ import subjectRoutes from "./routes/subjectRoutes.js";
 import studentRoutes from "./routes/studentRoutes.js";
 import dashboardSummaryRoutes from './routes/dashboardSummaryRoutes.js';
 import notificationRoutes from './routes/notificationRoutes.js';
+import stkPaymentRoutes from './routes/stkPaymentRoutes.js';
+import teacherPlanningRoutes from './routes/teacherPlanningRoutes.js';
 import { User } from './models/User.js';
 import Mark from './models/mark.js';
 import { DEFAULT_ASSESSMENTS, School } from './models/school.js';
@@ -61,7 +62,7 @@ app.use(express.json());
 app.use(cookieParser());
 app.use(helmet({
   crossOriginEmbedderPolicy: false, // 🔓 Disable COEP to allow external CDNs like FontAwesome/cdnjs
-  crossOriginOpenerPolicy: { policy: "same-origin-allow-popups" }, // 💳 Essential for payment gateway popups (IntaSend/3D Secure)
+  crossOriginOpenerPolicy: { policy: "same-origin-allow-popups" }, // Keep payment popups compatible with the frontend.
   contentSecurityPolicy: {
     directives: {
       defaultSrc: ["'self'"],
@@ -167,11 +168,15 @@ app.use('/uploads', express.static(path.join(__dirname, 'uploads'), {
 // API ROUTES
 // -------------------------
 app.post('/api/mpesa/callback', mpesaCallback);
+app.post('/api/mpesa/validation', mpesaValidation);
 app.use('/api/users', userRoutes);
 app.use('/api/marks', markRoutes);
 app.use('/api/materials', materialRoutes);
 app.use('/api/reset', resetRoutes);
 app.use("/api", schoolRoutes);
+// Mount before superAdminRoutes, whose router-level auth middleware protects every /api request.
+app.use('/api/stk-payments', stkPaymentRoutes);
+app.use('/api/teacher-planning', teacherPlanningRoutes);
 app.use('/api', superAdminRoutes);
 app.use("/api/promotions", promotionRoutes);
 app.use("/api/enrollments", enrollmentRoutes);
@@ -407,8 +412,7 @@ mongoose.connect(mongoURI, mongooseOptions)
     
     // 🚀 Start scheduled background tasks
     startCronJobs();
-    startBackupCronJobs();
-    console.log('✅ Scheduled background tasks started successfully.');
+    console.log('✅ Scheduled maintenance tasks started successfully.');
 
     const PORT = process.env.PORT || 5000;
     app.listen(PORT, () =>

@@ -3283,7 +3283,7 @@ async function downloadSubjectPerformanceAsPDF() {
   yPos += 3;
 
   const rawHeaders = Array.from(table.querySelectorAll("thead th")).map(th => th.textContent.trim());
-  const progressIdx = rawHeaders.indexOf("Progress");
+  const progressIdx = rawHeaders.findIndex(header => header.toLowerCase() === "progress");
   const tbodyRows = Array.from(table.querySelectorAll("tbody tr"));
   
   // Check if Progress column should be hidden
@@ -3295,15 +3295,37 @@ async function downloadSubjectPerformanceAsPDF() {
   const skipIndices = new Set();
   if (!hasMeaningfulProgress && progressIdx !== -1) skipIndices.add(progressIdx);
 
-  const headers = rawHeaders.filter((_, i) => !skipIndices.has(i));
-  const pdfProgressIdx = headers.indexOf("Progress");
+  const visibleColumnIndices = rawHeaders
+    .map((_, index) => index)
+    .filter(index => !skipIndices.has(index));
+  const headers = visibleColumnIndices.map(index => rawHeaders[index]);
+  const pdfProgressIdx = headers.findIndex(header => header.toLowerCase() === "progress");
+  const pdfEntriesIdx = headers.findIndex(header => header.toLowerCase() === "entries");
   const tiedRowIndices = [];
+  const baseColumnWidths = {
+    rank: 16,
+    subject: 44,
+    'mean score': 28,
+    points: 20,
+    'performance level': 72,
+    progress: 40,
+    entries: 22
+  };
+  const tableMargin = { left: 14, right: 14, bottom: 35 };
+  const baseTableWidth = visibleColumnIndices.reduce((total, sourceIdx) => {
+    const header = rawHeaders[sourceIdx].toLowerCase();
+    return total + (baseColumnWidths[header] || 24);
+  }, 0);
+  const printableTableWidth = pageWidth - tableMargin.left - tableMargin.right;
+  const columnWidthScale = printableTableWidth / baseTableWidth;
 
   const rows = tbodyRows.map((tr, idx) => {
     if (tr.classList.contains("tied-rank")) tiedRowIndices.push(idx);
-    return Array.from(tr.querySelectorAll("td"))
-      .filter((_, colIdx) => !skipIndices.has(colIdx))
-      .map((td, colIdx) => colIdx === progressIdx ? formatProgressForPdf(td.textContent) : td.textContent.trim());
+    const cells = Array.from(tr.querySelectorAll("td"));
+    return visibleColumnIndices.map(colIdx => {
+      const text = cells[colIdx]?.textContent.trim() || "";
+      return colIdx === progressIdx ? formatProgressForPdf(text) : text;
+    });
   });
 
   doc.autoTable({ 
@@ -3311,11 +3333,22 @@ async function downloadSubjectPerformanceAsPDF() {
     head: [headers], 
     body: rows, 
     theme: 'grid', // Use 'grid' theme for borders
-    styles: { fontSize: 9, lineWidth: 0.2, lineColor: [0, 0, 0] }, // Darker lines
-    headStyles: { fillColor: [46, 204, 113] }, // Green theme for subject stats
+    styles: { fontSize: 9, lineWidth: 0.2, lineColor: [0, 0, 0], cellPadding: 2, valign: 'middle' },
+    headStyles: { fillColor: [46, 204, 113], halign: 'center', valign: 'middle' },
+    tableWidth: printableTableWidth,
+    margin: tableMargin,
+    columnStyles: Object.fromEntries(visibleColumnIndices.map((sourceIdx, pdfIdx) => {
+      const header = rawHeaders[sourceIdx].toLowerCase();
+      const style = { cellWidth: (baseColumnWidths[header] || 24) * columnWidthScale };
+      if (['rank', 'mean score', 'points', 'progress', 'entries'].includes(header)) {
+        style.halign = 'center';
+      }
+      if (pdfIdx === pdfProgressIdx) style.cellPadding = { top: 2, right: 8, bottom: 2, left: 2 };
+      if (pdfIdx === pdfEntriesIdx) style.cellPadding = 2;
+      return [pdfIdx, style];
+    })),
     showHead: 'everyPage', 
     rowPageBreak: 'avoid', // 🆕 Prevents subject rows from splitting
-    margin: { bottom: 35 }, // 🆕 Space for signature
     didParseCell: (data) => {
       if (data.section === 'body' && pdfProgressIdx !== -1 && data.column.index === pdfProgressIdx) {
         const progressValue = parseFloat(String(data.cell.raw).replace(/[^0-9+.-]/g, ''));
@@ -3338,7 +3371,7 @@ async function downloadSubjectPerformanceAsPDF() {
       if (Number.isNaN(progressValue)) return;
       drawPdfProgressArrow(
         doc,
-        data.cell.x + data.cell.width - 3,
+        data.cell.x + data.cell.width - 4,
         data.cell.y + (data.cell.height / 2),
         progressValue > 0.1 ? 'up' : progressValue < -0.1 ? 'down' : 'right',
         progressValue > 0.1 ? [22, 163, 74] : progressValue < -0.1 ? [220, 38, 38] : [71, 85, 105]
@@ -3494,7 +3527,7 @@ function renderBaselineCheckboxes() {
     wrap.className = "filter-item"; 
     wrap.style.cssText = "grid-column: 1 / -1; margin-top: 10px; padding: 12px; background: #f8fafc; border-radius: 12px; border: 1px solid #e2e8f0; box-shadow: inset 0 1px 2px rgba(0,0,0,0.02);";
 
-    const assessments = (window.getEnabledAssessments?.() || []).filter(assessment => assessment.system === true);
+    const assessments = (window.getDeanAssessments?.() || []).filter(assessment => assessment.system === true);
     const defaults = [1, 5, 8]; // IDs for Opener, Midterm, Endterm
 
     let html = `<label style="display:block; font-size:0.7rem; font-weight:800; color:#64748b; margin-bottom:10px; text-transform:uppercase;">
@@ -3543,7 +3576,7 @@ function initFilters() {
   // Populate Assessments
   if (filterAssessmentEl) {
     filterAssessmentEl.innerHTML = '<option value="" selected>-- Select Assessment --</option>';
-    (window.getEnabledAssessments?.() || []).forEach(assessment => {
+    (window.getDeanAssessments?.() || []).forEach(assessment => {
       const opt = document.createElement("option");
       opt.value = assessment.id;
       opt.textContent = assessment.name;
@@ -4018,7 +4051,7 @@ async function loadDeanProfile() {
     try {
       // Start fetching school info and signature conversion in parallel // 🆕 Use Promise.allSettled
       const results = await Promise.allSettled([ // Use Promise.allSettled to prevent one failure from blocking others
-        fetchWithAuth(`${API_BASE}/users/my-school?includeLogo=false&fields=name,motto,status,schoolType,gradingConfig,plan,planFeatures&bypassCache=true`).catch(e => { console.warn("Failed to fetch school info:", e); return null; }),
+        fetchWithAuth(`${API_BASE}/users/my-school?includeLogo=false&fields=name,schoolCode,motto,status,schoolType,gradingConfig,plan,planFeatures&bypassCache=true`).catch(e => { console.warn("Failed to fetch school info:", e); return null; }),
         Promise.resolve(null)
       ]);
 
@@ -4290,7 +4323,8 @@ async function generateBulkReportCards() {
     // const teacherSigCache = new Map(); // Store {base64, format} by streamKey // Not used
     
     const schoolName = sanitizePdfText(deanProfileData?.schoolName || "SCHOOL NAME");
-  const schoolMotto = sanitizePdfText(schoolInfo?.motto || "");
+    const schoolCode = sanitizePdfText(schoolInfo?.schoolCode || "");
+    const schoolMotto = sanitizePdfText(schoolInfo?.motto || "");
     const termVal = sanitizePdfText(filterTermEl.value);
     const year = sanitizePdfText(filterYearEl.value);
     const assessLabel = sanitizePdfText(filterAssessmentEl.options[filterAssessmentEl.selectedIndex]?.text || "Report");
@@ -4417,6 +4451,12 @@ async function generateBulkReportCards() {
         const schoolNameText = schoolName;
         const schoolNameFontSize = 15;
         doc.setFont("helvetica", "bold").setFontSize(schoolNameFontSize);
+
+        if (schoolCode) {
+          doc.setFont("helvetica", "bold").setFontSize(8).setTextColor(71, 85, 105);
+          doc.text(`School code: ${schoolCode}`, 15, 10, { maxWidth: 55 });
+          doc.setTextColor(0, 0, 0).setFont("helvetica", "bold").setFontSize(schoolNameFontSize);
+        }
 
         if (schoolMotto) {
           doc.setFont("helvetica", "italic").setFontSize(7.5).setTextColor(71, 85, 105);

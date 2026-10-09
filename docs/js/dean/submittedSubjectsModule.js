@@ -62,7 +62,7 @@ const SubmittedSubjectsModule = (function() {
         // 3. Populate Assessments
         if (ssAssessmentFilter) {
             ssAssessmentFilter.innerHTML = '<option value="">-- Select Assessment --</option>';
-            (window.getEnabledAssessments?.() || []).forEach(assessment => {
+            (window.getDeanAssessments?.() || []).forEach(assessment => {
                 const opt = document.createElement("option");
                 opt.value = assessment.id;
                 opt.textContent = assessment.name;

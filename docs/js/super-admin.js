@@ -1785,7 +1785,10 @@ if (nextSchoolsBtn) {
     try {
       window.spinner.show(submitBtn, "Saving...");
 
-      const token = localStorage.getItem("token");
+      const token = window.authService?.getToken();
+      if (!token) {
+        throw new Error("Your session has expired. Please sign in again.");
+      }
       const response = await fetch(`${API_BASE}/update-paybill`, {
         method: "PUT",
         headers: {

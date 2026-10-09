@@ -507,7 +507,10 @@ const processSingleMark = async (markData, reqUser, isNew = true, cachedContext 
     const enabledAssessmentIds = assessmentConfig?.length
       ? new Set(assessmentConfig.filter(item => item.enabled !== false).map(item => Number(item.id)))
       : DEFAULT_ASSESSMENT_IDS;
-    if (!enabledAssessmentIds.has(Number(assessment))) {
+    const canRecordDisabledBuiltIn =
+      (['admin', 'super_admin', 'dean'].includes(reqUser?.role) || reqUser?.isDean === true) &&
+      DEFAULT_ASSESSMENT_IDS.has(Number(assessment));
+    if (!enabledAssessmentIds.has(Number(assessment)) && !canRecordDisabledBuiltIn) {
       throw new Error("This assessment is not enabled for your school.");
     }
   }

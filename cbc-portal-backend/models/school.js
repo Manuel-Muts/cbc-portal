@@ -37,6 +37,7 @@ const schoolSchema = new mongoose.Schema({
     enum: ["basic", "standard", "premium"],
     default: "basic"
   },
+  subscriptionExpiresAt: { type: Date, default: null },
   planFeatures: {
     communication: { type: Boolean, default: false },
     timetable: { type: Boolean, default: false },

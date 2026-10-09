@@ -1,11 +1,9 @@
-import cron from 'node-cron';
 import fs from 'fs';
 import path from 'path';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 
 const BACKUPS_DIR = path.join(path.resolve(), 'backups', 'mongodb');
-const CRON_TIMEZONE = 'Africa/Nairobi';
 const DEFAULT_DB_BACKUP_COLLECTIONS = ['marks', 'studentenrollments', 'users', 'schools'];
 export const BACKUP_COLLECTION_OPTIONS = DEFAULT_DB_BACKUP_COLLECTIONS;
 const execFileAsync = promisify(execFile);
@@ -156,24 +154,4 @@ export const backupMongoDatabase = async ({
   }
 
   return { backupRootDir, selectedCollections, sizeBytes };
-};
-
-export const startBackupCronJobs = () => {
-  console.log(`🕒 MongoDB backup cron registered for 01:00 server time. Tool: ${getMongoDumpCommand()}`);
-
-  cron.schedule('0 1 * * *', async () => {
-    console.log('🕒 Starting MongoDB backup job for selected collections...');
-
-    try {
-      const result = await backupMongoDatabase({
-        collections: DEFAULT_DB_BACKUP_COLLECTIONS,
-        daysToKeep: 5
-      });
-
-      const sizeMB = (result.sizeBytes / (1024 * 1024)).toFixed(2);
-      console.log(`✅ MongoDB backup completed: ${result.backupRootDir} (${sizeMB} MB)`);
-    } catch (err) {
-      console.error('❌ Error during MongoDB backup job:', err);
-    }
-  }, { timezone: CRON_TIMEZONE });
 };

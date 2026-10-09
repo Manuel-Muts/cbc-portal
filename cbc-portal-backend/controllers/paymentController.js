@@ -382,7 +382,11 @@ export const getMyFeeStructure = async (req, res) => {
       academicYear: year
     });
 
-    if (!fee) return res.status(404).json({ message: 'Fee structure not found for the selected academic year' });
+    if (!fee) {
+      return res.status(404).json({
+        message: `No fee structure posted for ${grade} in academic year ${year}`
+      });
+    }
 
     // Fetch Global Fee Note for the year
     const note = await getFinanceFeeNote({ schoolId: req.user.schoolId, academicYear: year });

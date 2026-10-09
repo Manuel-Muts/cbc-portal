@@ -21,6 +21,10 @@ body {
   min-height: 265mm; /* Reduced to fit within single A4 page printable area */
 }
 
+.report-preview-scroll {
+  width: 100%;
+}
+
 /* Report Header */
 .report-header {
   text-align: center;
@@ -373,8 +377,17 @@ button,
     padding: 0;
   }
 
-  .report-container {
+  .report-preview-scroll {
     width: 100%;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .report-container {
+    width: 740px;
+    min-width: 740px;
+    max-width: none;
     padding: 15px;
     margin: 0;
     border: none;
@@ -382,34 +395,32 @@ button,
   }
 
   .report-layout-container {
-    flex-direction: column;
+    flex-direction: row;
   }
 
   #performanceKeySide {
-    width: 100%;
-    flex: none;
-    margin-top: 15px;
+    width: 140px;
+    flex: 0 0 140px;
+    margin-top: 0;
   }
 
   .marks-section {
-    width: 100%;
-    overflow-x: auto;
-    display: block;
+    min-width: 0;
   }
 
   .marks-section table {
-    min-width: 600px; /* Force horizontal scroll */
+    min-width: 0;
     font-size: 12px;
   }
 
   .summary {
-    flex-direction: column;
-    gap: 10px;
+    flex-direction: row;
+    gap: 8px;
   }
 
   .signatures {
-    flex-direction: column;
-    gap: 40px;
+    flex-direction: row;
+    gap: 20px;
     margin-top: 30px;
   }
 }

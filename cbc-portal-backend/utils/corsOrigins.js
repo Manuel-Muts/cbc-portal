@@ -1,7 +1,7 @@
 const PRODUCTION_ORIGINS = [
   'https://competencehub.co.ke',
   'https://www.competencehub.co.ke',
-  'http://127.0.0.1:5000'
+  'http://127.0.0.1:5000',
 ];
 
 const DEVELOPMENT_ORIGINS = [

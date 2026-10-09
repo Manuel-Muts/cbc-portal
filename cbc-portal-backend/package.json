@@ -6,6 +6,8 @@
   "scripts": {
     "start": "node index.js",
     "dev": "nodemon index.js",
+    "import:teacher-curriculum": "node scripts/importTeacherCurriculum.js",
+    "migrate:teacher-curriculum": "node scripts/migrateTeacherCurriculum.js",
     "migrate:finance": "node scripts/migrateFinance.js",
     "backup-mongo": "node scripts/runMongoBackup.js",
     "refresh-dashboard-summaries": "node scripts/runDashboardSummaryRefresh.js",

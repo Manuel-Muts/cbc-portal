@@ -655,6 +655,722 @@ form {
   border-bottom: 1px solid #eee;
 }
 
+.teacher-planning-header,
+.teacher-planning-record-heading,
+.teacher-planning-record-actions,
+.teacher-planning-form-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.teacher-planning-header {
+  margin-bottom: 1.25rem;
+}
+
+.teacher-planning-count {
+  margin-left: 8px;
+  color: #475569;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.teacher-planning-header h2 {
+  margin: 0;
+}
+
+.teacher-planning-tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
+  border-bottom: 1px solid #dbe4e8;
+}
+
+.teacher-planning-tab {
+  border: 1px solid #cbd5e1;
+  border-bottom: 0;
+  border-radius: 8px 8px 0 0;
+  background: #eef2f3;
+  color: #52616b;
+  padding: 11px 18px;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.teacher-planning-tab.active {
+  background: #fff;
+  color: #0f766e;
+  border-color: #99f6e4;
+  box-shadow: 0 -2px 0 #0f766e inset;
+}
+
+.teacher-planning-panel[hidden] {
+  display: none;
+}
+
+.teacher-planning-panel {
+  min-width: 0;
+}
+
+.teacher-planning-eyebrow {
+  margin: 0 0 4px !important;
+  color: #0f766e;
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+}
+
+.teacher-planning-header > div > p:last-child {
+  margin: 5px 0 0;
+  color: #64748b;
+}
+
+.teacher-planning-form-section {
+  min-width: 0;
+  padding: 18px;
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+  background: #fff;
+}
+
+.teacher-planning-section-heading {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.teacher-planning-section-heading > span {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  flex: 0 0 30px;
+  place-items: center;
+  border-radius: 10px;
+  background: #ccfbf1;
+  color: #0f766e;
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.teacher-planning-section-heading h3 {
+  margin: 0;
+  color: #0f172a;
+  font-size: 1rem;
+}
+
+.teacher-planning-section-heading p {
+  margin: 4px 0 0;
+  color: #64748b;
+  font-size: 0.86rem;
+  line-height: 1.45;
+}
+
+.teacher-planning-field-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 210px), 1fr));
+  gap: 14px;
+}
+
+.teacher-planning-field-grid[hidden],
+.teacher-planning-curriculum-context[hidden] {
+  display: none !important;
+}
+
+.teacher-planning-field-grid + .teacher-planning-field-grid {
+  margin-top: 12px;
+}
+
+.teacher-planning-content-grid textarea {
+  min-height: 112px;
+}
+
+.teacher-planning-focus-toggle {
+  display: inline-flex;
+  gap: 4px;
+  margin: 0 0 14px;
+  padding: 4px;
+  border: 1px solid #dbe4e8;
+  border-radius: 10px;
+  background: #f1f5f9;
+}
+
+.teacher-planning-focus-toggle button {
+  padding: 8px 12px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: #475569;
+  font: inherit;
+  font-size: 0.84rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.teacher-planning-focus-toggle button.active {
+  background: #fff;
+  color: #0f766e;
+  box-shadow: 0 1px 3px rgb(15 23 42 / 12%);
+}
+
+.teacher-planning-focus-toggle button:focus-visible,
+.teacher-planning-tab:focus-visible,
+.teacher-planning-record-details summary:focus-visible {
+  outline: 2px solid #0f766e;
+  outline-offset: 2px;
+}
+
+.teacher-planning-scheme-select {
+  max-width: 760px;
+  margin-bottom: 14px;
+}
+
+.teacher-planning-or {
+  color: #64748b;
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.teacher-planning-submit-actions {
+  padding: 0 2px 4px;
+}
+
+.teacher-planning-panel-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 15px;
+  flex-wrap: wrap;
+}
+
+.teacher-planning-panel-header h3 {
+  margin: 0;
+  color: #2c3e50;
+}
+
+.teacher-planning-table-wrap {
+  width: 100%;
+  overflow-x: auto;
+  border: 1px solid #dbe4e8;
+  border-radius: 8px;
+}
+
+.teacher-planning-table {
+  width: 100%;
+  min-width: 1100px;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+
+.teacher-planning-table th,
+.teacher-planning-table td {
+  padding: 6px 8px;
+  border: 1px solid #e2e8f0;
+  text-align: left;
+  vertical-align: top;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  line-height: 1.3;
+}
+
+.teacher-planning-table th {
+  background: #f1f5f9;
+  color: #334155;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.teacher-planning-table tbody tr:nth-child(even) {
+  background: #fafafa;
+}
+
+.teacher-planning-table tbody tr:hover {
+  background: #f1f7ff;
+}
+
+.teacher-planning-table tbody tr.teacher-planning-table-state-row:hover {
+  background: #fff;
+}
+
+.teacher-planning-table-state-row td {
+  padding: 24px;
+  background: #f8fafc;
+  color: #475569;
+  text-align: center;
+}
+
+.teacher-planning-table-state-row.error td {
+  background: #fef2f2;
+  color: #b91c1c;
+}
+
+.teacher-planning-table-state {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+}
+
+.teacher-planning-table-spinner {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 18px;
+  border: 3px solid #cbd5e1;
+  border-top-color: #0f766e;
+  border-radius: 50%;
+  animation: teacher-planning-spin 0.8s linear infinite;
+}
+
+@keyframes teacher-planning-spin {
+  to { transform: rotate(360deg); }
+}
+
+.teacher-planning-table .teacher-planning-empty {
+  padding: 24px;
+  color: #64748b;
+  text-align: center;
+}
+
+.teacher-planning-preview-toggle {
+  display: block;
+  margin-top: 2px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #2563eb;
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.teacher-planning-preview-short {
+  display: -webkit-box;
+  overflow: hidden;
+  white-space: pre-line;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.teacher-planning-preview-full {
+  white-space: pre-wrap;
+}
+
+.teacher-planning-preview-short[hidden],
+.teacher-planning-preview-full[hidden] {
+  display: none !important;
+}
+
+.teacher-planning-preview-toggle:hover {
+  text-decoration: underline;
+}
+
+.teacher-planning-preview-toggle:focus-visible {
+  outline: 2px solid #2563eb;
+  outline-offset: 2px;
+}
+
+.teacher-planning-payment-overlay {
+  position: fixed;
+  z-index: 12000;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: rgb(15 23 42 / 60%);
+}
+
+.teacher-planning-payment-dialog {
+  width: min(100%, 420px);
+  padding: 22px;
+  border: 1px solid #cbd5e1;
+  border-radius: 14px;
+  background: #fff;
+  box-shadow: 0 24px 60px rgb(15 23 42 / 24%);
+}
+
+.teacher-planning-payment-dialog h2 {
+  margin: 0 0 8px;
+  color: #0f172a;
+  font-size: 1.2rem;
+}
+
+.teacher-planning-payment-dialog > p {
+  margin: 0 0 18px;
+  color: #475569;
+  line-height: 1.5;
+}
+
+.teacher-planning-payment-dialog > .teacher-planning-payment-notice {
+  margin-top: -10px;
+  padding: 9px 10px;
+  border-radius: 7px;
+  background: #fff7ed;
+  color: #9a3412;
+  font-size: 0.82rem;
+}
+
+.teacher-planning-payment-dialog label {
+  display: block;
+  margin-bottom: 6px;
+  color: #334155;
+  font-size: 0.88rem;
+  font-weight: 600;
+}
+
+.teacher-planning-payment-phone {
+  display: flex;
+  align-items: center;
+  overflow: hidden;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+}
+
+.teacher-planning-payment-phone span {
+  padding: 10px;
+  border-right: 1px solid #e2e8f0;
+  background: #f8fafc;
+  color: #475569;
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.teacher-planning-payment-dialog .teacher-planning-payment-phone input {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  padding: 10px 12px;
+  border: 0;
+  border-radius: 0;
+  font: inherit;
+  font-weight: 600;
+}
+
+.teacher-planning-payment-message {
+  min-height: 2.8em;
+  margin: 10px 0;
+  color: #475569;
+  font-size: 0.88rem;
+}
+
+.teacher-planning-payment-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.teacher-planning-actions {
+  min-width: 140px;
+  white-space: nowrap !important;
+}
+
+.teacher-planning-actions .btn {
+  margin: 0 4px 4px 0;
+  padding: 7px 10px;
+  font-size: 0.82rem;
+}
+
+.teacher-planning-record-table {
+  min-width: 1020px;
+}
+
+.teacher-planning-table-muted {
+  color: #64748b;
+  font-size: 0.82rem;
+}
+
+.teacher-planning-record-details summary {
+  width: max-content;
+  color: #0369a1;
+  font-size: 0.85rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.teacher-planning-record-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(200px, 1fr));
+  gap: 8px;
+  min-width: 440px;
+  padding: 10px 0 3px;
+}
+
+.teacher-planning-record-detail-grid section {
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid #e2e8f0;
+  border-radius: 9px;
+  background: #fbfdff;
+}
+
+.teacher-planning-record-detail-grid h5 {
+  margin: 0 0 5px;
+  color: #334155;
+  font-size: 0.8rem;
+}
+
+.teacher-planning-record-detail-grid p {
+  margin: 0 !important;
+  color: #475569;
+  font-size: 0.84rem;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.teacher-planning-record-actions {
+  display: flex;
+  justify-content: flex-start;
+  flex-wrap: wrap;
+  gap: 5px;
+  min-width: 175px;
+}
+
+.teacher-planning-list-state,
+.teacher-planning-list-empty {
+  display: grid;
+  justify-items: center;
+  gap: 9px;
+  padding: 30px 18px;
+  border: 1px dashed #cbd5e1;
+  border-radius: 12px;
+  background: #f8fafc;
+  color: #64748b;
+  text-align: center;
+}
+
+.teacher-planning-list-state {
+  display: flex;
+  justify-content: center;
+}
+
+.teacher-planning-list-state.error {
+  border-color: #fecaca;
+  background: #fef2f2;
+  color: #b91c1c;
+}
+
+.teacher-planning-list-empty strong {
+  color: #1e293b;
+  font-size: 1rem;
+}
+
+.teacher-planning-list-empty > span {
+  max-width: 440px;
+  line-height: 1.45;
+}
+
+.teacher-planning-header p,
+.teacher-planning-record p {
+  margin: 0.4rem 0;
+}
+
+.teacher-planning-form {
+  max-width: none !important;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
+  gap: 14px;
+  padding: 18px;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  background: #f8fafc;
+}
+
+.teacher-planning-form label {
+  display: grid;
+  gap: 6px;
+  color: #334155;
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.teacher-planning-form input,
+.teacher-planning-form select,
+.teacher-planning-form textarea {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  background: #fff;
+  color: #0f172a;
+  font: inherit;
+}
+
+.teacher-planning-form textarea {
+  min-height: 86px;
+  resize: vertical;
+}
+
+.teacher-planning-form .wide {
+  grid-column: 1 / -1;
+}
+
+.teacher-planning-form-actions {
+  justify-content: flex-start;
+}
+
+.teacher-planning-curriculum-context {
+  padding: 12px 14px;
+  border: 1px solid #bae6fd;
+  border-radius: 10px;
+  background: #f0f9ff;
+  color: #334155;
+}
+
+.teacher-planning-curriculum-context p {
+  margin: 8px 0;
+  white-space: pre-line;
+  line-height: 1.5;
+}
+
+.teacher-planning-curriculum-context a {
+  color: #0369a1;
+  font-weight: 600;
+}
+
+.teacher-planning-linked-badge {
+  display: inline-block;
+  margin-top: 3px;
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: #e0f2fe;
+  color: #075985;
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+
+.teacher-planning-status {
+  min-height: 1.3em;
+  margin: 12px 0;
+  color: #475569;
+}
+
+.teacher-planning-status.error {
+  color: #b91c1c;
+}
+
+.teacher-planning-records {
+  display: grid;
+  gap: 12px;
+}
+
+.teacher-planning-record {
+  display: grid;
+  gap: 6px;
+  padding: 16px;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  background: #fff;
+}
+
+.teacher-planning-record-heading {
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+
+.teacher-planning-record-heading span,
+.teacher-planning-empty {
+  color: #64748b;
+}
+
+.teacher-planning-record-actions {
+  justify-content: flex-start;
+  margin: 0;
+}
+
+@media (max-width: 600px) {
+  .teacher-planning-header {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .teacher-planning-tabs {
+    gap: 5px;
+  }
+
+  .teacher-planning-tab {
+    flex: 1;
+    padding: 10px 8px;
+    font-size: 0.82rem;
+  }
+
+  .teacher-planning-form {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 10px;
+    padding: 10px;
+  }
+
+  .teacher-planning-form-section {
+    padding: 13px;
+  }
+
+  .teacher-planning-field-grid,
+  .teacher-planning-record-detail-grid {
+    grid-template-columns: minmax(0, 1fr);
+    min-width: 260px;
+    gap: 10px;
+  }
+
+  .teacher-planning-form label {
+    gap: 4px;
+    font-size: 0.76rem;
+  }
+
+  .teacher-planning-form input,
+  .teacher-planning-form select,
+  .teacher-planning-form textarea {
+    padding: 7px 6px;
+    font-size: 0.82rem;
+  }
+
+  .teacher-planning-form textarea {
+    min-height: 72px;
+  }
+
+  .teacher-planning-section-heading {
+    gap: 9px;
+    margin-bottom: 12px;
+  }
+
+  .teacher-planning-focus-toggle {
+    display: flex;
+  }
+
+  .teacher-planning-focus-toggle button {
+    flex: 1;
+    padding: 8px 6px;
+    font-size: 0.76rem;
+  }
+
+  .teacher-planning-record-actions {
+    min-width: 155px;
+  }
+
+  .teacher-planning-record-actions .btn {
+    margin: 0;
+    padding: 7px 8px;
+    font-size: 0.78rem;
+  }
+
+  .teacher-planning-form-actions {
+    flex-wrap: wrap;
+  }
+
+  .teacher-planning-form-actions > .btn {
+    flex: 1 1 100%;
+  }
+
+  .teacher-planning-or {
+    flex-basis: 100%;
+    text-align: center;
+  }
+}
+
 .materials-list th {
   background: #f8f9fa;
   font-weight: 600;

@@ -661,7 +661,9 @@ function renderSchoolInfo() {
     if (!document.getElementById("buySmsBtn")) {
       const buyBtn = document.createElement("button");
       buyBtn.id = "buySmsBtn";
-      //buyBtn.innerHTML = '<i class="fas fa-plus-circle"></i> Buy Credits';
+      buyBtn.type = "button";
+      buyBtn.innerHTML = '<i class="fas fa-mobile-alt" aria-hidden="true"></i> Buy SMS Credits';
+      buyBtn.setAttribute("aria-label", "Buy SMS credits with M-Pesa STK Push");
       buyBtn.style.cssText = "margin-left: 10px; background: #2b6cb0; color: white; border: none; padding: 4px 10px; border-radius: 15px; cursor: pointer; font-size: 0.7rem; font-weight: 700;";
       buyBtn.onclick = handleSmsTopup;
       smsBalanceBadge.appendChild(buyBtn);
@@ -777,7 +779,7 @@ setupAdminNotifications();
 
 
 /**
- * 🆕 Handle SMS Top-up via IntaSend
+ * Handle SMS top-up via Daraja STK Push
  */
 async function handleSmsTopup() {
   const modal = document.createElement("div");
@@ -787,7 +789,15 @@ async function handleSmsTopup() {
   modal.innerHTML = `
     <div class="confirm-box" style="max-width: 400px; text-align: left;">
       <h4 style="margin-bottom: 10px; text-align: center;"><i class="fas fa-sms" style="color: #2b6cb0;"></i> Buy SMS Credits</h4>
-      <p style="font-size: 0.85rem; color: #64748b; margin-bottom: 20px; text-align: center;">Top up your school's SMS balance via IntaSend (M-Pesa).</p>
+      <p style="font-size: 0.85rem; color: #64748b; margin-bottom: 20px; text-align: center;">Enter the M-Pesa number that should receive the payment prompt.</p>
+
+      <div style="margin-bottom: 15px;">
+        <label for="topupPhone" style="display: block; font-size: 0.7rem; font-weight: 800; color: #475569; margin-bottom: 5px; text-transform: uppercase;">M-Pesa phone number</label>
+        <div style="display: flex; align-items: center; border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden;">
+          <span aria-hidden="true" style="padding: 10px; background: #f8fafc; color: #475569; font-size: 1rem; font-weight: 700; border-right: 1px solid #e2e8f0;">254</span>
+          <input type="tel" id="topupPhone" inputmode="numeric" autocomplete="tel-national" placeholder="7XXXXXXXX" maxlength="9" pattern="7[0-9]{8}" aria-label="M-Pesa phone number after country code 254" required style="min-width: 0; flex: 1; padding: 10px; border: 0; font-size: 1rem; font-weight: 600;">
+        </div>
+      </div>
       
       <div style="margin-bottom: 15px;">
         <label style="display: block; font-size: 0.7rem; font-weight: 800; color: #475569; margin-bottom: 5px; text-transform: uppercase;">Amount (KES)</label>
@@ -799,7 +809,7 @@ async function handleSmsTopup() {
         <h2 id="creditPreview" style="margin: 4px 0 0; color: #0284c7; font-weight: 900; font-size: 1.75rem;">500</h2>
       </div>
 
-      <p style="font-size: 0.65rem; color: #94a3b8; text-align: center; margin-bottom: 20px;"><i class="fas fa-info-circle"></i> A small transaction fee will be added to the total at checkout.</p>
+      <p id="topupStatus" role="status" aria-live="polite" style="min-height: 1.25rem; font-size: 0.75rem; color: #475569; text-align: center; margin: 0 0 16px;"></p>
 
       <div class="confirm-buttons">
         <button id="cancelTopupBtn" class="btn secondary-btn" style="flex: 1; padding: 10px; font-weight: 700;">Cancel</button>
@@ -814,7 +824,16 @@ async function handleSmsTopup() {
   const cancelBtn = modal.querySelector("#cancelTopupBtn");
   const confirmBtn = modal.querySelector("#confirmTopupBtn");
   const amountInput = modal.querySelector("#topupAmount");
+  const phoneInput = modal.querySelector("#topupPhone");
   const creditPreview = modal.querySelector("#creditPreview");
+  const statusMessage = modal.querySelector("#topupStatus");
+
+  phoneInput.addEventListener("input", () => {
+    let digits = phoneInput.value.replace(/\D/g, "");
+    if (digits.startsWith("254")) digits = digits.slice(3);
+    else if (digits.startsWith("0")) digits = digits.slice(1);
+    phoneInput.value = digits.startsWith("7") ? digits.slice(0, 9) : "";
+  });
 
   cancelBtn.onclick = () => {
     modal.classList.remove("visible");
@@ -828,11 +847,60 @@ async function handleSmsTopup() {
     creditPreview.textContent = credits.toLocaleString();
   });
 
-  confirmBtn.onclick = async () => {
-    const amount = Number(amountInput.value);
+  let submitTopup;
+  const pollPaymentStatus = async paymentId => {
+    const deadline = Date.now() + 120000;
+    statusMessage.textContent = "STK prompt sent. Approve it on your phone to complete payment.";
+    confirmBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Waiting for approval...';
 
-    if (!amount || amount < 10) {
+    while (Date.now() < deadline) {
+      await new Promise(resolve => setTimeout(resolve, 3000));
+      const payment = await secureFetch(`${API_BASE}/stk-payments/${encodeURIComponent(paymentId)}`);
+      if (!payment) {
+        confirmBtn.disabled = false;
+        confirmBtn.textContent = "Check status";
+        return;
+      }
+
+      if (payment.status === "paid") {
+        statusMessage.textContent = `${Number(payment.smsCredits || 0).toLocaleString()} SMS credits added.`;
+        showToast("SMS top-up completed", "success");
+        confirmBtn.disabled = true;
+        confirmBtn.textContent = "Top-up complete";
+        confirmBtn.onclick = null;
+        cancelBtn.textContent = "Close";
+        await loadSchoolInfo(true);
+        return;
+      }
+
+      if (payment.status === "failed" || payment.status === "review") {
+        statusMessage.textContent = payment.status === "failed"
+          ? "The payment was not completed. You can try again."
+          : "Payment confirmation needs support review. Please do not retry yet.";
+        confirmBtn.disabled = payment.status === "review";
+        confirmBtn.textContent = payment.status === "review" ? "Under review" : "Try again";
+        if (payment.status === "failed") confirmBtn.onclick = submitTopup;
+        return;
+      }
+    }
+
+    statusMessage.textContent = "Still awaiting M-Pesa confirmation. Check the status before starting another top-up.";
+    confirmBtn.disabled = false;
+    confirmBtn.textContent = "Check status";
+    confirmBtn.onclick = () => pollPaymentStatus(paymentId);
+  };
+
+  submitTopup = async () => {
+    const amount = Number(amountInput.value);
+    const phone = `254${phoneInput.value.trim()}`;
+
+    if (!Number.isInteger(amount) || amount < 10) {
       showToast("Minimum top-up is KES 10", "error");
+      return;
+    }
+    if (!/^2547\d{8}$/.test(phone)) {
+      showToast("Enter a valid M-Pesa number: 9 digits starting with 7", "error");
+      phoneInput.focus();
       return;
     }
 
@@ -842,18 +910,22 @@ async function handleSmsTopup() {
     try {
       const res = await secureFetch(`${API_BASE}/sms-topup`, {
         method: 'POST',
-        body: JSON.stringify({ amount })
+        body: JSON.stringify({ amount, phone })
       });
 
-      if (res && res.url) {
-        window.location.href = res.url;
+      if (res?.paymentId) {
+        await pollPaymentStatus(res.paymentId);
+      } else {
+        confirmBtn.disabled = false;
+        confirmBtn.textContent = "Pay Now";
       }
     } catch (err) {
       showToast("Failed to initiate top-up", "error");
       confirmBtn.disabled = false;
-      confirmBtn.innerHTML = "Pay Now";
+      confirmBtn.textContent = "Pay Now";
     }
   };
+  confirmBtn.onclick = submitTopup;
 }
 
 async function fetchSmsHistorySummary(forceReload = false) {

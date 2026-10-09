@@ -7,9 +7,14 @@ import { Student } from "../models/RoleModels.js";
 ===================================================== */
 export const getStudents = async (req, res) => {
   try {
+    const schoolId = req.user?.schoolId;
+    if (!schoolId) {
+      return res.status(403).json({ message: "Your account is not assigned to a school." });
+    }
+
     const { grade, search, limit = 100, page = 1 } = req.query;
 
-    const query = {};
+    const query = { schoolId, role: "student" };
 
     // filter by grade
     if (grade) {

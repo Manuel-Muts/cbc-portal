@@ -358,6 +358,7 @@ export const updateSchool = async (req, res) => {
       const selectedPlan = String(req.body.plan || 'basic').toLowerCase();
       const nextPlan = ['basic', 'standard', 'premium'].includes(selectedPlan) ? selectedPlan : 'basic';
       school.plan = nextPlan;
+      school.subscriptionExpiresAt = null;
       school.planFeatures = {
         communication: nextPlan !== 'basic',
         timetable: nextPlan === 'standard' || nextPlan === 'premium',
