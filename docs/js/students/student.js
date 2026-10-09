@@ -95,6 +95,45 @@ document.addEventListener("DOMContentLoaded", async () => {
     } catch (e) { }
   };
 
+  const feeInfoEl = document.createElement('p');
+  feeInfoEl.id = 'feeInfoDashboard';
+  feeInfoEl.className = 'fee-info-banner';
+  feeInfoEl.textContent = 'Loading annual fee information...';
+  const dashboardHeader = document.querySelector(".dashboard-header");
+  if (dashboardHeader) {
+    dashboardHeader.insertBefore(feeInfoEl, dashboardHeader.querySelector(".toolbar"));
+  }
+
+  (async () => {
+    try {
+      let feeInfo = getCached("feeInfo");
+      if (!feeInfo) {
+        const feesRes = await fetch(`${API_BASE}/users/my-fees`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        if (feesRes.ok) {
+          feeInfo = await feesRes.json();
+          setCached("feeInfo", feeInfo);
+        } else if (feesRes.status === 404) {
+          feeInfoEl.textContent = 'No fee structure posted yet.';
+          return;
+        } else {
+          console.warn(`Fee information request failed with status ${feesRes.status}`);
+          feeInfoEl.textContent = 'Fee information is temporarily unavailable.';
+          return;
+        }
+      }
+
+      feeInfoEl.textContent = `Total Annual Fees (${feeInfo.grade}, ${feeInfo.academicYear}): KES ${Number(feeInfo.totalFee).toLocaleString()}`;
+      feeInfoEl.style.display = 'block';
+      console.log("✅ Fee info fetched:", feeInfo);
+    } catch (err) {
+      console.error('Error fetching fees:', err);
+      feeInfoEl.textContent = 'Unable to connect to fee information. Please try again.';
+      feeInfoEl.style.display = 'block';
+    }
+  })();
+
   // ---------------------------
   // GREETING
   // ---------------------------
@@ -144,22 +183,11 @@ document.addEventListener("DOMContentLoaded", async () => {
     console.error("Enrollment fetch error:", err);
   }
 
+const schoolNameEl = document.getElementById("schoolName");
+
 // ---------------------------
 // FETCH SCHOOL INFO
 // ---------------------------
-// Fee info element
-const feeInfoEl = document.createElement('p');
-feeInfoEl.id = 'feeInfoDashboard';
-feeInfoEl.className = 'fee-info-banner';
-const schoolNameEl = document.getElementById("schoolName");
-
-// Insert fee summary into dashboard header on the right side
-const dashboardMain = document.querySelector(".dashboard-main");
-const dashboardHeader = document.querySelector(".dashboard-header");
-if (dashboardHeader) {
-  dashboardHeader.insertBefore(feeInfoEl, dashboardHeader.querySelector(".toolbar"));
-}
-
 try {
   let school = getCached("schoolProfile_full");
   if (!school) {
@@ -385,36 +413,6 @@ const buildPremiumFeePdf = (type) => {
   doc.text(`Page 1`, pageWidth - margin, pageHeight - 42, { align: 'right' });
   return doc;
 };
-
-try {
-  let f = getCached("feeInfo");
-  if (!f) {
-    const feesRes = await fetch(`${API_BASE}/users/my-fees`, {
-      headers: { Authorization: `Bearer ${token}` }
-    });
-    if (feesRes.ok) {
-      f = await feesRes.json();
-      setCached("feeInfo", f);
-    } else if (feesRes.status === 404) {
-      feeInfoEl.textContent = 'No fee structure posted yet.';
-      feeInfoEl.style.display = 'block';
-    } else {
-      console.warn(`Fee information request failed with status ${feesRes.status}`);
-      feeInfoEl.textContent = 'Fee information is temporarily unavailable.';
-      feeInfoEl.style.display = 'block';
-    }
-  }
-
-  if (f) {
-    feeInfoEl.textContent = `Total Annual Fees (${f.grade}, ${f.academicYear}): KES ${f.totalFee}`;
-    feeInfoEl.style.display = 'block';
-    console.log("✅ Fee info fetched:", f);
-  }
-} catch (err) {
-  console.error('Error fetching fees:', err);
-  feeInfoEl.textContent = 'Unable to connect to fee information. Please try again.';
-  feeInfoEl.style.display = 'block';
-}
 
 // View fee button handler (opens modal with more details)
 const viewFeeBtn = document.getElementById('viewFeeBtn');
@@ -715,59 +713,52 @@ if (feeModal) {
   }
 }
 
+const runFeePdfDownload = async (button, loadingText, errorMessage, generatePdf) => {
+  window.spinner?.show(button, loadingText);
+
+  try {
+    // Let the browser paint the loading state before synchronous PDF generation.
+    await new Promise(resolve => setTimeout(resolve, 50));
+    const selectedYear = feeYearFilter ? feeYearFilter.value : new Date().getFullYear();
+    const pdf = generatePdf();
+    pdf.save(`${button.id === 'downloadFeeStructurePDF' ? 'fee_structure' : 'fee_statement'}_${sanitizeFilename(window.currentUser?.name || user.name || 'student')}_${selectedYear}.pdf`);
+  } catch (error) {
+    console.error(`${errorMessage} PDF generation failed:`, error);
+    alert(`Unable to generate the ${errorMessage.toLowerCase()} PDF right now.`);
+  } finally {
+    window.spinner?.hide(button);
+  }
+};
+
 // Download Fee Structure PDF
 const downloadFeeStructurePDF = document.getElementById('downloadFeeStructurePDF');
-if (downloadFeeStructurePDF) {
-  downloadFeeStructurePDF.addEventListener('click', async () => {
-    const originalHtml = downloadFeeStructurePDF.innerHTML;
-    downloadFeeStructurePDF.disabled = true;
-    downloadFeeStructurePDF.innerHTML = '<span class="spinner"></span> Processing...';
-
-    try {
-      const selectedYear = feeYearFilter ? feeYearFilter.value : new Date().getFullYear();
-      const pdf = buildPremiumFeePdf('structure');
-      pdf.save(`fee_structure_${sanitizeFilename(window.currentUser?.name || user.name || 'student')}_${selectedYear}.pdf`);
-    } catch (error) {
-      console.error('Fee structure PDF generation failed:', error);
-      alert('Unable to generate the fee structure PDF right now.');
-    } finally {
-      downloadFeeStructurePDF.disabled = false;
-      downloadFeeStructurePDF.innerHTML = originalHtml;
-    }
-  });
-}
+downloadFeeStructurePDF?.addEventListener('click', () => runFeePdfDownload(
+  downloadFeeStructurePDF,
+  'Generating fee structure PDF...',
+  'Fee structure',
+  () => buildPremiumFeePdf('structure')
+));
 
 // Download Fee Statement PDF
 const downloadFeeStatementPDF = document.getElementById('downloadFeeStatementPDF');
-if (downloadFeeStatementPDF) {
-  downloadFeeStatementPDF.addEventListener('click', async () => {
-    const originalHtml = downloadFeeStatementPDF.innerHTML;
-    downloadFeeStatementPDF.disabled = true;
-    downloadFeeStatementPDF.innerHTML = '<span class="spinner"></span> Processing...';
-
-    try {
-      const selectedYear = feeYearFilter ? feeYearFilter.value : new Date().getFullYear();
-      currentFeePdfData = {
-        ...currentFeePdfData,
-        type: 'statement',
-        generatedAt: new Date().toLocaleString(),
-        summary: {
-          totalFee: currentFeePdfData?.summary?.totalFee || 0,
-          totalPaid: currentFeePdfData?.summary?.totalPaid || 0,
-          outstanding: currentFeePdfData?.summary?.outstanding || 0
-        }
-      };
-      const pdf = buildPremiumFeePdf('statement');
-      pdf.save(`fee_statement_${sanitizeFilename(window.currentUser?.name || user.name || 'student')}_${selectedYear}.pdf`);
-    } catch (error) {
-      console.error('Fee statement PDF generation failed:', error);
-      alert('Unable to generate the fee statement PDF right now.');
-    } finally {
-      downloadFeeStatementPDF.disabled = false;
-      downloadFeeStatementPDF.innerHTML = originalHtml;
-    }
-  });
-}
+downloadFeeStatementPDF?.addEventListener('click', () => runFeePdfDownload(
+  downloadFeeStatementPDF,
+  'Generating fee statement PDF...',
+  'Fee statement',
+  () => {
+    currentFeePdfData = {
+      ...currentFeePdfData,
+      type: 'statement',
+      generatedAt: new Date().toLocaleString(),
+      summary: {
+        totalFee: currentFeePdfData?.summary?.totalFee || 0,
+        totalPaid: currentFeePdfData?.summary?.totalPaid || 0,
+        outstanding: currentFeePdfData?.summary?.outstanding || 0
+      }
+    };
+    return buildPremiumFeePdf('statement');
+  }
+));
 
   // ---------------------------
   // UTILITY FUNCTIONS

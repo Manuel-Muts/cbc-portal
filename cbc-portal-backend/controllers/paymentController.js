@@ -375,21 +375,21 @@ export const getMyFeeStructure = async (req, res) => {
 
     if (!grade) return res.status(400).json({ message: 'Student grade not available' });
 
-    // Find fee structure for the exact academic year
-    const fee = await getFinanceFeeStructure({
-      schoolId: req.user.schoolId,
-      grade,
-      academicYear: year
-    });
+    // Read the fee structure and payment note concurrently after resolving the grade.
+    const [fee, note] = await Promise.all([
+      getFinanceFeeStructure({
+        schoolId: req.user.schoolId,
+        grade,
+        academicYear: year
+      }),
+      getFinanceFeeNote({ schoolId: req.user.schoolId, academicYear: year })
+    ]);
 
     if (!fee) {
       return res.status(404).json({
         message: `No fee structure posted for ${grade} in academic year ${year}`
       });
     }
-
-    // Fetch Global Fee Note for the year
-    const note = await getFinanceFeeNote({ schoolId: req.user.schoolId, academicYear: year });
 
     res.json({ 
       grade: fee.grade, 
