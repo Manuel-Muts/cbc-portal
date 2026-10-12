@@ -17,6 +17,7 @@
 /about               /about.html               200
 /contact             /contact.html             200
 /report              /report.html              200
+/report-verification /report-verification.html 200
 /student-accounts    /student-accounts.html    200
 /home                /index.html               200
 /privacy-policy      /privacy.html              200

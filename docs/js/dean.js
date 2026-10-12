@@ -4330,6 +4330,46 @@ async function generateBulkReportCards() {
     const assessLabel = sanitizePdfText(filterAssessmentEl.options[filterAssessmentEl.selectedIndex]?.text || "Report");
     const selectedStream = sanitizePdfText(filterStreamEl?.value || "all");
     const gradeLabel = sanitizePdfText(filterGradeEl.value);
+
+    let reportQrImages;
+    try {
+      if (!window.DeanReportQrCode?.createDataUrl || !window.QRCode) {
+        throw new Error("QR code support is unavailable. Check your connection and reload the page.");
+      }
+
+      const verificationResponse = await fetchWithAuth(`${API_BASE}/reports/verification/issue`, {
+        method: "POST",
+        body: JSON.stringify({
+          reports: lastProcessedStudents.map(student => ({
+            admission: String(student.adm || "").trim(),
+            grade: filterGradeEl.value,
+            stream: student.stream || "",
+            term: termVal,
+            academicYear: Number(year),
+            assessment: assessLabel
+          }))
+        })
+      });
+      reportQrImages = new Map();
+      for (const report of verificationResponse.reports) {
+        const image = await window.DeanReportQrCode.createDataUrl(
+          window.DeanReportQrCode.verificationUrl(report.token)
+        );
+        reportQrImages.set(String(report.admission).trim(), image);
+      }
+      if (reportQrImages.size !== lastProcessedStudents.length) {
+        throw new Error("Some learner reports could not be assigned verification codes.");
+      }
+    } catch (error) {
+      console.error("Could not prepare report verification codes:", error);
+      if (btn) {
+        btn.disabled = false;
+        btn.innerHTML = originalHTML;
+      }
+      if (progressWrap) progressWrap.style.display = "none";
+      cbcUtils.showToast(error.message || "Could not prepare report verification codes.", "error");
+      return;
+    }
     
     // 🆕 Pre-map static Performance Key to avoid repeated calculations in the loop
     // 🆕 Batch fetch all class teachers for all unique grade/stream combinations
@@ -4455,6 +4495,14 @@ async function generateBulkReportCards() {
         if (schoolCode) {
           doc.setFont("helvetica", "bold").setFontSize(8).setTextColor(71, 85, 105);
           doc.text(`School code: ${schoolCode}`, 15, 10, { maxWidth: 55 });
+          doc.setTextColor(0, 0, 0).setFont("helvetica", "bold").setFontSize(schoolNameFontSize);
+        }
+
+        const qrCodeDataUrl = reportQrImages.get(String(s.adm || "").trim());
+        if (qrCodeDataUrl) {
+          doc.addImage(qrCodeDataUrl, "PNG", 15, 15, 20, 20, undefined, "FAST");
+          doc.setFont("helvetica", "normal").setFontSize(6).setTextColor(71, 85, 105);
+          doc.text("Scan to Verify", 25, 37, { align: "center" });
           doc.setTextColor(0, 0, 0).setFont("helvetica", "bold").setFontSize(schoolNameFontSize);
         }
 

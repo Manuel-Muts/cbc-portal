@@ -4,7 +4,7 @@
  * and ensure PDF generation libraries (jsPDF, html2canvas) are always available.
  */
 
-const CACHE_NAME = 'cbc-portal-v3';
+const CACHE_NAME = 'cbc-portal-v4';
 const OFFLINE_URL = '/offline.html';
 
 // URLs of external libraries to pre-cache
@@ -12,13 +12,17 @@ const EXTERNAL_LIBS = [
     'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js',
     'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js',
     'https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.28/jspdf.plugin.autotable.min.js',
+    'https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js',
     'https://cdn.jsdelivr.net/npm/chart.js',
     // Add your local critical assets here
     '/',
     '/index.html',
     '/offline.html',
     '/css/style.css',
-    '/js/config.js'
+    '/js/config.js',
+    '/report-verification.html',
+    '/js/report-verification.js',
+    '/js/dean/reportQrCode.js'
 ];
 
 self.addEventListener('install', (event) => {

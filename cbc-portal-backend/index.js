@@ -206,6 +206,7 @@ const pathMap = {
   '/': 'index.html',
   '/home': 'index.html',
   '/login': 'login.html',
+  '/report-verification': 'report-verification.html',
   '/admin': 'admin.html',
   '/super-admin': 'super-admin.html',
   '/dean': 'dean-dashboard.html',

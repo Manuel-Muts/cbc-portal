@@ -1,13 +1,19 @@
 // routes/reportsRoutes.js
 import express from "express";
 import { generateFeeStructuresPDF, generateStudentFeesPDF, getOutstandingFees, generateOutstandingFeesPDF, generateOutstandingFeesPDFFromData, getSchoolTotals, getSchoolOverviewStats, getBalanceSheet, getLearnerDemographics } from "../controllers/reportsController.js";
+import { issueReportVerifications, revokeReportVerification, verifyReport } from "../controllers/reportVerificationController.js";
 import verifyToken from "../middleware/verifyToken.js";
 import { accountsOnly } from "../middleware/roleChecks.js";
 
 const router = express.Router();
 
+router.get("/verification/:token", verifyReport);
+
 // Protect all routes
 router.use(verifyToken);
+
+router.post("/verification/issue", issueReportVerifications);
+router.post("/verification/revoke", revokeReportVerification);
 
 // Custom middleware to allow both admin and accounts staff
 const adminOrAccounts = (req, res, next) => {
