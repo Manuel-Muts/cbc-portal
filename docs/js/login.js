@@ -29,6 +29,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
   let selectedRole = "";
   let credentialStage = 0;
+  let loginInProgress = false;
 
   function updateGmailSuggestion() {
     if (!gmailSuggestion || !gmailSuggestionButton || selectedRole === "student" || selectedRole === "learner" || credentialStage !== 0) {
@@ -483,24 +484,35 @@ document.addEventListener("DOMContentLoaded", function () {
     if (token) headers["Authorization"] = `Bearer ${token}`;
 
     const url = endpoint.startsWith('/') ? config.getApiUrl(endpoint) : config.getApiUrl(`/users/${endpoint}`);
-    let res;
+    const controller = new AbortController();
+    let timedOut = false;
+    const timeoutMs = config.api.loginTimeout || config.api.timeout || 120000;
+    const timeoutId = window.setTimeout(() => {
+      timedOut = true;
+      controller.abort();
+    }, timeoutMs);
+
     try {
-      res = await config.request(url, {
+      const res = await fetch(url, {
         method,
         headers,
         body: body ? JSON.stringify(body) : null,
-        timeout: config.api.loginTimeout,
+        signal: controller.signal,
       });
+
+      const data = await res.json().catch(() => {
+        throw new Error("Invalid server response");
+      });
+      if (!res.ok) throw new Error(data.message || data.msg || "Request failed");
+      return data;
     } catch (error) {
-      if (error.name === "TimeoutError") {
-        throw new Error("Login timed out. Please check your connection and try again.");
+      if (timedOut) {
+        throw new Error(`Login timed out after ${Math.round(timeoutMs / 1000)} seconds. Please check your connection and try again.`);
       }
       throw error;
+    } finally {
+      window.clearTimeout(timeoutId);
     }
-
-    const data = await res.json().catch(() => { throw new Error("Invalid server response"); });
-    if (!res.ok) throw new Error(data.message || data.msg || "Request failed");
-    return data;
   }
 
   // ---------------------------
@@ -508,6 +520,8 @@ document.addEventListener("DOMContentLoaded", function () {
   // ---------------------------
   async function handleLogin(e) {
     e.preventDefault();
+    if (loginInProgress) return;
+
     clearLoginError();
     const selectedRole = roleSelect.value;
     if (!selectedRole) return showLoginError("Please select a role before logging in.");
@@ -543,18 +557,19 @@ document.addEventListener("DOMContentLoaded", function () {
       payload.expiresIn = config.auth.expiresInLong;
     }
     const submitBtn = loginForm.querySelector('button[type="submit"]');
+    loginInProgress = true;
+    loginForm.setAttribute("aria-busy", "true");
+
     // Visual loading state for minimal floating design: replace text with animated dots
     if (submitBtn) {
-      // Use the three-dot animation exclusively for the button.
+      submitBtn.disabled = true;
       submitBtn.classList.add('loading', 'has-dots');
       submitBtn.dataset.origText = submitBtn.textContent;
-      // hide original text and add animated login state (three dots only)
       submitBtn.textContent = "";
       const stateEl = document.createElement('span');
       stateEl.className = 'login-state';
       stateEl.innerHTML = '<span class="login-dot"></span><span class="login-dot"></span><span class="login-dot"></span>';
       submitBtn.appendChild(stateEl);
-      // Ensure any external circular spinner is hidden for this button
       window.spinner?.hide(submitBtn);
     }
 
@@ -588,25 +603,22 @@ document.addEventListener("DOMContentLoaded", function () {
       window.location.href = redirectUrl;
     } catch (err) {
       console.error(err);
-      showLoginError(err.message || "Unable to sign in. Please try again.");
-      // Reset button on error (remove loading + dot state)
-      window.spinner?.hide(submitBtn);
-      if (submitBtn) {
-        submitBtn.classList.remove('loading', 'has-dots');
-        const stateEl = submitBtn.querySelector('.login-state');
-        if (stateEl) stateEl.remove();
-        if (submitBtn.dataset.origText) { submitBtn.textContent = submitBtn.dataset.origText; delete submitBtn.dataset.origText; }
-      }
+      const loginErrorMessage = err.name === "TypeError"
+        ? "Could not connect to the server. Check your internet connection or try again shortly."
+        : err.message || "Unable to sign in. Please try again.";
+      showLoginError(loginErrorMessage);
     }
     finally {
-      // Ensure spinner and dot state are hidden in all cases (redirect may navigate away)
       window.spinner?.hide(submitBtn);
       if (submitBtn) {
         submitBtn.classList.remove('loading', 'has-dots');
         const stateEl = submitBtn.querySelector('.login-state');
         if (stateEl) stateEl.remove();
         if (submitBtn.dataset.origText) { submitBtn.textContent = submitBtn.dataset.origText; delete submitBtn.dataset.origText; }
+        submitBtn.disabled = false;
       }
+      loginForm.removeAttribute("aria-busy");
+      loginInProgress = false;
     }
   }
 

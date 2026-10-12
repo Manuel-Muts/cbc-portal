@@ -4,7 +4,7 @@
  * and ensure PDF generation libraries (jsPDF, html2canvas) are always available.
  */
 
-const CACHE_NAME = 'cbc-portal-v2';
+const CACHE_NAME = 'cbc-portal-v3';
 const OFFLINE_URL = '/offline.html';
 
 // URLs of external libraries to pre-cache
@@ -27,7 +27,13 @@ self.addEventListener('install', (event) => {
         caches.open(CACHE_NAME)
             .then((cache) => {
                 console.log('📦 Pre-caching critical assets...');
-                return cache.addAll(EXTERNAL_LIBS);
+                return Promise.all(EXTERNAL_LIBS.map(async (assetUrl) => {
+                    try {
+                        await cache.add(assetUrl);
+                    } catch (error) {
+                        console.warn(`Could not pre-cache ${assetUrl}; it will be requested from the network when needed.`, error);
+                    }
+                }));
             })
     );
 });
@@ -63,6 +69,12 @@ async function getOfflineFallback() {
 
 self.addEventListener('fetch', (event) => {
     const { request } = event;
+    const requestUrl = new URL(request.url);
+
+    // API requests must go straight to the network; they are never static cache entries.
+    if (requestUrl.pathname.startsWith('/api/') || request.method !== 'GET') {
+        return;
+    }
 
     if (request.mode === 'navigate' || request.destination === 'document') {
         event.respondWith((async () => {
@@ -79,7 +91,10 @@ self.addEventListener('fetch', (event) => {
     event.respondWith(
         caches.match(request).then((cachedResponse) => {
             if (cachedResponse) return cachedResponse;
-            return fetch(request).catch(() => null);
+            return fetch(request).catch(() => new Response('', {
+                status: 503,
+                statusText: 'Service Unavailable'
+            }));
         })
     );
 });
