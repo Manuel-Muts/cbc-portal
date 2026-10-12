@@ -100,7 +100,8 @@ const environmentConfigs = {
   development: {
     api: {
       baseURL: LOCAL_API_BASE_URL,
-      timeout: 30000,
+      timeout: 60000,
+      loginTimeout: 120000,
       version: 'v1',
       announcements: '/announcements/active'
     },
@@ -120,7 +121,8 @@ const environmentConfigs = {
   production: {
     api: {
       baseURL: PROD_API_BASE_URL,
-      timeout: 30000,
+      timeout: 60000,
+      loginTimeout: 120000,
       version: 'v1',
       announcements: '/announcements/active'
     },
@@ -195,6 +197,38 @@ const config = {
       return endpoint; // Return full URL as-is
     }
     return endpoint ? `${baseURL}${endpoint}` : baseURL;
+  },
+
+  async request(url, options = {}) {
+    const { timeout = this.api.timeout, signal, ...fetchOptions } = options;
+    const controller = new AbortController();
+    let timedOut = false;
+    const abortFromCaller = () => controller.abort(signal.reason);
+
+    if (signal?.aborted) {
+      controller.abort(signal.reason);
+    } else {
+      signal?.addEventListener('abort', abortFromCaller, { once: true });
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      timedOut = true;
+      controller.abort();
+    }, timeout);
+
+    try {
+      return await fetch(url, { ...fetchOptions, signal: controller.signal });
+    } catch (error) {
+      if (timedOut) {
+        const timeoutError = new Error(`Request timed out after ${timeout / 1000} seconds.`);
+        timeoutError.name = 'TimeoutError';
+        throw timeoutError;
+      }
+      throw error;
+    } finally {
+      window.clearTimeout(timeoutId);
+      signal?.removeEventListener('abort', abortFromCaller);
+    }
   },
 
   // ===========================

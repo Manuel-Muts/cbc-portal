@@ -483,11 +483,20 @@ document.addEventListener("DOMContentLoaded", function () {
     if (token) headers["Authorization"] = `Bearer ${token}`;
 
     const url = endpoint.startsWith('/') ? config.getApiUrl(endpoint) : config.getApiUrl(`/users/${endpoint}`);
-    const res = await fetch(url, {
-      method,
-      headers,
-      body: body ? JSON.stringify(body) : null,
-    });
+    let res;
+    try {
+      res = await config.request(url, {
+        method,
+        headers,
+        body: body ? JSON.stringify(body) : null,
+        timeout: config.api.loginTimeout,
+      });
+    } catch (error) {
+      if (error.name === "TimeoutError") {
+        throw new Error("Login timed out. Please check your connection and try again.");
+      }
+      throw error;
+    }
 
     const data = await res.json().catch(() => { throw new Error("Invalid server response"); });
     if (!res.ok) throw new Error(data.message || data.msg || "Request failed");
