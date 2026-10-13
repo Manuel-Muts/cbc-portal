@@ -262,7 +262,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const navOverlay = document.getElementById("teacherNavOverlay");
     let submittedMarksLoading = false;
 
-    const closeMobileNav = () => {
+    const closeNav = () => {
       nav?.classList.remove("nav-open");
       navToggle?.setAttribute("aria-expanded", "false");
       navToggle?.setAttribute("aria-label", "Open dashboard navigation");
@@ -275,7 +275,7 @@ document.addEventListener("DOMContentLoaded", () => {
       navToggle.setAttribute("aria-label", isOpen ? "Close dashboard navigation" : "Open dashboard navigation");
       navOverlay?.setAttribute("aria-hidden", String(!isOpen));
     });
-    navOverlay?.addEventListener("click", closeMobileNav);
+    navOverlay?.addEventListener("click", closeNav);
 
     // 🆕 Lazy load submitted marks when tab is clicked
     const loadSubmittedMarksOnce = async () => {
@@ -312,7 +312,7 @@ document.addEventListener("DOMContentLoaded", () => {
     subnavBtns.forEach(btn => {
       btn.addEventListener("click", () => {
         activateTab(btn);
-        closeMobileNav();
+        closeNav();
       });
     });
 
@@ -321,7 +321,7 @@ document.addEventListener("DOMContentLoaded", () => {
         const targetButton = document.querySelector(`.subnav-btn[data-tab="${action.dataset.tabTarget}"]`);
         if (targetButton) {
           activateTab(targetButton);
-          closeMobileNav();
+          closeNav();
         }
       });
     });

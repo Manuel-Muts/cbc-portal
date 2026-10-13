@@ -91,6 +91,29 @@
     box-shadow: inset 4px 0 0 #fff;
 }
 
+.dean-menu .menu-section-label {
+    display: block;
+    margin: 14px 0 2px;
+    padding: 7px 15px 3px;
+    border-radius: 0;
+    color: rgba(255, 255, 255, 0.68);
+    cursor: default;
+    font-size: 0.64rem;
+    font-weight: 800;
+    letter-spacing: 0.12em;
+    line-height: 1.2;
+    text-transform: uppercase;
+}
+
+.dean-menu .menu-section-label:first-child {
+    margin-top: 0;
+}
+
+.dean-menu .menu-section-label:hover {
+    background: transparent !important;
+    color: rgba(255, 255, 255, 0.68) !important;
+}
+
 /* Bottom Actions */
 .sidebar-actions {
     padding: 20px;

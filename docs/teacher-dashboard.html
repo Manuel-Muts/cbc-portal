@@ -89,16 +89,34 @@
       <span>Menu</span>
     </button>
     <div class="subnav-left" id="teacherNavLinks">
-      <button class="subnav-btn active" data-tab="teacherOverview">▦ Overview</button>
-      <button class="subnav-btn" data-tab="enterMarks">📊 Enter Marks</button>
-      <button class="subnav-btn" data-tab="submittedMarks">📋 Submitted Marks</button>
-      <button class="subnav-btn" data-tab="myClass" id="myClassTabBtn" style="display:none;">🏫 My Class</button>
-      <button class="subnav-btn" data-tab="studyMaterials">📚  Materials</button>
-      <button class="subnav-btn" data-tab="schemesOfWork">📘 Schemes of Work</button>
-      <button class="subnav-btn" data-tab="lessonPlans">📝 Lesson Plans</button>
-      <button class="subnav-btn" data-tab="digitalSignature">🖊️ Signature</button>
-      <button class="subnav-btn" data-tab="teacherSettings">⚙️ Settings</button>
-      <a href="/dean" id="deanDashboardBtn" class="subnav-btn dean-btn" style="display:none;">🎓 DEAN</a>
+      <div class="subnav-group dashboard-group">
+        <span class="subnav-group-label">Dashboard</span>
+        <button class="subnav-btn active" data-tab="teacherOverview">▦ Overview</button>
+      </div>
+
+      <div class="subnav-group academic-group">
+        <span class="subnav-group-label">Academics</span>
+        <button class="subnav-btn" data-tab="enterMarks">📊 Enter Marks</button>
+        <button class="subnav-btn" data-tab="submittedMarks">📋 Submitted Marks</button>
+        <button class="subnav-btn" data-tab="myClass" id="myClassTabBtn" style="display:none;">🏫 My Class</button>
+      </div>
+
+      <div class="subnav-group resources-group">
+        <span class="subnav-group-label">Resources</span>
+        <button class="subnav-btn" data-tab="studyMaterials">📚 Materials</button>
+        <button class="subnav-btn" data-tab="schemesOfWork">📘 Schemes of Work</button>
+        <button class="subnav-btn" data-tab="lessonPlans">📝 Lesson Plans</button>
+      </div>
+
+      <div class="subnav-group account-group">
+        <span class="subnav-group-label">Account</span>
+        <button class="subnav-btn" data-tab="digitalSignature">🖊️ Signature</button>
+        <button class="subnav-btn" data-tab="teacherSettings">⚙️ Settings</button>
+      </div>
+
+      <div class="subnav-group dean-group">
+        <a href="/dean" id="deanDashboardBtn" class="subnav-btn dean-btn" style="display:none;">🎓 DEAN</a>
+      </div>
     </div>
     <div class="teacher-nav-overlay" id="teacherNavOverlay" aria-hidden="true"></div>
   </nav>
@@ -410,11 +428,48 @@
     </div>
 
     <div id="teacherSettings" class="tab-pane">
-      <section class="materials-section">
-        <div class="material-card">
-          <h3>⚙️ Teacher Settings</h3>
-          <p>Settings will be available here soon.</p>
+      <section class="teacher-settings-page" aria-labelledby="teacherSettingsTitle">
+        <header class="teacher-settings-heading">
+          <span class="teacher-settings-heading-icon" aria-hidden="true">⚙️</span>
+          <div>
+            <p class="teacher-settings-eyebrow">PERSONALIZE YOUR WORKSPACE</p>
+            <h2 id="teacherSettingsTitle">Display preferences</h2>
+            <p>Adjust how the teacher dashboard looks and moves on this device.</p>
+          </div>
+        </header>
+
+        <div class="teacher-settings-grid">
+          <fieldset class="teacher-setting-card">
+            <legend><span aria-hidden="true">Aa</span> Text size</legend>
+            <p>Choose a comfortable reading size for the dashboard.</p>
+            <div class="teacher-setting-options">
+              <label><input type="radio" name="teacherTextSize" value="small"><span class="setting-option-name small-text">Small</span></label>
+              <label><input type="radio" name="teacherTextSize" value="medium"><span class="setting-option-name">Medium</span></label>
+              <label><input type="radio" name="teacherTextSize" value="large"><span class="setting-option-name large-text">Larger</span></label>
+            </div>
+          </fieldset>
+
+          <fieldset class="teacher-setting-card">
+            <legend><span aria-hidden="true">▤</span> Layout density</legend>
+            <p>Choose more breathing room or fit more information on screen.</p>
+            <div class="teacher-setting-options">
+              <label><input type="radio" name="teacherLayoutDensity" value="comfortable"><span class="setting-option-name">Comfortable</span></label>
+              <label><input type="radio" name="teacherLayoutDensity" value="compact"><span class="setting-option-name">Compact</span></label>
+            </div>
+          </fieldset>
+
+          <fieldset class="teacher-setting-card teacher-motion-card">
+            <legend><span aria-hidden="true">◌</span> Motion</legend>
+            <label class="teacher-motion-toggle" for="teacherReducedMotion">
+              <span>
+                <strong>Reduce animations</strong>
+                <small>Tone down transitions and movement across the dashboard.</small>
+              </span>
+              <input id="teacherReducedMotion" type="checkbox" name="teacherReducedMotion">
+            </label>
+          </fieldset>
         </div>
+        <p id="teacherSettingsStatus" class="teacher-settings-status" role="status" aria-live="polite"></p>
       </section>
     </div>
   </main>
@@ -431,6 +486,7 @@
   <script src="js/ui.js"></script>
   <script src="js/Utility/subject-data.js"></script>
   <script src="js/teacher/learner-enrollment.js"></script>
+  <script src="js/teacher/teacher-settings.js"></script>
   <script src="js/teacher/teachers.js"></script>
   <script src="js/classteacher/analysis.js"></script>
   <script type="module" src="js/teacher/schemes-of-work.js"></script>

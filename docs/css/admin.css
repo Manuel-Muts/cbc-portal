@@ -208,6 +208,30 @@ body {
   color: #ecf0f1;
 }
 
+.admin-menu .menu-section-label {
+  margin: 12px 0 0;
+  padding: 8px 12px 3px;
+  border: 0;
+  border-radius: 0;
+  color: rgba(226, 232, 240, 0.68);
+  cursor: default;
+  font-size: 0.64rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  line-height: 1.2;
+  text-transform: uppercase;
+}
+
+.admin-menu .menu-section-label:first-child {
+  margin-top: 0;
+}
+
+.admin-menu .menu-section-label:hover {
+  border-left-color: transparent;
+  background: transparent;
+  color: rgba(226, 232, 240, 0.68);
+}
+
 .sidebar-compact {
   width: 230px;
   padding: 16px 12px;

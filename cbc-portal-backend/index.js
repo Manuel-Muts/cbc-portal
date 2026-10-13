@@ -177,12 +177,13 @@ app.use("/api", schoolRoutes);
 // Mount before superAdminRoutes, whose router-level auth middleware protects every /api request.
 app.use('/api/stk-payments', stkPaymentRoutes);
 app.use('/api/teacher-planning', teacherPlanningRoutes);
+// Mount before superAdminRoutes so the public verification GET route stays unauthenticated.
+app.use("/api/reports", reportsRoutes);
 app.use('/api', superAdminRoutes);
 app.use("/api/promotions", promotionRoutes);
 app.use("/api/enrollments", enrollmentRoutes);
 app.use("/api/accounts", accountsRoutes);
 app.use("/api/payments", paymentRoutes); // Use paymentRoutes
-app.use("/api/reports", reportsRoutes); 
 app.use('/api/expenses', expenseRoutes); // 🆕
 app.use('/api/settings', settingsRoutes); // New route
 app.use('/api/timetables', timetableRoutes); 
