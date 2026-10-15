@@ -1339,7 +1339,10 @@ function attachAdminSignatureControls() {
   });
 
   removeButton.addEventListener("click", async () => {
-    const confirmed = await window.cbcUtils.showConfirmToast("Remove the official headteacher/principal signature?");
+    const confirmationMessage = "Remove the official headteacher/principal signature?";
+    const confirmed = typeof window.cbcUtils?.showConfirmToast === "function"
+      ? await window.cbcUtils.showConfirmToast(confirmationMessage)
+      : window.confirm(confirmationMessage);
     if (!confirmed) return;
 
     removeButton.disabled = true;
