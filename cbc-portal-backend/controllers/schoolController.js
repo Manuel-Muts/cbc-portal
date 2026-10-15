@@ -1,6 +1,7 @@
 //schoolController.js
 import { School } from '../models/school.js';
 import cache from "../utils/cacheManager.js";
+import { cloudinary } from '../utils/cloudinary.js';
 import { shouldBypassSchoolProfileCache } from '../utils/smsBalance.js';
 import { getPlanFeatures } from '../utils/planAccess.js';
 
@@ -173,7 +174,7 @@ export const updateSchoolPaybill = async (req, res) => {
 // ---------------------------
 export const updateSchoolSignature = async (req, res) => {
   try {
-    const { signatureUrl } = req.body;
+    const { signatureUrl, signaturePublicId } = req.body;
     const schoolId = req.user.schoolId;
 
     if (!schoolId) {
@@ -184,10 +185,17 @@ export const updateSchoolSignature = async (req, res) => {
       return res.status(400).json({ msg: "Signature URL is required" });
     }
 
+    const currentSchool = await School.findById(schoolId).select("headteacherSignaturePublicId");
+    if (!currentSchool) {
+      return res.status(404).json({ msg: "School not found" });
+    }
+    const previousPublicId = currentSchool.headteacherSignaturePublicId;
+
     const school = await School.findByIdAndUpdate(
       schoolId,
       {
-        headteacherSignatureUrl: signatureUrl
+        headteacherSignatureUrl: signatureUrl,
+        headteacherSignaturePublicId: signaturePublicId || ""
       },
       { new: true }
     ).select("headteacherSignatureUrl");
@@ -196,16 +204,61 @@ export const updateSchoolSignature = async (req, res) => {
       return res.status(404).json({ msg: "School not found" });
     }
 
+    let cleanupWarning = "";
+    if (previousPublicId && previousPublicId !== signaturePublicId) {
+      try {
+        const result = await cloudinary.uploader.destroy(previousPublicId);
+        if (!["ok", "not found"].includes(result.result)) {
+          throw new Error(`Cloudinary returned ${result.result}`);
+        }
+      } catch (cleanupError) {
+        console.error("Previous School Signature Cleanup Error:", cleanupError);
+        cleanupWarning = "The signature was updated, but the previous image could not be deleted.";
+      }
+    }
+
     // Invalidate cache for this school profile
     cache.clearByPattern(`school_profile_${schoolId}`);
 
     res.json({
-      msg: "Official signature updated successfully",
-      headteacherSignatureUrl: school.headteacherSignatureUrl
+      msg: cleanupWarning || "Official signature updated successfully",
+      headteacherSignatureUrl: school.headteacherSignatureUrl,
+      cleanupWarning: Boolean(cleanupWarning)
     });
   } catch (err) {
     console.error("Update School Signature Error:", err);
     res.status(500).json({ msg: "Failed to update signature" });
+  }
+};
+
+export const removeSchoolSignature = async (req, res) => {
+  try {
+    const schoolId = req.user.schoolId;
+    if (!schoolId) {
+      return res.status(400).json({ msg: "No school assigned" });
+    }
+
+    const school = await School.findById(schoolId);
+    if (!school) {
+      return res.status(404).json({ msg: "School not found" });
+    }
+
+    if (school.headteacherSignaturePublicId) {
+      const result = await cloudinary.uploader.destroy(school.headteacherSignaturePublicId);
+      if (!["ok", "not found"].includes(result.result)) {
+        throw new Error(`Cloudinary could not remove the signature (${result.result})`);
+      }
+    }
+
+    school.headteacherSignatureUrl = "";
+    school.headteacherSignaturePublicId = "";
+    await school.save();
+
+    cache.clearByPattern(`school_profile_${schoolId}`);
+    res.json({ msg: "Official signature removed successfully" });
+  } catch (err) {
+    console.error("Remove School Signature Error:", err);
+    res.status(500).json({ msg: "Failed to remove signature" });
   }
 };
 

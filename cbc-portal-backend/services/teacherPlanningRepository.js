@@ -6,9 +6,10 @@ const ENTITIES = {
     table: 'teacher_schemes_of_work',
     columns: [
       'academic_year', 'term', 'grade', 'subject', 'week_number', 'strand',
-      'sub_strand', 'learning_outcomes', 'learning_experiences', 'resources', 'assessment'
+      'sub_strand', 'learning_outcomes', 'learning_experiences', 'resources', 'assessment',
+      'scheme_type', 'weeks_in_term', 'break_weeks', 'weekly_plan', 'curriculum_sources'
     ],
-    orderBy: 'academic_year DESC, term, grade, subject, week_number, updated_at DESC'
+    orderBy: 'academic_year DESC, term, grade, subject, week_number NULLS FIRST, updated_at DESC'
   },
   lessons: {
     table: 'teacher_lesson_plans',
@@ -38,6 +39,11 @@ const toRecord = (row) => {
     grade: row.grade,
     subject: row.subject,
     ...(row.week_number !== undefined ? { weekNumber: row.week_number } : {}),
+    ...(row.scheme_type !== undefined ? { schemeType: row.scheme_type } : {}),
+    ...(row.weeks_in_term !== undefined ? { weeksInTerm: row.weeks_in_term } : {}),
+    ...(row.break_weeks !== undefined ? { breakWeeks: row.break_weeks } : {}),
+    ...(row.weekly_plan !== undefined ? { weeklyPlan: row.weekly_plan } : {}),
+    ...(row.curriculum_sources !== undefined ? { curriculumSources: row.curriculum_sources } : {}),
     ...(row.lesson_number !== undefined ? { lessonNumber: row.lesson_number } : {}),
     ...(row.scheme_id !== undefined ? { schemeId: row.scheme_id } : {}),
     ...(row.lesson_date !== undefined ? {
@@ -65,6 +71,13 @@ const toColumnValue = (column, record) => {
     grade: record.grade,
     subject: record.subject,
     week_number: record.weekNumber,
+    scheme_type: record.schemeType,
+    weeks_in_term: record.weeksInTerm,
+    break_weeks: JSON.stringify(record.breakWeeks ?? []),
+    weekly_plan: record.weeklyPlan === null || record.weeklyPlan === undefined
+      ? null
+      : JSON.stringify(record.weeklyPlan),
+    curriculum_sources: JSON.stringify(record.curriculumSources ?? []),
     lesson_number: record.lessonNumber,
     scheme_id: record.schemeId || null,
     lesson_date: record.lessonDate || null,

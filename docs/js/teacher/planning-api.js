@@ -344,11 +344,13 @@ export const generatePlanningDraft = selections => requestPlanningApi('/generate
   body: JSON.stringify(selections)
 });
 
-export const generateLessonDraftsFromScheme = (schemeId, lessonsPerWeek) => requestPlanningApi(
+export const generateLessonDraftsFromScheme = (schemeId, weekNumber) => requestPlanningApi(
   `/schemes/${encodeURIComponent(schemeId)}/lesson-drafts`,
   {
     method: 'POST',
-    body: JSON.stringify({ lessonsPerWeek })
+    body: JSON.stringify({
+      ...(weekNumber ? { weekNumber } : {})
+    })
   }
 );
 

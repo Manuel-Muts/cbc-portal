@@ -648,63 +648,229 @@ document.addEventListener("DOMContentLoaded", () => {
     const sigHtml = `
       <div id="signatureUploadContainer" class="signature-card">
         <p class="helper-text">DIGITAL SIGNATURE</p>
-        <div id="signaturePreview" class="sig-preview-box">
-          ${user.signatureUrl ? 
-            `<img src="${user.signatureUrl}" style="max-height: 225px;">` : 
-            `<span style="font-size: 0.59rem; color: #a0aec0; font-style: italic;">No signature set</span>`
-          }
+        <div id="signaturePreview" class="sig-preview-box" aria-live="polite"></div>
+        <div id="signatureSavedActions" class="signature-saved-actions" ${user.signatureUrl ? "" : "hidden"}>
+          <button type="button" id="updateSignature" class="btn secondary-btn" ${user.signatureUrl ? "" : "hidden"}>
+            Update signature
+          </button>
+          <button type="button" id="removeSignature" class="btn secondary-btn signature-remove-button" ${user.signatureUrl ? "" : "hidden"}>
+            Remove signature
+          </button>
         </div>
-        
-        <input type="file" id="signatureUploadInput" accept="image/*" style="display:none">
-        <button type="button" id="triggerSignatureUpload" class="btn secondary-btn" style="padding: 3px 10px; font-size: 0.55rem;">
-          ${user.signatureUrl ? 'Change Signature' : 'Upload Signature'}
-        </button>
+        <div id="signatureMethodOptions" class="signature-mode-switch" role="group" aria-label="Choose signature method" ${user.signatureUrl ? "hidden" : ""}>
+          <button type="button" class="btn secondary-btn active" data-signature-mode="upload" aria-pressed="true">Upload signature</button>
+          <button type="button" class="btn secondary-btn" data-signature-mode="draw" aria-pressed="false">Draw signature</button>
+        </div>
+        <input type="file" id="signatureUploadInput" accept="image/png,image/jpeg" hidden>
+        <div id="signatureDrawPanel" class="signature-mode-panel" hidden>
+          <canvas id="signatureCanvas" class="signature-canvas" width="1000" height="250" aria-label="Draw your signature here"></canvas>
+          <div class="signature-draw-actions">
+            <button type="button" id="clearSignatureDrawing" class="btn secondary-btn">Clear</button>
+            <button type="button" id="saveSignatureDrawing" class="btn primary-btn" disabled>Save signature</button>
+          </div>
+          <p class="signature-help-text">Use your mouse, finger, or stylus to sign above.</p>
+        </div>
       </div>
     `;
     container.insertAdjacentHTML('beforeend', sigHtml);
 
+    const preview = document.getElementById("signaturePreview");
+    const updatePreview = (signatureUrl) => {
+      preview.replaceChildren();
+      if (!signatureUrl) {
+        preview.hidden = true;
+        return;
+      }
 
-    // Add listener for the button to trigger input click (Fixes CSP script-src-attr violation)
-    document.getElementById('triggerSignatureUpload')?.addEventListener('click', () => {
-        document.getElementById('signatureUploadInput')?.click();
+      const image = document.createElement("img");
+      image.src = signatureUrl;
+      image.alt = "Saved digital signature";
+      preview.appendChild(image);
+      preview.hidden = false;
+    };
+
+    const updateSignatureButton = document.getElementById("updateSignature");
+    const removeSignatureButton = document.getElementById("removeSignature");
+    const savedActions = document.getElementById("signatureSavedActions");
+    const methodOptions = document.getElementById("signatureMethodOptions");
+    const setSavedSignatureState = (signatureUrl) => {
+      const hasSavedSignature = Boolean(signatureUrl);
+      updateSignatureButton.hidden = !hasSavedSignature;
+      removeSignatureButton.hidden = !hasSavedSignature;
+      savedActions.hidden = !hasSavedSignature;
+      methodOptions.hidden = hasSavedSignature;
+      drawPanel.hidden = true;
+      context.clearRect(0, 0, canvas.width, canvas.height);
+      hasDrawing = false;
+      saveDrawingButton.disabled = true;
+    };
+    updatePreview(user.signatureUrl);
+
+    const uploadInput = document.getElementById("signatureUploadInput");
+    const drawPanel = document.getElementById("signatureDrawPanel");
+    const modeButtons = document.querySelectorAll("[data-signature-mode]");
+    modeButtons.forEach((button) => {
+      button.addEventListener("click", () => {
+        const drawMode = button.dataset.signatureMode === "draw";
+        drawPanel.hidden = !drawMode;
+        modeButtons.forEach((modeButton) => {
+          const isActive = modeButton === button;
+          modeButton.classList.toggle("active", isActive);
+          modeButton.setAttribute("aria-pressed", String(isActive));
+        });
+        if (!drawMode) uploadInput.click();
+      });
     });
 
-    document.getElementById('signatureUploadInput')?.addEventListener('change', async (e) => {
-        const file = e.target.files[0];
-        const token = authService.getToken();
+    updateSignatureButton?.addEventListener("click", () => {
+      savedActions.hidden = true;
+      methodOptions.hidden = false;
+      drawPanel.hidden = true;
+    });
+
+    const saveSignatureFile = async (file, source) => {
+      if (!file) return;
+
+      if (!["image/png", "image/jpeg"].includes(file.type)) {
+        showToast("Choose a PNG or JPEG signature image", "error");
+        return;
+      }
+      if (file.size > 2 * 1024 * 1024) {
+        showToast("Signature image must be under 2MB", "error");
+        return;
+      }
+
+      const saveButton = document.getElementById("saveSignatureDrawing");
+      if (source === "drawing" && saveButton) saveButton.disabled = true;
+      showToast("Uploading signature...", "info");
+
+      const formData = new FormData();
+      formData.append("file", file);
+
+      try {
+        const uploadResponse = await fetchWithAuth(`${API_BASE}/materials/upload-raw`, {
+          method: "POST",
+          body: formData
+        });
+        const uploadedFile = await uploadResponse.json();
+        const profileResponse = await fetchWithAuth(`${API_BASE}/users/profile/signature`, {
+          method: "PUT",
+          body: JSON.stringify({
+            signatureUrl: uploadedFile.url,
+            signaturePublicId: uploadedFile.public_id
+          })
+        });
+        await profileResponse.json();
+
+        localStorage.removeItem("user_profile_cache");
+        updatePreview(uploadedFile.url);
+        setSavedSignatureState(uploadedFile.url);
+        showToast("✅ Signature updated successfully!", "success");
+      } catch (err) {
+        showToast(err.message, "error");
+      } finally {
+        if (source === "drawing" && saveButton) saveButton.disabled = false;
+      }
+    };
+
+    document.getElementById('signatureUploadInput')?.addEventListener('change', async (event) => {
+        const file = event.target.files[0];
         if (!file) return;
 
-        if (file.size > 2 * 1024 * 1024) {
-            return showToast("Signature image must be under 2MB", "error");
+        await saveSignatureFile(file, "upload");
+        event.target.value = "";
+    });
+
+    const canvas = document.getElementById("signatureCanvas");
+    const context = canvas.getContext("2d");
+    const saveDrawingButton = document.getElementById("saveSignatureDrawing");
+    let drawing = false;
+    let hasDrawing = false;
+
+    context.strokeStyle = "#111827";
+    context.lineWidth = 5;
+    context.lineCap = "round";
+    context.lineJoin = "round";
+
+    const getCanvasPoint = (event) => {
+      const bounds = canvas.getBoundingClientRect();
+      return {
+        x: ((event.clientX - bounds.left) / bounds.width) * canvas.width,
+        y: ((event.clientY - bounds.top) / bounds.height) * canvas.height
+      };
+    };
+
+    canvas.addEventListener("pointerdown", (event) => {
+      if (event.button !== 0) return;
+      event.preventDefault();
+      drawing = true;
+      canvas.setPointerCapture(event.pointerId);
+      const point = getCanvasPoint(event);
+      context.beginPath();
+      context.moveTo(point.x, point.y);
+      context.lineTo(point.x + 0.1, point.y + 0.1);
+      context.stroke();
+      hasDrawing = true;
+      saveDrawingButton.disabled = false;
+    });
+
+    canvas.addEventListener("pointermove", (event) => {
+      if (!drawing) return;
+      event.preventDefault();
+      const point = getCanvasPoint(event);
+      context.lineTo(point.x, point.y);
+      context.stroke();
+    });
+
+    const stopDrawing = () => {
+      drawing = false;
+      context.closePath();
+    };
+    canvas.addEventListener("pointerup", stopDrawing);
+    canvas.addEventListener("pointercancel", stopDrawing);
+    canvas.addEventListener("lostpointercapture", stopDrawing);
+
+    document.getElementById("clearSignatureDrawing")?.addEventListener("click", () => {
+      context.clearRect(0, 0, canvas.width, canvas.height);
+      hasDrawing = false;
+      saveDrawingButton.disabled = true;
+    });
+
+    saveDrawingButton?.addEventListener("click", () => {
+      if (!hasDrawing) {
+        showToast("Draw your signature before saving", "error");
+        return;
+      }
+
+      canvas.toBlob((blob) => {
+        if (!blob) {
+          showToast("Could not prepare the drawn signature. Please try again.", "error");
+          return;
         }
+        const signatureFile = new File([blob], "drawn-signature.png", { type: "image/png" });
+        saveSignatureFile(signatureFile, "drawing");
+      }, "image/png");
+    });
 
-        showToast("Uploading signature...", "info");
-        
-        const formData = new FormData();
-        formData.append("file", file);
+    removeSignatureButton?.addEventListener("click", async () => {
+      const confirmed = await window.cbcUtils.showConfirmToast("Remove your saved digital signature?");
+      if (!confirmed) return;
 
-        try {
-            const res = await fetchWithAuth(`${API_BASE}/materials/upload-raw`, {
-                method: 'POST',
-                body: formData
-            });
-
-            const data = await res.json();
-            if (!res.ok) throw new Error(data.message || "Upload failed");
-
-            // Save the Cloudinary URL to the user profile
-            await fetchWithAuth(`${API_BASE}/users/profile/signature`, {
-                method: 'PUT',
-                body: JSON.stringify({ signatureUrl: data.url, signaturePublicId: data.public_id })
-            });
-
-            // Clear cache so the new signature is fetched on reload
-            localStorage.removeItem("user_profile_cache");
-            showToast("✅ Signature updated successfully!", "success");
-            setTimeout(() => window.location.reload(), 1500);
-        } catch (err) {
-            showToast(err.message, "error");
-        }
+      removeSignatureButton.disabled = true;
+      try {
+        const response = await fetchWithAuth(`${API_BASE}/users/profile/signature`, {
+          method: "DELETE"
+        });
+        await response.json();
+        localStorage.removeItem("user_profile_cache");
+        updatePreview("");
+        setSavedSignatureState("");
+        showToast("Signature removed successfully.", "success");
+      } catch (err) {
+        showToast(err.message, "error");
+      } finally {
+        removeSignatureButton.disabled = false;
+      }
     });
   }
 

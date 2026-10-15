@@ -8,6 +8,8 @@ import {
 } from '../services/teacherPlanningRepository.js';
 import { getTeachingWeeksForTerm } from '../services/teacherCurriculumRepository.js';
 import { hasTeacherPlanningPdfAccess } from '../services/stkPaymentService.js';
+import { generateGeminiLessonPlan } from '../services/teacherTermSchemeAi.js';
+import { validateTermlyPlan } from './teacherTermSchemeController.js';
 
 const COMMON_FIELDS = ['academicYear', 'term', 'grade', 'subject'];
 const TEXT_LIMITS = {
@@ -25,15 +27,15 @@ const TEXT_LIMITS = {
   reflection: 3000
 };
 const SCHEMES_FIELDS = [
-  ...COMMON_FIELDS, 'weekNumber', 'strand', 'subStrand', 'learningOutcomes',
-  'learningExperiences', 'resources', 'assessment'
+  ...COMMON_FIELDS, 'schemeType', 'weekNumber', 'weeksInTerm', 'breakWeeks', 'weeklyPlan', 'curriculumSources',
+  'strand', 'subStrand', 'learningOutcomes', 'learningExperiences', 'resources', 'assessment'
 ];
 const LESSON_FIELDS = [
   ...COMMON_FIELDS, 'weekNumber', 'lessonNumber', 'schemeId', 'lessonDate', 'topic', 'strand', 'subStrand',
   'lessonObjectives', 'learningActivities', 'resources', 'assessment', 'reflection'
 ];
 const REQUIRED_FIELDS = {
-  schemes: [...COMMON_FIELDS, 'weekNumber'],
+  schemes: COMMON_FIELDS,
   lessons: [...COMMON_FIELDS, 'topic', 'lessonObjectives', 'learningActivities']
 };
 
@@ -46,6 +48,16 @@ const normalizeRecord = (entity, input) => {
       record[field] = value === '' || value === undefined || value === null
         ? (field === 'academicYear' ? NaN : null)
         : Number(value);
+    } else if (field === 'weeksInTerm') {
+      record[field] = value === '' || value === undefined || value === null ? null : Number(value);
+    } else if (field === 'schemeType') {
+      record[field] = value === undefined ? 'weekly' : String(value);
+    } else if (field === 'breakWeeks') {
+      record[field] = Array.isArray(value) ? value.map(Number) : value;
+    } else if (field === 'weeklyPlan') {
+      record[field] = value;
+    } else if (field === 'curriculumSources') {
+      record[field] = value;
     } else if (field === 'schemeId') {
       record[field] = value ? String(value).trim() : '';
     } else if (field === 'lessonDate') {
@@ -72,8 +84,42 @@ const validateRecord = (entity, record) => {
   if (!['Term 1', 'Term 2', 'Term 3'].includes(record.term)) {
     errors.push('Select a valid term.');
   }
-  if (entity === 'schemes' && (!Number.isInteger(record.weekNumber) || record.weekNumber < 1 || record.weekNumber > 52)) {
+  if (entity === 'schemes' && !['weekly', 'termly'].includes(record.schemeType)) {
+    errors.push('Scheme type must be weekly or termly.');
+  }
+  if (entity === 'schemes' && record.schemeType === 'weekly'
+    && (!Number.isInteger(record.weekNumber) || record.weekNumber < 1 || record.weekNumber > 52)) {
     errors.push('Week number must be between 1 and 52.');
+  }
+  if (entity === 'schemes' && record.schemeType === 'termly' && record.weekNumber !== null) {
+    errors.push('Termly schemes cannot have a single week number.');
+  }
+  if (entity === 'schemes' && record.schemeType === 'termly') {
+    if (!Number.isInteger(record.weeksInTerm) || record.weeksInTerm < 1 || record.weeksInTerm > 24) {
+      errors.push('Term length must be between 1 and 24 weeks.');
+    }
+    if (!Array.isArray(record.breakWeeks)
+      || !Number.isInteger(record.weeksInTerm)
+      || record.breakWeeks.length >= record.weeksInTerm
+      || record.breakWeeks.some(week => !Number.isInteger(week) || week < 1 || week > record.weeksInTerm)
+      || new Set(record.breakWeeks).size !== record.breakWeeks.length) {
+      errors.push('Break weeks must be unique week numbers within the term.');
+    } else {
+      const planResult = validateTermlyPlan({
+        weeklyPlan: record.weeklyPlan,
+        weeksInTerm: record.weeksInTerm,
+        breakWeeks: record.breakWeeks
+      });
+      if (planResult.error) errors.push(planResult.error);
+      else record.weeklyPlan = planResult.weeklyPlan;
+    }
+    if (!Array.isArray(record.curriculumSources) || record.curriculumSources.length > 80
+      || record.curriculumSources.some(source => !source || typeof source.title !== 'string'
+        || source.title.length > 300 || typeof source.url !== 'string'
+        || !/^https:\/\//i.test(source.url) || source.url.length > 2000
+        || typeof source.revision !== 'string' || source.revision.length > 200)) {
+      errors.push('Curriculum sources are invalid.');
+    }
   }
   if (entity === 'lessons' && record.weekNumber !== null
     && (!Number.isInteger(record.weekNumber) || record.weekNumber < 1 || record.weekNumber > 52)) {
@@ -135,7 +181,11 @@ export const createPlanningPdf = ({ entity, record, teacherName }) => new Promis
       const details = [
         `Grade ${record.grade || '—'}`,
         `Teacher: ${teacherName}`,
-        ...(entity === 'schemes' ? [`Week ${record.weekNumber}`] : [])
+        ...(entity === 'schemes'
+          ? [record.schemeType === 'termly'
+            ? `Term plan: ${record.weeksInTerm} weeks`
+            : `Week ${record.weekNumber}`]
+          : [])
       ].join('    |    ');
       document.fillColor('#e2e8f0').font('Helvetica').fontSize(9)
         .text(details, 58, 79, { width: contentWidth - 32, ellipsis: true });
@@ -153,6 +203,9 @@ export const createPlanningPdf = ({ entity, record, teacherName }) => new Promis
   const metadataFields = [
     ['Academic year', record.academicYear],
     ['Term', record.term],
+    ...(entity === 'schemes' && record.schemeType === 'termly'
+      ? [['Term length', `${record.weeksInTerm} weeks`], ['Break weeks', (record.breakWeeks || []).join(', ') || 'None']]
+      : []),
     ...(record.lessonDate ? [['Lesson date', record.lessonDate]] : []),
     ...(record.topic ? [['Topic', record.topic]] : [])
   ];
@@ -226,7 +279,25 @@ export const createPlanningPdf = ({ entity, record, teacherName }) => new Promis
   }
 
   const fields = entity === 'schemes'
-    ? [
+    ? record.schemeType === 'termly'
+      ? [[
+          'Week-by-week plan',
+          record.weeklyPlan.map(week => week.isBreak
+            ? `WEEK ${week.weekNumber} — BREAK`
+            : [
+                `WEEK ${week.weekNumber} — ${week.strand} / ${week.subStrand}`,
+                `Learning outcomes: ${week.learningOutcomes}`,
+                `Learning experiences: ${week.learningExperiences}`,
+                `Resources: ${week.resources}`,
+                `Assessment: ${week.assessment}`
+              ].join('\n')).join('\n\n')
+        ], [
+          'Verified curriculum sources',
+          (record.curriculumSources || []).map(source =>
+            `${source.title}${source.revision ? ` — ${source.revision}` : ''}\n${source.url}`
+          ).join('\n\n') || 'No external curriculum sources were attached to this manually prepared plan.'
+        ]]
+      : [
         ['Strand', record.strand],
         ['Sub-strand', record.subStrand],
         ['Learning outcomes', record.learningOutcomes],
@@ -401,44 +472,71 @@ export const downloadTeacherPlanningPdf = async (req, res) => {
   }
 };
 
-const splitPlanningItems = value => String(value ?? '')
-  .split(/\r?\n/)
-  .map(item => item.replace(/^\s*(?:[-*•]|\d+[.)])\s*/, '').trim())
-  .filter(Boolean);
+const schemeCoversWeek = (scheme, weekNumber) => scheme.schemeType === 'termly'
+  ? scheme.weeklyPlan?.some(week => week.weekNumber === weekNumber && !week.isBreak) === true
+  : scheme.weekNumber === weekNumber;
 
 export const createSchemeLessonDraftHandler = ({
   getRecord = getTeacherPlanningRecord,
+  generateLessonPlan = generateGeminiLessonPlan,
   logger = console
 } = {}) => async (req, res) => {
   const { id } = req.params;
   if (!isRecordId(id)) return res.status(400).json({ message: 'Invalid scheme ID.' });
-  const lessonsPerWeek = Number(req.body?.lessonsPerWeek);
-  if (!Number.isInteger(lessonsPerWeek) || lessonsPerWeek < 1 || lessonsPerWeek > 20) {
-    return res.status(400).json({ message: 'Lessons per week must be between 1 and 20.' });
-  }
+  const requestedWeek = req.body?.weekNumber === undefined || req.body?.weekNumber === ''
+    ? null
+    : Number(req.body.weekNumber);
 
   try {
     const scheme = await getRecord({ entity: 'schemes', teacherId: req.user.id, id });
     if (!scheme) return res.status(404).json({ message: 'Scheme of work not found.' });
-    const outcomes = splitPlanningItems(scheme.learningOutcomes);
-    const experiences = splitPlanningItems(scheme.learningExperiences);
-    const lessons = Array.from({ length: lessonsPerWeek }, (_, index) => ({
+    const weekNumber = scheme.schemeType === 'termly' ? requestedWeek : scheme.weekNumber;
+    if (!Number.isInteger(weekNumber) || !schemeCoversWeek(scheme, weekNumber)) {
+      return res.status(400).json({
+        message: 'Choose a teaching week from this term plan; break weeks cannot have lesson drafts.'
+      });
+    }
+    const storedWeekPlan = scheme.schemeType === 'termly'
+      ? scheme.weeklyPlan.find(week => week.weekNumber === requestedWeek)
+      : {
+        strand: scheme.strand,
+        subStrand: scheme.subStrand,
+        learningOutcomes: scheme.learningOutcomes,
+        learningExperiences: scheme.learningExperiences,
+        resources: scheme.resources,
+        assessment: scheme.assessment
+      };
+    const generatedPlan = await generateLessonPlan({
+      grade: scheme.grade,
+      subject: scheme.subject,
+      term: scheme.term,
+      weekNumber,
+      weekPlan: {
+        strand: storedWeekPlan.strand,
+        subStrand: storedWeekPlan.subStrand,
+        learningOutcomes: storedWeekPlan.learningOutcomes,
+        learningExperiences: storedWeekPlan.learningExperiences,
+        resources: storedWeekPlan.resources,
+        assessment: storedWeekPlan.assessment
+      }
+    });
+    const lesson = {
       schemeId: scheme.id,
       academicYear: scheme.academicYear,
       term: scheme.term,
       grade: scheme.grade,
       subject: scheme.subject,
-      weekNumber: scheme.weekNumber,
-      lessonNumber: index + 1,
-      topic: scheme.subStrand || scheme.strand || scheme.subject,
-      strand: scheme.strand,
-      subStrand: scheme.subStrand,
-      lessonObjectives: outcomes.length ? outcomes[index % outcomes.length] : '',
-      learningActivities: experiences.length ? experiences[index % experiences.length] : '',
-      resources: scheme.resources,
-      assessment: scheme.assessment,
+      weekNumber,
+      lessonNumber: 1,
+      topic: generatedPlan.topic,
+      strand: storedWeekPlan.strand || '',
+      subStrand: storedWeekPlan.subStrand || '',
+      lessonObjectives: generatedPlan.lessonObjectives,
+      learningActivities: generatedPlan.learningActivities,
+      resources: generatedPlan.resources,
+      assessment: generatedPlan.assessment,
       reflection: ''
-    }));
+    };
 
     return res.json({
       draft: {
@@ -448,15 +546,21 @@ export const createSchemeLessonDraftHandler = ({
           term: scheme.term,
           grade: scheme.grade,
           subject: scheme.subject,
-          weekNumber: scheme.weekNumber,
-          strand: scheme.strand,
-          subStrand: scheme.subStrand
+          weekNumber,
+          strand: storedWeekPlan.strand,
+          subStrand: storedWeekPlan.subStrand
         },
-        lessons
+        lessons: [lesson]
       }
     });
   } catch (error) {
     logger.error('Failed to create lesson drafts from scheme:', error);
+    if (error.code === 'TERM_AI_DISABLED') {
+      return res.status(503).json({ message: 'AI lesson planning is not enabled for this school.' });
+    }
+    if (error.code === 'TERM_AI_PROVIDER_FAILURE' || error.code === 'TERM_AI_INVALID_RESPONSE') {
+      return res.status(502).json({ message: 'Could not generate a lesson plan from the selected scheme week.' });
+    }
     return res.status(500).json({ message: 'Could not create lesson drafts from this scheme.' });
   }
 };
@@ -493,7 +597,7 @@ export const createTeacherPlanningController = ({
             id: record.schemeId
           });
           if (!scheme) return res.status(404).json({ message: 'Linked scheme not found.' });
-          if (scheme.weekNumber !== record.weekNumber
+          if (!schemeCoversWeek(scheme, record.weekNumber)
             || scheme.grade !== record.grade
             || scheme.subject !== record.subject
             || scheme.term !== record.term
@@ -501,7 +605,7 @@ export const createTeacherPlanningController = ({
             return res.status(400).json({ message: 'Lesson details must match the linked scheme week.' });
           }
         }
-        if (entity === 'schemes' || record.weekNumber !== null) {
+        if ((entity === 'schemes' && record.schemeType === 'weekly') || record.weekNumber !== null) {
           const teachingWeeks = await getTeachingWeeks(record.term);
           if (!Number.isInteger(teachingWeeks)) {
             return res.status(503).json({ message: 'Teaching-week settings are unavailable. Try again later.' });
@@ -531,7 +635,7 @@ export const createTeacherPlanningController = ({
             id: record.schemeId
           });
           if (!scheme) return res.status(404).json({ message: 'Linked scheme not found.' });
-          if (scheme.weekNumber !== record.weekNumber
+          if (!schemeCoversWeek(scheme, record.weekNumber)
             || scheme.grade !== record.grade
             || scheme.subject !== record.subject
             || scheme.term !== record.term
@@ -539,7 +643,7 @@ export const createTeacherPlanningController = ({
             return res.status(400).json({ message: 'Lesson details must match the linked scheme week.' });
           }
         }
-        if (entity === 'schemes' || record.weekNumber !== null) {
+        if ((entity === 'schemes' && record.schemeType === 'weekly') || record.weekNumber !== null) {
           const teachingWeeks = await getTeachingWeeks(record.term);
           if (!Number.isInteger(teachingWeeks)) {
             return res.status(503).json({ message: 'Teaching-week settings are unavailable. Try again later.' });

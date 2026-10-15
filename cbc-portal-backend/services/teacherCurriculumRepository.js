@@ -64,6 +64,18 @@ export const getTeacherCurriculumUnit = async ({ grade, subject, strand, subStra
   return toCurriculumUnit(result.rows[0]);
 };
 
+export const listTeacherCurriculumUnits = async ({ grade, subject, limit = 80 }) => {
+  const result = await queryPostgres(
+    `SELECT DISTINCT ON (strand, sub_strand) *
+     FROM cbc_curriculum_units
+     WHERE grade = $1 AND subject = $2
+     ORDER BY strand, sub_strand, verified_at DESC, sequence_number
+     LIMIT $3`,
+    [grade, subject, limit]
+  );
+  return result.rows.map(toCurriculumUnit);
+};
+
 export const getTeachingWeeksForTerm = async term => {
   const result = await queryPostgres(
     'SELECT teaching_weeks FROM teacher_planning_term_lengths WHERE term = $1',

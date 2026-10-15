@@ -30,6 +30,10 @@ const schoolSchema = new mongoose.Schema({
     type: String,
     default: ""
   },
+  headteacherSignaturePublicId: {
+    type: String,
+    default: ""
+  },
   registrationOpen: { type: Boolean, default: true },
   allowSignatureUpload: { type: Boolean, default: true },
   plan: {

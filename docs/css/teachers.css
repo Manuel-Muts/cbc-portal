@@ -92,6 +92,109 @@
 .sig-preview-box { min-height: 35px !important; margin-bottom: 4px !important; background: #f8fafc; border-radius: 6px; }
 .signature-card img { max-height: 35px !important; width: auto !important; }
 
+#signatureUploadContainer {
+  box-sizing: border-box;
+  width: min(100%, 620px);
+  min-height: 0;
+  margin: 0 auto !important;
+  padding: 20px !important;
+  gap: 12px;
+  justify-content: flex-start;
+}
+
+#signatureUploadContainer .helper-text {
+  margin: 0 !important;
+  color: #1f2937;
+  font-size: 1rem !important;
+  font-weight: 700;
+}
+
+#signaturePreview {
+  display: flex;
+  min-height: 110px !important;
+  align-items: center;
+  justify-content: center;
+  padding: 8px;
+  border: 1px solid #e2e8f0;
+}
+
+#signaturePreview img {
+  display: block;
+  max-width: 100%;
+  max-height: 100px !important;
+  object-fit: contain;
+}
+
+.signature-empty-message,
+.signature-help-text {
+  color: #64748b;
+  font-size: 0.8rem;
+}
+
+.signature-mode-switch,
+.signature-saved-actions,
+.signature-draw-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.signature-mode-switch .btn,
+.signature-saved-actions .btn,
+.signature-draw-actions .btn,
+#triggerSignatureUpload {
+  min-height: 40px;
+  padding: 8px 14px;
+  font-size: 0.85rem;
+}
+
+.signature-mode-switch .btn.active {
+  border-color: #2b6cb0;
+  background: #2b6cb0;
+  color: #fff;
+}
+
+.signature-mode-switch[hidden],
+.signature-saved-actions[hidden] {
+  display: none !important;
+}
+
+.signature-remove-button {
+  align-self: flex-start;
+  border-color: #fecaca;
+  color: #b91c1c;
+}
+
+.signature-mode-panel[hidden] {
+  display: none !important;
+}
+
+.signature-mode-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.signature-help-text {
+  margin: 0;
+}
+
+.signature-canvas {
+  display: block;
+  width: 100%;
+  height: auto;
+  border: 1px dashed #94a3b8;
+  border-radius: 8px;
+  background: #fff;
+  cursor: crosshair;
+  touch-action: none;
+}
+
+.signature-draw-actions #saveSignatureDrawing:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
 
 .tabs-nav {
   display: flex;
@@ -655,6 +758,110 @@ form {
   border-bottom: 1px solid #eee;
 }
 
+.teacher-scheme-stepper {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin: 0 0 18px;
+  padding: 0;
+  list-style: none;
+}
+
+.teacher-scheme-stepper li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  background: #f8fafc;
+  color: #64748b;
+}
+
+.teacher-scheme-stepper li > span {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  flex: 0 0 30px;
+  place-items: center;
+  border-radius: 50%;
+  background: #e2e8f0;
+  color: #475569;
+  font-weight: 800;
+}
+
+.teacher-scheme-stepper li div {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.teacher-scheme-stepper li strong {
+  color: inherit;
+  font-size: 0.84rem;
+}
+
+.teacher-scheme-stepper li small {
+  color: #64748b;
+  font-size: 0.72rem;
+}
+
+.teacher-scheme-stepper li.active {
+  border-color: #5eead4;
+  background: linear-gradient(135deg, #f0fdfa, #fff);
+  color: #0f766e;
+  box-shadow: 0 5px 16px rgb(15 118 110 / 8%);
+}
+
+.teacher-scheme-stepper li.active > span,
+.teacher-scheme-stepper li.complete > span {
+  background: #0f766e;
+  color: #fff;
+}
+
+.teacher-scheme-stepper li.complete {
+  color: #0f766e;
+}
+
+.teacher-scheme-step[hidden] {
+  display: none !important;
+}
+
+.teacher-scheme-step-actions {
+  width: 100%;
+  margin-top: 18px;
+}
+
+.teacher-scheme-step-actions .teacher-planning-submit-actions {
+  margin-left: auto;
+}
+
+.teacher-scheme-context-summary {
+  margin: 0 0 16px;
+  padding: 12px 14px;
+  border: 1px solid #ccfbf1;
+  border-radius: 10px;
+  background: #f0fdfa;
+  color: #115e59;
+  font-size: 0.88rem;
+  line-height: 1.5;
+}
+
+.teacher-scheme-context-summary[hidden],
+.teacher-lesson-editor[hidden],
+[data-lesson-actions][hidden] {
+  display: none !important;
+}
+
+.teacher-lesson-source .teacher-planning-field-grid {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 230px), 1fr));
+}
+
+.teacher-lesson-source [data-lesson-context-text] {
+  white-space: pre-line;
+}
+
 .teacher-planning-header,
 .teacher-planning-record-heading,
 .teacher-planning-record-actions,
@@ -785,6 +992,115 @@ form {
 
 .teacher-planning-content-grid textarea {
   min-height: 112px;
+}
+
+.teacher-planning-field-hint {
+  display: block;
+  margin-top: 3px;
+  color: #64748b;
+  font-size: 0.76rem;
+  font-weight: 500;
+}
+
+.teacher-planning-weekly-editor {
+  display: grid;
+  gap: 14px;
+  margin-top: 18px;
+}
+
+.teacher-planning-week-card {
+  min-width: 0;
+  padding: 18px;
+  border: 1px solid #dbe5ee;
+  border-radius: 16px;
+  background: linear-gradient(145deg, #fff, #f8fbff);
+  box-shadow: 0 8px 24px rgb(15 55 82 / 5%);
+}
+
+.teacher-planning-week-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.teacher-planning-week-heading span {
+  color: #0e7490;
+  font-size: 0.78rem;
+  font-weight: 850;
+  letter-spacing: 0.08em;
+}
+
+.teacher-planning-week-heading strong {
+  padding: 5px 10px;
+  border-radius: 999px;
+  background: #ecfeff;
+  color: #0e7490;
+  font-size: 0.75rem;
+}
+
+.teacher-planning-week-focus {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  margin-bottom: 14px;
+}
+
+.teacher-planning-week-card.is-break {
+  border-color: #fde68a;
+  background: linear-gradient(135deg, #fffbeb, #fff);
+}
+
+.teacher-planning-week-card.is-break .teacher-planning-week-heading strong {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.teacher-planning-week-card.is-break p {
+  margin: 0;
+  color: #92400e;
+  font-size: 0.88rem;
+}
+
+.teacher-planning-term-sources {
+  display: grid;
+  gap: 6px;
+  margin-top: 14px;
+  padding: 13px 15px;
+  border: 1px solid #bae6fd;
+  border-radius: 12px;
+  background: #f0f9ff;
+  color: #075985;
+  font-size: 0.84rem;
+}
+
+.teacher-planning-term-sources a {
+  width: fit-content;
+  color: #0369a1;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.teacher-planning-saved-week {
+  grid-column: 1 / -1;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: #f8fafc;
+}
+
+.teacher-planning-saved-week h5 {
+  margin: 0 0 7px;
+  color: #0f3752;
+}
+
+.teacher-planning-saved-week p {
+  margin: 5px 0;
+}
+
+.teacher-planning-saved-week.is-break {
+  background: #fffbeb;
+  color: #92400e;
 }
 
 .teacher-planning-focus-toggle {
@@ -1244,14 +1560,48 @@ form {
   font-weight: 600;
 }
 
-.teacher-planning-status {
-  min-height: 1.3em;
-  margin: 12px 0;
-  color: #475569;
+.teacher-planning-feedback {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  z-index: 99999;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+  width: min(680px, calc(100vw - 32px));
+  max-width: calc(100vw - 32px);
+  margin: 0;
+  padding: 16px 18px;
+  border: 1px solid #a5f3fc;
+  border-radius: 12px;
+  background: #ecfeff;
+  color: #155e75;
+  box-shadow: 0 10px 28px rgb(15 23 42 / 12%);
+  font-size: 0.9rem;
+  line-height: 1.45;
+  transform: translate(-50%, -50%);
 }
 
-.teacher-planning-status.error {
-  color: #b91c1c;
+.teacher-planning-feedback[hidden] {
+  display: none;
+}
+
+.teacher-planning-feedback.error {
+  border-color: #fecaca;
+  background: #fef2f2;
+  color: #991b1b;
+}
+
+.teacher-planning-feedback > button {
+  flex: 0 0 auto;
+  border: 0;
+  background: transparent;
+  color: currentColor;
+  cursor: pointer;
+  font-size: 1.3rem;
+  font-weight: 700;
+  line-height: 1;
 }
 
 .teacher-planning-records {
@@ -1310,9 +1660,10 @@ form {
   }
 
   .teacher-planning-field-grid,
-  .teacher-planning-record-detail-grid {
+  .teacher-planning-record-detail-grid,
+  .teacher-planning-week-focus {
     grid-template-columns: minmax(0, 1fr);
-    min-width: 260px;
+    min-width: 0;
     gap: 10px;
   }
 
@@ -1363,6 +1714,36 @@ form {
 
   .teacher-planning-form-actions > .btn {
     flex: 1 1 100%;
+  }
+
+  .teacher-scheme-stepper {
+    gap: 5px;
+  }
+
+  .teacher-scheme-stepper li {
+    align-items: flex-start;
+    gap: 6px;
+    padding: 8px 6px;
+  }
+
+  .teacher-scheme-stepper li > span {
+    width: 24px;
+    height: 24px;
+    flex-basis: 24px;
+    font-size: 0.74rem;
+  }
+
+  .teacher-scheme-stepper li strong {
+    font-size: 0.72rem;
+  }
+
+  .teacher-scheme-stepper li small {
+    display: none;
+  }
+
+  .teacher-scheme-step-actions .teacher-planning-submit-actions {
+    width: 100%;
+    margin-left: 0;
   }
 
   .teacher-planning-or {

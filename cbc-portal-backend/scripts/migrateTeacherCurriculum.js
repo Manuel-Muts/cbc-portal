@@ -10,7 +10,9 @@ const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
 const migrations = [
   '004_teacher_curriculum.sql',
   '005_lesson_week_fields.sql',
-  '006_link_lessons_to_schemes.sql'
+  '006_link_lessons_to_schemes.sql',
+  '007_termly_teacher_schemes.sql',
+  '008_clear_legacy_teacher_planning.sql'
 ];
 
 try {

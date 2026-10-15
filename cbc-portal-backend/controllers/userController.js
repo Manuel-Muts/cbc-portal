@@ -17,6 +17,7 @@ import { Student, Teacher } from '../models/RoleModels.js';
 import StudentEnrollment  from '../models/StudentEnrollment.js'; // ✅ ADD THIS
 import Mark from '../models/mark.js'; // 🆕 Import Mark model
 import {Material} from '../models/Material.js'; // 🆕 Import Material model
+import { cloudinary } from '../utils/cloudinary.js';
 import { deleteFinancePaymentsForStudents } from '../services/financeRepository.js';
 import { normalizePathway } from '../utils/pathwayUtils.js';
 import { createNotificationsForUsers } from './notificationController.js';
@@ -1838,6 +1839,30 @@ export const updateSignature = async (req, res) => {
   } catch (err) {
     console.error("Update Signature Error:", err);
     res.status(500).json({ error: err.message });
+  }
+};
+
+export const removeSignature = async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id);
+    if (!user) return res.status(404).json({ message: "User not found" });
+
+    if (user.signaturePublicId) {
+      const result = await cloudinary.uploader.destroy(user.signaturePublicId);
+      if (!["ok", "not found"].includes(result.result)) {
+        throw new Error(`Cloudinary could not remove the signature (${result.result})`);
+      }
+    }
+
+    user.signatureUrl = "";
+    user.signaturePublicId = "";
+    await user.save();
+
+    cache.clearByPattern(`class_alloc_${req.user.schoolId}`);
+    res.json({ message: "Signature removed successfully" });
+  } catch (err) {
+    console.error("Remove Signature Error:", err);
+    res.status(500).json({ message: "Failed to remove signature" });
   }
 };
 

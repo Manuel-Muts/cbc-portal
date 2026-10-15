@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { createPlanningPdf } from '../controllers/teacherPlanningController.js';
 import { createTeacherPlanningController } from '../controllers/teacherPlanningController.js';
 
 const stored = new Map();
@@ -173,5 +174,70 @@ const mismatchedSchemeWeek = await invoke(controller.lessons.create, {
   }
 });
 assert.equal(mismatchedSchemeWeek.statusCode, 400);
+
+const termlyPlan = [{
+  weekNumber: 1,
+  isBreak: false,
+  strand: 'Algebra',
+  subStrand: 'Patterns',
+  learningOutcomes: 'Recognize a number pattern.',
+  learningExperiences: 'Build and discuss patterns.',
+  resources: 'Number cards.',
+  assessment: 'Explain the next number.'
+}, {
+  weekNumber: 2,
+  isBreak: true,
+  strand: '',
+  subStrand: '',
+  learningOutcomes: '',
+  learningExperiences: '',
+  resources: '',
+  assessment: ''
+}];
+const termlyCreated = await invoke(controller.schemes.create, {
+  body: {
+    academicYear: '2026',
+    term: 'Term 1',
+    grade: 'Grade 4',
+    subject: 'Mathematics',
+    schemeType: 'termly',
+    weeksInTerm: 2,
+    breakWeeks: [2],
+    weeklyPlan: termlyPlan,
+    curriculumSources: [],
+    strand: 'See weekly plan',
+    subStrand: 'Termly plan'
+  }
+});
+assert.equal(termlyCreated.statusCode, 201);
+assert.equal(termlyCreated.payload.record.schemeType, 'termly');
+assert.equal(termlyCreated.payload.record.weekNumber, null);
+const termlyPdf = await createPlanningPdf({
+  entity: 'schemes',
+  record: {
+    ...termlyCreated.payload.record,
+    curriculumSources: [{ title: 'Official curriculum', url: 'https://kicd.ac.ke/', revision: '2024' }]
+  },
+  teacherName: 'Teacher'
+});
+assert.ok(Buffer.isBuffer(termlyPdf));
+assert.ok(termlyPdf.length > 1000);
+
+const invalidTermlyCreated = await invoke(controller.schemes.create, {
+  body: {
+    academicYear: '2026',
+    term: 'Term 1',
+    grade: 'Grade 4',
+    subject: 'Mathematics',
+    schemeType: 'termly',
+    weeksInTerm: 2,
+    breakWeeks: [2],
+    weeklyPlan: termlyPlan.slice(1),
+    curriculumSources: [],
+    strand: 'See weekly plan',
+    subStrand: 'Termly plan'
+  }
+});
+assert.equal(invalidTermlyCreated.statusCode, 400);
 
 console.log('Teacher planning controller tests passed');

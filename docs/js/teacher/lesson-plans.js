@@ -3,10 +3,6 @@ import {
   downloadPlanningRecordPdf,
   ensurePlanningPdfAccess,
   generateLessonDraftsFromScheme,
-  initializeActiveTermSelect,
-  initializeCurriculumFields,
-  initializeTeacherAllocationFields,
-  generatePlanningDraft,
   renderPlanningTableState,
   requestPlanningApi
 } from './planning-api.js';
@@ -15,60 +11,43 @@ const root = document.getElementById('lessonPlansModule');
 if (root) {
   root.innerHTML = `
     <div class="teacher-planning-header">
-      <div><p class="teacher-planning-eyebrow">DAILY TEACHING</p><h2>📝 Lesson Plans</h2><p>Turn a weekly scheme into clear, teachable lessons.</p></div>
+      <div><p class="teacher-planning-eyebrow">DAILY TEACHING</p><h2>📝 Lesson Plans</h2><p>Choose a teaching week from a saved term scheme to create an aligned lesson.</p></div>
     </div>
     <div class="teacher-planning-tabs" role="tablist" aria-label="Lesson plans">
       <button class="teacher-planning-tab active" id="lessonCreateTab" type="button" role="tab" aria-selected="true" aria-controls="lessonCreatePanel">Create lesson plan</button>
       <button class="teacher-planning-tab" id="lessonSavedTab" type="button" role="tab" aria-selected="false" aria-controls="lessonSavedPanel">Saved lesson plans</button>
     </div>
+    <div class="teacher-planning-feedback" data-lesson-status role="status" aria-live="polite" hidden>
+      <span></span><button type="button" aria-label="Dismiss message">&times;</button>
+    </div>
     <section class="teacher-planning-panel" id="lessonCreatePanel" role="tabpanel" aria-labelledby="lessonCreateTab">
       <form class="teacher-planning-form" data-lesson-form>
         <input type="hidden" name="recordId">
-        <input type="hidden" name="lessonNumber">
-        <section class="teacher-planning-form-section wide">
-          <div class="teacher-planning-section-heading"><span>01</span><div><h3>Set your lesson context</h3><p>Choose when and where this lesson will be taught.</p></div></div>
+        <input type="hidden" name="lessonNumber" value="1">
+        <input type="hidden" name="academicYear">
+        <input type="hidden" name="term">
+        <input type="hidden" name="grade">
+        <input type="hidden" name="subject">
+        <input type="hidden" name="weekNumber">
+        <input type="hidden" name="strand">
+        <input type="hidden" name="subStrand">
+        <section class="teacher-planning-form-section wide teacher-lesson-source">
+          <div class="teacher-planning-section-heading"><span><i class="fas fa-book-open" aria-hidden="true"></i></span><div><h3>Start from a saved term scheme</h3><p>Choose a scheme and teaching week. The lesson draft will use that week’s saved outcomes, activities, resources, and assessment focus.</p></div></div>
           <div class="teacher-planning-field-grid">
+            <label class="teacher-planning-scheme-select">Saved scheme<select name="schemeId"><option value="">Loading saved schemes…</option></select></label>
+            <label class="teacher-planning-scheme-select" data-scheme-week-field hidden>Teaching week<select name="schemeWeekNumber"></select></label>
             <label>Lesson date<input name="lessonDate" type="date"></label>
-            <label>Academic year<input name="academicYear" type="number" min="2000" max="2200" required></label>
-            <label>Term<select name="term" required><option value="">Select term</option><option>Term 1</option><option>Term 2</option><option>Term 3</option></select></label>
-            <label>Grade<select name="grade" required><option value="">Loading allocated grades…</option></select></label>
-            <label>Subject<select name="subject" required disabled><option value="">Select a grade first</option></select></label>
-            <label>Week number<input name="weekNumber" type="number" min="1" max="52"></label>
-            <label>Lessons this week<input name="lessonsPerWeek" type="number" min="1" max="20" value="1"></label>
-            <label>Topic<input name="topic" maxlength="250" required placeholder="Enter the lesson topic"></label>
           </div>
-        </section>
-        <section class="teacher-planning-form-section wide">
-          <div class="teacher-planning-section-heading"><span>02</span><div><h3>Choose where to start</h3><p>Recommended: select a saved scheme to carry its learning focus into this lesson.</p></div></div>
-          <label class="teacher-planning-scheme-select">Saved scheme<select name="schemeId"><option value="">Choose a saved scheme, or continue without one</option></select></label>
+          <div class="teacher-scheme-context-summary" data-lesson-context-text hidden></div>
           <div class="teacher-planning-form-actions">
-            <button class="btn primary-btn" type="button" data-lesson-from-scheme disabled>Generate from selected scheme</button>
-            <span class="teacher-planning-or">or</span>
-            <button class="btn secondary-btn" type="button" data-lesson-generate>Build drafts from curriculum</button>
+            <button class="btn primary-btn" type="button" data-lesson-from-scheme disabled><i class="fas fa-wand-magic-sparkles" aria-hidden="true"></i> Generate lesson plan</button>
           </div>
         </section>
-        <section class="teacher-planning-form-section wide">
-          <div class="teacher-planning-section-heading"><span>03</span><div><h3>Confirm the learning focus</h3><p>Choose a published curriculum unit when available, or enter the focus manually.</p></div></div>
-          <div class="teacher-planning-focus-toggle" role="group" aria-label="Learning focus source">
-            <button type="button" data-focus-mode="curriculum" aria-pressed="false">Choose curriculum</button>
-            <button type="button" class="active" data-focus-mode="manual" aria-pressed="true">Enter manually</button>
+        <section class="teacher-planning-form-section wide teacher-lesson-editor" data-lesson-editor hidden>
+          <div class="teacher-planning-section-heading"><span><i class="fas fa-pen-to-square" aria-hidden="true"></i></span><div><h3>Review the lesson plan</h3><p>Make any edits before saving it.</p></div></div>
+          <div class="teacher-planning-field-grid">
+            <label>Topic<input name="topic" maxlength="250" required placeholder="Lesson topic"></label>
           </div>
-          <div class="teacher-planning-field-grid" data-focus-fields="curriculum" hidden>
-            <label>Curriculum strand<select name="curriculumStrand" disabled><option value="">Select grade and subject first</option></select></label>
-            <label>Curriculum sub-strand<select name="curriculumSubStrand" disabled><option value="">Select a strand first</option></select></label>
-          </div>
-          <div class="teacher-planning-field-grid" data-focus-fields="manual">
-            <label>Strand<input name="strand" maxlength="200" placeholder="Enter the strand"></label>
-            <label>Sub-strand<input name="subStrand" maxlength="200" placeholder="Enter the sub-strand"></label>
-          </div>
-          <div class="teacher-planning-curriculum-context" data-lesson-context hidden>
-            <label>Generated lesson draft<select data-lesson-draft-select></select></label>
-            <p data-lesson-context-text></p>
-            <a data-lesson-source target="_blank" rel="noopener noreferrer">View verified curriculum source</a>
-          </div>
-        </section>
-        <section class="teacher-planning-form-section wide">
-          <div class="teacher-planning-section-heading"><span>04</span><div><h3>Plan the learning experience</h3><p>Review and edit generated content. Your saved plan remains editable.</p></div></div>
           <div class="teacher-planning-field-grid teacher-planning-content-grid">
             <label>Lesson objectives<textarea name="lessonObjectives" maxlength="4000" required placeholder="What should learners achieve by the end of the lesson?"></textarea></label>
             <label>Learning activities<textarea name="learningActivities" maxlength="4000" required placeholder="Describe the learner and teacher activities."></textarea></label>
@@ -77,7 +56,7 @@ if (root) {
             <label class="wide">Reflection<textarea name="reflection" maxlength="3000" placeholder="Record what worked and what to improve after teaching."></textarea></label>
           </div>
         </section>
-        <div class="teacher-planning-form-actions wide teacher-planning-submit-actions">
+        <div class="teacher-planning-form-actions wide teacher-planning-submit-actions" data-lesson-actions hidden>
           <button class="btn primary-btn" type="submit" data-lesson-submit>Save lesson plan</button>
           <button class="btn secondary-btn" type="button" data-lesson-cancel hidden>Cancel edit</button>
         </div>
@@ -90,27 +69,27 @@ if (root) {
       </div>
       <div class="teacher-planning-record-list" data-lesson-records></div>
     </section>
-    <p class="teacher-planning-status" role="status" aria-live="polite" data-lesson-status></p>
   `;
 
   const form = root.querySelector('[data-lesson-form]');
   const status = root.querySelector('[data-lesson-status]');
+  const statusText = status.querySelector('span');
   const count = root.querySelector('[data-lesson-count]');
   const records = root.querySelector('[data-lesson-records]');
   const submit = root.querySelector('[data-lesson-submit]');
   const cancel = root.querySelector('[data-lesson-cancel]');
-  const generate = root.querySelector('[data-lesson-generate]');
   const generateFromScheme = root.querySelector('[data-lesson-from-scheme]');
-  const context = root.querySelector('[data-lesson-context]');
-  const draftSelect = root.querySelector('[data-lesson-draft-select]');
+  const schemeWeekField = root.querySelector('[data-scheme-week-field]');
+  const contextSummary = root.querySelector('[data-lesson-context-text]');
+  const editor = root.querySelector('[data-lesson-editor]');
+  const formActions = root.querySelector('[data-lesson-actions]');
   const tabs = root.querySelectorAll('.teacher-planning-tab');
   const panels = root.querySelectorAll('.teacher-planning-panel');
-  const focusModeButtons = root.querySelectorAll('[data-focus-mode]');
-  const focusModeFields = root.querySelectorAll('[data-focus-fields]');
   let loaded = false;
   let loading = false;
   let savedRecords = [];
   let availableSchemes = [];
+  let generatedLessons = [];
 
   const showPanel = (panelName) => {
     tabs.forEach(tab => {
@@ -125,55 +104,79 @@ if (root) {
     if (panelName === 'Create') loadSchemesForLesson();
   };
 
-  function setFocusMode(mode) {
-    form.dataset.focusMode = mode;
-    focusModeButtons.forEach(button => {
-      const selected = button.dataset.focusMode === mode;
-      button.classList.toggle('active', selected);
-      button.setAttribute('aria-pressed', String(selected));
-    });
-    focusModeFields.forEach(fields => {
-      fields.hidden = fields.dataset.focusFields !== mode;
-    });
-  }
-
-  focusModeButtons.forEach(button => button.addEventListener('click', () => setFocusMode(button.dataset.focusMode)));
-  setFocusMode('manual');
-
   const setStatus = (message, isError = false) => {
-    status.textContent = message;
+    statusText.textContent = message;
+    status.hidden = !message;
     status.classList.toggle('error', isError);
+    status.setAttribute('role', isError ? 'alert' : 'status');
+  };
+  status.querySelector('button').addEventListener('click', () => {
+    status.hidden = true;
+    statusText.textContent = '';
+  });
+
+  const selectedScheme = () => availableSchemes.find(item => item.id === form.elements.schemeId.value);
+  const selectedWeekPlan = scheme => scheme?.schemeType === 'termly'
+    ? scheme.weeklyPlan?.find(week => week.weekNumber === Number(form.elements.schemeWeekNumber.value) && !week.isBreak)
+    : scheme ? {
+      weekNumber: scheme.weekNumber,
+      strand: scheme.strand,
+      subStrand: scheme.subStrand,
+      learningOutcomes: scheme.learningOutcomes,
+      learningExperiences: scheme.learningExperiences,
+      resources: scheme.resources,
+      assessment: scheme.assessment
+    } : null;
+  const updateSelectedScheme = (preferredWeek = '') => {
+    const scheme = selectedScheme();
+    if (!scheme) {
+      schemeWeekField.hidden = true;
+      form.elements.schemeWeekNumber.replaceChildren();
+      generateFromScheme.disabled = true;
+      contextSummary.hidden = true;
+      return;
+    }
+    form.elements.academicYear.value = scheme.academicYear;
+    form.elements.term.value = scheme.term;
+    form.elements.grade.value = scheme.grade;
+    form.elements.subject.value = scheme.subject;
+    if (scheme.schemeType === 'termly') {
+      const teachingWeeks = (scheme.weeklyPlan || []).filter(week => !week.isBreak);
+      form.elements.schemeWeekNumber.innerHTML = teachingWeeks.map(week => (
+        `<option value="${week.weekNumber}">Week ${week.weekNumber} · ${escapePlanningHtml(week.subStrand || week.strand || 'Teaching week')}</option>`
+      )).join('');
+      const selectedWeek = String(preferredWeek || form.elements.schemeWeekNumber.value || '');
+      form.elements.schemeWeekNumber.value = teachingWeeks.some(week => String(week.weekNumber) === selectedWeek)
+        ? selectedWeek
+        : String(teachingWeeks[0]?.weekNumber || '');
+      schemeWeekField.hidden = teachingWeeks.length === 0;
+    } else {
+      form.elements.schemeWeekNumber.replaceChildren();
+      schemeWeekField.hidden = true;
+    }
+    form.elements.weekNumber.value = scheme.schemeType === 'termly'
+      ? form.elements.schemeWeekNumber.value
+      : scheme.weekNumber;
+    const weekPlan = selectedWeekPlan(scheme);
+    form.elements.strand.value = weekPlan?.strand || '';
+    form.elements.subStrand.value = weekPlan?.subStrand || '';
+    contextSummary.textContent = weekPlan
+      ? `${scheme.grade} · ${scheme.subject} · ${scheme.term} ${scheme.academicYear} · Week ${weekPlan.weekNumber}\nLearning outcomes: ${weekPlan.learningOutcomes || 'Not specified'}\nLearning experiences: ${weekPlan.learningExperiences || 'Not specified'}`
+      : 'This saved scheme has no available teaching week.';
+    contextSummary.hidden = false;
+    generateFromScheme.disabled = !weekPlan;
   };
 
-  const allocationFieldsReady = initializeTeacherAllocationFields(
-    form.elements.grade,
-    form.elements.subject
-  ).then(setSelection => ({ setSelection }), error => {
-    setStatus(error.message || 'Could not load your teaching allocations.', true);
-    return { error };
-  });
-  const curriculumFields = initializeCurriculumFields(
-    form.elements.grade,
-    form.elements.subject,
-    form.elements.curriculumStrand,
-    form.elements.curriculumSubStrand,
-    form.elements.term,
-    form.elements.weekNumber,
-    error => setStatus(error.message || 'Could not load curriculum options.', true)
-  );
-  initializeActiveTermSelect(form.elements.term).catch(error => {
-    setStatus(error.message || 'Could not load the active term.', true);
-  });
   const loadSchemesForLesson = async () => {
     try {
       const { records: schemes = [] } = await requestPlanningApi('/schemes');
       availableSchemes = schemes;
       const selectedSchemeId = form.elements.schemeId.value;
-      form.elements.schemeId.innerHTML = '<option value="">Create without a scheme</option>' + schemes.map(scheme => (
-        `<option value="${escapePlanningHtml(scheme.id)}">${escapePlanningHtml(scheme.grade)} · ${escapePlanningHtml(scheme.subject)} · ${escapePlanningHtml(scheme.term)} · Week ${escapePlanningHtml(scheme.weekNumber)} · ${escapePlanningHtml(scheme.subStrand || scheme.strand || 'Untitled')}</option>`
+      form.elements.schemeId.innerHTML = '<option value="">Select a saved scheme</option>' + schemes.map(scheme => (
+        `<option value="${escapePlanningHtml(scheme.id)}">${escapePlanningHtml(scheme.grade)} · ${escapePlanningHtml(scheme.subject)} · ${escapePlanningHtml(scheme.term)} ${escapePlanningHtml(scheme.academicYear)} · ${scheme.schemeType === 'termly' ? `${escapePlanningHtml(scheme.weeksInTerm)}-week term` : `Week ${escapePlanningHtml(scheme.weekNumber)}`}</option>`
       )).join('');
       form.elements.schemeId.value = selectedSchemeId;
-      generateFromScheme.disabled = !form.elements.schemeId.value;
+      updateSelectedScheme();
     } catch (error) {
       setStatus(error.message || 'Could not load saved schemes.', true);
     }
@@ -193,15 +196,17 @@ if (root) {
   const resetForm = () => {
     form.reset();
     form.elements.recordId.value = '';
-    form.elements.academicYear.value = new Date().getFullYear();
-    form.elements.lessonNumber.value = '';
-    form.elements.lessonsPerWeek.value = 1;
     form.elements.schemeId.value = '';
+    form.elements.schemeWeekNumber.replaceChildren();
+    schemeWeekField.hidden = true;
     generateFromScheme.disabled = true;
-    context.hidden = true;
-    setFocusMode('manual');
+    contextSummary.hidden = true;
+    contextSummary.textContent = '';
+    editor.hidden = true;
+    formActions.hidden = true;
     submit.textContent = 'Save lesson plan';
     cancel.hidden = true;
+    generatedLessons = [];
   };
 
   const loadRecords = async (force = false, refreshButton = null) => {
@@ -245,7 +250,7 @@ if (root) {
             `).join('')}</tbody>
           </table>
         </div>
-      ` : '<div class="teacher-planning-list-empty"><strong>No lesson plans saved yet</strong><span>Start from one of your saved schemes or create a lesson plan directly.</span><button class="btn primary-btn" type="button" data-create-first-lesson>Create a lesson plan</button></div>';
+      ` : '<div class="teacher-planning-list-empty"><strong>No lesson plans saved yet</strong><span>Choose a saved Scheme of Work and teaching week to generate your first lesson plan.</span><button class="btn primary-btn" type="button" data-create-first-lesson>Create a lesson plan</button></div>';
       setStatus('');
       loaded = true;
     } catch (error) {
@@ -271,142 +276,77 @@ if (root) {
     if (event.target.closest('[data-create-first-lesson]')) showPanel('Create');
   });
 
-  let generatedLessons = [];
   const applyGeneratedLesson = lesson => {
     form.elements.schemeId.value = lesson.schemeId || '';
     generateFromScheme.disabled = !form.elements.schemeId.value;
     form.elements.topic.value = lesson.topic;
     form.elements.strand.value = lesson.strand;
     form.elements.subStrand.value = lesson.subStrand;
-    form.elements.curriculumStrand.value = lesson.strand;
-    form.elements.curriculumSubStrand.value = lesson.subStrand;
     form.elements.lessonObjectives.value = lesson.lessonObjectives;
     form.elements.learningActivities.value = lesson.learningActivities;
     form.elements.resources.value = lesson.resources;
     form.elements.assessment.value = lesson.assessment;
     form.elements.reflection.value = '';
-    setFocusMode('manual');
     form.elements.weekNumber.value = lesson.weekNumber;
     form.elements.lessonNumber.value = lesson.lessonNumber;
   };
 
   form.elements.schemeId.addEventListener('change', () => {
-    const scheme = availableSchemes.find(item => item.id === form.elements.schemeId.value);
-    generateFromScheme.disabled = !scheme;
-    if (!scheme) return;
-    form.elements.academicYear.value = scheme.academicYear;
-    form.elements.term.value = scheme.term;
-    form.elements.weekNumber.value = scheme.weekNumber;
-    form.elements.grade.value = scheme.grade;
-    form.elements.strand.value = scheme.strand || '';
-    form.elements.subStrand.value = scheme.subStrand || '';
-    setFocusMode('manual');
-    allocationFieldsReady.then(allocationFields => {
-      if (allocationFields.error) throw allocationFields.error;
-      allocationFields.setSelection(scheme.grade, scheme.subject);
-    }).catch(error => {
-      setStatus(error.message || 'Could not load the selected scheme.', true);
-    });
-    form.elements.topic.value = scheme.subStrand || scheme.strand || scheme.subject;
-    form.elements.strand.value = scheme.strand || '';
-    form.elements.subStrand.value = scheme.subStrand || '';
-    form.elements.curriculumStrand.value = scheme.strand || '';
+    editor.hidden = true;
+    formActions.hidden = true;
+    generatedLessons = [];
+    updateSelectedScheme();
+  });
+
+  form.elements.schemeWeekNumber.addEventListener('change', () => {
+    if (!editor.hidden && !window.confirm('Changing the week will discard this lesson draft. Continue?')) {
+      form.elements.schemeWeekNumber.value = form.elements.weekNumber.value;
+      return;
+    }
+    editor.hidden = true;
+    formActions.hidden = true;
+    generatedLessons = [];
+    updateSelectedScheme();
   });
 
   generateFromScheme.addEventListener('click', async () => {
     const schemeId = form.elements.schemeId.value;
-    const scheme = availableSchemes.find(item => item.id === schemeId);
+    const scheme = selectedScheme();
     if (!scheme) {
       setStatus('Select one of your saved schemes first.', true);
       return;
     }
-    showButtonLoading(generateFromScheme, 'Generating from scheme…');
+    const selectedWeek = scheme.schemeType === 'termly' ? form.elements.schemeWeekNumber.value : null;
+    if (scheme.schemeType === 'termly' && !selectedWeek) {
+      setStatus('Choose a teaching week from the selected term scheme.', true);
+      return;
+    }
+    showButtonLoading(generateFromScheme, 'Generating lesson plan…');
     try {
-      const allocationFields = await allocationFieldsReady;
-      if (allocationFields.error) throw allocationFields.error;
-      allocationFields.setSelection(scheme.grade, scheme.subject);
-      form.elements.strand.value = scheme.strand || '';
-      form.elements.subStrand.value = scheme.subStrand || '';
-      setFocusMode('manual');
-      const { draft } = await generateLessonDraftsFromScheme(schemeId, form.elements.lessonsPerWeek.value);
+      const { draft } = await generateLessonDraftsFromScheme(
+        schemeId,
+        selectedWeek
+      );
       generatedLessons = draft.lessons;
-      draftSelect.innerHTML = generatedLessons.map((lesson, index) => (
-        `<option value="${index}">Week ${lesson.weekNumber} · Lesson ${lesson.lessonNumber} of ${draft.lessons.length}</option>`
-      )).join('');
       applyGeneratedLesson(generatedLessons[0]);
-      root.querySelector('[data-lesson-context-text]').textContent =
-        `Based on your saved ${draft.scheme.subject} scheme for Week ${draft.scheme.weekNumber}. Learning outcomes and suggested experiences are carried forward for teacher review.`;
-      const sourceLink = root.querySelector('[data-lesson-source]');
-      sourceLink.hidden = true;
-      context.hidden = false;
-      setStatus(`${generatedLessons.length} lesson draft(s) created from the saved scheme. Review and edit each before saving.`);
+      editor.hidden = false;
+      formActions.hidden = false;
+      const weekPlan = selectedWeekPlan(scheme);
+      contextSummary.textContent = `${scheme.grade} · ${draft.scheme.subject} · ${draft.scheme.term} ${draft.scheme.academicYear} · Week ${draft.scheme.weekNumber}\nLearning outcomes: ${weekPlan?.learningOutcomes || 'Not specified'}\nLearning experiences: ${weekPlan?.learningExperiences || 'Not specified'}\nDraft generated from this saved scheme week. Review and edit before saving.`;
+      setStatus('Lesson plan generated from the selected saved scheme week.');
     } catch (error) {
-      setStatus(error.message || 'Could not generate lessons from the selected scheme.', true);
+      setStatus(error.message || 'Could not generate a lesson plan from the selected scheme week.', true);
     } finally {
       hideButtonLoading(generateFromScheme);
     }
   });
 
-  generate.addEventListener('click', async () => {
-    const selections = {
-      grade: form.elements.grade.value,
-      subject: form.elements.subject.value,
-      term: form.elements.term.value,
-      strand: form.elements.curriculumStrand.value,
-      subStrand: form.elements.curriculumSubStrand.value,
-      weekNumber: form.elements.weekNumber.value,
-      lessonsPerWeek: form.elements.lessonsPerWeek.value
-    };
-    showButtonLoading(generate, 'Building curriculum drafts…');
-    try {
-      const { draft } = await generatePlanningDraft(selections);
-      generatedLessons = draft.lessons;
-      draftSelect.innerHTML = generatedLessons.map((lesson, index) => (
-        `<option value="${index}">Lesson ${lesson.lessonNumber} of ${draft.lessons.length}</option>`
-      )).join('');
-      applyGeneratedLesson(generatedLessons[0]);
-      const sourceLink = root.querySelector('[data-lesson-source]');
-      sourceLink.href = draft.curriculumContext.source.url;
-      sourceLink.textContent = `${draft.curriculumContext.source.title} — ${draft.curriculumContext.source.revision}`;
-      sourceLink.hidden = false;
-      root.querySelector('[data-lesson-context-text]').textContent = [
-        `Key inquiry questions: ${draft.curriculumContext.keyInquiryQuestions.join(' · ') || 'Not provided'}`,
-        `Core competencies: ${draft.curriculumContext.coreCompetencies.join(' · ') || 'Not provided'}`,
-        `Values: ${draft.curriculumContext.values.join(' · ') || 'Not provided'}`,
-        `Pertinent and contemporary issues: ${draft.curriculumContext.pertinentContemporaryIssues.join(' · ') || 'Not provided'}`,
-        `Term length: ${draft.teachingWeeks} teaching weeks. Review and edit each draft before saving.`
-      ].join('\n');
-      context.hidden = false;
-      setStatus(`${generatedLessons.length} curriculum-based lesson draft(s) loaded. Review and edit before saving.`);
-    } catch (error) {
-      setStatus(error.message || 'Could not build lesson drafts.', true);
-    } finally {
-      hideButtonLoading(generate);
-    }
-  });
-  draftSelect.addEventListener('change', () => {
-    const lesson = generatedLessons[Number(draftSelect.value)];
-    if (lesson) applyGeneratedLesson(lesson);
-  });
-
   form.addEventListener('submit', async event => {
     event.preventDefault();
-    if (form.dataset.focusMode === 'curriculum' && !form.elements.curriculumStrand.value) {
-      setStatus('Choose a curriculum strand or switch to manual input before saving.', true);
-      return;
-    }
     const recordId = form.elements.recordId.value;
     const record = Object.fromEntries(new FormData(form).entries());
-    record.strand = form.dataset.focusMode === 'manual'
-      ? form.elements.strand.value.trim()
-      : form.elements.curriculumStrand.value;
-    record.subStrand = form.dataset.focusMode === 'manual'
-      ? form.elements.subStrand.value.trim()
-      : form.elements.curriculumSubStrand.value;
     delete record.recordId;
-    delete record.lessonsPerWeek;
-    delete record.curriculumStrand;
-    delete record.curriculumSubStrand;
+    delete record.schemeWeekNumber;
     if (!record.schemeId) delete record.schemeId;
     showButtonLoading(submit, recordId ? 'Updating…' : 'Saving…');
     try {
@@ -452,16 +392,17 @@ if (root) {
         const record = items.find(item => item.id === editButton.dataset.lessonEdit);
         if (!record) throw new Error('Lesson plan not found. Refresh the list and try again.');
         await loadSchemesForLesson();
-        const allocationFields = await allocationFieldsReady;
-        if (allocationFields.error) throw allocationFields.error;
-        allocationFields.setSelection(record.grade, record.subject);
-        setFocusMode('manual');
         form.elements.recordId.value = record.id;
         for (const [key, value] of Object.entries(record)) {
-          if (key !== 'grade' && key !== 'subject' && form.elements[key]) {
+          if (form.elements[key]) {
             form.elements[key].value = value ?? '';
           }
         }
+        updateSelectedScheme(record.weekNumber);
+        form.elements.strand.value = record.strand || '';
+        form.elements.subStrand.value = record.subStrand || '';
+        editor.hidden = false;
+        formActions.hidden = false;
         submit.textContent = 'Update lesson plan';
         cancel.hidden = false;
         showPanel('Create');
@@ -487,5 +428,4 @@ if (root) {
       }
     }
   });
-  form.elements.academicYear.value = new Date().getFullYear();
 }

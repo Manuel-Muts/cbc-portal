@@ -22,6 +22,7 @@ import {
   changeEmail,
   toggleDeanStatus,
   updateSignature,
+  removeSignature,
   bulkDeleteStudentsByClass,
   getClassTeachersByGradesAndStreams, // 🆕 Import the new function
   updateGradingConfig, // 🆕 Import the new function
@@ -75,6 +76,7 @@ router.get("/user", getUser);
 router.put("/change-password", changePassword);
 router.put("/change-email", changeEmail);
 router.put("/profile/signature", updateSignature);
+router.delete("/profile/signature", removeSignature);
 
 // ---------------------------
 // STUDENT ROUTES

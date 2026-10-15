@@ -1066,21 +1066,301 @@ function renderAdminSignature() {
         <h3>Digital Signature Management</h3>
       </div>
       <p style="margin-bottom: 20px; color: #6b7280;">Upload or update the official digital signature for reports and documents. This signature will represent the Headteacher/Principal.</p>
-      <div class="headteacher-sig-box" style="margin: 0 auto; max-width: 300px; padding: 20px; border-radius: 12px; background: #f9fafb; border: 1px solid #e5e7eb; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
-          <h4 style="font-size: 1rem; margin-top: 0; margin-bottom: 15px; color: #1f2937;">Current Official Signature</h4>
-          <p class="sig-label">Headteacher/Principal's Signature</p>
-          <div id="adminSigPreview" class="sig-preview-area">
-            ${schoolInfo.headteacherSignatureUrl ? 
-              `<img src="${schoolInfo.headteacherSignatureUrl}" style="max-height: 60px; max-width: 150px; filter: contrast(1.05); object-fit: contain;">` : 
-              `<span style="font-size: 0.75rem; color: #a0aec0; font-style: italic;">No signature uploaded</span>`
-            }
+      <div class="headteacher-sig-box admin-signature-card">
+        <h4>Headteacher/Principal's Signature</h4>
+        <div id="adminSigPreview" class="admin-signature-preview" aria-live="polite"></div>
+        <div class="admin-signature-saved-actions" id="adminSigSavedActions" ${schoolInfo.headteacherSignatureUrl ? "" : "hidden"}>
+          <button type="button" class="btn secondary-btn" id="updateAdminSigBtn" ${schoolInfo.headteacherSignatureUrl ? "" : "hidden"}>Update signature</button>
+          <button type="button" class="btn secondary-btn admin-signature-remove" id="removeAdminSigBtn" ${schoolInfo.headteacherSignatureUrl ? "" : "hidden"}>Remove signature</button>
+        </div>
+        <div class="admin-signature-method-options" id="adminSigMethodOptions" role="group" aria-label="Choose signature method" ${schoolInfo.headteacherSignatureUrl ? "hidden" : ""}>
+          <button type="button" class="btn secondary-btn active" data-admin-signature-mode="upload">Upload signature</button>
+          <button type="button" class="btn secondary-btn" data-admin-signature-mode="draw">Draw signature</button>
+        </div>
+        <input type="file" id="adminSigInput" accept="image/png,image/jpeg" hidden>
+        <div id="adminSigDrawPanel" class="admin-signature-draw-panel" hidden>
+          <canvas id="adminSigCanvas" class="admin-signature-canvas" width="1000" height="250" aria-label="Draw the headteacher or principal signature"></canvas>
+          <div class="admin-signature-draw-actions">
+            <button type="button" class="btn secondary-btn" id="clearAdminSigDrawing">Clear</button>
+            <button type="button" class="btn primary-btn" id="saveAdminSigDrawing" disabled>Save signature</button>
           </div>
-          <button class="btn secondary-btn" id="uploadAdminSigBtn" style="font-size: 0.65rem; padding: 2px 19px; margin-top: 8px; border-radius: 6px; font-weight: 600;">Update Digital Signature</button>
-          <input type="file" id="adminSigInput" style="display:none;" accept="image/*">
+          <p>Use a mouse, finger, or stylus to sign.</p>
+        </div>
       </div>
     </div>
   `;
-  attachAdminSignatureLogic();
+  attachAdminSignatureControls();
+}
+
+function attachAdminSignatureControls() {
+  const input = document.getElementById("adminSigInput");
+  const preview = document.getElementById("adminSigPreview");
+  const updateButton = document.getElementById("updateAdminSigBtn");
+  const removeButton = document.getElementById("removeAdminSigBtn");
+  const savedActions = document.getElementById("adminSigSavedActions");
+  const methodOptions = document.getElementById("adminSigMethodOptions");
+  const drawPanel = document.getElementById("adminSigDrawPanel");
+  const canvas = document.getElementById("adminSigCanvas");
+  if (!input || !preview || !canvas) return;
+
+  const context = canvas.getContext("2d");
+  const saveButton = document.getElementById("saveAdminSigDrawing");
+  if (!context || !saveButton) return;
+
+  const strokes = [];
+  let activeStroke = null;
+  let activePointerId = null;
+  let isSaving = false;
+  let hasDrawing = false;
+  const lineWidth = 5;
+  const signatureColor = "#111827";
+
+  const redrawCanvas = () => {
+    const bounds = canvas.getBoundingClientRect();
+    if (!bounds.width || !bounds.height) return;
+
+    const pixelRatio = Math.max(1, window.devicePixelRatio || 1);
+    const pixelWidth = Math.round(bounds.width * pixelRatio);
+    const pixelHeight = Math.round(bounds.height * pixelRatio);
+    if (canvas.width !== pixelWidth || canvas.height !== pixelHeight) {
+      canvas.width = pixelWidth;
+      canvas.height = pixelHeight;
+    }
+
+    context.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
+    context.clearRect(0, 0, bounds.width, bounds.height);
+    context.strokeStyle = signatureColor;
+    context.fillStyle = signatureColor;
+    context.lineWidth = lineWidth;
+    context.lineCap = "round";
+    context.lineJoin = "round";
+
+    strokes.forEach((stroke) => {
+      if (!stroke.length) return;
+
+      const firstPoint = stroke[0];
+      const startX = firstPoint.x * bounds.width;
+      const startY = firstPoint.y * bounds.height;
+      if (stroke.length === 1) {
+        context.beginPath();
+        context.arc(startX, startY, lineWidth / 2, 0, Math.PI * 2);
+        context.fill();
+        return;
+      }
+
+      context.beginPath();
+      context.moveTo(startX, startY);
+      stroke.slice(1).forEach((point) => {
+        context.lineTo(point.x * bounds.width, point.y * bounds.height);
+      });
+      context.stroke();
+    });
+  };
+
+  const resizeObserver = typeof ResizeObserver === "undefined"
+    ? null
+    : new ResizeObserver(redrawCanvas);
+  resizeObserver?.observe(canvas);
+  window.addEventListener("resize", redrawCanvas);
+
+  const releaseActivePointer = () => {
+    const pointerId = activePointerId;
+    activePointerId = null;
+    activeStroke = null;
+    if (pointerId !== null && canvas.hasPointerCapture(pointerId)) {
+      canvas.releasePointerCapture(pointerId);
+    }
+  };
+
+  const updateSignatureView = (signatureUrl) => {
+    preview.replaceChildren();
+    const hasSavedSignature = Boolean(signatureUrl);
+    preview.hidden = !hasSavedSignature;
+    if (hasSavedSignature) {
+      const image = document.createElement("img");
+      image.src = signatureUrl;
+      image.alt = "Saved headteacher or principal signature";
+      preview.appendChild(image);
+    }
+
+    updateButton.hidden = !hasSavedSignature;
+    removeButton.hidden = !hasSavedSignature;
+    savedActions.hidden = !hasSavedSignature;
+    methodOptions.hidden = hasSavedSignature;
+    drawPanel.hidden = true;
+    releaseActivePointer();
+    strokes.length = 0;
+    hasDrawing = false;
+    saveButton.disabled = true;
+    requestAnimationFrame(redrawCanvas);
+  };
+
+  updateSignatureView(schoolInfo.headteacherSignatureUrl);
+
+  updateButton.addEventListener("click", () => {
+    savedActions.hidden = true;
+    methodOptions.hidden = false;
+    drawPanel.hidden = true;
+  });
+
+  document.querySelectorAll("[data-admin-signature-mode]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const drawMode = button.dataset.adminSignatureMode === "draw";
+      drawPanel.hidden = !drawMode;
+      document.querySelectorAll("[data-admin-signature-mode]").forEach((modeButton) => {
+        modeButton.classList.toggle("active", modeButton === button);
+      });
+      if (drawMode) {
+        requestAnimationFrame(redrawCanvas);
+      } else {
+        releaseActivePointer();
+        input.click();
+      }
+    });
+  });
+
+  const saveSignatureFile = async (file) => {
+    if (!file || isSaving) return;
+    if (!["image/png", "image/jpeg"].includes(file.type)) {
+      showToast("Choose a PNG or JPEG signature image", "error");
+      return;
+    }
+    if (file.size > 2 * 1024 * 1024) {
+      showToast("Signature image must be under 2MB", "error");
+      return;
+    }
+
+    isSaving = true;
+    input.disabled = true;
+    saveButton.disabled = true;
+    showToast("Uploading official signature...", "info");
+    const formData = new FormData();
+    formData.append("file", file);
+
+    try {
+      const token = authService.getToken();
+      const uploadResponse = await fetch(`${API_BASE}/materials/upload-raw`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+        body: formData
+      });
+      const uploadedFile = await uploadResponse.json();
+      if (!uploadResponse.ok) throw new Error(uploadedFile.message || "Signature upload failed");
+
+      const saveResponse = await fetch(`${API_BASE}/update-school-signature`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          signatureUrl: uploadedFile.url,
+          signaturePublicId: uploadedFile.public_id
+        })
+      });
+      const result = await saveResponse.json();
+      if (!saveResponse.ok) throw new Error(result.msg || "Could not save the official signature");
+
+      schoolInfo.headteacherSignatureUrl = result.headteacherSignatureUrl;
+      updateSignatureView(result.headteacherSignatureUrl);
+      clearSchoolInfoCache();
+      showToast(result.cleanupWarning ? result.msg : "✅ Official signature updated", result.cleanupWarning ? "warning" : "success");
+    } catch (err) {
+      showToast(err.message || "Could not save the official signature", "error");
+    } finally {
+      isSaving = false;
+      input.disabled = false;
+      saveButton.disabled = !hasDrawing;
+    }
+  };
+
+  input.addEventListener("change", async () => {
+    const file = input.files[0];
+    if (!file) return;
+    await saveSignatureFile(file);
+    input.value = "";
+  });
+
+  const getCanvasPoint = (event) => {
+    const bounds = canvas.getBoundingClientRect();
+    return {
+      x: Math.min(1, Math.max(0, (event.clientX - bounds.left) / bounds.width)),
+      y: Math.min(1, Math.max(0, (event.clientY - bounds.top) / bounds.height))
+    };
+  };
+
+  canvas.addEventListener("pointerdown", (event) => {
+    if (event.button !== 0 || !event.isPrimary || activePointerId !== null || isSaving) return;
+    event.preventDefault();
+    canvas.setPointerCapture(event.pointerId);
+    activePointerId = event.pointerId;
+    activeStroke = [getCanvasPoint(event)];
+    strokes.push(activeStroke);
+    hasDrawing = true;
+    saveButton.disabled = false;
+    redrawCanvas();
+  });
+
+  canvas.addEventListener("pointermove", (event) => {
+    if (event.pointerId !== activePointerId || !activeStroke) return;
+    event.preventDefault();
+    activeStroke.push(getCanvasPoint(event));
+    redrawCanvas();
+  });
+
+  const stopDrawing = (event) => {
+    if (event.pointerId !== activePointerId) return;
+    activePointerId = null;
+    activeStroke = null;
+  };
+  canvas.addEventListener("pointerup", stopDrawing);
+  canvas.addEventListener("pointercancel", stopDrawing);
+  canvas.addEventListener("lostpointercapture", stopDrawing);
+
+  document.getElementById("clearAdminSigDrawing").addEventListener("click", () => {
+    releaseActivePointer();
+    strokes.length = 0;
+    hasDrawing = false;
+    saveButton.disabled = true;
+    redrawCanvas();
+  });
+
+  saveButton.addEventListener("click", () => {
+    if (!hasDrawing || isSaving) return;
+    saveButton.disabled = true;
+    canvas.toBlob((blob) => {
+      if (!blob) {
+        saveButton.disabled = !hasDrawing;
+        showToast("Could not prepare the drawn signature. Please try again.", "error");
+        return;
+      }
+      saveSignatureFile(new File([blob], "headteacher-signature.png", { type: "image/png" }));
+    }, "image/png");
+  });
+
+  removeButton.addEventListener("click", async () => {
+    const confirmed = await window.cbcUtils.showConfirmToast("Remove the official headteacher/principal signature?");
+    if (!confirmed) return;
+
+    removeButton.disabled = true;
+    try {
+      const response = await fetch(`${API_BASE}/update-school-signature`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${authService.getToken()}` }
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.msg || "Could not remove the official signature");
+
+      schoolInfo.headteacherSignatureUrl = "";
+      updateSignatureView("");
+      clearSchoolInfoCache();
+      showToast("Official signature removed", "success");
+    } catch (err) {
+      showToast(err.message, "error");
+    } finally {
+      removeButton.disabled = false;
+    }
+  });
 }
 
 function attachAdminSignatureLogic() {
