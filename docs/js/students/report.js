@@ -63,6 +63,12 @@ async function getImageBase64(url) {
   // -----------------------------
   let reportGrade = user.grade || "N/A";
   let reportStream = "";
+  const normalizeReportStream = (stream) => {
+    const value = String(stream || "").trim().replace(/^STREAM\s+/i, "").toUpperCase();
+    return /^(?:N\/?A|NONE|NULL|UNDEFINED|UNASSIGNED|NO STREAM|UNSTREAMED|-)$/i.test(value)
+      ? ""
+      : value;
+  };
   let reportPathway = null;
   if (window.cbcUtils?.normalizePathway) {
     reportPathway = window.cbcUtils.normalizePathway(user.pathway || null);
@@ -92,7 +98,7 @@ async function getImageBase64(url) {
   // Set baseline from marks (especially important for non-student users viewing reports)
   const latestMarkRecord = studentMarks[0];
   if (latestMarkRecord.grade) reportGrade = latestMarkRecord.grade;
-  if (latestMarkRecord.stream) reportStream = latestMarkRecord.stream;
+  if (latestMarkRecord.stream !== undefined) reportStream = normalizeReportStream(latestMarkRecord.stream);
 
   // 2. Fetch School and Enrollment info in parallel
   try {
@@ -169,7 +175,7 @@ async function getImageBase64(url) {
     if (enrollmentRes && enrollmentRes.ok) {
       const enrollment = await enrollmentRes.json();
       if (enrollment.grade) reportGrade = enrollment.grade;
-      if (enrollment.stream) reportStream = enrollment.stream;
+      reportStream = normalizeReportStream(enrollment.stream);
       const normalizedEnrollmentPathway = window.cbcUtils?.normalizePathway?.(enrollment.pathway);
       if (normalizedEnrollmentPathway && normalizedEnrollmentPathway !== "Core") {
         reportPathway = normalizedEnrollmentPathway;
@@ -189,14 +195,17 @@ async function getImageBase64(url) {
     console.log(`[DEBUG] Grading Scale Identification: Grade="${reportGrade}" => ${window.cbcUtils.isPrimaryGrade(reportGrade) ? 'PRIMARY (4-point)' : 'SECONDARY (8-point)'}`);
 
     // 3. Fetch Class Teacher Signature using determined grade/stream
-    // The backend endpoint handles variant formats (e.g. "Grade 2W" or "2")
+    const teacherSigElem = document.getElementById("classTeacherSig");
+    if (teacherSigElem) {
+      teacherSigElem.removeAttribute("src");
+      teacherSigElem.style.display = "none";
+    }
     if (reportGrade && reportGrade !== "N/A") {
       const teacherRes = await fetch(`${BACKEND_URL}/api/users/class-teacher?grade=${encodeURIComponent(reportGrade)}&stream=${encodeURIComponent(reportStream)}`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       if (teacherRes.ok) {
         const teacher = await teacherRes.json();
-        const teacherSigElem = document.getElementById("classTeacherSig");
         if (teacherSigElem && teacher.signatureUrl) {
           const base64 = await getImageBase64(teacher.signatureUrl);
           if (base64) {
@@ -208,6 +217,8 @@ async function getImageBase64(url) {
           }
         }
         setText("classTeacherNameLabel", teacher.name);
+      } else if (teacherRes.status !== 404) {
+        console.warn(`Class teacher signature lookup failed: ${teacherRes.status} ${teacherRes.statusText}`);
       }
     }
   } catch (err) {

@@ -541,7 +541,7 @@ document.addEventListener("DOMContentLoaded", () => {
   // AUTHENTICATION
   // ---------------------------
   async function loadTeacherProfile() {
-    teacher = await authService.getUserProfile(["teacher", "classteacher"]);
+    teacher = await authService.getUserProfile(["teacher", "classteacher", "dean"]);
     if (!teacher) return;
 
     window.currentTeacher = teacher;
@@ -554,9 +554,11 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
     function updateTeacherNameUI() {
-    const isDean = Array.isArray(teacher.roles)
-      ? teacher.roles.includes("dean")
-      : (teacher.role === "dean" || teacher.role === "DeAn" || teacher.isDean);
+    const teacherRoles = Array.isArray(teacher.roles)
+      ? teacher.roles.map(role => String(role).trim().toLowerCase())
+      : [];
+    const primaryRole = String(teacher.role || "").trim().toLowerCase();
+    const isDean = teacher.isDean === true || primaryRole === "dean" || teacherRoles.includes("dean");
 
     if (headerRefreshBtn) {
       headerRefreshBtn.addEventListener("click", (e) => {
@@ -599,15 +601,17 @@ document.addEventListener("DOMContentLoaded", () => {
 
     const isClassTeacher = Boolean(
       teacher?.isClassTeacher ||
-      teacher?.role === "classteacher" ||
-      teacher?.role === "Class Teacher" ||
-      (Array.isArray(teacher?.roles) && teacher.roles.includes("classteacher"))
+      ["classteacher", "class teacher"].includes(String(teacher?.role || "").trim().toLowerCase()) ||
+      (Array.isArray(teacher?.roles) && teacher.roles.some(role =>
+        ["classteacher", "class teacher"].includes(String(role).trim().toLowerCase())
+      ))
     );
     const isTeacher = Boolean(
-      teacher?.role === "teacher" ||
-      (Array.isArray(teacher?.roles) && teacher.roles.includes("teacher")) ||
-      teacher?.isDean === true
+      primaryRole === "teacher" ||
+      teacherRoles.includes("teacher") ||
+      isDean
     );
+    const canManageSignature = isClassTeacher || isDean;
 
     if (myClassTabBtn) {
       myClassTabBtn.style.display = (isClassTeacher || isTeacher) ? "inline-flex" : "none";
@@ -615,11 +619,11 @@ document.addEventListener("DOMContentLoaded", () => {
 
     const digitalSignatureTab = document.querySelector(".subnav-btn[data-tab='digitalSignature']");
     if (digitalSignatureTab) {
-      digitalSignatureTab.hidden = !isClassTeacher;
-      digitalSignatureTab.style.display = isClassTeacher ? "inline-flex" : "";
+      digitalSignatureTab.hidden = !canManageSignature;
+      digitalSignatureTab.style.display = canManageSignature ? "inline-flex" : "none";
     }
 
-    if (digitalSignatureContent && teacher && isClassTeacher) {
+    if (digitalSignatureContent && teacher && canManageSignature) {
       renderSignatureUI(teacher);
     }
 
@@ -635,12 +639,17 @@ document.addEventListener("DOMContentLoaded", () => {
 
   function renderSignatureUI(user) {
     const container = digitalSignatureContent || document.getElementById("allocationsContainer");
-    const isTeacher = Boolean(
-      user?.role === "teacher" ||
-      (Array.isArray(user?.roles) && user.roles.includes("teacher")) ||
-      user?.isDean === true
+    const isDean = user?.isDean === true ||
+      String(user?.role || "").trim().toLowerCase() === "dean" ||
+      (Array.isArray(user?.roles) && user.roles.some(role => String(role).trim().toLowerCase() === "dean"));
+    const isClassTeacher = Boolean(
+      user?.isClassTeacher ||
+      ["classteacher", "class teacher"].includes(String(user?.role || "").trim().toLowerCase()) ||
+      (Array.isArray(user?.roles) && user.roles.some(role =>
+        ["classteacher", "class teacher"].includes(String(role).trim().toLowerCase())
+      ))
     );
-    if (!container || !user || (!user.isClassTeacher && !isTeacher)) return;
+    if (!container || !user || (!isClassTeacher && !isDean)) return;
 
     // Check if signature UI already exists
     if (document.getElementById("signatureUploadContainer")) return;

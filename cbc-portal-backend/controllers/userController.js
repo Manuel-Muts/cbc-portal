@@ -22,6 +22,7 @@ import { deleteFinancePaymentsForStudents } from '../services/financeRepository.
 import { normalizePathway } from '../utils/pathwayUtils.js';
 import { createNotificationsForUsers } from './notificationController.js';
 import { buildUserDirectoryEnrollmentFilter, resolveActiveEnrollmentYear } from '../utils/accountsQueryHelpers.js';
+import { parseClassTeacherAssignment } from '../utils/classTeacherAssignment.js';
 
 // 🆕 Helper to auto-format phone numbers (extracted from registerUser)
 const formatContact = (contact) => {
@@ -1871,43 +1872,31 @@ export const removeSignature = async (req, res) => {
 // ---------------------------
 export const getClassTeacher = async (req, res) => {
   try {
-    let { grade, stream } = req.query;
-    if (!grade) return res.status(400).json({ message: "Grade is required" });
-
-    // Normalize grade: handle formats like "Grade 2W", "2W", "Grade 2", "2"
-    grade = grade.trim();
-    let requestedStream = (stream === "null" || stream === "undefined" || !stream) ? null : stream.trim();
-
-    // Parse grade string to handle formats like "Grade 2W" or "2W"
-    const gradeParts = grade.match(/^(?:Grade\s+)?(\d+)([A-Z])?$/i);
-    let numericGrade = grade;
-
-    if (gradeParts) {
-      numericGrade = gradeParts[1];
-      // If stream is missing from query but present in grade string, extract it
-      if (!requestedStream && gradeParts[2]) {
-        requestedStream = gradeParts[2].toUpperCase();
-      }
+    const { grade: rawGrade, stream: rawStream } = req.query;
+    if (typeof rawGrade !== "string" || !rawGrade.trim()) {
+      return res.status(400).json({ message: "Grade is required" });
     }
 
-    const query = {
+    const assignment = parseClassTeacherAssignment(rawGrade, rawStream);
+    if (!assignment) {
+      return res.status(400).json({ message: "Invalid class stream." });
+    }
+    if (!req.user.schoolId) {
+      return res.status(400).json({ message: "School ID is missing." });
+    }
+
+    const candidates = await User.find({
       schoolId: req.user.schoolId,
-      assignedClass: { $in: [grade, numericGrade, `Grade ${numericGrade}`] },
-      assignedStream: requestedStream,
       isClassTeacher: true
-    };
+    }).select("name signatureUrl assignedClass assignedStream").lean();
+    const teachers = candidates.filter((teacher) =>
+      JSON.stringify(parseClassTeacherAssignment(teacher.assignedClass, teacher.assignedStream)) === JSON.stringify(assignment)
+    );
 
-    let teacher = await User.findOne(query).select("name signatureUrl");
+    if (teachers.length === 0) return res.status(404).json({ message: "Class teacher not found for this grade and stream" });
+    if (teachers.length > 1) return res.status(409).json({ message: "Multiple class teachers are assigned to this grade and stream." });
 
-    // 🆕 FALLBACK: If specific stream teacher not found, try finding one for the grade with NO stream
-    if (!teacher && requestedStream) {
-      query.assignedStream = null;
-      teacher = await User.findOne(query).select("name signatureUrl");
-    }
-
-    if (!teacher) return res.status(404).json({ message: "Class teacher not found" });
-
-    res.json(teacher);
+    res.json(teachers[0]);
   } catch (err) {
     console.error("GetClassTeacher Error:", err);
     res.status(500).json({ message: "Server error" });
@@ -1931,30 +1920,37 @@ export const getClassTeachersByGradesAndStreams = async (req, res) => {
       return res.status(400).json({ message: "School ID is missing." });
     }
 
-    // 🆕 Deduplicate pairs to prevent redundant query conditions
-    const uniquePairs = Array.from(new Set(gradeStreamPairs.map(p => JSON.stringify(p)))).map(p => JSON.parse(p));
-
-    const queryConditions = uniquePairs.map(pair => {
-      let grade = pair.grade;
-      let stream = (pair.stream === "null" || pair.stream === "undefined" || !pair.stream) ? null : pair.stream.trim();
-
-      // Normalize grade to handle formats like "Grade 2W" or "2W"
-      const gradeParts = grade.match(/^(?:Grade\s+)?(\d+)([A-Z])?$/i);
-      let numericGrade = grade;
-      if (gradeParts) {
-        numericGrade = gradeParts[1];
-        if (!stream && gradeParts[2]) stream = gradeParts[2].toUpperCase();
+    const normalizedPairs = [];
+    for (const pair of gradeStreamPairs) {
+      if (!pair || typeof pair.grade !== "string" || !pair.grade.trim()) {
+        return res.status(400).json({ message: "Each grade/stream pair must include a grade." });
       }
 
-      return {
-        schoolId: schoolId,
-        assignedClass: { $in: [grade, numericGrade, `Grade ${numericGrade}`] },
-        assignedStream: stream,
-        isClassTeacher: true
-      };
-    });
+      const rawGrade = pair.grade.trim();
+      const assignment = parseClassTeacherAssignment(rawGrade, pair.stream);
+      if (!assignment) {
+        return res.status(400).json({ message: `The stream in grade "${rawGrade}" conflicts with its stream value.` });
+      }
+      normalizedPairs.push(assignment);
+    }
+    const pairKey = ({ grade, stream }) => JSON.stringify([grade.toUpperCase(), stream || ""]);
+    const requestedKeys = new Set(normalizedPairs.map(pairKey));
 
-    const teachers = await User.find({ $or: queryConditions }).select("name signatureUrl assignedClass assignedStream").lean();
+    const candidates = await User.find({
+      schoolId,
+      isClassTeacher: true
+    }).select("name signatureUrl assignedClass assignedStream isClassTeacher").lean();
+
+    const teachers = [];
+    candidates.forEach((teacher) => {
+      const assignment = parseClassTeacherAssignment(teacher.assignedClass, teacher.assignedStream);
+      if (!assignment || !requestedKeys.has(pairKey(assignment))) return;
+      teachers.push({
+        ...teacher,
+        assignedClass: assignment.grade,
+        assignedStream: assignment.stream
+      });
+    });
 
     res.json(teachers);
   } catch (err) {

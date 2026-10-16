@@ -50,6 +50,15 @@ function sanitize(value) {
   }[character]));
 }
 
+function addSignatureAboveLine(doc, image, format, lineStart, lineEnd, lineY, maxHeight = 15) {
+  const imageProps = doc.getImageProperties(image);
+  const lineWidth = lineEnd - lineStart;
+  const scale = Math.min(lineWidth / imageProps.width, maxHeight / imageProps.height);
+  const width = imageProps.width * scale;
+  const height = imageProps.height * scale;
+  doc.addImage(image, format, lineStart + (lineWidth - width) / 2, lineY - height, width, height, undefined, "FAST");
+}
+
 let deanProfileData = null;
 let smsBroadcastAbortController = null; // 🆕 Track broadcast session for cancellation
 let currentAnalysisRawData = null;
@@ -1191,15 +1200,15 @@ async function downloadSchoolWideRankingAsPDF(rankings) {
         if (deanProfileData?.signatureBase64) {
           try {
             const signatureFormat = deanProfileData.sigFormat || cbcUtils.getImageFormat(deanProfileData.signatureBase64);
-            doc.addImage(
+            doc.setFontSize(9);
+            const lineWidth = doc.getTextWidth("__________________________");
+            addSignatureAboveLine(
+              doc,
               deanProfileData.signatureBase64,
               signatureFormat,
-              pageWidth - 54,
-              signatureY - 8,
-              40,
-              8,
-              undefined,
-              'FAST'
+              pageWidth - 14 - lineWidth,
+              pageWidth - 14,
+              signatureY
             );
           } catch (e) {
             console.warn(`Could not embed Dean signature on learner-ranking page ${pageNumber}:`, e);
@@ -3002,7 +3011,16 @@ async function downloadRankingAsPDF() {
       if (deanProfileData && deanProfileData.signatureBase64) {
         try {
           const sigFormat = deanProfileData.sigFormat || cbcUtils.getImageFormat(deanProfileData.signatureBase64);
-          doc.addImage(deanProfileData.signatureBase64, sigFormat, pageWidth - 54, footerY - 8, 40, 8, undefined, 'FAST');
+          doc.setFontSize(9);
+          const lineWidth = doc.getTextWidth("__________________________");
+          addSignatureAboveLine(
+            doc,
+            deanProfileData.signatureBase64,
+            sigFormat,
+            pageWidth - 14 - lineWidth,
+            pageWidth - 14,
+            footerY
+          );
         } catch (e) { console.warn(`Signature error on page ${pageNumber}:`, e); }
       }
 
@@ -3391,7 +3409,16 @@ async function downloadSubjectPerformanceAsPDF() {
   if (deanProfileData && deanProfileData.signatureBase64) {
     try {
       const sigFormat = deanProfileData.sigFormat || cbcUtils.getImageFormat(deanProfileData.signatureBase64);
-      doc.addImage(deanProfileData.signatureBase64, sigFormat, pageWidth - 54, footerY - 8, 40, 8, undefined, 'FAST');
+      doc.setFontSize(9);
+      const lineWidth = doc.getTextWidth("__________________________");
+      addSignatureAboveLine(
+        doc,
+        deanProfileData.signatureBase64,
+        sigFormat,
+        pageWidth - 14 - lineWidth,
+        pageWidth - 14,
+        footerY
+      );
     } catch (e) { // Catch error if signature is invalid
       console.warn("Could not embed Dean signature in PDF:", e);
     }
@@ -4051,7 +4078,7 @@ async function loadDeanProfile() {
     try {
       // Start fetching school info and signature conversion in parallel // 🆕 Use Promise.allSettled
       const results = await Promise.allSettled([ // Use Promise.allSettled to prevent one failure from blocking others
-        fetchWithAuth(`${API_BASE}/users/my-school?includeLogo=false&fields=name,schoolCode,motto,status,schoolType,gradingConfig,plan,planFeatures&bypassCache=true`).catch(e => { console.warn("Failed to fetch school info:", e); return null; }),
+        fetchWithAuth(`${API_BASE}/users/my-school?includeLogo=false&fields=name,schoolCode,motto,status,schoolType,gradingConfig,plan,planFeatures,headteacherSignatureUrl&bypassCache=true`).catch(e => { console.warn("Failed to fetch school info:", e); return null; }),
         Promise.resolve(null)
       ]);
 
@@ -4094,17 +4121,17 @@ async function loadDeanProfile() {
         }
         
         // 🆕 Fetch and convert Headteacher/Principal signature if available in school profile
+        deanProfileData.headSignatureBase64 = null;
+        deanProfileData.headSigFormat = null;
         if (schoolInfo.headteacherSignatureUrl) {
           try { // 🆕 Use cbcUtils.getImageBase64
             deanProfileData.headSignatureBase64 = await cbcUtils.getImageBase64(schoolInfo.headteacherSignatureUrl); // 🆕 Use cbcUtils.getImageBase64
             deanProfileData.headSigFormat = cbcUtils.getImageFormat(deanProfileData.headSignatureBase64); // 🆕 Use cbcUtils.getImageFormat
           } catch(e) { console.warn("Headteacher signature pre-load failed:", e); }
-        } else { // If headteacherSignatureUrl is not available, try to use the dean's signature as fallback (if dean has one)
-            if (deanProfileData.signatureBase64) { // Only fallback if dean has a signature
-                deanProfileData.headSignatureBase64 = deanProfileData.signatureBase64;
-                deanProfileData.headSigFormat = deanProfileData.sigFormat;
-            }
-          }
+        } else {
+          deanProfileData.headSignatureBase64 = null;
+          deanProfileData.headSigFormat = null;
+        }
 
         // 🆕 PRE-CALCULATE IMAGE PROPERTIES ONCE TO OPTIMIZE PDF GENERATION SPEED
         // This prevents expensive binary re-parsing inside report generation loops.
@@ -4371,55 +4398,73 @@ async function generateBulkReportCards() {
       return;
     }
     
-    // 🆕 Pre-map static Performance Key to avoid repeated calculations in the loop
-    // 🆕 Batch fetch all class teachers for all unique grade/stream combinations
-    const uniqueGradeStreamPairs = new Set();
-    lastProcessedStudents.forEach(s => {
-        const grade = filterGradeEl.value; // Assuming all students are from the same grade
-        const stream = s.stream || "Unassigned";
-        uniqueGradeStreamPairs.add(`${grade}_${stream}`);
+    // Resolve teacher signatures from the current school's live class assignments.
+    const normalizeSignatureStream = (stream) => {
+      const value = String(stream || "").trim().replace(/^STREAM\s+/i, "").toUpperCase();
+      return /^(?:N\/?A|NONE|NULL|UNDEFINED|UNASSIGNED|NO STREAM|UNSTREAMED|-)$/i.test(value)
+        ? "Unassigned"
+        : value || "Unassigned";
+    };
+    const getStudentSignatureStream = (student) => {
+      const stream = [student.stream, student.enrollmentId?.stream]
+        .map(normalizeSignatureStream)
+        .find(value => value !== "Unassigned");
+      if (stream) return stream;
+
+      const grade = String(student.grade || student.enrollmentId?.grade || "").trim();
+      const classMatch = grade.match(/^(?:grade\s*)?(?:\d{1,2}|pg|pp[12])\s*(?:stream\s*)?([a-z]+)$/i);
+      return classMatch ? classMatch[1].toUpperCase() : "Unassigned";
+    };
+    const classTeacherKey = (grade, stream) => JSON.stringify([
+      window.cbcUtils.normalizeGrade(grade).trim().toUpperCase(),
+      normalizeSignatureStream(stream)
+    ]);
+    const requestedPairs = new Map();
+    lastProcessedStudents.forEach((student) => {
+      const pair = { grade: filterGradeEl.value, stream: getStudentSignatureStream(student) };
+      requestedPairs.set(classTeacherKey(pair.grade, pair.stream), {
+        grade: pair.grade,
+        stream: pair.stream === "Unassigned" ? null : pair.stream
+      });
     });
 
-    const gradeStreamPairsArray = Array.from(uniqueGradeStreamPairs).map(pair => {
-        const [grade, stream] = pair.split('_');
-        return { grade, stream: stream === "Unassigned" ? null : stream };
-    });
-
-    // 🆕 Persistent Cache for Teacher Signatures
-    const TEACHER_CACHE_KEY = "dean_teacher_sig_cache";
-    const teacherCache = JSON.parse(localStorage.getItem(TEACHER_CACHE_KEY) || "{}");
+    const gradeStreamPairsArray = Array.from(requestedPairs.values());
     const classTeacherMap = new Map();
-    const pairsToFetch = [];
-
-    gradeStreamPairsArray.forEach(pair => {
-        const key = `${window.cbcUtils.normalizeGrade(pair.grade)}_${pair.stream || 'Unassigned'}`;
-        if (teacherCache[key] && (Date.now() - teacherCache[key].timestamp < CACHE_TTL)) {
-            classTeacherMap.set(key, teacherCache[key].data);
-        } else {
-            pairsToFetch.push(pair);
-        } // Add to list of pairs to fetch
-    });
-
-    if (pairsToFetch.length > 0) {
+    if (gradeStreamPairsArray.length > 0) {
         const batchResults = await fetchWithAuth(`${API_BASE}/users/class-teachers/batch`, {
             method: 'POST',
-            body: JSON.stringify({ gradeStreamPairs: pairsToFetch })
+            body: JSON.stringify({ gradeStreamPairs: gradeStreamPairsArray })
         });
 
-        await Promise.all(batchResults.map(async (ct) => {
-            const normGrade = window.cbcUtils.normalizeGrade(ct.assignedClass);
-            const key = `${normGrade}_${ct.assignedStream || 'Unassigned'}`;
-            
-            let sigData = null; // 🆕 Track signature data
-            if (ct.signatureUrl) {
-                const b64 = await cbcUtils.getImageBase64(ct.signatureUrl); // Use cbcUtils.getImageBase64
-                if (b64) sigData = { base64: b64, format: cbcUtils.getImageFormat(b64) };
+        const requestedKeys = new Set(requestedPairs.keys());
+        const candidatesByClass = new Map();
+        batchResults.forEach((teacher) => {
+          const key = classTeacherKey(teacher.assignedClass, teacher.assignedStream);
+          if (!requestedKeys.has(key)) return;
+          const candidates = candidatesByClass.get(key) || [];
+          candidates.push(teacher);
+          candidatesByClass.set(key, candidates);
+        });
+
+        await Promise.all(gradeStreamPairsArray.map(async (pair) => {
+          const key = classTeacherKey(pair.grade, pair.stream);
+          const candidates = candidatesByClass.get(key) || [];
+          if (candidates.length !== 1) {
+            if (candidates.length > 1) {
+              console.error("Multiple class teachers match report class; signature omitted.", pair);
             }
-            const teacherData = { ...ct, sigData };
-            classTeacherMap.set(key, teacherData);
-            teacherCache[key] = { timestamp: Date.now(), data: teacherData };
+            classTeacherMap.set(key, null);
+            return;
+          }
+
+          const teacher = candidates[0];
+          let sigData = null;
+          if (teacher.signatureUrl) {
+            const base64 = await cbcUtils.getImageBase64(teacher.signatureUrl);
+            if (base64) sigData = { base64, format: cbcUtils.getImageFormat(base64) };
+          }
+          classTeacherMap.set(key, { ...teacher, sigData });
         }));
-        localStorage.setItem(TEACHER_CACHE_KEY, JSON.stringify(teacherCache));
     }
 
     const perfKeyBody = cbcUtils.getPerformanceKey(gradeLabel).map(item => [
@@ -4973,22 +5018,20 @@ async function generateBulkReportCards() {
         doc.setLineDash([]);
 
         // 🆕 Embed Signatures centered above each line when available
-        const streamKey = s.stream || "Unassigned";
-        const ct = classTeacherMap.get(`${window.cbcUtils.normalizeGrade(gradeLabel)}_${streamKey}`);
+        const ct = classTeacherMap.get(classTeacherKey(gradeLabel, s.stream));
 
-        const imgW = 30;
-        const imgH = 9;
+        const imgW = 45;
         try {
           if (ct?.sigData) {
             const x = midCol.lineStart + (midCol.lineLen - imgW) / 2;
-            doc.addImage(ct.sigData.base64, ct.sigData.format, x, signatureY - imgH - 2, imgW, imgH, undefined, 'FAST');
+            addSignatureAboveLine(doc, ct.sigData.base64, ct.sigData.format, x, x + imgW, signatureY);
           }
 
-          const headSigB64 = deanProfileData.headSignatureBase64 || deanProfileData.signatureBase64;
-          const headSigFmt = deanProfileData.headSignatureBase64 ? deanProfileData.headSigFormat : deanProfileData.sigFormat;
+          const headSigB64 = deanProfileData.headSignatureBase64;
+          const headSigFmt = deanProfileData.headSigFormat;
           if (headSigB64) {
             const x = leftCol.lineStart + (leftCol.lineLen - imgW) / 2;
-            doc.addImage(headSigB64, headSigFmt, x, signatureY - imgH - 2, imgW, imgH, undefined, 'FAST');
+            addSignatureAboveLine(doc, headSigB64, headSigFmt, x, x + imgW, signatureY);
           }
         } catch (e) {
           console.warn('Signature embed failed', e);
