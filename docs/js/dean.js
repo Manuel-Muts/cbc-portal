@@ -4831,14 +4831,10 @@ async function generateBulkReportCards() {
         });
 
         // 4. Summary & Remarks
-        const finalY = doc.lastAutoTable.finalY + 8; // Y position after table
+        const summaryStartY = doc.lastAutoTable.finalY;
         const studentRemark = window.cbcUtils?.getSubjectRemark?.(s.mean) || 'N/A';
-        const metaX = 15; // Left Margin
-        const metaX2 = pageWidth / 2 + 5;
-        const labelOffset = 36; // Reduced from 45 to fix unnecessary spacing
-        const remarkMaxWidth = pageWidth - (metaX2 + labelOffset) - 15; // Max width for column 2 comments
+        const metaX = 15;
 
-        // Data definitions for 2-column layout
         const statLabels = ["Total Marks", "T/Points", "Overall Performance"];
         // Compute max totals assuming 100 per subject shown in this report
         const maxTotalMarks = subjectsToShow.length * 100;
@@ -4861,26 +4857,39 @@ async function generateBulkReportCards() {
           sanitizePdfText(cbcUtils.getHeadteacherComment(s.mean))
         ];
 
-        doc.setFontSize(8);
-        for (let j = 0; j < 3; j++) { // Iterate for 3 rows of stats/remarks
-            const y = finalY + (j * 6.5); // Consistent line height
-            
-            // Column 1: Performance Metrics
-            doc.setFont("helvetica", "bold").text(`${statLabels[j]}:`, metaX, y);
-            if (j === 0 || j === 1) {
-                const [labelValue, maxValue] = statValues[j].split(' / ');
-                doc.setFont("helvetica", "bold").text(labelValue, metaX + labelOffset, y);
-                doc.setFont("helvetica", "normal").text(` / ${maxValue}`, metaX + labelOffset + doc.getTextWidth(labelValue), y);
-            } else {
-                doc.setFont("helvetica", "normal").text(statValues[j], metaX + labelOffset, y);
-            }
+        const summaryTableWidth = pageWidth - 30;
+        const summaryRemarkWidth = summaryTableWidth - 40 - 25 - 38;
+        doc.autoTable({
+            startY: summaryStartY,
+            body: statLabels.map((label, index) => [
+              `${label}:`,
+              statValues[index],
+              `${remarkLabels[index]}:`,
+              remarkValues[index]
+            ]),
+            theme: 'grid',
+            styles: {
+              fillColor: [238, 242, 247],
+              textColor: [15, 23, 42],
+              font: 'helvetica',
+              fontSize: 8,
+              cellPadding: { top: 2, right: 2.5, bottom: 2, left: 2.5 },
+              lineWidth: 0.2,
+              lineColor: [175, 185, 198],
+              valign: 'middle'
+            },
+            columnStyles: {
+              0: { cellWidth: 40, fontStyle: 'bold' },
+              1: { cellWidth: 25 },
+              2: { cellWidth: 38, fontStyle: 'bold' },
+              3: { cellWidth: summaryRemarkWidth }
+            },
+            alternateRowStyles: { fillColor: [230, 235, 242] },
+            margin: { left: metaX, right: 15 },
+            tableWidth: summaryTableWidth
+        });
 
-            // Column 2: Comments (with wrapping to prevent overflow)
-            doc.setFont("helvetica", "bold").text(`${remarkLabels[j]}:`, metaX2, y);
-            doc.setFont("helvetica", "normal").text(remarkValues[j], metaX2 + labelOffset, y, { maxWidth: remarkMaxWidth });
-        }
-
-        const keyStartY = finalY + 20; // Y position for performance key
+        const keyStartY = doc.lastAutoTable.finalY + 4;
         doc.setFont("helvetica", "bold").setFontSize(7.5).text(sanitizePdfText("Performance Key"), metaX, keyStartY);
         doc.autoTable({
             startY: keyStartY + 2.5,
@@ -4916,15 +4925,48 @@ async function generateBulkReportCards() {
               .map(input => String(input.value))
               .sort((a, b) => Number(a) - Number(b));
 
-            doc.setDrawColor(226, 232, 240).setLineWidth(0.2);
+            doc.setDrawColor(205, 205, 205).setLineWidth(0.2);
             ySteps.forEach((step) => {
                 const y = plotY + plotH - ((step - minVal) / (maxVal - minVal || 1)) * plotH;
                 doc.line(plotX, y, plotX + plotW, y);
             });
 
-            doc.setDrawColor(148, 163, 184).setLineWidth(0.2);
+            doc.setDrawColor(110, 110, 110).setLineWidth(0.25);
             doc.line(plotX, plotY + plotH, plotX + plotW, plotY + plotH);
             doc.line(plotX, plotY, plotX, plotY + plotH);
+
+            const termStyles = {
+                1: { xOffset: -1.2, dash: [], marker: "circle", rgb: [37, 99, 235] },
+                2: { xOffset: 0, dash: [1.5, 1], marker: "square", rgb: [5, 150, 105] },
+                3: { xOffset: 1.2, dash: [0.4, 0.8], marker: "triangle", rgb: [17, 24, 39] },
+            };
+            const chartInk = [20, 20, 20];
+            const drawTermMarker = (x, y, marker, size = 0.75) => {
+              doc.setDrawColor(...chartInk).setFillColor(...chartInk);
+              if (marker === "square") {
+                doc.rect(x - size, y - size, size * 2, size * 2, "F");
+              } else if (marker === "triangle") {
+                doc.line(x, y - size, x - size, y + size);
+                doc.line(x - size, y + size, x + size, y + size);
+                doc.line(x + size, y + size, x, y - size);
+              } else {
+                doc.circle(x, y, size, "F");
+              }
+            };
+            const drawTermLegend = (x, y, term) => {
+                const style = termStyles[term];
+                if (!style) return;
+                doc.setDrawColor(...style.rgb).setLineWidth(0.45).setLineDash(style.dash, 0);
+                doc.line(x, y - 0.6, x + 3.2, y - 0.6);
+                doc.setLineDash([]);
+                drawTermMarker(x + 1.6, y - 0.6, style.marker, 0.55);
+                doc.setTextColor(...chartInk).setFont("helvetica", "bold").setFontSize(5.3);
+                doc.text(`Term ${term}`, x + 4.2, y);
+            };
+            const legendX = chartX + chartW + 4;
+            termProgressLines.forEach((line, index) => {
+              drawTermLegend(legendX, plotY + 3 + index * 7, line.term);
+            });
 
             doc.setFont("helvetica", "normal").setFontSize(5.5);
             ySteps.forEach((step) => {
@@ -4943,29 +4985,23 @@ async function generateBulkReportCards() {
               })) }];
 
             lines.forEach((line) => {
+              const termStyle = termStyles[line.term];
               const points = line.points.map((point) => {
                 const assessmentIndex = selectedAssessmentKeys.indexOf(String(point.assessment));
                 return {
-                  x: plotX + (assessmentIndex / Math.max(selectedAssessmentKeys.length - 1, 1)) * plotW,
+                  // A small horizontal dodge keeps coincident term results visible; score values stay exact.
+                  x: plotX + (assessmentIndex / Math.max(selectedAssessmentKeys.length - 1, 1)) * plotW + (termStyle?.xOffset || 0),
                   y: plotY + plotH - ((point.mean - minVal) / (maxVal - minVal || 1)) * plotH,
                   mean: point.mean,
                 };
               });
 
-              const color = line.color || "#2563eb";
-              const rgb = color === "#059669" ? [5, 150, 105] : color === "#111827" ? [17, 24, 39] : [37, 99, 235];
-              doc.setDrawColor(...rgb).setLineWidth(line.term === 3 ? 0.65 : 0.4);
+              doc.setDrawColor(...(termStyle?.rgb || chartInk)).setLineWidth(0.55).setLineDash(termStyle?.dash || [], 0);
               points.forEach((point, index) => {
                 if (index > 0) doc.line(points[index - 1].x, points[index - 1].y, point.x, point.y);
               });
-              doc.setFillColor(...rgb);
-              points.forEach((point) => doc.circle(point.x, point.y, 0.9, 'F'));
-
-              if (line.term && points.length) {
-                const lastPoint = points[points.length - 1];
-                doc.setTextColor(...rgb).setFont("helvetica", "bold").setFontSize(5.8);
-                doc.text(`T${line.term}`, Math.min(lastPoint.x + 2, chartX + chartW - 2), lastPoint.y + 1.5);
-              }
+              doc.setLineDash([]);
+              points.forEach((point) => drawTermMarker(point.x, point.y, termStyle?.marker));
             });
 
             doc.setTextColor(15, 23, 42).setFont("helvetica", "bold").setFontSize(5.8);
