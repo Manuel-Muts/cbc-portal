@@ -1240,8 +1240,46 @@ form {
   animation: teacher-planning-spin 0.8s linear infinite;
 }
 
+.teacher-submitted-marks-loading {
+  display: flex;
+  min-height: 150px;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 24px;
+  border: 1px solid #dbeafe;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #f8fafc, #eff6ff);
+  color: #334155;
+  font-weight: 600;
+}
+
+.teacher-submitted-marks-spinner {
+  width: 24px;
+  height: 24px;
+  flex: 0 0 24px;
+  border: 3px solid #cbd5e1;
+  border-top-color: #0f766e;
+  border-radius: 50%;
+  animation: teacher-planning-spin 0.8s linear infinite;
+}
+
+.teacher-submitted-marks-message {
+  padding: 18px;
+  border-radius: 10px;
+  background: #fef2f2;
+  color: #b91c1c;
+  text-align: center;
+}
+
 @keyframes teacher-planning-spin {
   to { transform: rotate(360deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .teacher-submitted-marks-spinner {
+    animation-duration: 2s;
+  }
 }
 
 .teacher-planning-table .teacher-planning-empty {

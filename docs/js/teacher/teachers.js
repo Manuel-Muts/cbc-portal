@@ -281,6 +281,14 @@ document.addEventListener("DOMContentLoaded", () => {
     const loadSubmittedMarksOnce = async () => {
       if (submittedMarksTabInitialized || submittedMarksLoading) return;
       submittedMarksLoading = true;
+      if (submittedMarksContainer) {
+        submittedMarksContainer.setAttribute("aria-busy", "true");
+        submittedMarksContainer.innerHTML = `
+          <div class="teacher-submitted-marks-loading" role="status">
+            <span class="teacher-submitted-marks-spinner" aria-hidden="true"></span>
+            <span>Loading submitted marks…</span>
+          </div>`;
+      }
       try {
         console.log("[LAZY LOAD] Loading submitted marks...");
         await loadSubmittedMarks();
@@ -289,7 +297,11 @@ document.addEventListener("DOMContentLoaded", () => {
         console.log("[LAZY LOAD] Submitted marks loaded successfully");
       } catch (err) {
         console.error("[LAZY LOAD] Error loading submitted marks:", err);
+        if (submittedMarksContainer?.querySelector(".teacher-submitted-marks-loading")) {
+          submittedMarksContainer.textContent = "Could not load submitted marks. Please refresh the tab to try again.";
+        }
       } finally {
+        submittedMarksContainer?.removeAttribute("aria-busy");
         submittedMarksLoading = false;
       }
     };
@@ -2340,6 +2352,9 @@ document.addEventListener("DOMContentLoaded", () => {
       const res = await fetchWithAuth(requestUrl);
       
       if (res.status === 403) {
+        if (submittedMarksContainer) {
+          submittedMarksContainer.innerHTML = '<p class="teacher-submitted-marks-message" role="alert">You are not authorized to view submitted marks.</p>';
+        }
         alert("You are not authorized to view marks.");
         return;
       }
@@ -2370,7 +2385,12 @@ document.addEventListener("DOMContentLoaded", () => {
         const cached = localStorage.getItem(cacheKeyWithContext);
         if (cached) {
           const cachedEntry = JSON.parse(cached);
-          if (cachedEntry.timestamp && Date.now() - cachedEntry.timestamp > CACHE_DURATION) return;
+          if (cachedEntry.timestamp && Date.now() - cachedEntry.timestamp > CACHE_DURATION) {
+            if (submittedMarksContainer) {
+              submittedMarksContainer.innerHTML = '<p class="teacher-submitted-marks-message" role="alert">Your saved marks are out of date. Please reconnect and refresh the tab.</p>';
+            }
+            return;
+          }
           const { data } = cachedEntry;
           submittedMarks = Array.isArray(data) ? data : (data?.marks || []);
           submittedMarksCurrentPage = data?.currentPage || requestedPage;
