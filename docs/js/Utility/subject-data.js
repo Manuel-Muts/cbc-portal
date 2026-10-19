@@ -25,8 +25,10 @@ window.SUBJECT_DATA.gradeSubjects = {
     "Creative Arts and Sports",
     "Sports C/A(s)",
     "Visual Arts C/A(v)",
-    "Performing Arts C/A(p)"
-  ],
+    "Performing Arts C/A(p)",
+   
+
+    ],
   "4-6": [
     "Mathematics",
     "English",
@@ -39,7 +41,7 @@ window.SUBJECT_DATA.gradeSubjects = {
     "Sports C/A(s)",
     "Visual Arts C/A(v)",
     "Performing Arts C/A(p)",
-    "Physical Health Education"
+   
   ],
   "7-9": [
     "Mathematics",
@@ -47,16 +49,14 @@ window.SUBJECT_DATA.gradeSubjects = {
     "Kiswahili",
     "Integrated Science",
     "Agriculture",
-     "Christian Religious Education",
-    "Health Education",
+    "Christian Religious Education",
     "Pre-Technical Studies",
-    "Sports and Physical Education",
     "Creative Arts and Sports",
     "Sports C/A(s)",
     "Visual Arts C/A(v)",
     "Performing Arts C/A(p)",
-     "Business Studies",
      "Social Studies",
+    
   ],
   "10-12": [
     "Mathematics",
