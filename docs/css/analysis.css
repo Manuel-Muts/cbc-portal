@@ -402,7 +402,7 @@ th {
 @media (max-width: 640px) {
     .filter-grid, .filters-grid {
         display: grid !important;
-        grid-template-columns: repeat(2, 1fr);
+        grid-template-columns: repeat(2, minmax(0, 1fr));
         gap: 12px;
         padding: 15px;
     }
@@ -413,13 +413,18 @@ th {
         margin-bottom: 5px;
     }
 
+    .filter-grid select, .filter-grid input, .filter-grid button {
+        width: 100%;
+        min-width: 0;
+    }
+
     .filter-item label {
         margin-bottom: 4px; /* Save vertical space */
     }
 
     /* Ensure the Generate Report button spans both columns at the bottom */
     .filter-grid .form-group:last-child, .filter-item:last-child {
-        grid-column: span 2;
+        grid-column: 1 / -1;
         margin-top: 10px;
     }
 }
